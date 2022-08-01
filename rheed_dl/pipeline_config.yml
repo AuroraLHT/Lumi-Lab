@@ -1,0 +1,9 @@
+---
+ threshold : 0.5
+ do_mean_clip : false
+ do_min_max : true
+ classes : ["streak", "spot"]
+ min_area : 10
+ do_tracking : true
+ tracker_t_min : 1000
+ tracker_sigma_iou : 0.5
