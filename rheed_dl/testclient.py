@@ -5,6 +5,7 @@ import numpy as np
 from tqdm.asyncio import trange, tqdm
 from rhana.io.tokyo_u import RHEEDStreamReader
 import asyncio
+import json
 
 # rheed_bin_path = Path("/mnt/share/oxide_rheed/HT003-RHEED-0001.bin")
 # rheed_dir_path =  Path("/mnt/share/oxide_rheed/HT003-RHEED-0001.dir")
@@ -28,32 +29,31 @@ res = requests.post(
 
 beams = reader.get_beams()
 
+def pad_for_batching(ls, bs):
+    for i in range(bs - len(ls) % bs):
+        ls.append(ls[-1])
+    return ls
+
 async def main():
-    async with websockets.connect('ws://127.0.0.1:8000/ws/test2') as websocket:
+        websocket = await websockets.connect('ws://127.0.0.1:8000/ws/unet')
+    # async with websockets.connect('ws://127.0.0.1:8000/ws/test2') as websocket:
     # async with websockets.connect('ws://omicron.issp.u-tokyo.ac.jp:8000/ws/unet') as websocket:
         # _batch = []
         counter = 0
-        for frame_i in tqdm(beams[0]['frames'][:5000]):
-            # frame, fh = reader.read_frame(frame_i)
-            frame = np.random.randint(0, 100, (600, 800), dtype=np.uint16)
+        for frame_i in tqdm( pad_for_batching( beams[0]['frames'][:1000], n_batch ) ):
+            frame, fh = reader.read_frame(frame_i)
             await websocket.send(frame.tobytes())
             counter+=1
-
-            # if len(_batch) == n_batch:
-            if counter == n_batch:
-                # batch = np.stack(_batch, axis=0)
-                # await websocket.send(batch.tobytes())
+            
+            if counter % n_batch == 0:
                 for j in range(n_batch):
                     response = await websocket.recv()
-                    # mask = np.frombuffer(response, "bool").reshape(2, 600, 800)
-                # _batch = []
-                counter = 0
+                    mask = np.frombuffer(response, "bool").reshape(2, 600, 800)
+                    tracking_info = await websocket.recv()
+                    tracking_info = json.loads(tracking_info)
 
-        if counter<n_batch:
-            for i in range(n_batch - counter):
-                await websocket.send(frame.tobytes())
-            for j in range(n_batch):
-                response = await websocket.recv()
-                # mask = np.frombuffer(response, "bool").reshape(2, 600, 800)
-                
-asyncio.get_event_loop().run_until_complete(main())
+                    counter = 0
+        await websocket.close()
+
+# asyncio.get_event_loop().run_until_complete(main())
+asyncio.run(main())
