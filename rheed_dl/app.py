@@ -12,7 +12,7 @@ from rhana.utils import load_yaml
 from rhana.tracker.iou import IOUMaskTracker, regions2detections
 
 app = FastAPI()
-path = "/home/hliang16/codebases/rhana/learner/UNet_1647_Apr27_2022.pkl"
+path = "/home/hliang16/codebase/rhana/learner/UNet_1647_Apr27_2022.pkl"
 masker = UnetMasker(path, cpu=False, device="cuda")
 
 pipeline_config = load_yaml("pipeline_config.yml")[0]
