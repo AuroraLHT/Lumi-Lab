@@ -1,3 +1,7 @@
+# project-wise generated files
+pascal/storage
+pascal/data
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
