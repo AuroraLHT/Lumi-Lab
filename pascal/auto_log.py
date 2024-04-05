@@ -7,9 +7,15 @@ from pathlib import Path
 import csv
 import json
 
+from tqdm import tqdm
+
+import datetime
+from chamber_log import PARSE_DICT, parse_bit_field
+
 log_filename = None
 csv_reader = None
 csv_reader_line = 0
+pbar = tqdm()
 
 async def receive_filename(message: AbstractIncomingMessage) -> None:
     global log_filename
@@ -26,6 +32,9 @@ async def receive_filename(message: AbstractIncomingMessage) -> None:
     csv_reader = await open_csv(log_filename)
     header = next(csv_reader, None)
     csv_reader_line = 0
+
+    # we need to ack back to the rabbitmq server otherwise it would timeout this channel in 30 minute (by default)
+    await message.ack()
 
     # print("Before sleep!")
     # await asyncio.sleep(5)  # Represents async I/O operations
@@ -52,6 +61,14 @@ async def open_csv(filename, timeout=10):
             raise TimeoutError("Cannot read the log csv file")
     return csv_reader
 
+def process_row(row):
+    today = datetime.date.today()
+    row['Time'] = f"{today.isoformat()} {row['Time']}"
+    for k, v in PARSE_DICT.items():
+        row.update( parse_bit_field( row[k], v) )
+    return row
+
+
 async def auto_log_publish(exchange) -> None:    
     global log_filename
     global csv_reader
@@ -63,6 +80,8 @@ async def auto_log_publish(exchange) -> None:
             continue
 
         for row in csv_reader:
+            row = process_row(row)
+
             message_body = json.dumps(row).encode()
 
             message = aio_pika.Message(
@@ -73,7 +92,8 @@ async def auto_log_publish(exchange) -> None:
             await exchange.publish(message, routing_key="chamber")                
             csv_reader_line += 1
             # print("row", row['index'])
-        print(f'Processed {csv_reader_line} lines.')
+            pbar.update(1)
+        # print(f'Processed {csv_reader_line} lines.')
         await asyncio.sleep(1)
 
 
