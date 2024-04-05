@@ -112,7 +112,7 @@ PARSE_DICT['W Pross'] =    {
         2:"Large drive-current deviation",        
     }
 
-PARSE_DICT['W EXT'] =    {
+PARSE_DICT['W etc'] =    {
         0:"T",
         1:"Mask1 confliction",
     }
