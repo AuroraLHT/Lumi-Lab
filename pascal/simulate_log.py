@@ -1,14 +1,16 @@
 import csv
 import time
-# import tqdm
-from tqdm.notebook import tqdm
+import datetime
+from tqdm import tqdm
+# from tqdm.notebook import tqdm
 import pika
 
 interval = 1
+# interval = 1 / 60
 
 line_count = 0
 rows = []
-with open('test_log.csv', mode='r') as csv_file:
+with open('data/test_log.csv', mode='r') as csv_file:
     csv_reader = csv.DictReader(csv_file)    
     for row in csv_reader:
         if line_count == 0:
@@ -27,23 +29,26 @@ channel = connection.channel()
 channel.exchange_declare(exchange='operation', exchange_type='topic')
 
 channel.basic_publish(
-    exchange='operation', routing_key="log.filename", body="test_auto.csv"
+    exchange='operation', routing_key="log.filename", body="data/test_auto.csv"
 )
 
 
 line_count = 0
 
-with open('test_auto.csv', mode='w') as auto_csv_file:
+with open('data/test_auto.csv', mode='w') as auto_csv_file:
+
     pbar = tqdm()
 
-    fieldnames = csv_reader.fieldnames + ['index']
+    # fieldnames = csv_reader.fieldnames + ['index']
+    fieldnames = csv_reader.fieldnames    
     writer = csv.DictWriter(auto_csv_file, fieldnames=fieldnames)
     writer.writeheader()
     
     while True:
         for row in rows:
             row = dict(row)
-            row.update({'index': line_count})
+            row['Time'] = datetime.datetime.today().strftime("%I:%M:%S %p")
+            # row.update({'index': line_count})
             writer.writerow(row)
             auto_csv_file.flush() # this ensure the content is actually written
             line_count += 1

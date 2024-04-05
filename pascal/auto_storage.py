@@ -3,6 +3,7 @@ from pathlib import Path
 import datetime
 import csv
 import json
+from tqdm import tqdm
 
 connection = pika.BlockingConnection(
     pika.ConnectionParameters(host='localhost'))
@@ -25,6 +26,7 @@ for rk in routing_keys:
 ROOT_STORAGE_FOLDER = Path("storage")
 ROOT_STORAGE_FOLDER.mkdir(exist_ok=True)
 
+pbar = tqdm()
 
 FIELDNAMES = [
     'Time',
@@ -91,7 +93,71 @@ FIELDNAMES = [
     'A Motor2',
     'W Pross',
     'W etc',
-    'index'
+    'Heater power supply (PS)',
+    'PID Heater control',
+    'Ramp rate setting',
+    'ON/OFF monitor in PS',
+    'Inter-locking in excimer laser',
+    'HV in excimer laser',
+    'Gate shutter',
+    'DP1 (Main)',
+    'DP2 (2nd RHEED)',
+    'DP3 (L/L)',
+    'TMP1 (Main)',
+    'TMP2 (RHEED)',
+    'TMP3 (L/L)',
+    'TMP4 (2nd RHEED)',
+    'MV10 (Main)',
+    'MV11 (Main bypass)',
+    'FV1 (Main)',
+    'MV2 (RHEED)',
+    'FV2 (RHEED)',
+    'MV3 (L/L)',
+    'FV3 (L/L)',
+    'RV3 (L/L)',
+    'Sample Shutter',
+    'Target spin',
+    'Motor free',
+    'Baking',
+    'Emergency shutdown',
+    'Compress air',
+    'TMP1 (Main) alarm',
+    'TMP20 (RHEED) alarm',
+    'TMP3 (L/L) alarm',
+    'TMP21 (2nd RHEED) alarm',
+    'DP1 (Main) Thermal',
+    'DP2 (2nd RHEED) Thermal',
+    'DP3 (L/L) Thermal',
+    'DP1 (Main) Vac Error',
+    'DP2 (2nd RHEED) Vac Error',
+    'DP3 (L/L) Vac Error',
+    'Break in baking temp sensor',
+    'Tripped in baking heater line',
+    'Door open in laser shield',
+    'Heater power supply alarm',
+    'Chiller (for heater) alarm',
+    'Temperature sensor failure',
+    'Laser fiber head failure',
+    'Pyrometer error',
+    'Pulse failure in sample rotation',
+    'Pulse failure in TG revolution',
+    'Pulse failure in TG height (Z)',
+    'Pulse failure in Mask 1',
+    'Step out in L-mask encoder',
+    'Limit sensor in Mask 1',
+    'Pulse failure in Mask 2',
+    'Limit sensor in Mask 2',
+    'Pulse failure in focus lens (R)',
+    'Driver trouble in focus lens (R)',
+    'Pulse failure in mirror (R)',
+    'Driver trouble in mirror (R)',
+    'Pulse failure in attenuator (R)',
+    'Limit sensor in attenuator (R)',
+    'Miss-shot in excimer laser',
+    'Large temperature deviation',
+    'Large drive-current deviation',
+    'T',
+    'Mask1 confliction'
 ]
 
 
@@ -130,7 +196,8 @@ csv_manager = CSVStorageManager(root_folder=ROOT_STORAGE_FOLDER, fieldnames=FIEL
 def callback(ch, method, properties, body):
     global csv_manager
     item = json.loads(body.decode())
-    print(item['index'])
+    # print(item['index'])
+    pbar.update(1)
     csv_manager.store_item(item)
     # print(f" [x] {method.routing_key}:{body}")
 
