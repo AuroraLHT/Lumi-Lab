@@ -5,8 +5,9 @@ import struct
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
+import argparse
 
-fig, ax = plt.subplots()
+# fig, ax = plt.subplots()
 
 def decode_img(body, ):
     header_size = struct.calcsize("<HH")
@@ -15,9 +16,14 @@ def decode_img(body, ):
     return img_flat.reshape(img_shape)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="localhost", type=str)
+    args = parser.parse_args()
+
+    host = args.host
 
     connection = pika.BlockingConnection(
-        pika.ConnectionParameters(host='localhost')
+        pika.ConnectionParameters(host=host)
     )
     channel = connection.channel()
 

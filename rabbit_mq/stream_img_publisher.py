@@ -7,6 +7,7 @@ from PIL import ImageFont
 import datetime
 import struct
 import time
+import argparse
 
 dt = np.int16
 default_fonts = ["FreeMono.ttf", "arial.ttf"]
@@ -37,6 +38,13 @@ def encode_img(img):
     return body
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="localhost", type=str)
+    args = parser.parse_args()
+
+    host = args.host
+
+
     for font in default_fonts:
         try:
             ImageFont.truetype(font, size=75)
@@ -47,7 +55,7 @@ if __name__ == "__main__":
             break
 
     connection = pika.BlockingConnection(
-        pika.ConnectionParameters(host="localhost"),
+        pika.ConnectionParameters(host=host),
     )
 
     channel = connection.channel()
