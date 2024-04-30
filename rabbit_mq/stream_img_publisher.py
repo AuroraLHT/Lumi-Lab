@@ -9,6 +9,8 @@ import struct
 import time
 
 dt = np.int16
+default_fonts = ["FreeMono.ttf", "arial.ttf"]
+default_font = None
 
 def generate_random_img():
     img = np.random.randint(0, 255, size=(540, 720), dtype=np.int16)
@@ -18,7 +20,7 @@ def generate_random_img():
     I1 = ImageDraw.Draw( pil_img )
      
     # Add Text to an image
-    I1.text((150, 200), f"{datetime.datetime.now().time().isoformat()}", fill=(0), font=ImageFont.truetype("FreeMono.ttf", size=75))
+    I1.text((150, 200), f"{datetime.datetime.now().time().isoformat()}", fill=(0), font=ImageFont.truetype(default_font, size=75))
 
     img = np.array(pil_img)
     img = img.astype(dt)
@@ -35,6 +37,14 @@ def encode_img(img):
     return body
 
 if __name__ == "__main__":
+    for font in default_fonts:
+        try:
+            ImageFont.truetype(font, size=75)
+            default_font = font
+        except Exception as e:
+            print(e)
+        if default_font is not None:
+            break
 
     connection = pika.BlockingConnection(
         pika.ConnectionParameters(host="localhost"),

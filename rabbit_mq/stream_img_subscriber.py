@@ -44,6 +44,7 @@ if __name__ == "__main__":
         # ax.imshow(img)
         # plt.pause(0.05)
         cv2.imshow("Stream", img.astype(np.uint8))
+        # press Esc on the image window to stop
         if cv2.waitKey(1) == 27:
             raise ValueError("stop") 
 
