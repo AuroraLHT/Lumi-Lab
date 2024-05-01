@@ -103,7 +103,7 @@ async def auto_log_publish(exchange) -> None:
 async def main(args) -> None:
     # Perform connection
     url = f"amqp://guest:guest@{args.host}/"
-    connection = await aio_pika.connect()
+    connection = await aio_pika.connect(url)
     # connection = await aio_pika.connect("localhost")
 
     async with connection:

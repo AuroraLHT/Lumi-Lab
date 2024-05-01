@@ -13,11 +13,11 @@ if __name__ == "__main__":
         config = json.load(f)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("log", help="path of the log, could be folder or .csv path", default=config['LogFolder'])
+    parser.add_argument("--path", help="path of the log, could be folder or .csv path", default=config['LogFolder'])
     parser.add_argument("--host", help="rabbitmq host", default=config['RabbitmqHost'])
 
     args = parser.parse_args()
-    log_path = Path(args.log_path)
+    log_path = Path(args.path)
 
     if not log_path.exists():
         exit_with_message(f"log path do not exist: {log_path}", 1)
