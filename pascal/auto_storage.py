@@ -10,10 +10,11 @@ import argparse
 csv_manager = None
 
 class CSVStorageManager:
-    def __init__(self, root_folder, fieldnames):
+    def __init__(self, root_folder, fieldnames, flush_at_each_row=True):
         self.root_folder = root_folder
         self.current_date = datetime.date.today()
         self.fieldnames = fieldnames
+        self.flush_at_each_row  = flush_at_each_row
 
         self.create_writer()
         # self.current_date = datetime.datetime.now().date()    
@@ -36,6 +37,8 @@ class CSVStorageManager:
             self.create_writer()
         
         self.writer.writerow(item)
+        if self.flush_at_each_row:
+            self.csv_file_handle.flush()
 
     def __del__(self):
         self.close_writer()
@@ -49,7 +52,7 @@ def callback(ch, method, properties, body):
 
     if csv_manager is None:
         fieldnames = sorted(item.keys())
-        csv_manager = CSVStorageManager(root_folder=ROOT_STORAGE_FOLDER, fieldnames=fieldnames)
+        csv_manager = CSVStorageManager(root_folder=ROOT_STORAGE_FOLDER, fieldnames=fieldnames, flush_at_each_row=True)
 
     # print(item['index'])
     pbar.update(1)
