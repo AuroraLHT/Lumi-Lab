@@ -1,3 +1,8 @@
+"""
+This server would run on the pascal machine side
+Receive command update and execute command.
+"""
+
 from typing import Union
 
 from fastapi import FastAPI, WebSocket
