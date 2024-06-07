@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebSocket MP4 Stream</title>
+
+    <style>
+        .video-container {
+            position: relative;
+            display: inline-block;
+        }
+
+        video {
+            display: block;
+        }
+
+        #svg-detection {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Ignore pointer events on SVG */
+        }
+
+        rect {
+            pointer-events: auto; /* Enable pointer events on rectangles */
+        }
+
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: #fff;
+            padding: 5px;
+            border-radius: 3px;
+            pointer-events: none;
+            display: none;
+        }
+    </style>
+
+  </head>
+  <body>
+    <br/>
+    <br/>
+    <br/>
+    <br/>
+    <br/>
+    <div class="video-container">
+        <video id="video" controls autoplay="true">
+            Your browser does not support the video tag.
+        </video>
+        <svg id="svg-detection" xmlns="http://www.w3.org/2000/svg">
+            <rect class="bbox" id="box1" x="50" y="50" width="100" height="100" fill="none" stroke="red" stroke-width="2" />
+            <rect class="bbox" id="box2" x="200" y="100" width="150" height="150" fill="none" stroke="blue" stroke-width="2" />
+            <rect class="bbox" id="box3" x="400" y="200" width="100" height="50" fill="none" stroke="green" stroke-width="2" />
+        </svg>
+        <div class="tooltip" id="tooltip"></div>
+    </div>
+    <br />
+    <button id="button-close">Close</button>
+    <button id="button-msg">Message</button>
+    <button id="button-live">Live</button>
+    <button id="button-detection">Detect</button>    
+    <button id="button-detection-close">CloseDetect</button>    
+
+    <pre id="response">Place Holder</pre>
+
+    <script>
+      let tmp = null;
+      (async () => {  
+        // helper for adding rect
+        function updateRect(rect, bbox_xyxy){
+            x = bbox_xyxy[0];
+            y = bbox_xyxy[1];
+            w = bbox_xyxy[2] - bbox_xyxy[0];
+            h = bbox_xyxy[3] - bbox_xyxy[1];
+            // console.log(bbox_xyxy);
+            rect.setAttribute('x', x);
+            rect.setAttribute('y', y);
+            rect.setAttribute('width', w);
+            rect.setAttribute('height', h);
+            
+        }
+
+        function removeRect(rectToRemove) {
+            if (rectToRemove) {
+                svg.removeChild(rectToRemove);
+            } else {
+                alert(`No rectangle found to remove`);
+            }
+        }
+
+        function addRect(id, svg, bbox_xyxy) {
+            x = bbox_xyxy[0]
+            y = bbox_xyxy[1]
+            w = bbox_xyxy[2] - bbox_xyxy[0]
+            h = bbox_xyxy[3] - bbox_xyxy[1]
+
+            const newRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            newRect.setAttribute('id', `box${id}`);
+            newRect.setAttribute('class', `bbox`);
+            newRect.setAttribute('x', x);
+            newRect.setAttribute('y', y);
+            newRect.setAttribute('width', w);
+            newRect.setAttribute('height', h);
+            newRect.setAttribute('fill', 'none');
+            newRect.setAttribute('stroke', 'purple');
+            newRect.setAttribute('stroke-width', 2);
+            newRect.setAttribute('data-original-stroke', 'purple');
+            svg.appendChild(newRect);
+        }
+
+
+        const videoElement = document.getElementById("video");
+        const buttonElement = document.getElementById("button-close");
+        const msgElement = document.getElementById("button-msg");
+        const liveElement = document.getElementById("button-live");
+        const detectionElement = document.getElementById("button-detection");
+        const detectionCloseElement = document.getElementById("button-detection-close");
+        const detectionSvgElement = document.getElementById("svg-detection");
+
+        const websocket = new WebSocket("ws://localhost:8000/RHEED/cam");
+        websocket.binaryType = "arraybuffer";
+
+        const websocket_ai = new WebSocket("ws://localhost:8000/RHEED/detection");
+
+
+        var mediaSource = new MediaSource();
+        videoElement.src = URL.createObjectURL(mediaSource);
+
+        var content;
+        let queue = [];
+
+        // Video that will be fetched and appended
+        // const remoteVidUrl = `https://raw.githubusercontent.com/chromium/chromium/b4b3566f27d2814fbba1b115639eb7801dd691cf/media/test/data/bear-vp9-opus.webm`;
+        // const remoteVidUrl = `http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4`
+        const remoteVidUrl = `https://nickdesaulniers.github.io/netfix/demo/frag_bunny.mp4`;
+
+        // Fetch remote URL, getting contents as binary blob
+        // content = await fetch(remoteVidUrl, {
+        //     mode: 'cors', // Ensure CORS mode
+        // });
+        // const vidBlob = await content.blob();
+
+        // // We need array buffers to work with media source
+        // const vidBuff = await vidBlob.arrayBuffer();
+
+        mediaSource.addEventListener("sourceopen", () => {
+          // console.log("source open")
+          // const sourceBuffer = mediaSource.addSourceBuffer(`video/webm; codecs="vp9,opus"`);
+          // sourceBuffer.appendBuffer(vidBuff);
+
+          // https://stackoverflow.com/questions/16363167/html5-video-tag-codecs-attribute
+          // avc1.4D401E, avc1 indicates H.264 video, and this is followed by a dot and three 2-digit hexadecimal numbers defined by the H.264 standard:
+          // As for mp4a.40.2, mp4a indicates MPEG-4 audio. It is followed by a dot and a hexadecimal ObjectTypeIndication (objectTypeId in mp4file output), which can be looked up on the MPEG4 registration site.
+          // sourceBuffer = mediaSource.addSourceBuffer('video/mp4; codecs="avc1.42E01E, mp4a.40.2"');
+          sourceBuffer = mediaSource.addSourceBuffer(
+            'video/mp4; codecs="avc1.42E01E"'
+          );
+          
+          // try h.265 encoding if possible
+          // sourceBuffer = mediaSource.addSourceBuffer(
+          //   'video/mp4; codecs="hvc1.1.6.L93.B0"'
+          // );
+
+          
+
+          // console.log("online download content", vidBuff)
+          // sourceBuffer.appendBuffer(vidBuff);
+
+          websocket.onmessage = (event) => {
+            // const content = new Uint8Array(event.data);
+            // content = event.data;
+            // console.log(event.data.byteLength);
+            // Check if the MediaSource is still open
+            if (mediaSource.readyState === "open") {
+              // Append the received data to the SourceBuffer
+              // sourceBuffer.appendBuffer(vidBuff);
+              // sourceBuffer.appendBuffer(content);
+              // console.log("add to queue");
+              queue.push(event.data);
+              // sourceBuffer.appendBuffer(event.data);
+
+              if (queue.length > 0 && !sourceBuffer.updating) {
+                content = queue.shift();
+                // console.log("append", content.byteLength);
+                sourceBuffer.appendBuffer(content);
+              }
+            } else {
+              console.log(
+                "Media source is not in open state: ",
+                mediaSource.readyState
+              );
+            }
+          };
+
+          sourceBuffer.addEventListener("updateend", () => {
+            // If the video element is not already playing, start playing it
+            // total_array = []
+            if (queue.length > 0 && !sourceBuffer.updating) {
+              content = queue.shift();
+              console.log("append", content.byteLength);
+              sourceBuffer.appendBuffer(content);
+            }
+            // while (queue.length > 0) {
+            //     sourceBuffer.appendBuffer(queue.shift());
+            //     // total_array = total_array.concat( queue.shift() )
+            // }
+            // sourceBuffer.appendBuffer(total_array);
+
+            // if (videoElement.paused) {
+            //     videoElement.play();
+            //     // hide the not connected message
+            //     // notConnectedMessage.style.display = 'none';
+            // }
+          });
+
+          sourceBuffer.addEventListener("error", (event) => {
+            console.error("SourceBuffer error:", event);
+          });
+        });
+
+        console.log("create media source and start streaming");
+
+        websocket.onopen = () => {
+          websocket.send("start"); // tell the server to start streaming
+          console.log("websocket open");
+        };
+        websocket.onclose = () => {
+          console.log("websocket close");
+          if (mediaSource.readyState === "open") {
+            mediaSource.endOfStream();
+          }
+        };
+
+        websocket.onerror = (error) => {
+          console.error("WebSocket error:", error);
+          if (mediaSource.readyState === "open") {
+            mediaSource.endOfStream();
+          }
+          websocket.close();
+        };
+
+        websocket_ai.onmessage = (event) => {
+            const response = JSON.parse(event.data);
+            // console.log(response, typeof(response));
+            var bboxes = response['bboxes'];
+
+            var rects = document.getElementsByClassName("bbox");
+            for (let i = 0; i < rects.length; i++){
+                let rect = rects[i];
+                if (rect.id.substring(3) in bboxes){
+                    updateRect(rect, bboxes[i]['bbox']);
+                }else{
+                    removeRect(rect);
+                };                
+            }
+            
+            var rects = document.getElementsByClassName("bbox")
+            let bboxes_keys = Object.keys(bboxes);
+            for (let i = 0; i < bboxes_keys.length; i++){
+                let key = bboxes_keys[i];
+                if (key >= rects.length) {
+                    addRect(key, detectionSvgElement, bboxes[key]['bbox']);
+                }
+            }
+
+
+            // document.getElementById('response').textContent = JSON.stringify(response, null, 2);
+        };
+
+        // document.getElementById('sendButton').addEventListener('click', () => {
+        //     const message = {
+        //         action: 'greet',
+        //         timestamp: new Date().toISOString()
+        //     };
+        //     socket.send(JSON.stringify(message));
+        // });
+
+        websocket_ai.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        websocket_ai.onclose = () => {
+            console.log('WebSocket connection closed');
+        };
+
+        videoElement.addEventListener("error", (error) => {
+          console.error("Video element error:", error);
+        });
+
+
+        buttonElement.onclick = (event) => {
+          console.log("Close BTN");
+          websocket.close();
+        };
+        msgElement.onclick = (event) => {
+          console.log("Message BTN");
+          websocket.send("message.");
+        };
+
+        liveElement.onclick = (event) => {
+          console.log("Live BTN");
+          videoElement.currentTime = videoElement.duration - 0.05;
+        };
+
+        detectionElement.onclick = (event) => {
+            console.log("Detection");
+            websocket_ai.send("start");
+        }
+
+        detectionCloseElement.onclick = (event) => {
+            console.log("Detection Close");
+            websocket_ai.send("stop");
+        }
+
+        // console.log((vidBuff))
+
+        // for svg 
+        const svg = document.querySelector('svg');
+        const tooltip = document.getElementById('tooltip');
+
+        svg.addEventListener('mouseover', function(event) {
+            if (event.target.tagName === 'rect') {
+                event.target.setAttribute('stroke', 'yellow');
+                tooltip.textContent = `ID: ${event.target.id}`;
+                tooltip.style.display = 'block';
+                const { left, top } = svg.getBoundingClientRect();
+                tooltip.style.left = `${event.clientX - left + 10}px`;
+                tooltip.style.top = `${event.clientY - top + 10}px`;
+            }
+        });
+
+        svg.addEventListener('mousemove', function(event) {
+            if (tooltip.style.display === 'block') {
+                const { left, top } = svg.getBoundingClientRect();
+                tooltip.style.left = `${event.clientX - left + 10}px`;
+                tooltip.style.top = `${event.clientY - top + 10}px`;
+            }
+        });
+
+        svg.addEventListener('mouseout', function(event) {
+            if (event.target.tagName === 'rect') {
+                event.target.setAttribute('stroke', event.target.getAttribute('data-original-stroke'));
+                tooltip.style.display = 'none';
+            }
+        });
+
+        document.querySelectorAll('rect').forEach(rect => {
+            rect.setAttribute('data-original-stroke', rect.getAttribute('stroke'));
+        });
+        
+
+
+      })();
+    </script>
+  </body>
+</html>
