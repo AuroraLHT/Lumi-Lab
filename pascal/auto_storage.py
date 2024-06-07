@@ -4,168 +4,17 @@ import datetime
 import csv
 import json
 from tqdm import tqdm
+import argparse
 
-connection = pika.BlockingConnection(
-    pika.ConnectionParameters(host='localhost'))
-channel = connection.channel()
-
-channel.exchange_declare(exchange='logs', exchange_type='direct')
-
-# we setup a dedicated queue for this logger only
-result = channel.queue_declare(queue='', exclusive=True)
-queue_name = result.method.queue
-
-# this worker receive chamber log and store it in the log file that would be updated in daily basis
-routing_keys = ["chamber"]
-
-for rk in routing_keys:
-    channel.queue_bind(
-        exchange='logs', queue=queue_name, routing_key=rk
-    )
-
-ROOT_STORAGE_FOLDER = Path("storage")
-ROOT_STORAGE_FOLDER.mkdir(exist_ok=True)
-
-pbar = tqdm()
-
-FIELDNAMES = [
-    'Time',
-    'TG No.',
-    'TG Rotate',
-    'TG Spin Speed',
-    'TG-Z',
-    'Mask1',
-    'Mask2',
-    'Substrate',
-    'FocusLns',
-    'MirrorPs',
-    'ATN',
-    'BTFvalve',
-    'LaserHz',
-    'LaserPuls',
-    'Laser moni',
-    'Laser set',
-    'MissedPuls',
-    'PwrMeter',
-    'HT set',
-    'HT moni',
-    'Delta HT curr',
-    'HT Temp set',
-    'HT Temp moni',
-    'Delta Temp',
-    'MFC1 set',
-    'MFC1 moni',
-    'Delta MFC1',
-    'MFC2 set',
-    'MFC2 moni',
-    'Delta MFC2',
-    'MFC3 set',
-    'MFC3 moni',
-    'Delta MFC3',
-    'MFC4 set',
-    'MFC4 moni',
-    'Delta MFC4',
-    'MFC5 set',
-    'MFC5 moni',
-    'Delta MFC5',
-    'Prc Pres Main',
-    'Prc Pres Main2',
-    'Vac Pres Main',
-    'Back Pres Main',
-    'Prc Pres L/L',
-    'Vac Pres L/L',
-    'Back Pres L/L',
-    'Heat Stat',
-    'DepoLaserStat',
-    'Pump Stat',
-    'Valve Stat1',
-    'Valve Stat2',
-    'Shut Stat',
-    'Motor Stat',
-    'Other Stat',
-    'A Utility1',
-    'A Utility2',
-    'A Pump1',
-    'A Pump2',
-    'A EXT1',
-    'A EXT2',
-    'A Motor1',
-    'A Motor2',
-    'W Pross',
-    'W etc',
-    'Heater power supply (PS)',
-    'PID Heater control',
-    'Ramp rate setting',
-    'ON/OFF monitor in PS',
-    'Inter-locking in excimer laser',
-    'HV in excimer laser',
-    'Gate shutter',
-    'DP1 (Main)',
-    'DP2 (2nd RHEED)',
-    'DP3 (L/L)',
-    'TMP1 (Main)',
-    'TMP2 (RHEED)',
-    'TMP3 (L/L)',
-    'TMP4 (2nd RHEED)',
-    'MV10 (Main)',
-    'MV11 (Main bypass)',
-    'FV1 (Main)',
-    'MV2 (RHEED)',
-    'FV2 (RHEED)',
-    'MV3 (L/L)',
-    'FV3 (L/L)',
-    'RV3 (L/L)',
-    'Sample Shutter',
-    'Target spin',
-    'Motor free',
-    'Baking',
-    'Emergency shutdown',
-    'Compress air',
-    'TMP1 (Main) alarm',
-    'TMP20 (RHEED) alarm',
-    'TMP3 (L/L) alarm',
-    'TMP21 (2nd RHEED) alarm',
-    'DP1 (Main) Thermal',
-    'DP2 (2nd RHEED) Thermal',
-    'DP3 (L/L) Thermal',
-    'DP1 (Main) Vac Error',
-    'DP2 (2nd RHEED) Vac Error',
-    'DP3 (L/L) Vac Error',
-    'Break in baking temp sensor',
-    'Tripped in baking heater line',
-    'Door open in laser shield',
-    'Heater power supply alarm',
-    'Chiller (for heater) alarm',
-    'Temperature sensor failure',
-    'Laser fiber head failure',
-    'Pyrometer error',
-    'Pulse failure in sample rotation',
-    'Pulse failure in TG revolution',
-    'Pulse failure in TG height (Z)',
-    'Pulse failure in Mask 1',
-    'Step out in L-mask encoder',
-    'Limit sensor in Mask 1',
-    'Pulse failure in Mask 2',
-    'Limit sensor in Mask 2',
-    'Pulse failure in focus lens (R)',
-    'Driver trouble in focus lens (R)',
-    'Pulse failure in mirror (R)',
-    'Driver trouble in mirror (R)',
-    'Pulse failure in attenuator (R)',
-    'Limit sensor in attenuator (R)',
-    'Miss-shot in excimer laser',
-    'Large temperature deviation',
-    'Large drive-current deviation',
-    'T',
-    'Mask1 confliction'
-]
-
+# a global variable for callback
+csv_manager = None
 
 class CSVStorageManager:
-    def __init__(self, root_folder, fieldnames):
+    def __init__(self, root_folder, fieldnames, flush_at_each_row=True):
         self.root_folder = root_folder
         self.current_date = datetime.date.today()
         self.fieldnames = fieldnames
+        self.flush_at_each_row  = flush_at_each_row
 
         self.create_writer()
         # self.current_date = datetime.datetime.now().date()    
@@ -173,7 +22,9 @@ class CSVStorageManager:
     def create_writer(self):
         self.csv_file_handle = ( self.root_folder / (self.current_date.isoformat() + ".csv") ).open("a")
         self.writer = csv.DictWriter(self.csv_file_handle, fieldnames=self.fieldnames)
-        self.writer.writeheader()
+        
+        if self.csv_file_handle.tell() == 0:
+            self.writer.writeheader()
 
     def close_writer(self):
         self.csv_file_handle.close()
@@ -186,24 +37,196 @@ class CSVStorageManager:
             self.create_writer()
         
         self.writer.writerow(item)
+        if self.flush_at_each_row:
+            self.csv_file_handle.flush()
 
     def __del__(self):
         self.close_writer()
         
 
-csv_manager = CSVStorageManager(root_folder=ROOT_STORAGE_FOLDER, fieldnames=FIELDNAMES)
+# csv_manager = CSVStorageManager(root_folder=ROOT_STORAGE_FOLDER, fieldnames=FIELDNAMES)
 
 def callback(ch, method, properties, body):
     global csv_manager
     item = json.loads(body.decode())
+
+    if csv_manager is None:
+        fieldnames = sorted(item.keys())
+        csv_manager = CSVStorageManager(root_folder=ROOT_STORAGE_FOLDER, fieldnames=fieldnames, flush_at_each_row=True)
+
     # print(item['index'])
     pbar.update(1)
     csv_manager.store_item(item)
     # print(f" [x] {method.routing_key}:{body}")
 
 
-channel.basic_consume(
-    queue=queue_name, on_message_callback=callback, auto_ack=True
-)
+if __name__ == "__main__":
+    with open("config.json", "r") as f:
+        config = json.load(f)
 
-channel.start_consuming()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", help="rabbitmq host", default=config['RabbitmqHost'])
+    args = parser.parse_args()
+
+
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters(host=args.host))
+    channel = connection.channel()
+
+    channel.exchange_declare(exchange='logs', exchange_type='direct')
+
+    # we setup a dedicated queue for this logger only
+    result = channel.queue_declare(queue='', exclusive=True)
+    queue_name = result.method.queue
+
+    # this worker receive chamber log and store it in the log file that would be updated in daily basis
+    routing_keys = ["chamber"]
+
+    for rk in routing_keys:
+        channel.queue_bind(
+            exchange='logs', queue=queue_name, routing_key=rk
+        )
+
+    # to be replace by config.json
+    ROOT_STORAGE_FOLDER = Path("storage")
+    ROOT_STORAGE_FOLDER.mkdir(exist_ok=True)
+
+    pbar = tqdm()
+
+    # FIELDNAMES = [
+    #     'Time',
+    #     'TG No.',
+    #     'TG Rotate',
+    #     'TG Spin Speed',
+    #     'TG-Z',
+    #     'Mask1',
+    #     'Mask2',
+    #     'Substrate',
+    #     'FocusLns',
+    #     'MirrorPs',
+    #     'ATN',
+    #     'BTFvalve',
+    #     'LaserHz',
+    #     'LaserPuls',
+    #     'Laser moni',
+    #     'Laser set',
+    #     'MissedPuls',
+    #     'PwrMeter',
+    #     'HT set',
+    #     'HT moni',
+    #     'Delta HT curr',
+    #     'HT Temp set',
+    #     'HT Temp moni',
+    #     'Delta Temp',
+    #     'MFC1 set',
+    #     'MFC1 moni',
+    #     'Delta MFC1',
+    #     'MFC2 set',
+    #     'MFC2 moni',
+    #     'Delta MFC2',
+    #     'MFC3 set',
+    #     'MFC3 moni',
+    #     'Delta MFC3',
+    #     'MFC4 set',
+    #     'MFC4 moni',
+    #     'Delta MFC4',
+    #     'MFC5 set',
+    #     'MFC5 moni',
+    #     'Delta MFC5',
+    #     'Prc Pres Main',
+    #     'Prc Pres Main2',
+    #     'Vac Pres Main',
+    #     'Back Pres Main',
+    #     'Prc Pres L/L',
+    #     'Vac Pres L/L',
+    #     'Back Pres L/L',
+    #     'Heat Stat',
+    #     'DepoLaserStat',
+    #     'Pump Stat',
+    #     'Valve Stat1',
+    #     'Valve Stat2',
+    #     'Shut Stat',
+    #     'Motor Stat',
+    #     'Other Stat',
+    #     'A Utility1',
+    #     'A Utility2',
+    #     'A Pump1',
+    #     'A Pump2',
+    #     'A EXT1',
+    #     'A EXT2',
+    #     'A Motor1',
+    #     'A Motor2',
+    #     'W Pross',
+    #     'W etc',
+    #     'Heater power supply (PS)',
+    #     'PID Heater control',
+    #     'Ramp rate setting',
+    #     'ON/OFF monitor in PS',
+    #     'Inter-locking in excimer laser',
+    #     'HV in excimer laser',
+    #     'Gate shutter',
+    #     'DP1 (Main)',
+    #     'DP2 (2nd RHEED)',
+    #     'DP3 (L/L)',
+    #     'TMP1 (Main)',
+    #     'TMP2 (RHEED)',
+    #     'TMP3 (L/L)',
+    #     'TMP4 (2nd RHEED)',
+    #     'MV10 (Main)',
+    #     'MV11 (Main bypass)',
+    #     'FV1 (Main)',
+    #     'MV2 (RHEED)',
+    #     'FV2 (RHEED)',
+    #     'MV3 (L/L)',
+    #     'FV3 (L/L)',
+    #     'RV3 (L/L)',
+    #     'Sample Shutter',
+    #     'Target spin',
+    #     'Motor free',
+    #     'Baking',
+    #     'Emergency shutdown',
+    #     'Compress air',
+    #     'TMP1 (Main) alarm',
+    #     'TMP20 (RHEED) alarm',
+    #     'TMP3 (L/L) alarm',
+    #     'TMP21 (2nd RHEED) alarm',
+    #     'DP1 (Main) Thermal',
+    #     'DP2 (2nd RHEED) Thermal',
+    #     'DP3 (L/L) Thermal',
+    #     'DP1 (Main) Vac Error',
+    #     'DP2 (2nd RHEED) Vac Error',
+    #     'DP3 (L/L) Vac Error',
+    #     'Break in baking temp sensor',
+    #     'Tripped in baking heater line',
+    #     'Door open in laser shield',
+    #     'Heater power supply alarm',
+    #     'Chiller (for heater) alarm',
+    #     'Temperature sensor failure',
+    #     'Laser fiber head failure',
+    #     'Pyrometer error',
+    #     'Pulse failure in sample rotation',
+    #     'Pulse failure in TG revolution',
+    #     'Pulse failure in TG height (Z)',
+    #     'Pulse failure in Mask 1',
+    #     'Step out in L-mask encoder',
+    #     'Limit sensor in Mask 1',
+    #     'Pulse failure in Mask 2',
+    #     'Limit sensor in Mask 2',
+    #     'Pulse failure in focus lens (R)',
+    #     'Driver trouble in focus lens (R)',
+    #     'Pulse failure in mirror (R)',
+    #     'Driver trouble in mirror (R)',
+    #     'Pulse failure in attenuator (R)',
+    #     'Limit sensor in attenuator (R)',
+    #     'Miss-shot in excimer laser',
+    #     'Large temperature deviation',
+    #     'Large drive-current deviation',
+    #     'T',
+    #     'Mask1 confliction'
+    # ]
+
+    channel.basic_consume(
+        queue=queue_name, on_message_callback=callback, auto_ack=True
+    )
+
+    channel.start_consuming()
