@@ -12,6 +12,8 @@ from tqdm import tqdm
 import datetime
 from chamber_log import PARSE_DICT, parse_bit_field
 
+import argparse
+
 log_filename = None
 csv_reader = None
 csv_reader_line = 0
@@ -61,6 +63,7 @@ async def open_csv(filename, timeout=10):
             raise TimeoutError("Cannot read the log csv file")
     return csv_reader
 
+
 def process_row(row):
     today = datetime.date.today()
     row['Time'] = f"{today.isoformat()} {row['Time']}"
@@ -97,9 +100,10 @@ async def auto_log_publish(exchange) -> None:
         await asyncio.sleep(1)
 
 
-async def main() -> None:
+async def main(args) -> None:
     # Perform connection
-    connection = await aio_pika.connect("amqp://guest:guest@localhost/")
+    url = f"amqp://guest:guest@{args.host}/"
+    connection = await aio_pika.connect(url)
     # connection = await aio_pika.connect("localhost")
 
     async with connection:
@@ -130,4 +134,10 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    with open("config.json", "r") as f:
+        config = json.load(f)
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", help="rabbitmq host", default=config['RabbitmqHost'])
+    args = parser.parse_args()
+    asyncio.run(main(args))
