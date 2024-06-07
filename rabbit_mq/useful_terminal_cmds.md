@@ -1,3 +1,22 @@
+# https://www.rabbitmq.com/docs/download
+
+To start the rabbit docker image
+```bash
+sudo docker run -it --rm --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management
+```
+
+In powershell for running in background
+```powershell
+$job = Start-Job { docker run --rm --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management }
+```
+
+Some operations
+```powershell
+Get-Job # for findding the job name of the docker
+Stop-Job <Job_ID># for stopping the docker background
+# the container could be stopped in the GUI too
+```
+
 ```bash
 # if run with docker, make sure you add "sudo docker exec -it rabbitmq " as the prefix
 # for example
