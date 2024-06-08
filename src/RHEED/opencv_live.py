@@ -42,9 +42,9 @@ def _main():
         
         # Capture the video frame 
         # by frame 
-        frame, timestamp = web_camera.get_frame()
+        frame, frame_header = web_camera.get_frame()
         # print(f"get frame {frame.shape} {timestamp}")
-        frame = frame_processing(frame, timestamp)
+        frame = frame_processing(frame, frame_header['timestamp'])
         # Display the resulting frame 
         # print(f"process frame {frame.shape}")
         cv2.imshow('preview', frame) 
