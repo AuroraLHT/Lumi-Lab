@@ -2,7 +2,7 @@ import struct
 import numpy as np
 import datetime
 
-IMG_DTYPE = np.int16
+IMG_DTYPE = np.uint16
 
 # def encode_img(img:np.ndarray, timestamp:float):
 #     print("image", img)
@@ -31,7 +31,7 @@ def encode_img(img:np.ndarray, timestamp:float):
         img = img[..., None]
 
     img = img.astype(IMG_DTYPE)
-    body = img.tobytes()    
+    body = img.tobytes()
     h, w, d = img.shape
 
     headers = {
@@ -40,13 +40,13 @@ def encode_img(img:np.ndarray, timestamp:float):
         "height" : f"{h}",
         "width" : f"{w}",        
         "dim" : f"{d}",
-        "dtype" : "Int16"
+        "dtype" : "uint16"
     }
 
     return body, headers
 
 def decode_img(body, headers):
     img_shape= ( int(headers['height']), int(headers['width']), int(headers['dim']) )
-    dtype = np.int16 if headers['dtype']=="Int16" else np.uint8
+    dtype = np.uint16 if headers['dtype']=="uint16" else np.uint8
     img = np.frombuffer(body, dtype=dtype ).reshape(img_shape)
     return img, datetime.datetime.fromisoformat(headers['time'])
