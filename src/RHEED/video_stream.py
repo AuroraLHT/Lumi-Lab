@@ -3,8 +3,8 @@ import av
 # import asyncio
 # import websockets
 import io
-from fastapi import WebSocket
-from starlette.websockets import WebSocketState
+# from fastapi import WebSocket
+# from starlette.websockets import WebSocketState
 import time
 import asyncio
 import threading
@@ -32,7 +32,7 @@ def extract_buffer(output_buffer):
 @dataclass
 class VideoCompressorConfig:
     fps : int = 30
-    frames_per_keyframe : int = 10
+    frames_per_keyframe : int = 1
     idle_time : float = None
     time_base : fractions.Fraction = fractions.Fraction(1, av.time_base)
     
@@ -74,12 +74,13 @@ class VideoCompressor(threading.Thread):
     def get_video_frame(self, start_time=None, prev_pts=None):
         # extract camera frame
         # print(f"is queue full {self.camera_queue.full()} ")
-        cv_frame, current_time = self.camera_queue.get()
+        cv_frame, cv_frame_header = self.camera_queue.get()
+        current_time = cv_frame_header['time']
         # cv_frame, current_time = self.camera.get_frame()
         # the camera we have is monocolor version
         # convert to rgb from gray signal
         if self.frame_processing is not None:
-            cv_frame = self.frame_processing(cv_frame, current_time)
+            cv_frame = self.frame_processing(cv_frame, cv_frame_header)
             # cv_frame = cv2.cvtColor(cv_frame, cv2.COLOR_GRAY2RGB)
 
 
@@ -244,6 +245,156 @@ class VideoCompressor(threading.Thread):
         self.clear()
         self._stop_event.set()
 
-# start_server = websockets.serve(send_video, 'localhost', 8765)
-# asyncio.get_event_loop().run_until_complete(start_server)
-# asyncio.get_event_loop().run_forever()
+
+@dataclass
+class VideoRecorderConfig:
+    fps : int = 30
+    frames_per_keyframe : int = 10
+    idle_time : float = None
+    time_base : fractions.Fraction = fractions.Fraction(1, av.time_base)
+    
+    height : int = 480
+    width : int = 640
+
+    bit_rate : int = 3_000_000# Mbps
+
+    @property
+    def spf(self):
+        return 1 / self.fps 
+
+
+class VideoRecorder(threading.Thread):
+    def __init__(self, camera, camera_queue:queue.Queue, config:VideoCompressorConfig, frame_processing:Callable=None, name:Union[int|str]=""):
+        super().__init__(name=name)
+        self.io_lock = threading.Lock()
+        self.config = config
+        self.camera = camera
+        self.camera_queue = camera_queue
+        self.frame_processing = frame_processing
+
+        self.record_request_queue = queue.Queue(maxsize=1) # just a smart variable to blocking unwanted behavior
+
+        self._stop_event = threading.Event()
+        self._record_event = threading.Event()
+        self._end_record_event = threading.Event()
+
+    def get_video_frame(self, start_time=None, prev_pts=None):
+        # extract camera frame
+        # print(f"is queue full {self.camera_queue.full()} ")
+        cv_frame, cv_frame_header = self.camera_queue.get()
+        current_time = cv_frame_header['time']
+        # cv_frame, current_time = self.camera.get_frame()
+        # the camera we have is monocolor version
+        # convert to rgb from gray signal
+        if self.frame_processing is not None:
+            cv_frame = self.frame_processing(cv_frame, current_time)
+            # cv_frame = cv2.cvtColor(cv_frame, cv2.COLOR_GRAY2RGB)
+
+        frame = av.VideoFrame.from_ndarray(cv_frame, format='rgb24')
+        
+        # add time stamp info to the frame
+        if start_time is None:
+            start_time = current_time
+            time_diff = 0
+        else:
+            time_diff = current_time - start_time
+
+        pts = round(time_diff / self.config.time_base)
+        if pts == prev_pts: pts+=1
+        frame.pts = pts
+        frame.dts = pts
+        frame.time_base = self.config.time_base
+        # print(frame.pts, frame.dts)
+
+        return frame, start_time, current_time, pts
+
+
+    def record_video(self, video_filename):
+        
+        logging.info(f"start recording video to {video_filename}")
+
+        container = av.open(
+            video_filename, 
+            mode='w', 
+            format='mp4',
+            # options={'movflags': 'frag_keyframe+empty_moov+default_base_moof'} # without the moov the video itself would be clueless
+            options={'movflags': 'frag_keyframe+default_base_moof'} 
+            # options={'movflags': 'frag_keyframe+empty_moov'} # this is not non chrome browser
+            # see https://developer.mozilla.org/en-US/docs/Web/API/Media_Source_Extensions_API/Transcoding_assets_for_MSE
+        )
+
+        # Define the codec and create a video stream
+        stream = container.add_stream('h264', rate=self.config.fps)
+        # stream = container.add_stream('hevc', rate=self.config.fps)
+
+        stream.width = self.config.width
+        stream.height = self.config.height
+        stream.bit_rate = self.config.bit_rate
+        stream.pix_fmt = 'yuv420p'
+        stream.codec_context.gop_size = self.config.frames_per_keyframe
+        stream.time_base = self.config.time_base
+
+        stop_flag = False
+        while True:
+            stop_flag = self._end_record_event.wait(self.config.idle_time/3)
+            if stop_flag : 
+                logging.info("exit record while loop")
+                break   
+
+            # Encode the frame and write it to the buffer
+            av_frame, start_time, current_time, prev_pts = self.get_video_frame(start_time=start_time, prev_pts=prev_pts)
+            for packet in stream.encode(av_frame):
+                container.mux(packet)
+
+
+        # Finalize the container
+        logging.info("finalization")
+
+        for packet in stream.encode():
+            container.mux(packet)
+
+        logging.info('close container and video capture')
+        container.close()
+        logging.info("close resource")
+
+    def run(self):
+        while True:
+            if self._record_event.wait(self.config.idle_time/3): 
+                logging.info("start recording")
+                self.record_video(video_filename=self.record_request_queue.get())
+                self._on_recording_end()
+
+            if self._stop_event.wait(self.config.idle_time/3):
+                logging.info("Exit main recording thread")
+                break
+
+
+    def stop(self):
+        logging.info(f"Video record thread receives a stop signal")
+
+        # clear the queue
+        self.clear()
+        self._end_record_event.set()
+        self._stop_event.set()
+
+
+    def start_recording(self, filename):
+        logging.info(f"Video record thread receives a start recording signal")
+
+        if self.record_request_queue.empty():
+
+            self._record_event.set()
+            self.record_request_queue.put(filename)
+            return True
+        else:
+            logging.info(f"Previous video record thread request is not empty, request aborted")
+            return False
+
+    def end_recording(self):
+        logging.info(f"Video record thread receives a end recording signal")
+        self._end_record_event.set()
+        self._record_event.clear()
+
+    def _on_recording_end(self):
+        # self._record_event.clear()
+        self._end_record_event.clear()

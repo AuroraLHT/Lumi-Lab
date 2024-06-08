@@ -5,11 +5,14 @@ import queue
 import collections
 import logging
 import time
+import uuid
+import datetime
 from dataclasses import dataclass
+from typing import Union
 
 def get_camera(index=0, device=None):
+    tl_factory = pylon.TlFactory.GetInstance()
     if index is not None and device is None:
-        tl_factory = pylon.TlFactory.GetInstance()
         if index == 0:
             device = tl_factory.CreateFirstDevice()
         else:
@@ -19,14 +22,13 @@ def get_camera(index=0, device=None):
                     break
 
     assert device is not None         
-    camera = pylon.InstantCamera( device )
+    camera = pylon.InstantCamera( tl_factory.CreateDevice( device ) )
     return camera
 
 def list_devices(verbose=True):
     # Create an instant camera object with the camera device found first.
     tl_factory = pylon.TlFactory.GetInstance()
     devices = []
-    devices_info = [ ]
     for i, device in enumerate( tl_factory.EnumerateDevices() ):
         devices.append( device )
         if verbose:
@@ -40,16 +42,18 @@ class PylonCameraConfig:
     idle_time : float = 1 / 300
     fps : int = 30
     camera_max_num_buffer : int = 15
+    queue_size : int = 2
+
 
 class PylonCamera(threading.Thread):
-    def __init__(self, config:PylonCameraConfig, ident:int) -> None:
+    def __init__(self, config:PylonCameraConfig, name:Union[int, str]) -> None:
+        super().__init__(name=name)
         self.camera_io_lock = threading.Lock()
 
         self.config = config
-        self.ident = ident
 
         self.camera = get_camera(device=config.device)
-        self.queue = queue.Queue(maxsize=10)
+        self.queues = {}
         self.peek_queue = collections.deque(maxlen=10) # this queue for component that need to get the latest image
 
         # config setting TODO
@@ -59,10 +63,20 @@ class PylonCamera(threading.Thread):
         self._stop_event = threading.Event()
         self._hold_event = threading.Event()
 
+    def register_queue(self, name):
+        self.queues[name] = queue.Queue(maxsize=self.config.queue_size)
+        return self.queues[name]
+    
+    def remove_queue(self, name):
+        return self.queues.pop(name)
+
     def clear(self):
         while not queue.Empty():
             self.queue.get()
         self.peek_queue.clear()
+
+    def is_new_frame_avaliable(self, frame_uuid):
+        return frame_uuid != self.current_frame_uuid
 
     def has_frame(self):
         with self.camera_io_lock:
@@ -79,7 +93,16 @@ class PylonCamera(threading.Thread):
     def run(self):
         # the camera would run indefinitely without being blocked by anything
         # the top of the queue would always be the latest frame
-        self.camera.StartGrabbing(pylon.GrabStrategy_OneByOne)
+        # self.camera.StartGrabbing(pylon.GrabStrategy_OneByOne)
+        # self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+        # continuous mode
+
+        pylon.AcquireContinuousConfiguration().OnOpened(self.camera)
+        self.camera.StartGrabbing(pylon.GrabStrategy_UpcomingImage)
+
+        # this would set the camera to run
+        if self.camera.WaitForFrameTriggerReady(200, pylon.TimeoutHandling_ThrowException):
+            self.camera.ExecuteSoftwareTrigger()
 
         while True:
             stop_flag = self._stop_event.wait(self.config.idle_time)
@@ -91,25 +114,24 @@ class PylonCamera(threading.Thread):
                 continue
 
 
-            if self.camera.WaitForFrameTriggerReady(200, pylon.TimeoutHandling_ThrowException):
-                self.camera.ExecuteSoftwareTrigger()
 
-            if self.camera.GetGrabResultWaitObject().Wait(0):
-                grabResult = self.camera.RetrieveResult(0, pylon.TimeoutHandling_Return)
+            # if self.camera.GetGrabResultWaitObject().Wait(0):
+            grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_Return)
+            frame_time = time.time()
+            frame_uuid = str(uuid.uuid4())
+            content = (grabResult.Array, {"time": frame_time,"uuid":frame_uuid, "time_stamp":str(datetime.datetime.fromtimestamp(frame_time))})
+            # print(content[0].dtype, content[0].shape)
 
-                
-                content = tuple(grabResult.Array, time.time())
+            for name, queue in self.queues.items():
+                if not queue.full():
+                    queue.put( content )
 
-                if not self.queue.full():
-                    self.queue.put( content )
-
-                with self.camera_io_lock:
-                    self.peek_queue.appendleft( content )
+            with self.camera_io_lock:
+                self.peek_queue.appendleft( content )
+                self.current_frame_uuid = frame_uuid
 
         # Stop the grabbing.
         self.camera.StopGrabbing()
-        self.camera.Close()
-
 
     def hold(self):
         logging.info(f"Pylon thread ({self.ident}) receives a hold signal")
@@ -119,8 +141,9 @@ class PylonCamera(threading.Thread):
         logging.info(f"Pylon thread ({self.ident}) receives a resume signal")
         self._hold_event.clear()
 
-            
     def stop(self):
         logging.info(f"Pylon thread ({self.ident}) receives a stop signal")
         self._stop_event.set()
 
+    def __del__(self):
+        self.camera.Close()
