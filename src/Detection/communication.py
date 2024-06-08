@@ -123,7 +123,7 @@ class LiveDetectionMessageQueue:
         while True:
             body, headers = await self.image_client.get()
             logging.info("Live Image Acquire")
-            img, time_stamp = decode_img(body, headers)
+            img, img_header = decode_img(body, headers)
             
             if self.start_flag:
                 #TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
@@ -139,7 +139,8 @@ class LiveDetectionMessageQueue:
                     
                 body = json.dumps( result ).encode()
                 # print(body)
-                headers = {"time_stamp":str(time_stamp)}
+                time_stamp = img_header['time_stamp'] if 'time_stamp' in img_header else ""
+                headers = {"time_stamp":time_stamp}
 
                 logging.info(f"Publish live detection for {time_stamp}")
 
@@ -212,7 +213,7 @@ class DetectionMessageQueue:
         logging.info("Detection message queue on request")
         async with message.process():
             body, headers = message.body, message.headers
-            img, time_stamp = decode_img(body, headers)
+            img, img_header = decode_img(body, headers)
 
             detector_output = self.detector.predict(img)
 

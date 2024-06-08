@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
     print(r.headers)
 
-    image, image_time = decode_img(r.content, r.headers)
+    image, image_header = decode_img(r.content, r.headers)
     plt.imshow(image)
-    plt.title(f"time: {image_time}")
+    plt.title(f"time: {image_header['time_stamp']}")
     plt.show()

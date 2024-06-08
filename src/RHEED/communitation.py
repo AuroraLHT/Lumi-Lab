@@ -15,7 +15,7 @@ import time
 import argparse
 import logging
 
-from video_stream import VideoCompressor
+from video_stream import VideoCompressor, VideoRecorder
 import json
 
 from misc import encode_img
@@ -56,8 +56,8 @@ class ImageMessageQueue:
     async def on_message(self, message: AbstractIncomingMessage):
         logging.info("On Image ")
         async with message.process():
-            img, time_stamp = self.camera.get_frame() # this get the latest frame from the peek queue
-            body, headers = encode_img(img, time_stamp)
+            img, img_header = self.camera.get_frame() # this get the latest frame from the peek queue
+            body, headers = encode_img(img, img_header)
 
             await self.callback_exchange.publish(
                 Message(
@@ -145,8 +145,8 @@ class LiveImageMessageQueue:
         while True:
             current_time = time.time()
             if current_time - prev_current_time > self.spf:
-                img, time_stamp = self.camera.get_frame() # this get the latest frame from the peek queue
-                body, headers = encode_img(img, time_stamp)
+                img, img_header = self.camera.get_frame() # this get the latest frame from the peek queue
+                body, headers = encode_img(img, img_header)
 
                 await self.callback_exchange.publish(
                     Message(
@@ -275,3 +275,56 @@ class VideoMessageQueue:
         logging.info(" [x] Start Video Stream end")        
             # await asyncio.sleep(0.0001)
 
+
+
+class VideoRecorderMessageQueue:
+    video_recorder : VideoRecorder
+    channel : AbstractChannel
+    exchange : AbstractExchange
+    routing_key : str
+    queue : AbstractQueue
+
+    def __init__(self, video_recorder:VideoRecorder, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str):
+        super().__init__()
+        self.channel = channel
+        self.exchange = exchange
+        self.callback_exchange = self.channel.default_exchange
+        self.routing_key = routing_key
+        self.video_recorder = video_recorder
+        self.queue = None
+
+    async def create_queue(self):
+        logging.info(" [x] Create temporary queue")
+
+        self.queue = await self.channel.declare_queue(exclusive=True)        
+        await self.queue.bind(exchange=self.exchange, routing_key=self.routing_key)
+
+    async def on_message(self, message: AbstractIncomingMessage):
+        async with message.process():
+            assert message.reply_to is not None
+
+            body = message.body.decode()
+            headers = message.headers
+            # print(body, headers)
+
+            if body == "start":
+                filename = headers["filename"]
+                self.video_recorder.start_recording(filename=filename)
+            elif body == "end":
+                self.video_recorder.end_recording()                
+            else:
+                raise ValueError(f"Unexpected command '{body}'.")
+
+
+    async def start(self):
+        await self.create_queue()
+
+        logging.info(" [x] Awaiting Video Fragment Request")
+        self._consume_tage = await self.queue.consume(self.on_message, no_ack=False)
+        # async with self.queue.iterator() as qiterator:
+        #     message : AbstractIncomingMessage
+        #     async for message in qiterator:
+        #         try:
+        #             await self.on_message(message=message)
+        #         except Exception:
+        #                 logging.exception("Processing error for message %r", message)
