@@ -17,9 +17,9 @@ from aio_pika import ExchangeType, connect
 
 logging.basicConfig(level=logging.INFO)
 
-async def main():
+async def main(args):
     # Perform connection
-    connection = await connect("amqp://guest:guest@localhost/")
+    connection = await connect(f"amqp://guest:guest@{args.host}/")
 
     # Creating a channel
     channel = await connection.channel()
@@ -71,4 +71,13 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import argparse
+
+    parser = argparse.ArgumentParser(
+                        prog='Detection Node',
+                        description='...',
+                        epilog='...')
+    parser.add_argument("--host", type=str, default="localhost")
+    args= parser.parse_args()
+
+    asyncio.run(main(args))
