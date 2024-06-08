@@ -7,9 +7,9 @@ import sys
 import time
 
 from pypylon import pylon
-
-from samples.imageeventprinter import ImageEventPrinter
-from samples.configurationeventprinter import ConfigurationEventPrinter
+import matplotlib.pyplot as plt
+# from samples.imageeventprinter import ImageEventPrinter
+# from samples.configurationeventprinter import ConfigurationEventPrinter
 
 # The exit code of the sample application.
 exitCode = 0
@@ -20,13 +20,16 @@ camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateFirstDevice())
 # Register the standard configuration event handler for enabling software triggering.
 # The software trigger configuration handler replaces the default configuration
 # as all currently registered configuration handlers are removed by setting the registration mode to RegistrationMode_ReplaceAll.
-camera.RegisterConfiguration(pylon.SoftwareTriggerConfiguration(), pylon.RegistrationMode_ReplaceAll,
-                             pylon.Cleanup_Delete)
+
+# camera.RegisterConfiguration(pylon.SoftwareTriggerConfiguration(), 
+#                              pylon.RegistrationMode_ReplaceAll,
+#                              pylon.Cleanup_Delete)
 
 # For demonstration purposes only, add sample configuration event handlers to print out information
 # about camera use and image grabbing.
-camera.RegisterConfiguration(ConfigurationEventPrinter(), pylon.RegistrationMode_Append, pylon.Cleanup_Delete)
-camera.RegisterImageEventHandler(ImageEventPrinter(), pylon.RegistrationMode_Append, pylon.Cleanup_Delete)
+
+# camera.RegisterConfiguration(ConfigurationEventPrinter(), pylon.RegistrationMode_Append, pylon.Cleanup_Delete)
+# camera.RegisterImageEventHandler(ImageEventPrinter(), pylon.RegistrationMode_Append, pylon.Cleanup_Delete)
 
 # Print the model name of the camera.
 print("Using device ", camera.GetDeviceInfo().GetModelName())
@@ -65,10 +68,27 @@ if camera.GetGrabResultWaitObject().Wait(0):
 # The grabbing continues in the background, e.g. when using hardware trigger mode,
 # as long as the grab engine does not run out of buffers.
 buffersInQueue = 0
-while camera.RetrieveResult(0, pylon.TimeoutHandling_Return):
+while True:    
+    grabResult = camera.RetrieveResult(0, pylon.TimeoutHandling_Return)
+    if not grabResult : break
     buffersInQueue += 1
+    print("Retrieved ", buffersInQueue, " grab results from output queue.")
 
-print("Retrieved ", buffersInQueue, " grab results from output queue.")
+
+if grabResult.GrabSucceeded():
+    print(type(grabResult))    
+    print(type(grabResult.Array)) 
+
+    print("SizeX: ", grabResult.Width)
+    print("SizeY: ", grabResult.Height)
+    img = grabResult.Array
+    plt.imshow(img)
+
+    print("Gray value of first pixel: ", img[0, 0])
+else:
+    print("Error: ", grabResult.ErrorCode, grabResult.ErrorDescription)
+
+
 
 # Stop the grabbing.
 camera.StopGrabbing()
@@ -81,11 +101,12 @@ print("Grab using strategy GrabStrategy_LatestImageOnly:")
 # This strategy can be useful when the acquired images are only displayed on the screen.
 # If the processor has been busy for a while and images could not be displayed automatically
 # the latest image is displayed when processing time is available again.
-camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+camera.StartGrabbing(1000, pylon.GrabStrategy_LatestImageOnly)
 
 # Execute the software trigger, wait actively until the camera accepts the next frame trigger or until the timeout occurs.
 for i in range(3):
-    if camera.WaitForFrameTriggerReady(200, pylon.TimeoutHandling_ThrowException):
+    if camera.WaitForFrameTriggerReady(5000, pylon.TimeoutHandling_ThrowException):
+        print("ExecuteSoftwareTrigger.")
         camera.ExecuteSoftwareTrigger()
 
 # Wait for all images.
@@ -108,6 +129,20 @@ while True:
     buffersInQueue += 1
 
 print("Retrieved ", buffersInQueue, " grab result from output queue.")
+
+if grabResult.GrabSucceeded():
+    print(type(grabResult))    
+    print(type(grabResult.Array)) 
+
+    print("SizeX: ", grabResult.Width)
+    print("SizeY: ", grabResult.Height)
+    img = grabResult.Array
+    plt.imshow(img)
+
+    print("Gray value of first pixel: ", img[0, 0])
+else:
+    print("Error: ", grabResult.ErrorCode, grabResult.ErrorDescription)
+
 
 # Stop the grabbing.
 camera.StopGrabbing()
