@@ -66,7 +66,8 @@ def frame_processing_pylon(frame, frame_header=None):
 
 # TODO turn it into a argument
 frame_processing = frame_processing_pylon if USE_PYLON else frame_processing_webcam
-
+height = 540 if USE_PYLON else 480 
+width = 720 if USE_PYLON else 640
 
 async def _main(args):
     # Perform connection
@@ -104,6 +105,8 @@ async def _main(args):
         fragment_queue_size=60,
         cached_startup_fragments=5,
         bit_rate=12_000_000,
+        height=height,
+        width=width
     )
 
     live_video_compressor = VideoCompressor(
@@ -118,14 +121,16 @@ async def _main(args):
         fps=60,  # the minimum is 30 fps
         frames_per_keyframe=10,
         bit_rate=12_000_000,
+        height=height,
+        width=width
     )
 
     video_recorder = VideoRecorder(
         camera=camera,
         camera_queue=record_camera_queue,
-        config=live_video_compressor_config,
+        config=video_recorder_config,
         frame_processing=frame_processing,
-        name="video",
+        name="video_record",
     )
 
     live_video_mq = VideoMessageQueue(
