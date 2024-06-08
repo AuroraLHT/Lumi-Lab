@@ -79,6 +79,9 @@ def get_model(model_folder, device):
     return aux_detector
 
 def predict(frame, aux_detector=None):
+    if frame.ndim == 3:
+        frame = frame[..., 0]
+        
     rd = Rheed(np.array(frame), True)
     result, cls_result = aux_detector.predict(rd)
     rdinst = RheedInstanceSegmentation.from_mmdet(rd, result, aux_detector.model, auto_compute_regions=True)
