@@ -27,26 +27,31 @@ logging.basicConfig(level=logging.INFO)
 USE_PYLON = True
 
 
-def frame_processing_webcam(frame, timestamp=None):
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-    # Put current DateTime on each frame
-    if timestamp is not None:
-        font = cv2.FONT_HERSHEY_PLAIN
-        frame = cv2.putText(
-            frame,
-            str(datetime.datetime.fromtimestamp(timestamp)),
-            (20, 40),
-            font,
-            2,
-            (255, 0, 0),
-            2,
-            cv2.LINE_AA,
-        )
+def add_time_stamp(frame, frame_header=None):
+    if frame_header is not None:
+        timestamp = frame_header['time_stamp'] if 'time_stamp' in frame_header else None
+        if timestamp is not None:
+            font = cv2.FONT_HERSHEY_PLAIN
+            frame = cv2.putText(
+                frame,
+                timestamp,
+                (20, 40),
+                font,
+                2,
+                (255, 0, 0),
+                2,
+                cv2.LINE_AA,
+            )
     return frame
 
 
-def frame_processing_pylon(frame, timestamp=None):
+def frame_processing_webcam(frame, frame_header=None):
+    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    frame = add_time_stamp(frame, frame_header)
+    return frame
+
+
+def frame_processing_pylon(frame, frame_header=None):
     # this scale the uint16 image
     # print(frame.max())
     frame = cv2.convertScaleAbs(frame, alpha=(255.0 / 4095.0))
@@ -55,18 +60,7 @@ def frame_processing_pylon(frame, timestamp=None):
     # print(frame.dtype, frame.shape)
 
     # Put current DateTime on each frame
-    if timestamp is not None:
-        font = cv2.FONT_HERSHEY_PLAIN
-        frame = cv2.putText(
-            frame,
-            str(datetime.datetime.fromtimestamp(timestamp)),
-            (20, 40),
-            font,
-            2,
-            (255, 0, 0),
-            2,
-            cv2.LINE_AA,
-        )
+    frame = add_time_stamp(frame, frame_header)
     return frame
 
 
