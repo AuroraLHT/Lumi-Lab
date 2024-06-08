@@ -7,6 +7,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Union
+import uuid
+import datetime
 
 def list_devices(verbose=True):
     """
@@ -76,15 +78,17 @@ class GenericCamera(threading.Thread):
     def has_frame(self):
         with self.camera_io_lock:
             return len(self.frame_queue) > 0
-        
 
+    def is_new_frame_avaliable(self, frame_uuid):
+        return frame_uuid != self.current_frame_uuid
+    
     def get_frame(self):
         # return self.queue.get()
         with self.camera_io_lock:
             if len(self.peek_queue):
                 # get the latest frame without popping                
                 return self.peek_queue[0]
-            return None, None
+            return (None, None)
 
     def run(self):
         # the camera would run indefinitely without being blocked by anything
@@ -101,8 +105,9 @@ class GenericCamera(threading.Thread):
 
             if self.config.spf < time.time() - prev_grab_time:
                 content = self.on_grab()
+
                 grab_time = time.time()
-                fps = 1/(grab_time - prev_grab_time)
+                # fps = 1/(grab_time - prev_grab_time)
                 # logging.info(f"fps {fps:.3f} desire fps {self.config.fps}")
                 prev_grab_time = grab_time
 
@@ -111,6 +116,7 @@ class GenericCamera(threading.Thread):
 
                 with self.camera_io_lock:
                     self.peek_queue.appendleft( content )
+                    self.current_frame_uuid = content[1]['uuid'] # update the peek queue status
 
         self.on_stop()
 
@@ -138,9 +144,14 @@ class WebCamera(GenericCamera):
 
 
     def on_grab(self):
+        """
+        content is a bundle of frame and frame header
+        """
         ret, frame = self.capture.read()
         # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        content = (frame, time.time())
+        frame_time = time.time()
+        frame_time_stamp = str(datetime.datetime.fromtimestamp(frame_time))
+        content = (frame, {'time':frame_time, 'time_stamp':frame_time_stamp, 'uuid':str(uuid.uuid4())})
         
         return content
         
