@@ -54,6 +54,6 @@ def decode_img(body, headers):
     dtype = np.uint16 if headers['dtype']=="uint16" else np.uint8
     img = np.frombuffer(body, dtype=dtype ).reshape(img_shape)
 
-    img_headers = { headers[k] for k in set( headers.key() ) - FIX_HEADER_KEYS }
+    img_headers = { headers[k] for k in set( headers.keys() ) - FIX_HEADER_KEYS }
     return img, img_headers
 # datetime.datetime.fromisoformat(headers['time'])
