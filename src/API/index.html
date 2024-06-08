@@ -108,7 +108,7 @@
             newRect.setAttribute('data-original-stroke', 'purple');
             svg.appendChild(newRect);
         }
-
+        const host = "10.229.54.118:8000"
 
         const videoElement = document.getElementById("video");
         const buttonElement = document.getElementById("button-close");
@@ -118,10 +118,10 @@
         const detectionCloseElement = document.getElementById("button-detection-close");
         const detectionSvgElement = document.getElementById("svg-detection");
 
-        const websocket = new WebSocket("ws://localhost:8000/RHEED/cam");
+        const websocket = new WebSocket(`ws://${host}/RHEED/cam`);
         websocket.binaryType = "arraybuffer";
 
-        const websocket_ai = new WebSocket("ws://localhost:8000/RHEED/detection");
+        const websocket_ai = new WebSocket(`ws://${host}/RHEED/detection`);
 
 
         var mediaSource = new MediaSource();
