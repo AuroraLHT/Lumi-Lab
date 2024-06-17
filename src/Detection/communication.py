@@ -104,7 +104,7 @@ class LiveDetectionMessageQueue:
         self.queue = None
         self.control_queue = None
 
-        self.start_flag = True
+        self.start_flag = False
 
         self._fps = 0
 
