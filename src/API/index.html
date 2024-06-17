@@ -60,7 +60,9 @@
     <button id="button-msg">Message</button>
     <button id="button-live">Live</button>
     <button id="button-detection">Detect</button>    
-    <button id="button-detection-close">CloseDetect</button>    
+    <button id="button-detection-close">Close Detect</button>    
+    <button id="button-log">Log</button>    
+    <button id="button-log-close">Close Log</button>    
 
     <pre id="response">Place Holder</pre>
 
@@ -108,20 +110,29 @@
             newRect.setAttribute('data-original-stroke', 'purple');
             svg.appendChild(newRect);
         }
-        const host = "10.229.54.118:8000"
+        // const host = "10.229.54.118:8000"
+        const host = "127.0.0.1:8000"
 
         const videoElement = document.getElementById("video");
         const buttonElement = document.getElementById("button-close");
         const msgElement = document.getElementById("button-msg");
+
         const liveElement = document.getElementById("button-live");
+
         const detectionElement = document.getElementById("button-detection");
         const detectionCloseElement = document.getElementById("button-detection-close");
         const detectionSvgElement = document.getElementById("svg-detection");
 
-        const websocket = new WebSocket(`ws://${host}/RHEED/cam`);
+        const logElement = document.getElementById("button-log");
+        const logCloseElement = document.getElementById("button-log-close");
+
+
+        const websocket = new WebSocket(`ws://${host}/RHEED/cam/live`);
         websocket.binaryType = "arraybuffer";
 
-        const websocket_ai = new WebSocket(`ws://${host}/RHEED/detection`);
+        const websocket_ai = new WebSocket(`ws://${host}/RHEED/detection/live`);
+
+        const websocket_log = new WebSocket(`ws://${host}/chamber/log/live`);
 
 
         var mediaSource = new MediaSource();
@@ -281,8 +292,31 @@
         };
 
         websocket_ai.onclose = () => {
-            console.log('WebSocket connection closed');
+            console.log('Detection WebSocket connection closed');
         };
+
+
+        websocket_log.onmessage = (event) => {
+            const response = JSON.parse(event.data);
+            document.getElementById('response').textContent = JSON.stringify(response, null, 2);
+        };
+
+        // document.getElementById('sendButton').addEventListener('click', () => {
+        //     const message = {
+        //         action: 'greet',
+        //         timestamp: new Date().toISOString()
+        //     };
+        //     socket.send(JSON.stringify(message));
+        // });
+
+        websocket_log.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        websocket_log.onclose = () => {
+            console.log('Log WebSocket connection closed');
+        };
+
 
         videoElement.addEventListener("error", (error) => {
           console.error("Video element error:", error);
@@ -312,6 +346,17 @@
             console.log("Detection Close");
             websocket_ai.send("stop");
         }
+
+        logElement.onclick = (event) => {
+            console.log("Log");
+            websocket_log.send("start");
+        }
+
+        logCloseElement.onclick = (event) => {
+            console.log("Log Close");
+            websocket_log.send("stop");
+        }
+
 
         // console.log((vidBuff))
 

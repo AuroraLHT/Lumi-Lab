@@ -2,7 +2,7 @@ from typing import Union
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, JSONResponse
 import asyncio
 from aio_pika import Message, connect, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage
@@ -14,15 +14,20 @@ from .communication import (
     FragmentMessageQueueClient,
     ImageMessageQueueClient,
     LiveDetectionClient,
+    LogMessageQueueClient,
+    LiveLogMessageQueueClient
 )
 
 logging.basicConfig(level=logging.INFO)
 
 connection = None
 channel = None
-exchange = None
+exchange_rheed = None
+exchange_chamber = None
+
 image_client = None
 video_fragment_client = None
+log_client = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,26 +35,35 @@ async def lifespan(app: FastAPI):
     # https://fastapi.tiangolo.com/advanced/events/
     global connection
     global channel
-    global exchange
+    global exchange_rheed
+    global exchange_chamber
+
     global image_client
     global video_fragment_client
+    global log_client
 
     # put startup code here
     connection = await connect("amqp://guest:guest@localhost/")
     channel = await connection.channel()
-    exchange = await channel.declare_exchange("RHEED", type=ExchangeType.DIRECT)
+
+    exchange_rheed = await channel.declare_exchange("RHEED", type=ExchangeType.DIRECT)
+    exchange_chamber = await channel.declare_exchange("chamber", type=ExchangeType.DIRECT)
 
     # image client is for all user that connect to this api node
     image_client = ImageMessageQueueClient(
-        channel=channel, exchange=exchange, routing_key="image"
-    )    
+        channel=channel, exchange=exchange_rheed, routing_key="image"
+    )
     await image_client.start()
 
     video_fragment_client = FragmentMessageQueueClient(
-        channel=channel, exchange=exchange, routing_key="video_history"
+        channel=channel, exchange=exchange_rheed, routing_key="live_video_history"
     )
-
     await video_fragment_client.start()
+
+    log_client = LogMessageQueueClient(
+        channel=channel, exchange=exchange_chamber, routing_key="log"
+    )
+    await log_client.start()
 
     yield
     # put shutdown code here
@@ -80,7 +94,21 @@ async def read_root():
     )
 
 
-@app.websocket("/RHEED/cam")
+@app.get("/chamber/log")
+async def read_root():
+    global log_client
+    content, headers = await log_client.get()
+
+    return Response(
+        content=content,
+        status_code=200,
+        media_type="application/json",
+        headers=headers,
+    )
+
+
+
+@app.websocket("/RHEED/cam/live")
 async def websocket_endpoint(websocket: WebSocket):
     global video_fragment_client
 
@@ -112,7 +140,7 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("accepted")
 
-    async def on_live_message_callback(message:AbstractIncomingMessage):
+    async def on_live_message_callback(message: AbstractIncomingMessage):
         """
         return : succ or not state flag
         """
@@ -129,8 +157,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
     live_client = LiveFragmentMessageQueueClient(
         channel=channel,
-        exchange=exchange,
-        routing_key="video",
+        exchange=exchange_rheed,
+        routing_key="live_video",
         on_response_callback=on_live_message_callback,
     )
 
@@ -159,8 +187,9 @@ async def websocket_endpoint(websocket: WebSocket):
     print("live camera websocket exit")
 
 
-@app.websocket("/RHEED/detection")
+@app.websocket("/RHEED/detection/live")
 async def websocket_endpoint(websocket: WebSocket):
+    global channel
 
     async def on_message():
         print("start detection on message loop")
@@ -174,7 +203,7 @@ async def websocket_endpoint(websocket: WebSocket):
             print(message)
             await asyncio.sleep(0.1)
 
-        print("end detection on message loop+")
+        print("end detection on message loop")
 
     async def send_json(json_text):
         """
@@ -193,15 +222,13 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     print("accepted")
 
-    async def on_live_message_callback(message:AbstractIncomingMessage):
+    async def on_live_message_callback(message: AbstractIncomingMessage):
         """
         return : succ or not state flag
         """
         # TODO : add condition for finding other streaming option
         headers = message.headers
-        print(
-            f"publish detection with headers {headers}"
-        )
+        print(f"publish detection with headers {headers}")
 
         return await send_json(message.body.decode())
 
@@ -210,7 +237,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     live_detection_client = LiveDetectionClient(
         channel=channel,
-        exchange=exchange,
+        exchange=exchange_rheed,
         routing_key="live_detection",
         control_routing_key="live_detection_control",
         on_response_callback=on_live_message_callback,
@@ -225,3 +252,70 @@ async def websocket_endpoint(websocket: WebSocket):
 
     await asyncio.Future()
     print("detection websocket exit")
+
+
+
+@app.websocket("/chamber/log/live")
+async def websocket_endpoint(websocket: WebSocket):
+
+    async def on_message():
+        print("start log on message loop")
+        async for message in websocket.iter_text():
+            print(f"log on message {message}")
+            if message == "start":
+                await live_log_client.start_operation()
+            elif message == "stop":
+                await live_log_client.stop_operation()
+
+            print(message)
+            await asyncio.sleep(0.1)
+
+        print("end log on message loop")
+
+    async def send_json(json_text):
+        """
+        flag for success or not
+        """
+        logging.info(f"send json {len(json_text)}")
+        try:
+            # await websocket.send_json(json_text, mode='text')
+            await websocket.send_text(json_text)
+        except Exception as e:
+            print(e)
+            return False
+        return True
+        # await asyncio.sleep(0.003)
+
+    await websocket.accept()
+    print("accepted")
+
+    async def on_live_message_callback(message: AbstractIncomingMessage):
+        """
+        return : succ or not state flag
+        """
+        # TODO : add condition for finding other streaming option
+        headers = message.headers
+        print(f"publish detection with headers {headers}")
+
+        return await send_json(message.body.decode())
+
+    message = await websocket.receive()
+    print(message)
+
+    live_log_client = LiveLogMessageQueueClient(
+        channel=channel,
+        exchange=exchange_chamber,
+        routing_key="live_log",
+        control_routing_key="live_log_control",
+        on_response_callback=on_live_message_callback,
+    )
+
+    ws_in_task = asyncio.create_task(on_message(), name="ws_log_in")
+    # ws_out_task = asyncio.create_task( send_fragment(websocket=websocket ), name="ws_out" )
+    ws_out_task = asyncio.create_task(live_log_client.start(), name="ws_log_out")
+
+    await ws_in_task
+    await ws_out_task
+
+    await asyncio.Future()
+    print("log websocket exit")
