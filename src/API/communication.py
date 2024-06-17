@@ -271,3 +271,133 @@ class LiveDetectionClient:
         if not succ_flag:
             logging.info("Terminate consume")
             await self.queue.cancel(self._consumer_tag, )
+
+
+class LogMessageQueueClient:
+    channel : AbstractChannel
+    exchange : AbstractExchange
+    routing_key : str
+    queue : AbstractQueue
+
+    def __init__(self, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str) -> None:
+        self.channel = channel
+        self.exchange = exchange
+        self.routing_key = routing_key
+        self.futures = None
+        self.queue = None
+
+    async def create_queue(self):
+        self.callback_queue = await self.channel.declare_queue(exclusive=True)
+        self.futures = {}
+
+    async def start(self):
+        await self.create_queue()
+        # the consume here is not blocking
+        await self.callback_queue.consume(self.on_response, no_ack=True)
+        print("log client start up")
+    
+        return self
+
+    async def on_response(self, message: AbstractIncomingMessage) -> None:
+        if message.correlation_id is None:
+            logging.info(f"Bad message {message!r}")
+            return
+
+        future: asyncio.Future = self.futures.pop(message.correlation_id)
+        future.set_result( (message.body, message.headers) )
+
+    async def get(self) -> int:
+        print(f"Get Log")
+        correlation_id = str(uuid.uuid4())
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+
+        self.futures[correlation_id] = future
+        headers = {
+            "type":"log"
+        }
+
+        await self.exchange.publish(
+            Message(
+                ''.encode(),
+                content_type="text/plain",
+                correlation_id=correlation_id,
+                reply_to=self.callback_queue.name,
+                headers=headers
+            ),
+            routing_key=self.routing_key,
+        )
+
+        print(f"receive Log")
+        return await future
+
+
+class LiveLogMessageQueueClient:
+    channel : AbstractChannel
+    exchange : AbstractExchange
+    routing_key : str
+    control_routing_key : str
+    queue : AbstractQueue
+    on_response_callback : Callable
+
+    def __init__(self, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str, control_routing_key:str, on_response_callback:Callable) -> None:
+        self.channel = channel
+        self.exchange = exchange
+        self.routing_key = routing_key
+        self.control_routing_key = control_routing_key
+        self.queue = None
+        self.channel = channel
+        self.exchange = exchange
+        self.routing_key = routing_key
+        self.queue = None
+        self.on_response_callback = on_response_callback
+
+    async def create_queue(self):
+        self.queue = await self.channel.declare_queue(exclusive=True)
+        await self.queue.bind(self.exchange, routing_key=self.routing_key)
+
+    async def start(self, start_consume_loop=True):
+        print("start live log")
+        await self.create_queue()
+        if start_consume_loop:
+            print("start live log loop")
+
+            try:
+                self._consumer_tag = await self.queue.consume(self.on_response, no_ack=True)
+            except Exception as e:
+                print(e)
+
+    async def start_operation(self):
+        await self.exchange.publish(
+            message= Message(
+                body = "start".encode(),
+                headers={}
+            ),
+            routing_key= self.control_routing_key
+        )
+
+    async def stop_operation(self):
+        await self.exchange.publish(
+            message= Message(
+                body = "stop".encode(),
+                headers={}
+            ),
+            routing_key= self.control_routing_key
+        )
+
+    async def get(self):
+        return await self.queue.get(no_ack=True)
+
+    async def on_response(self, message: AbstractIncomingMessage) -> None:
+        print("on live response")
+
+        #TODO : add conditon for filtering bad message
+        condition = False
+        if condition:
+            logging.info(f"Bad message {message!r}")
+            return
+
+        succ_flag = await self.on_response_callback( message )
+        if not succ_flag:
+            logging.info("Terminate consume")
+            await self.queue.cancel(self._consumer_tag, )
