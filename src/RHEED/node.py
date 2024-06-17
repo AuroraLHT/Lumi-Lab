@@ -138,18 +138,21 @@ async def _main(args):
         channel=channel,
         exchange=rheed_exchange,
         routing_key=None,  # Not need a input routing key yet.
-        publish_routing_key="video",
+        publish_routing_key="live_video",
     )
     # publish to callback queue, not need publish routing key
     live_video_history_mq = VideoFragmentsMessageQueue(
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
-        routing_key="video_history",
+        routing_key="live_video_history",
     )
     # publish to callback queue, not need publish routing key
     image_mq = ImageMessageQueue(
-        camera=camera, channel=channel, exchange=rheed_exchange, routing_key="image"
+        camera=camera, 
+        channel=channel, 
+        exchange=rheed_exchange, 
+        routing_key="image"
     )
 
     # live_image_mq = LiveImageMessageQueue(
@@ -198,10 +201,10 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-                        prog='Detection Node',
-                        description='...',
-                        epilog='...')
-    parser.add_argument("--host", type=str, default="localhost")
+                        prog= 'Detection Node',
+                        description= '...',
+                        epilog= '...')
+    parser.add_argument("--host", type= str, default= "localhost")
     args= parser.parse_args()
 
     asyncio.run(_main(args))
