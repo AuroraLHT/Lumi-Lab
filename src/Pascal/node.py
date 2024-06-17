@@ -26,7 +26,7 @@ async def main(args):
         ExchangeType.DIRECT,
     )
 
-    log_config = LogReaderConfig(queue_size=10, idle_time=0.5, log_path="/home/hliang16/codebase/Autonomous-Servers/pascal/data")
+    log_config = LogReaderConfig(queue_size=10, idle_time=0.5, log_path=args.path)
 
     log_reader = LogReader(config=log_config, name="log_reader", daemon=True)
 
@@ -73,6 +73,8 @@ if __name__ == "__main__":
                         description='...',
                         epilog='...')
     parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("-p", "--path", type=str, default="")
+
     args= parser.parse_args()
 
     asyncio.run(main(args))
