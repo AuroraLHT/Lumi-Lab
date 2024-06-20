@@ -85,7 +85,7 @@ async def read_root():
 async def read_root():
     global image_client
     content, headers = await image_client.get()
-
+    # print(headers)
     return Response(
         content=content,
         status_code=200,
@@ -228,7 +228,7 @@ async def websocket_endpoint(websocket: WebSocket):
         """
         # TODO : add condition for finding other streaming option
         headers = message.headers
-        print(f"publish detection with headers {headers}")
+        # print(f"publish detection with headers {headers}")
 
         return await send_json(message.body.decode())
 
@@ -295,7 +295,7 @@ async def websocket_endpoint(websocket: WebSocket):
         """
         # TODO : add condition for finding other streaming option
         headers = message.headers
-        print(f"publish detection with headers {headers}")
+        # print(f"publish log with headers {headers}")
 
         return await send_json(message.body.decode())
 

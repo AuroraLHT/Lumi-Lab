@@ -36,6 +36,8 @@ def encode_img(img:np.ndarray, img_header:Dict):
     body = img.tobytes()
     h, w, d = img.shape
 
+    img_header = { k : str(v) for k, v in img_header.items()}
+    
     headers = {
         "type" : "ArrayImage",
         "height" : f"{h}",
@@ -53,7 +55,6 @@ def decode_img(body, headers):
     img_shape= ( int(headers['height']), int(headers['width']), int(headers['dim']) )
     dtype = np.uint16 if headers['dtype']=="uint16" else np.uint8
     img = np.frombuffer(body, dtype=dtype ).reshape(img_shape)
-
-    img_headers = { headers[k] for k in set( headers.keys() ) - FIX_HEADER_KEYS }
+    img_headers = { k : headers[k] for k in set( headers.keys() ) - FIX_HEADER_KEYS }
     return img, img_headers
 # datetime.datetime.fromisoformat(headers['time'])
