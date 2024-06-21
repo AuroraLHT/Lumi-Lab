@@ -6,8 +6,8 @@ from aio_pika import ExchangeType, connect, Message
 import asyncio
 import logging
 
-logging.basicConfig(level=logging.INFO)
-
+FORMAT = '%(asctime)s %(levelname)s:%(message)s'
+logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 if __name__ == "__main__":
 
@@ -26,7 +26,7 @@ async def main(args):
         ExchangeType.DIRECT,
     )
 
-    log_config = LogReaderConfig(queue_size=10, idle_time=0.5, log_path=args.path)
+    log_config = LogReaderConfig(queue_size=10, idle_time=0.01, log_path=args.path)
 
     log_reader = LogReader(config=log_config, name="log_reader", daemon=True)
 
