@@ -173,12 +173,13 @@ class ImageMessageQueueClient:
         if message.correlation_id is None:
             logging.info(f"Bad message {message!r}")
             return
-
+        
+        logging.info("receive image")
         future: asyncio.Future = self.futures.pop(message.correlation_id)
         future.set_result( (message.body, message.headers) )
 
     async def get(self) -> int:
-        print(f"Get live image")
+        logging.info(f"Get live image")
         correlation_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         future = loop.create_future()
@@ -294,7 +295,7 @@ class LogMessageQueueClient:
         await self.create_queue()
         # the consume here is not blocking
         await self.callback_queue.consume(self.on_response, no_ack=True)
-        print("log client start up")
+        logging.info("log client start up")
     
         return self
 
@@ -302,12 +303,13 @@ class LogMessageQueueClient:
         if message.correlation_id is None:
             logging.info(f"Bad message {message!r}")
             return
-
+        
+        logging.info(f"receive Log")
         future: asyncio.Future = self.futures.pop(message.correlation_id)
         future.set_result( (message.body, message.headers) )
 
     async def get(self) -> int:
-        print(f"Get Log")
+        logging.info(f"Get Log")
         correlation_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         future = loop.create_future()
@@ -328,7 +330,6 @@ class LogMessageQueueClient:
             routing_key=self.routing_key,
         )
 
-        print(f"receive Log")
         return await future
 
 
