@@ -38,8 +38,12 @@ class ChamberLogMessageQueue:
     async def on_message(self, message: AbstractIncomingMessage):
         logging.info("[x] On Log Request")
         async with message.process():
+            st = time.time()
+            # log = {}
             log = self.log_reader.get_log() # this get the latest frame from the peek queue
             body = json.dumps(log).encode()
+            et = time.time()
+            logging.info(f"[x] Log processing time {et-st} sec")
 
             await self.callback_exchange.publish(
                 Message(
@@ -121,22 +125,27 @@ class LiveChamberLogMessageQueue:
 
     async def publish(self,):
         while True:
-            log = self.log_queue.get()
-            body= json.dumps(log).encode()
-            
-            if self.start_flag:
-                await self.exchange.publish(
-                    Message(
-                        body = body,
-                        headers={},
-                    ),
-                    routing_key=self.publish_routing_key
-                )
-                logging.info("Send Live Log ")
+            if not self.log_queue.empty():
+                log = self.log_queue.get()
+                body= json.dumps(log).encode()
+                
+                if self.start_flag:
+                    await self.exchange.publish(
+                        Message(
+                            body = body,
+                            headers={},
+                        ),
+                        routing_key=self.publish_routing_key
+                    )
+                    logging.info("Send Live Log ")
+
+                else:
+                    logging.info("Start Flag is off")
+                    await asyncio.sleep(0.1)
 
             else:
-                logging.info("Start Flag is off")
                 await asyncio.sleep(0.1)
+
 
 
 
