@@ -31,7 +31,7 @@ class FileModifyHandler(FileSystemEventHandler):
 @dataclass
 class LogReaderConfig:
     queue_size : int = 10
-    idle_time : float = 0.5
+    idle_time : float = 0.01
     log_path : str = ""
 
 class LogReader(threading.Thread):
@@ -68,7 +68,7 @@ class LogReader(threading.Thread):
         observer.schedule(event_handler, path=self.config.log_path, recursive=True)
         observer.daemon = self.daemon
         self._observer = observer
-        print("observer created")
+        logging.info("observer created")
 
 
     def close_reader(self):
@@ -80,6 +80,7 @@ class LogReader(threading.Thread):
                 self._csv_header=None
 
     def open_reader(self, file_name, timeout):
+        logging.info(f"Open file {file_name}")
         filename = Path(file_name)
         start = time.time()
 
@@ -89,10 +90,12 @@ class LogReader(threading.Thread):
                     self._csv_file = filename.open(mode='r')
                     self._csv_reader = csv.DictReader(self._csv_file)
                     self._csv_header = next(self._csv_reader, None)
+                    for row in self._csv_reader: pass # quick jump to the last row
                     self._csv_row_readed = 0
                     break
         
             if time.time() - start < timeout:
+                logging.info(f"file {filename} does not exist")
                 time.sleep(0.1)
             else:
                 raise TimeoutError(f"Cannot read the log csv file {file_name}")
@@ -103,19 +106,23 @@ class LogReader(threading.Thread):
             The main loop just keep reading row from the reader. reader would be changed if a new log file is detected.
         """
         self._observer.start()
-        print("watch dog started")
+        logging.info("watch dog started")
 
         while True:
+            # a= time.time()
             stop_flag = self._stop_event.wait(self.config.idle_time)
             if stop_flag : break
 
             hold_flag = self._hold_event.wait(self.config.idle_time)
             if hold_flag : 
+                logging.info(f"On hold, sleep for {self.config.idle_time * 10}")
                 time.sleep(self.config.idle_time * 10)
                 continue
+            # b= time.time()
 
             if self._csv_reader is not None:
                 with self._reader_lock:
+                    # st = time.time()
                     for row in self._csv_reader:
                         row = process_row(row)
 
@@ -125,12 +132,19 @@ class LogReader(threading.Thread):
                             self.peek_queue.appendleft(row)
 
                         self._csv_row_readed += 1
+                        # et = time.time()
+                        # print("read", round(et - st, 5))
+
+                    # et2 = time.time()
+                    # print("total", round(et2 - st, 5))
 
             else:
                 # await asyncio.sleep(1)
+                logging.info("empty csv_reader")
                 time.sleep(1)
                 continue
-
+            # c = time.time()
+            # print(b-a, c-a)
 
     def get_log(self):
         with self._io_lock:
