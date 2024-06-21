@@ -119,7 +119,13 @@ class PylonCamera(threading.Thread):
             grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_Return)
             frame_time = time.time()
             frame_uuid = str(uuid.uuid4())
-            content = (grabResult.Array, {"time": frame_time,"uuid":frame_uuid, "time_stamp":str(datetime.datetime.fromtimestamp(frame_time))})
+            
+            frame = grabResult.Array
+            if frame.ndim < 2: continue # frame might be empty
+
+            frame_header = {"time": frame_time,"uuid":frame_uuid, "time_stamp":str(datetime.datetime.fromtimestamp(frame_time))}
+            content = (frame, frame_header)
+
             # print(content[0].dtype, content[0].shape)
 
             for name, queue in self.queues.items():
