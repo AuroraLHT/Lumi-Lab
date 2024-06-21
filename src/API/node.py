@@ -18,7 +18,8 @@ from .communication import (
     LiveLogMessageQueueClient
 )
 
-logging.basicConfig(level=logging.INFO)
+FORMAT = '%(asctime)s %(levelname)s:%(message)s'
+logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 connection = None
 channel = None
