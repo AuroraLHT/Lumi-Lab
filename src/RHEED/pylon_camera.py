@@ -121,7 +121,7 @@ class PylonCamera(threading.Thread):
             frame_uuid = str(uuid.uuid4())
             
             frame = grabResult.Array
-            if frame.ndim < 2: continue # frame might be empty
+            if frame.ndim < 2 or frame.size == 0: continue # frame might be empty
 
             frame_header = {"time": frame_time,"uuid":frame_uuid, "time_stamp":str(datetime.datetime.fromtimestamp(frame_time))}
             content = (frame, frame_header)
