@@ -29,6 +29,7 @@ class LiveFragmentMessageQueueClient:
     async def create_queue(self):
         self.queue = await self.channel.declare_queue(exclusive=True)
         await self.queue.bind(self.exchange, routing_key=self.routing_key)
+        logging.info(f"Create LiveFragment Queue: {self.queue.name}")
 
     async def start(self, start_consume_loop=True):
         print("start live")
@@ -58,6 +59,7 @@ class LiveFragmentMessageQueueClient:
         if not succ_flag:
             logging.info("Terminate consume")
             await self.queue.cancel(self._consumer_tag, )
+            await self.queue.delete()            
 
 
 
@@ -76,6 +78,7 @@ class FragmentMessageQueueClient:
     async def create_queue(self):
         self.callback_queue = await self.channel.declare_queue(exclusive=True)
         self.futures = {}
+        logging.info(f"Create Fragment Queue: {self.callback_queue.name}")
 
 
     async def start(self):
@@ -161,6 +164,8 @@ class ImageMessageQueueClient:
     async def create_queue(self):
         self.callback_queue = await self.channel.declare_queue(exclusive=True)
         self.futures = {}
+        logging.info(f"Create ImageMessage Callback queue: {self.callback_queue.name}")
+
 
     async def start(self):
         await self.create_queue()
@@ -226,10 +231,13 @@ class LiveDetectionClient:
     async def create_queue(self):
         self.queue = await self.channel.declare_queue(exclusive=True)
         await self.queue.bind(self.exchange, routing_key=self.routing_key)
+        logging.info(f"Create LiveDetection Queue: {self.queue.name}")
+
 
     async def start(self, start_consume_loop=True):
         print("start live detection")
         await self.create_queue()
+
         if start_consume_loop:
             print("start live detection loop")
 
@@ -272,6 +280,7 @@ class LiveDetectionClient:
         if not succ_flag:
             logging.info("Terminate consume")
             await self.queue.cancel(self._consumer_tag, )
+            await self.queue.delete()
 
 
 class LogMessageQueueClient:
@@ -290,6 +299,8 @@ class LogMessageQueueClient:
     async def create_queue(self):
         self.callback_queue = await self.channel.declare_queue(exclusive=True)
         self.futures = {}
+        logging.info(f"Create Log Callback Queue: {self.callback_queue.name}")
+
 
     async def start(self):
         await self.create_queue()
@@ -356,6 +367,7 @@ class LiveLogMessageQueueClient:
     async def create_queue(self):
         self.queue = await self.channel.declare_queue(exclusive=True)
         await self.queue.bind(self.exchange, routing_key=self.routing_key)
+        logging.info(f"Create LiveLog Queue: {self.queue.name}")
 
     async def start(self, start_consume_loop=True):
         print("start live log")
@@ -402,3 +414,4 @@ class LiveLogMessageQueueClient:
         if not succ_flag:
             logging.info("Terminate consume")
             await self.queue.cancel(self._consumer_tag, )
+            await self.queue.delete()
