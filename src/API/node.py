@@ -210,7 +210,7 @@ async def websocket_endpoint(websocket: WebSocket):
         """
         flag for success or not
         """
-        logging.info(f"send json {len(json_text)}")
+        # logging.info(f"send json {len(json_text)}")
         try:
             # await websocket.send_json(json_text, mode='text')
             await websocket.send_text(json_text)
@@ -277,7 +277,7 @@ async def websocket_endpoint(websocket: WebSocket):
         """
         flag for success or not
         """
-        logging.info(f"send json {len(json_text)}")
+        # logging.info(f"send json {len(json_text)}")
         try:
             # await websocket.send_json(json_text, mode='text')
             await websocket.send_text(json_text)
