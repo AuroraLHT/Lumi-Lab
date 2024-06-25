@@ -137,7 +137,13 @@ def show_in_bit(bit_field, bit_length=16):
 
 def process_row(row):
     today = datetime.date.today()
-    row['Time'] = f"{today.isoformat()} {row['Time']}"
+    time_info = datetime.datetime.strptime(row['Time'], "%I:%M:%S %p").time()
+    time_info = datetime.datetime.combine(today, time_info)
+    # row['Time'] = f"{today.isoformat()} {row['Time']}"
+    row['Time'] = time_info.isoformat()
+    row['time_stamp'] = time_info.isoformat()
+    row['time'] = time_info.timestamp()
+
     for k, v in PARSE_DICT.items():
         row.update( parse_bit_field( row[k], v) )
     return row
