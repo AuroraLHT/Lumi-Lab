@@ -329,7 +329,10 @@ class LogMessageQueueClient:
         headers = {
             "type":"log"
         }
-
+        """
+            TODO: add timeout to this publish 
+            ref https://docs.python.org/3/library/asyncio-task.html#timeouts
+        """
         await self.exchange.publish(
             Message(
                 ''.encode(),
@@ -340,9 +343,21 @@ class LogMessageQueueClient:
             ),
             routing_key=self.routing_key,
         )
+        # this code block works for python 3.12
+        # try:
+        #     async with asyncio.timeout():
+        #         return await future
+        # except TimeoutError:
+        #     logging.info("fail to acquire response from the pascal node")
 
-        return await future
-
+        # https://docs.python.org/3/library/asyncio-task.html#timeouts
+        # wait_for is on both 3.10 and 3.12
+        # timeout unit is in second
+        try:
+            return await asyncio.wait_for(future, timeout=10)
+        except asyncio.TimeoutError:
+            logging.info("fail to acquire response from the pascal node")
+            return None, None
 
 class LiveLogMessageQueueClient:
     channel : AbstractChannel

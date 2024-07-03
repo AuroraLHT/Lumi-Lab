@@ -1,4 +1,4 @@
-from misc import decode_img
+from lumi.utils import decode_img
 import requests
 import matplotlib.pyplot as plt
 
