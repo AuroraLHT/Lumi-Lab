@@ -13,9 +13,10 @@ from collections.abc import Callable, Awaitable
 
 import json
 
-from misc import decode_img
+# from misc import decode_img
+from ..utils.image import decode_img
 
-from model import DetectorServer
+from .model import DetectorServer
 
 
 class ImageMessageQueueClient:

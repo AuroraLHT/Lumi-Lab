@@ -100,12 +100,21 @@ async def read_root():
     global log_client
     content, headers = await log_client.get()
 
-    return Response(
-        content=content,
-        status_code=200,
-        media_type="application/json",
-        headers=headers,
-    )
+    if content is None:
+        return Response(
+            content=None,
+            status_code=500,
+            media_type="application/json",
+            headers={"msg":"fail to acquire log"},
+        )
+    
+    else:
+        return Response(
+            content=content,
+            status_code=200,
+            media_type="application/json",
+            headers=headers,
+        )
 
 
 
