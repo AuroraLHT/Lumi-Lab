@@ -206,9 +206,9 @@ async def websocket_endpoint(websocket: WebSocket):
         async for message in websocket.iter_text():
             print(f"detection on message {message}")
             if message == "start":
-                await live_detection_client.start_detection()
+                await live_detection_client.start_streaming()
             elif message == "stop":
-                await live_detection_client.stop_detection()
+                await live_detection_client.stop_streaming()
 
             print(message)
             await asyncio.sleep(0.1)
@@ -273,9 +273,9 @@ async def websocket_endpoint(websocket: WebSocket):
         async for message in websocket.iter_text():
             print(f"log on message {message}")
             if message == "start":
-                await live_log_client.start_operation()
+                await live_log_client.start_streaming()
             elif message == "stop":
-                await live_log_client.stop_operation()
+                await live_log_client.stop_streaming()
 
             print(message)
             await asyncio.sleep(0.1)
