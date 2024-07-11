@@ -12,7 +12,7 @@ import logging
 from watchdog.observers import Observer
 from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 
-from chamber_log import process_row
+from .chamber_log import process_row
 
 class FileModifyHandler(FileSystemEventHandler):
     def __init__(self, log_reader) -> None:
