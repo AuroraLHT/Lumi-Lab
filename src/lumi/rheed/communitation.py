@@ -15,10 +15,10 @@ import time
 import argparse
 import logging
 
-from video_stream import VideoCompressor, VideoRecorder
+from .video_stream import VideoCompressor, VideoRecorder
 import json
 
-from misc import encode_img
+from ..utils.image import encode_img
 
 # IMG_DTYPE = np.int16
 

@@ -1,9 +1,9 @@
-from communication import (
+from .communication import (
     DetectionMessageQueue,
     LiveDetectionMessageQueue,
     ImageMessageQueueClient,
 )
-from model import DetectorServer, DetectorConfig
+from .model import DetectorServer, DetectorConfig
 
 import time
 import datetime
