@@ -1,5 +1,5 @@
-from communication import ChamberLogMessageQueue, LiveChamberLogMessageQueue
-from log_reader import LogReader, LogReaderConfig
+from .communication import ChamberLogMessageQueue, LiveChamberLogMessageQueue
+from .log_reader import LogReader, LogReaderConfig
 
 import aio_pika
 from aio_pika import ExchangeType, connect, Message
