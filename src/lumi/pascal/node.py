@@ -1,4 +1,4 @@
-from .communication import ChamberLogMessageQueue, LiveChamberLogMessageQueue
+from .communication import ChamberLogMessageQueueServer, LiveChamberLogMessageQueueServer
 from .log_reader import LogReader, LogReaderConfig
 
 import aio_pika
@@ -32,14 +32,14 @@ async def main(args):
 
     log_reader.start()
 
-    chamber_mq = ChamberLogMessageQueue(
+    chamber_mq = ChamberLogMessageQueueServer(
         log_reader=log_reader, 
         channel=channel, 
         exchange=exchange_chamber, 
         routing_key="log"
     )
 
-    live_chamber_mq = LiveChamberLogMessageQueue(
+    live_chamber_mq = LiveChamberLogMessageQueueServer(
         log_reader=log_reader, 
         log_queue=log_reader.queue, 
         channel=channel, 

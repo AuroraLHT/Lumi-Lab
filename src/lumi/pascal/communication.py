@@ -15,7 +15,9 @@ import asyncio
 
 import queue
 from .log_reader import LogReader
-from ..base.message_queue import BasicServer, BasicStreamServer
+from ..base.message_queue import BasicServer, BasicStreamServer, BasicClient, BasicStreamClient
+
+from typing import Callable, List, Dict, Any
 
 class ChamberLogMessageQueueServer(BasicServer):
     log_reader : LogReader
@@ -33,7 +35,7 @@ class ChamberLogMessageQueueServer(BasicServer):
 
         self.log_reader = log_reader
 
-    async def prepare_content(self, message):
+    async def on_message(self, message):
         # st = time.time()
         log = self.log_reader.get_log() # this get the latest frame from the peek queue
         body = json.dumps(log).encode()
@@ -41,6 +43,12 @@ class ChamberLogMessageQueueServer(BasicServer):
         # et = time.time()
         # logging.info(f"[x] Log processing time {et-st} sec")
         return body, headers
+
+class ChamberLogMessageQueueClient(BasicClient):
+    async def get(self):
+        logging.info(f"{self.client_name} get Log")
+        headers = { "type":"log" }
+        return await super().get( message=''.encode(), headers=headers )
 
 
 # class ChamberLogMessageQueue:
@@ -106,7 +114,7 @@ class LiveChamberLogMessageQueueServer(BasicStreamServer):
         self.log_reader = log_reader
         self.log_queue = log_queue
 
-    async def prepare_content(self):
+    async def on_message(self):
         if not self.log_queue.empty():
             log = self.log_queue.get()
             body= json.dumps(log).encode()
@@ -114,6 +122,10 @@ class LiveChamberLogMessageQueueServer(BasicStreamServer):
             return body, headers
         else:
             return None, None
+
+class LiveChamberLogMessageQueueClient(BasicStreamClient):
+    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[..., Any], client_name: str, time_out: float) -> None:
+        super().__init__(channel, exchange, routing_key, control_routing_key, on_response_callback, client_name, time_out)
 
 
 # class LiveChamberLogMessageQueue:

@@ -7,10 +7,10 @@ from .video_stream import (
 from .pylon_camera import PylonCamera, PylonCameraConfig, list_devices
 from .web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
 from .communitation import (
-    VideoMessageQueue,
-    VideoFragmentsMessageQueue,
-    ImageMessageQueue,
-    LiveImageMessageQueue,
+    LiveVideoFragmentsMessageQueueServer,
+    VideoFragmentsMessageQueueServer,
+    CameraMessageQueueServer,
+    LiveCameraMessageQueueServer,
 )
 import time
 import datetime
@@ -133,7 +133,7 @@ async def _main(args):
         name="video_record",
     )
 
-    live_video_mq = VideoMessageQueue(
+    live_video_mq = LiveVideoFragmentsMessageQueueServer(
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
@@ -141,14 +141,14 @@ async def _main(args):
         publish_routing_key="live_video",
     )
     # publish to callback queue, not need publish routing key
-    live_video_history_mq = VideoFragmentsMessageQueue(
+    live_video_history_mq = VideoFragmentsMessageQueueServer(
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
         routing_key="live_video_history",
     )
     # publish to callback queue, not need publish routing key
-    image_mq = ImageMessageQueue(
+    image_mq = CameraMessageQueueServer(
         camera=camera, 
         channel=channel, 
         exchange=rheed_exchange, 

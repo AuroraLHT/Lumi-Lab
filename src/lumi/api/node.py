@@ -10,13 +10,14 @@ from aio_pika.abc import AbstractIncomingMessage
 import logging
 
 from .communication import (
-    LiveFragmentMessageQueueClient,
-    FragmentMessageQueueClient,
-    ImageMessageQueueClient,
+    LiveVideoFragmentsMessageQueueClient,
+    VideoFragmentsMessageQueueClient,
+    CameraMessageQueueClient,
     LiveDetectionClient,
-    LogMessageQueueClient,
-    LiveLogMessageQueueClient
+    ChamberLogMessageQueueClient,
+    LiveChamberLogMessageQueueClient
 )
+
 
 FORMAT = '%(asctime)s %(levelname)s:%(message)s'
 logging.basicConfig(level=logging.INFO, format=FORMAT)
@@ -51,18 +52,18 @@ async def lifespan(app: FastAPI):
     exchange_chamber = await channel.declare_exchange("chamber", type=ExchangeType.DIRECT)
 
     # image client is for all user that connect to this api node
-    image_client = ImageMessageQueueClient(
-        channel=channel, exchange=exchange_rheed, routing_key="image"
+    image_client = CameraMessageQueueClient(
+        channel=channel, exchange=exchange_rheed, routing_key="image", client_name="Camera", time_out=10,
     )
     await image_client.start()
 
-    video_fragment_client = FragmentMessageQueueClient(
-        channel=channel, exchange=exchange_rheed, routing_key="live_video_history"
+    video_fragment_client = VideoFragmentsMessageQueueClient(
+        channel=channel, exchange=exchange_rheed, routing_key="live_video_history", client_name="Fragment", time_out=10
     )
     await video_fragment_client.start()
 
-    log_client = LogMessageQueueClient(
-        channel=channel, exchange=exchange_chamber, routing_key="log"
+    log_client = ChamberLogMessageQueueClient(
+        channel=channel, exchange=exchange_chamber, routing_key="log", client_name="Chamber Log", time_out=10
     )
     await log_client.start()
 
@@ -165,11 +166,13 @@ async def websocket_endpoint(websocket: WebSocket):
     message = await websocket.receive()
     print(message)
 
-    live_client = LiveFragmentMessageQueueClient(
+    live_client = LiveVideoFragmentsMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
         routing_key="live_video",
         on_response_callback=on_live_message_callback,
+        client_name="Live Fragment",
+        time_out=10,
     )
 
     initial_fragments = await video_fragment_client.get_initial()
@@ -246,16 +249,16 @@ async def websocket_endpoint(websocket: WebSocket):
     print(message)
 
     live_detection_client = LiveDetectionClient(
-        channel=channel,
-        exchange=exchange_rheed,
-        routing_key="live_detection",
-        control_routing_key="live_detection_control",
-        on_response_callback=on_live_message_callback,
+        channel = channel,
+        exchange = exchange_rheed,
+        routing_key = "live_detection",
+        control_routing_key = "live_detection_control",
+        on_response_callback = on_live_message_callback,
     )
 
-    ws_in_task = asyncio.create_task(on_message(), name="ws_ai_in")
+    ws_in_task = asyncio.create_task(on_message(), name = "ws_ai_in")
     # ws_out_task = asyncio.create_task( send_fragment(websocket=websocket ), name="ws_out" )
-    ws_out_task = asyncio.create_task(live_detection_client.start(), name="ws_ai_out")
+    ws_out_task = asyncio.create_task(live_detection_client.start(), name = "ws_ai_out")
 
     await ws_in_task
     await ws_out_task
@@ -312,17 +315,19 @@ async def websocket_endpoint(websocket: WebSocket):
     message = await websocket.receive()
     print(message)
 
-    live_log_client = LiveLogMessageQueueClient(
-        channel=channel,
-        exchange=exchange_chamber,
-        routing_key="live_log",
-        control_routing_key="live_log_control",
-        on_response_callback=on_live_message_callback,
+    live_log_client = LiveChamberLogMessageQueueClient(
+        channel = channel,
+        exchange = exchange_chamber,
+        routing_key = "live_log",
+        control_routing_key = "live_log_control",
+        on_response_callback = on_live_message_callback,
+        client_name = "Live Log",
+        time_out = 10,
     )
 
-    ws_in_task = asyncio.create_task(on_message(), name="ws_log_in")
+    ws_in_task = asyncio.create_task(on_message(), name = "ws_log_in")
     # ws_out_task = asyncio.create_task( send_fragment(websocket=websocket ), name="ws_out" )
-    ws_out_task = asyncio.create_task(live_log_client.start(), name="ws_log_out")
+    ws_out_task = asyncio.create_task(live_log_client.start(), name = "ws_log_out")
 
     await ws_in_task
     await ws_out_task

@@ -10,10 +10,14 @@ from aio_pika.abc import (
 )
 
 from collections.abc import Callable, Awaitable
-from lumi.base.message_queue import BasicStreamClient, BasicClient
+# from lumi.base.message_queue import BasicStreamClient, BasicClient
 
-class LiveFragmentMessageQueueClient(BasicStreamClient):
-    pass
+from ..rheed.communitation import LiveVideoFragmentsMessageQueueClient, CameraMessageQueueClient, VideoFragmentsMessageQueueClient
+from ..detection.communication import LiveDetectionClient
+from ..pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogMessageQueueClient
+
+# class LiveFragmentMessageQueueClient(BasicStreamClient):
+#     pass
 
 # class LiveFragmentMessageQueueClient:
 #     channel : AbstractChannel
@@ -64,41 +68,41 @@ class LiveFragmentMessageQueueClient(BasicStreamClient):
 #             await self.queue.cancel(self._consumer_tag, )
 #             await self.queue.delete()            
 
-class FragmentMessageQueueClient(BasicClient):
+# class FragmentMessageQueueClient(BasicClient):
 
-    async def get(self, n: int, is_initial:bool) -> int:
-        logging.info(f"{self.client_name} get fragment {n} is_initial:{is_initial}")
-        if is_initial:
-            headers = {
-                "type":"initial"
-            }
-        else:
-            headers = {
-                "type":"history"
-            }
-        await super().get(message=str(n).encode(), headers=headers)
+#     async def get(self, n: int, is_initial:bool) -> int:
+#         logging.info(f"{self.client_name} get fragment {n} is_initial:{is_initial}")
+#         if is_initial:
+#             headers = {
+#                 "type":"initial"
+#             }
+#         else:
+#             headers = {
+#                 "type":"history"
+#             }
+#         await super().get(message=str(n).encode(), headers=headers)
 
-    async def get_initial(self,) -> int:
-        logging.info(f"{self.client_name} call get initial")
+#     async def get_initial(self,) -> int:
+#         logging.info(f"{self.client_name} call get initial")
 
-        initial_fragments = None
-        initial_fragment, initial_fragment_header = await self.get(0, is_initial=True) # get the first frame
-        logging.info(f"{self.client_name} get first fragment")
+#         initial_fragments = None
+#         initial_fragment, initial_fragment_header = await self.get(0, is_initial=True) # get the first frame
+#         logging.info(f"{self.client_name} get first fragment")
 
-        size = initial_fragment_header['size']
-        initial_fragments = [None] * size
-        initial_fragments[0] = initial_fragment
+#         size = initial_fragment_header['size']
+#         initial_fragments = [None] * size
+#         initial_fragments[0] = initial_fragment
 
-        other_fragments_result = await asyncio.gather( *[ self.get(i, is_initial=True) for i in range(1, size)] )
-        logging.info(f"{self.client_name} get rest of the fragments with total length {size}")
-        for other_fragment_result in other_fragments_result:
-            fragment, headers = other_fragment_result
-            initial_fragments[ headers["index"] ] = fragment
-        logging.info(f"{self.client_name} get rest of the fragments with actual total length {len(initial_fragments)}")
+#         other_fragments_result = await asyncio.gather( *[ self.get(i, is_initial=True) for i in range(1, size)] )
+#         logging.info(f"{self.client_name} get rest of the fragments with total length {size}")
+#         for other_fragment_result in other_fragments_result:
+#             fragment, headers = other_fragment_result
+#             initial_fragments[ headers["index"] ] = fragment
+#         logging.info(f"{self.client_name} get rest of the fragments with actual total length {len(initial_fragments)}")
 
-        logging.info(f"{self.client_name} return get initial")
+#         logging.info(f"{self.client_name} return get initial")
 
-        return initial_fragments
+#         return initial_fragments
 
 # class FragmentMessageQueueClient:
 #     channel : AbstractChannel
@@ -185,15 +189,15 @@ class FragmentMessageQueueClient(BasicClient):
 
 #         return initial_fragments
 
-class ImageMessageQueueClient(BasicClient):
-    async def get(self):
-        logging.info(f"{self.client_name} get live image")
+# class ImageMessageQueueClient(BasicClient):
+#     async def get(self):
+#         logging.info(f"{self.client_name} get live image")
 
-        headers = {
-            "type":"image"
-        }
+#         headers = {
+#             "type":"image"
+#         }
 
-        return await super().get(message=''.encode(), headers=headers)
+#         return await super().get(message=''.encode(), headers=headers)
     
 # class ImageMessageQueueClient:
 #     channel : AbstractChannel
@@ -254,8 +258,8 @@ class ImageMessageQueueClient(BasicClient):
 #         return await future
     
 
-class LiveDetectionClient(BasicStreamClient):
-    pass
+# class LiveDetectionClient(BasicStreamClient):
+#     pass
 
 # class LiveDetectionClient:
 #     channel : AbstractChannel
@@ -331,11 +335,11 @@ class LiveDetectionClient(BasicStreamClient):
 #             await self.queue.cancel(self._consumer_tag, )
 #             await self.queue.delete()
 
-class LogMessageQueueClient(BasicClient):
-    async def get(self):
-        logging.info(f"{self.client_name} get Log")
-        headers = { "type":"log" }
-        return await super().get( message=''.encode(), headers=headers )
+# class LogMessageQueueClient(BasicClient):
+#     async def get(self):
+#         logging.info(f"{self.client_name} get Log")
+#         headers = { "type":"log" }
+#         return await super().get( message=''.encode(), headers=headers )
 
 # class LogMessageQueueClient:
 #     channel : AbstractChannel
@@ -413,8 +417,8 @@ class LogMessageQueueClient(BasicClient):
 #             logging.info("fail to acquire response from the pascal node")
 #             return None, None
 
-class LiveLogMessageQueueClient(BasicStreamClient):
-    pass
+# class LiveLogMessageQueueClient(BasicStreamClient):
+#     pass
 
 
 # class LiveLogMessageQueueClient:
