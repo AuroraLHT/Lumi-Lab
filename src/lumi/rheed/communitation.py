@@ -19,13 +19,13 @@ from .video_stream import VideoCompressor, VideoRecorder
 import json
 
 from ..utils.image import encode_img
-from ..base.message_queue import BasicServer, BasicStreamServer
+from ..base.message_queue import BasicServer, BasicStreamServer, BasicStreamClient, BasicClient
 from .pylon_camera import PylonCamera
 from .web_camera import WebCamera
 
 import queue
 
-from typing import Union, List, Dict
+from typing import Union, List, Dict, Any, Callable
 # IMG_DTYPE = np.int16
 
 # def encode_img(img, timestamp):
@@ -45,11 +45,21 @@ class CameraMessageQueueServer(BasicServer):
 
         self.camera = camera
 
-    async def prepare_content(self, message):
+    async def on_message(self, message):
         img, img_header = self.camera.get_frame() # this get the latest frame from the peek queue
         body, headers = encode_img(img, img_header)
 
         return body, headers
+
+class CameraMessageQueueClient(BasicClient):
+    async def get(self):
+        logging.info(f"{self.client_name} get live image")
+
+        headers = {
+            "type":"image"
+        }
+
+        return await super().get(message=''.encode(), headers=headers)
 
 # class ImageMessageQueue:
 #     channel : AbstractChannel
@@ -131,7 +141,7 @@ class LiveCameraMessageQueueServer(BasicStreamServer):
 
         self.camera = camera
 
-    async def prepare_content(self):
+    async def on_message(self):
         if not self.camera_queue.empty():
             img, img_header = self.camera.get_frame() # this get the latest frame from the peek queue
             body, headers = encode_img(img, img_header)
@@ -139,6 +149,27 @@ class LiveCameraMessageQueueServer(BasicStreamServer):
         else:
             return None, None
 
+class LiveCameraMessageQueueClient(BasicStreamClient):
+    def __init__(
+            self, 
+            channel: AbstractChannel, 
+            exchange: AbstractExchange, 
+            routing_key: str, 
+            control_routing_key: str, 
+            on_response_callback: Callable[..., Any], 
+            client_name: str, 
+            time_out: float
+        ) -> None:
+
+        super().__init__(
+            channel, 
+            exchange, 
+            routing_key, 
+            control_routing_key, 
+            on_response_callback, 
+            client_name, 
+            time_out
+        )
 
 # class LiveImageMessageQueue:
 #     channel : AbstractChannel
@@ -228,7 +259,7 @@ class VideoFragmentsMessageQueueServer(BasicServer):
         super().__init__(channel=channel, exchange=exchange, control_routing_key=control_routing_key, routing_key=routing_key, server_name=server_name)
         self.video_compressor = video_compressor
 
-    async def prepare_content(self, message):
+    async def on_message(self, message):
         body = message.body.decode()
         headers = message.headers
         # print(body, headers)
@@ -252,6 +283,41 @@ class VideoFragmentsMessageQueueServer(BasicServer):
 
         return body, headers
 
+class VideoFragmentsMessageQueueClient(BasicClient):
+
+    async def get(self, n: int, is_initial:bool) -> int:
+        logging.info(f"{self.client_name} get fragment {n} is_initial:{is_initial}")
+        if is_initial:
+            headers = {
+                "type":"initial"
+            }
+        else:
+            headers = {
+                "type":"history"
+            }
+        await super().get(message=str(n).encode(), headers=headers)
+
+    async def get_initial(self,) -> int:
+        logging.info(f"{self.client_name} call get initial")
+
+        initial_fragments = None
+        initial_fragment, initial_fragment_header = await self.get(0, is_initial=True) # get the first frame
+        logging.info(f"{self.client_name} get first fragment")
+
+        size = initial_fragment_header['size']
+        initial_fragments = [None] * size
+        initial_fragments[0] = initial_fragment
+
+        other_fragments_result = await asyncio.gather( *[ self.get(i, is_initial=True) for i in range(1, size)] )
+        logging.info(f"{self.client_name} get rest of the fragments with total length {size}")
+        for other_fragment_result in other_fragments_result:
+            fragment, headers = other_fragment_result
+            initial_fragments[ headers["index"] ] = fragment
+        logging.info(f"{self.client_name} get rest of the fragments with actual total length {len(initial_fragments)}")
+
+        logging.info(f"{self.client_name} return get initial")
+
+        return initial_fragments
 
 # class VideoFragmentsMessageQueue:
 #     video_compressor : VideoCompressor
@@ -322,7 +388,7 @@ class VideoFragmentsMessageQueueServer(BasicServer):
 #         #         except Exception:
 #         #                 logging.exception("Processing error for message %r", message)
 
-class VideoMessageQueueServer(BasicStreamServer):
+class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
     video_compressor : VideoCompressor
 
     def __init__(self, video_compressor:VideoCompressor, channel:AbstractChannel, exchange:AbstractExchange, control_routing_key:str, routing_key:str, publish_routing_key:str, server_name:str):
@@ -336,7 +402,7 @@ class VideoMessageQueueServer(BasicStreamServer):
         )
         self.video_compressor = video_compressor
 
-    async def prepare_content(self):
+    async def on_message(self):
         fragment, headers = self.video_compressor.get_fragment()
         return fragment, headers
 
@@ -375,6 +441,10 @@ class VideoMessageQueueServer(BasicStreamServer):
 #         self._publish_task = asyncio.create_task( self.publish() )
 #         logging.info(" [x] Start Video Stream end")        
 #             # await asyncio.sleep(0.0001)
+
+class LiveVideoFragmentsMessageQueueClient(BasicStreamClient):
+    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[..., Any], client_name: str, time_out: float) -> None:
+        super().__init__(channel, exchange, routing_key, control_routing_key, on_response_callback, client_name, time_out)
 
 
 

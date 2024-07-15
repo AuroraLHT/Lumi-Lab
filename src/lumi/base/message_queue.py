@@ -276,14 +276,14 @@ class BasicStreamServer(BaseControlMixin):
         self.control_queue = await self.channel.declare_queue(exclusive=True)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
-    async def prepare_content():
+    async def on_message():
         raise NotImplementedError()
 
     async def publish(self):
         while True:
             
             if self.start_flag:
-                body, headers = await self.prepare_content()
+                body, headers = await self.on_message()
                 if body is not None:
                     logging.debug(f"{self.server_name} content prepared")
 
@@ -366,13 +366,13 @@ class BasicServer(BaseControlMixin):
         self.control_queue = await self.channel.declare_queue(exclusive=True)
         await self.control_queue.bind(self.exchange, routing_key=self.control_routing_key)
 
-    async def prepare_content(self, message):
+    async def on_message(self, message):
         raise NotImplementedError()
 
     async def on_message(self, message: AbstractIncomingMessage):
         logging.info(f"{self.server_name} on request")
         async with message.process():
-            body, headers = await self.prepare_content(message)
+            body, headers = await self.on_message(message)
             logging.info(f"{self.server_name} content prepared")
 
             await self.callback_exchange.publish(

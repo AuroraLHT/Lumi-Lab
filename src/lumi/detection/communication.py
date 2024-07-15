@@ -14,17 +14,20 @@ from collections.abc import Callable, Awaitable
 import json
 
 # from misc import decode_img
-from ..utils.image import decode_img
+from ..utils.image import decode_img, encode_img
 
 from .model import DetectorServer
-from ..base.message_queue import BasicClient, BasicServer, BasicStreamServer
+from ..base.message_queue import BasicClient, BasicStreamClient, BasicServer, BasicStreamServer
+from ..rheed.communitation import CameraMessageQueueClient
 
-class ImageMessageQueueClient(BasicClient):
-    async def get(self):
-        headers = { "type":"image" }
-        message = ''.encode()
+from typing import List, Dict, Any, Union
 
-        return await super().get(message=message, headers=headers)
+# class ImageMessageQueueClient(BasicClient):
+#     async def get(self):
+#         headers = { "type":"image" }
+#         message = ''.encode()
+
+#         return await super().get(message=message, headers=headers)
 
 # class ImageMessageQueueClient:
 #     channel : AbstractChannel
@@ -82,13 +85,13 @@ class ImageMessageQueueClient(BasicClient):
 # TODO I would like to integrate tracking into this MessageQueue since passing all prediction around the message queue invole compress and decompression
 class LiveDetectionMessageQueueServer(BasicStreamServer):
     detector : DetectorServer
-    image_client: ImageMessageQueueClient
+    image_client: CameraMessageQueueClient
     fps : int
 
     def __init__(
             self, 
             detector, 
-            image_client:ImageMessageQueueClient, 
+            camera_client:CameraMessageQueueClient, 
             channel:AbstractChannel, 
             exchange:AbstractExchange, 
             control_routing_key:str, 
@@ -108,11 +111,11 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         )
 
         self.detector = detector
-        self.image_client = image_client
+        self.camera_client = camera_client
         self.fps = 0
 
-    async def prepare_content(self):
-        body, headers = await self.image_client.get()
+    async def on_message(self):
+        body, headers = await self.camera_client.get()
         img, img_header = decode_img(body, headers)
             
         #TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
@@ -132,6 +135,12 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         headers = {"time_stamp":time_stamp}
 
         return body, headers
+
+class LiveDetectionMessageQueueClient(BasicStreamClient):
+    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[..., Any], client_name: str, time_out: float) -> None:
+        super().__init__(channel, exchange, routing_key, control_routing_key, on_response_callback, client_name, time_out)
+#     pass
+
 
 # class LiveDetectionMessageQueue:
 
@@ -249,13 +258,17 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
 
 class DetectionMessageQueueServer(BasicServer):
     detector : DetectorServer
+    camera_client:CameraMessageQueueClient
 
-    def __init__(self, detector, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str, control_routing_key:str, server_name:str):
+    def __init__(self, detector, camera_client, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str, control_routing_key:str, server_name:str):
         super().__init__(channel=channel, exchange=exchange, control_routing_key=control_routing_key, routing_key=routing_key, server_name=server_name)
         self.detector = detector
+        self.camera_client = camera_client
 
-    async def prepare_content(self, message):
+    async def on_message(self, message):
         body, headers = message.body, message.headers
+        if len(message.body):
+            body, headers = await self.camera_client.get()
         img, img_header = decode_img(body, headers)
 
         detector_output = self.detector.predict(img)
@@ -265,9 +278,25 @@ class DetectionMessageQueueServer(BasicServer):
             "classification" : detector_output["classification"]
         }
             
-        body = json.dumps( result )
-        headers = {}
+        body = json.dumps( result ).encode()
+        # print(body)
+        time_stamp = img_header['time_stamp'] if 'time_stamp' in img_header else ""
+        headers = {"time_stamp":time_stamp}
+
         return body, headers
+
+class DetectionMessageQueueClient(BasicClient):
+    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, client_name: str, time_out: float) -> None:
+        super().__init__(channel, exchange, routing_key, client_name, time_out)
+
+    async def get(self, image=None, image_headers=None):
+        logging.info(f"{self.client_name} get detection")
+        image_headers = {} if image_headers is not None else image_headers
+        message, headers = encode_img(image, image_headers)
+        headers.update( { "type":"detection" } )
+
+        return await super().get( message=message, headers=headers )
+
 
 # class DetectionMessageQueue:
 #     channel : AbstractChannel

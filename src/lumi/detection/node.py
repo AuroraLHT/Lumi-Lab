@@ -1,7 +1,7 @@
 from .communication import (
-    DetectionMessageQueue,
-    LiveDetectionMessageQueue,
-    ImageMessageQueueClient,
+    DetectionMessageQueueServer,
+    LiveDetectionMessageQueueServer,
+    CameraMessageQueueClient,
 )
 from .model import DetectorServer, DetectorConfig
 
@@ -39,19 +39,19 @@ async def main(args):
     detector = DetectorServer(config=config, name="detection")
     detector.start()
 
-    image_client = ImageMessageQueueClient(
+    image_client = CameraMessageQueueClient(
         channel=channel, exchange=rheed_exchange, routing_key="image"
     )
 
     await image_client.start()
 
-    detection_mq = DetectionMessageQueue(
+    detection_mq = DetectionMessageQueueServer(
         detector=detector,
         channel=channel,
         exchange=rheed_exchange,
         routing_key="detection",
     )
-    live_detection_mq = LiveDetectionMessageQueue(
+    live_detection_mq = LiveDetectionMessageQueueServer(
         detector=detector,
         image_client=image_client,
         channel=channel,
