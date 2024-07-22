@@ -8,7 +8,7 @@ import time
 import uuid
 import datetime
 from dataclasses import dataclass
-from typing import Union
+from typing import Union, Tuple, Optional
 
 def get_camera(index=0, device=None):
     tl_factory = pylon.TlFactory.GetInstance()
@@ -39,13 +39,19 @@ def list_devices(verbose=True):
 @dataclass
 class PylonCameraConfig:
     device : pylon.DeviceInfo
+    # camera option
+    frame_dims : Tuple[int, int] 
+
     idle_time : float = 1 / 300
     fps : int = 30
     camera_max_num_buffer : int = 15
     queue_size : int = 2
 
 
+
 class PylonCamera(threading.Thread):
+    FRAME_HEADER_KEYS = ["time", "uuid", "time_stamp"]
+
     def __init__(self, config:PylonCameraConfig, name:Union[int, str]) -> None:
         super().__init__(name=name)
         self.camera_io_lock = threading.Lock()
@@ -113,8 +119,6 @@ class PylonCamera(threading.Thread):
                 time.sleep(self.config.idle_time * 10)
                 continue
 
-
-
             # if self.camera.GetGrabResultWaitObject().Wait(0):
             grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_Return)
             frame_time = time.time()
@@ -150,6 +154,14 @@ class PylonCamera(threading.Thread):
     def stop(self):
         logging.info(f"Pylon thread ({self.ident}) receives a stop signal")
         self._stop_event.set()
+
+    @property
+    def frame_dims(self):
+        return self.config.frame_dims
+    
+    @property
+    def frame_metas(self):
+        return self.FRAME_HEADER_KEYS
 
     def __del__(self):
         self.camera.Close()
