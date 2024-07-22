@@ -25,7 +25,7 @@ from .web_camera import WebCamera
 
 import queue
 
-from typing import Union, List, Dict, Any, Callable
+from typing import Union, List, Dict, Any, Callable, Awaitable
 # IMG_DTYPE = np.int16
 
 # def encode_img(img, timestamp):
@@ -45,21 +45,32 @@ class CameraMessageQueueServer(BasicServer):
 
         self.camera = camera
 
-    async def on_message(self, message):
+    async def on_message(self, message: AbstractIncomingMessage):
         img, img_header = self.camera.get_frame() # this get the latest frame from the peek queue
         body, headers = encode_img(img, img_header)
 
         return body, headers
+    
+
+    async def server_status(self):
+        """
+            TODO: read all the camera adjustable configuation
+        """
+        status = {
+            "frame_dims" : self.camera.frame_dims,
+            "frame_metas" : self.camera.frame_metas,
+        }
+        return json.dumps(status).encode(), {"type":"status"}
 
 class CameraMessageQueueClient(BasicClient):
-    async def get(self):
+    async def request(self):
         logging.info(f"{self.client_name} get live image")
 
         headers = {
             "type":"image"
         }
 
-        return await super().get(message=''.encode(), headers=headers)
+        return await super().request(body=''.encode(), headers=headers)
 
 # class ImageMessageQueue:
 #     channel : AbstractChannel
@@ -121,7 +132,8 @@ class LiveCameraMessageQueueServer(BasicStreamServer):
 
     def __init__(
             self, 
-            camera, 
+            camera,
+            camera_queue,
             channel:AbstractChannel, 
             exchange:AbstractExchange, 
             control_routing_key:str, 
@@ -140,8 +152,9 @@ class LiveCameraMessageQueueServer(BasicStreamServer):
         )
 
         self.camera = camera
+        self.camera_queue = camera_queue
 
-    async def on_message(self):
+    async def on_streaming(self):
         if not self.camera_queue.empty():
             img, img_header = self.camera.get_frame() # this get the latest frame from the peek queue
             body, headers = encode_img(img, img_header)
@@ -156,7 +169,7 @@ class LiveCameraMessageQueueClient(BasicStreamClient):
             exchange: AbstractExchange, 
             routing_key: str, 
             control_routing_key: str, 
-            on_response_callback: Callable[..., Any], 
+            on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[Any] ], 
             client_name: str, 
             time_out: float
         ) -> None:
@@ -276,16 +289,16 @@ class VideoFragmentsMessageQueueServer(BasicServer):
 
         body, headers = self.video_compressor.get_history_fragment(fragment_idx)
         headers.update({
-                    "size" : num_fragments,
-                    "index" : fragment_idx,
-                    })
+            "size" : num_fragments,
+            "index" : fragment_idx,
+        })
         logging.info(f"fragment length {len(body)}")
 
         return body, headers
 
 class VideoFragmentsMessageQueueClient(BasicClient):
 
-    async def get(self, n: int, is_initial:bool) -> int:
+    async def request(self, n: int, is_initial:bool) -> int:
         logging.info(f"{self.client_name} get fragment {n} is_initial:{is_initial}")
         if is_initial:
             headers = {
@@ -295,20 +308,20 @@ class VideoFragmentsMessageQueueClient(BasicClient):
             headers = {
                 "type":"history"
             }
-        await super().get(message=str(n).encode(), headers=headers)
+        return await super().request(body=str(n).encode(), headers=headers)
 
     async def get_initial(self,) -> int:
         logging.info(f"{self.client_name} call get initial")
 
         initial_fragments = None
-        initial_fragment, initial_fragment_header = await self.get(0, is_initial=True) # get the first frame
+        initial_fragment, initial_fragment_header = await self.request(0, is_initial=True) # get the first frame
         logging.info(f"{self.client_name} get first fragment")
 
         size = initial_fragment_header['size']
         initial_fragments = [None] * size
         initial_fragments[0] = initial_fragment
 
-        other_fragments_result = await asyncio.gather( *[ self.get(i, is_initial=True) for i in range(1, size)] )
+        other_fragments_result = await asyncio.gather( *[ self.request(i, is_initial=True) for i in range(1, size)] )
         logging.info(f"{self.client_name} get rest of the fragments with total length {size}")
         for other_fragment_result in other_fragments_result:
             fragment, headers = other_fragment_result
@@ -391,18 +404,18 @@ class VideoFragmentsMessageQueueClient(BasicClient):
 class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
     video_compressor : VideoCompressor
 
-    def __init__(self, video_compressor:VideoCompressor, channel:AbstractChannel, exchange:AbstractExchange, control_routing_key:str, routing_key:str, publish_routing_key:str, server_name:str):
+    def __init__(self, video_compressor:VideoCompressor, channel:AbstractChannel, exchange:AbstractExchange, control_routing_key:str, publish_routing_key:str, server_name:str):
         super().__init__(
             channel=channel, 
             exchange=exchange, 
             control_routing_key=control_routing_key, 
-            routing_key=routing_key, 
             publish_routing_key=publish_routing_key, 
             server_name=server_name
         )
         self.video_compressor = video_compressor
 
-    async def on_message(self):
+    async def on_streaming(self):
+        logging.debug(f"Message queue {self.server_name} server on stream")
         fragment, headers = self.video_compressor.get_fragment()
         return fragment, headers
 
@@ -471,20 +484,17 @@ class VideoRecorderMessageQueue:
         await self.queue.bind(exchange=self.exchange, routing_key=self.routing_key)
 
     async def on_message(self, message: AbstractIncomingMessage):
-        async with message.process():
-            assert message.reply_to is not None
+        body = message.body.decode()
+        headers = message.headers
+        # print(body, headers)
 
-            body = message.body.decode()
-            headers = message.headers
-            # print(body, headers)
-
-            if body == "start":
-                filename = headers["filename"]
-                self.video_recorder.start_recording(filename=filename)
-            elif body == "end":
-                self.video_recorder.end_recording()                
-            else:
-                raise ValueError(f"Unexpected command '{body}'.")
+        if body == "start":
+            filename = headers["filename"]
+            self.video_recorder.start_recording(filename=filename)
+        elif body == "end":
+            self.video_recorder.end_recording()                
+        else:
+            raise ValueError(f"Unexpected command '{body}'.")
 
 
     async def start(self):
