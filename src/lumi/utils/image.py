@@ -2,7 +2,7 @@ import struct
 import numpy as np
 import datetime
 
-from typing import Dict
+from typing import Dict, Optional
 
 IMG_DTYPE = np.uint16
 
@@ -57,4 +57,73 @@ def decode_img(body, headers):
     img = np.frombuffer(body, dtype=dtype ).reshape(img_shape)
     img_headers = { k : headers[k] for k in set( headers.keys() ) - FIX_HEADER_KEYS }
     return img, img_headers
+# datetime.datetime.fromisoformat(headers['time'])
+
+
+def encode_masks(mask:np.ndarray, mask_header:Optional[Dict]=None):
+    """
+    mask is a binary array
+    """
+
+    body = mask.tobytes()
+    n_mask, h, w = mask.shape
+
+    if mask_header is not None:
+        mask_header = { k : str(v) for k, v in mask_header.items()}
+    else:
+        mask_header = {}
+
+    headers = {
+        "type" : "ArrayImage",
+        "height" : f"{h}",
+        "width" : f"{w}",        
+        "n_mask" : f"{n_mask}",
+        "dtype" : "bool",
+        **mask_header
+    }
+
+    return body, headers
+
+FIX_MASKS_HEADER_KEYS = set(["type", "height", "width", "n_mask", "dtype"])
+
+def decode_masks(body, headers):
+    mask_shape= (int(headers['n_mask']), int(headers['height']), int(headers['width']) )
+    dtype = "bool"
+    mask = np.frombuffer(body, dtype=dtype ).reshape(mask_shape)
+    mask_headers = { k : headers[k] for k in set( headers.keys() ) - FIX_MASKS_HEADER_KEYS }
+    return mask, mask_headers
+# datetime.datetime.fromisoformat(headers['time'])
+
+
+def encode_mask(mask:np.ndarray, mask_header:Optional[Dict]=None):
+    """
+    mask is a binary array
+    """
+
+    body = mask.tobytes()
+    h, w = mask.shape
+
+    if mask_header is not None:
+        mask_header = { k : str(v) for k, v in mask_header.items()}
+    else:
+        mask_header = {}
+
+    headers = {
+        "type" : "ArrayImage",
+        "height" : f"{h}",
+        "width" : f"{w}",        
+        "dtype" : "bool",
+        **mask_header
+    }
+
+    return body, headers
+
+FIX_MASK_HEADER_KEYS = set(["type", "height", "width", "dtype"])
+
+def decode_mask(body, headers):
+    mask_shape= (int(headers['height']), int(headers['width']) )
+    dtype = "bool"
+    mask = np.frombuffer(body, dtype=dtype ).reshape(mask_shape)
+    mask_headers = { k : headers[k] for k in set( headers.keys() ) - FIX_MASK_HEADER_KEYS }
+    return mask, mask_headers
 # datetime.datetime.fromisoformat(headers['time'])
