@@ -50,7 +50,7 @@ class VideoCompressorConfig:
         if self.idle_time is None:
             self.idle_time = self.spf / 10
 
-        print(self.cached_startup_fragments)
+        logging.info(f"Number of cached startup fragment: {self.cached_startup_fragments}")
 
     @property
     def spf(self):
