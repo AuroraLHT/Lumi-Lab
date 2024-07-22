@@ -35,20 +35,29 @@ class ChamberLogMessageQueueServer(BasicServer):
 
         self.log_reader = log_reader
 
-    async def on_message(self, message):
+    async def on_message(self, message:AbstractIncomingMessage):
         # st = time.time()
-        log = self.log_reader.get_log() # this get the latest frame from the peek queue
+        log, headers = self.log_reader.get_log() # this get the latest frame from the peek queue
         body = json.dumps(log).encode()
-        headers = {}
         # et = time.time()
         # logging.info(f"[x] Log processing time {et-st} sec")
         return body, headers
 
+    async def server_status(self):
+        """
+            We temporary get the key from live 
+        """
+        
+        status = {
+            "entries" : self.log_reader._csv_header
+        }
+        return status
+
 class ChamberLogMessageQueueClient(BasicClient):
-    async def get(self):
+    async def request(self):
         logging.info(f"{self.client_name} get Log")
         headers = { "type":"log" }
-        return await super().get( message=''.encode(), headers=headers )
+        return await super().request( body=''.encode(), headers=headers )
 
 
 # class ChamberLogMessageQueue:
@@ -106,15 +115,14 @@ class LiveChamberLogMessageQueueServer(BasicStreamServer):
     log_reader : LogReader
     log_queue : queue.Queue
 
-    def __init__(self, log_reader, log_queue, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str, control_routing_key:str, publish_routing_key:str, server_name:str):
+    def __init__(self, log_reader, log_queue, channel:AbstractChannel, exchange:AbstractExchange, control_routing_key:str, publish_routing_key:str, server_name:str):
         """
-            has no input, routing_key could be None
         """
         super().__init__(channel=channel, exchange=exchange, control_routing_key=control_routing_key, publish_routing_key=publish_routing_key, server_name=server_name)
         self.log_reader = log_reader
         self.log_queue = log_queue
 
-    async def on_message(self):
+    async def on_streaming(self):
         if not self.log_queue.empty():
             log = self.log_queue.get()
             body= json.dumps(log).encode()
