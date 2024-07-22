@@ -1,12 +1,14 @@
-from .video_stream import (
+from lumi.rheed.video_stream import (
     VideoCompressorConfig,
     VideoCompressor,
     VideoRecorderConfig,
     VideoRecorder,
 )
-from .pylon_camera import PylonCamera, PylonCameraConfig, list_devices
-from .web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
-from .communitation import (
+from lumi.rheed.pylon_camera import PylonCamera, PylonCameraConfig, list_devices
+from lumi.rheed.web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
+from lumi.rheed.test_camera import TestCameraConfig, TestCamera
+
+from lumi.rheed.communitation import (
     LiveVideoFragmentsMessageQueueServer,
     VideoFragmentsMessageQueueServer,
     CameraMessageQueueServer,
@@ -22,14 +24,14 @@ from aio_pika import ExchangeType, connect
 import asyncio
 import logging
 
-logging.basicConfig(level=logging.INFO)
+from pathlib import Path
 
-USE_PYLON = True
+logging.basicConfig(level=logging.INFO)
 
 
 def add_time_stamp(frame, frame_header=None):
     if frame_header is not None:
-        timestamp = frame_header['time_stamp'] if 'time_stamp' in frame_header else None
+        timestamp = frame_header["time_stamp"] if "time_stamp" in frame_header else None
         if timestamp is not None:
             font = cv2.FONT_HERSHEY_PLAIN
             frame = cv2.putText(
@@ -42,6 +44,15 @@ def add_time_stamp(frame, frame_header=None):
                 2,
                 cv2.LINE_AA,
             )
+    return frame
+
+def frame_processing_testcam(frame, frame_header=None):
+    # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    frame = cv2.convertScaleAbs(frame, alpha=(255.0 / 4095.0))
+    # print(frame.max())
+    frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
+
+    frame = add_time_stamp(frame, frame_header)
     return frame
 
 
@@ -64,12 +75,48 @@ def frame_processing_pylon(frame, frame_header=None):
     return frame
 
 
-# TODO turn it into a argument
-frame_processing = frame_processing_pylon if USE_PYLON else frame_processing_webcam
-height = 540 if USE_PYLON else 480 
-width = 720 if USE_PYLON else 640
+
 
 async def _main(args):
+    # TODO turn it into a argument
+    if args.src == "pylon":
+        frame_processing = frame_processing_pylon  
+        height = 540
+        width = 720
+        devices = list_devices()
+        pylon_camera_config = PylonCameraConfig(
+            device=devices[0],
+            fps=30,
+            frame_dims=(height, width),
+        )
+        camera = PylonCamera(config=pylon_camera_config, name="pylon_cam")
+
+    elif args.src == "webcam":
+        frame_processing = frame_processing_webcam
+        height = 480
+        width = 640
+        web_camera_config = WebCameraConfig(
+            fps=30,  # the maximum is 30 for this webcam
+            queue_size=60,
+        )
+        camera = WebCamera(config=web_camera_config, name="web_cam")
+
+    else:
+        frame_processing = frame_processing_testcam
+        height = 540
+        width = 720
+        test_camera_config = TestCameraConfig(
+            frame_dims=(height, width),
+            source= Path(__file__).parent / "assets/test_frame.npy",
+            fps=30,
+            queue_size=2,
+        )
+        camera = TestCamera(config=test_camera_config, name="test_cam")
+
+    # record_camera_queue = camera.register_queue("record")
+    live_video_camera_queue = camera.register_queue("live_video")
+    live_image_camera_queue = camera.register_queue("live_image")
+
     # Perform connection
     connection = await connect(f"amqp://guest:guest@{args.host}/")
 
@@ -81,22 +128,6 @@ async def _main(args):
         ExchangeType.DIRECT,
     )
 
-    if USE_PYLON:
-        devices = list_devices()
-        pylon_camera_config = PylonCameraConfig(
-            device=devices[0],
-            fps=30,
-        )
-        camera = PylonCamera(config=pylon_camera_config, name="pylon_cam")
-        record_camera_queue = camera.register_queue("record")
-        live_camera_queue = camera.register_queue("live")
-    else:
-        web_camera_config = WebCameraConfig(
-            fps=30,  # the maximum is 30 for this webcam
-            queue_size=60,
-        )
-        camera = WebCamera(config=web_camera_config, name="web_cam")
-
     # video_compressor = VideoCompressor(camera_queue=pylon_camera.queue, config=video_compressor_config, frame_processing=lambda cv_frame: cv2.cvtColor(cv_frame, cv2.COLOR_GRAY2RGB))
 
     live_video_compressor_config = VideoCompressorConfig(
@@ -106,12 +137,12 @@ async def _main(args):
         cached_startup_fragments=5,
         bit_rate=12_000_000,
         height=height,
-        width=width
+        width=width,
     )
 
     live_video_compressor = VideoCompressor(
         camera=camera,
-        camera_queue=live_camera_queue,
+        camera_queue=live_video_camera_queue,
         config=live_video_compressor_config,
         frame_processing=frame_processing,
         name="video",
@@ -122,47 +153,53 @@ async def _main(args):
         frames_per_keyframe=10,
         bit_rate=12_000_000,
         height=height,
-        width=width
+        width=width,
     )
 
-    video_recorder = VideoRecorder(
-        camera=camera,
-        camera_queue=record_camera_queue,
-        config=video_recorder_config,
-        frame_processing=frame_processing,
-        name="video_record",
-    )
+    # video_recorder = VideoRecorder(
+    #     camera=camera,
+    #     camera_queue=record_camera_queue,
+    #     config=video_recorder_config,
+    #     frame_processing=frame_processing,
+    #     name="video_record",
+    # )
 
     live_video_mq = LiveVideoFragmentsMessageQueueServer(
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
-        routing_key=None,  # Not need a input routing key yet.
+        control_routing_key="live_video_ctrl",
         publish_routing_key="live_video",
+        server_name="live_video"
     )
     # publish to callback queue, not need publish routing key
     live_video_history_mq = VideoFragmentsMessageQueueServer(
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
+        control_routing_key="live_video_history_ctrl",
         routing_key="live_video_history",
+        server_name="live_video_history"
     )
     # publish to callback queue, not need publish routing key
     image_mq = CameraMessageQueueServer(
         camera=camera, 
         channel=channel, 
         exchange=rheed_exchange, 
-        routing_key="image"
+        routing_key="image",
+        control_routing_key="image_ctrl",
+        server_name="image"
     )
 
-    # live_image_mq = LiveImageMessageQueue(
-    #     camera=web_camera,
-    #     channel=channel,
-    #     exchange=rheed_exchange,
-    #     routing_key="",
-    #     control_routing_key="live_image_control",
-    #     publish_routing_key="live_image",
-    # )
+    live_image_mq = LiveCameraMessageQueueServer(
+        camera=camera,
+        camera_queue=live_image_camera_queue,
+        channel=channel,
+        exchange=rheed_exchange,
+        control_routing_key="live_image_ctrl",
+        publish_routing_key="live_image",
+        server_name="live_image"
+    )
 
     camera.daemon = True
     camera.start()
@@ -170,13 +207,13 @@ async def _main(args):
     live_video_compressor.daemon = True
     live_video_compressor.start()
 
-    print("image and video started")
+    logging.info("image and video started")
     await image_mq.start()
-    # await live_image_mq.start()
+    await live_image_mq.start()
     await live_video_mq.start()
     await live_video_history_mq.start()
 
-    print("message queue started")
+    logging.info("message queue started")
     await asyncio.Future()
     # await asyncio.gather(image_mq_task, video_mq_task, video_history_mq_task)
 
@@ -201,10 +238,10 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-                        prog= 'Detection Node',
-                        description= '...',
-                        epilog= '...')
-    parser.add_argument("--host", type= str, default= "localhost")
-    args= parser.parse_args()
+        prog="Detection Node", description="...", epilog="..."
+    )
+    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--src", type=str, default="pylon", help="Could be [pylon, webcam, or test]")    
+    args = parser.parse_args()
 
     asyncio.run(_main(args))
