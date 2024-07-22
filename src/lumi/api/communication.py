@@ -13,8 +13,9 @@ from collections.abc import Callable, Awaitable
 # from lumi.base.message_queue import BasicStreamClient, BasicClient
 
 from ..rheed.communitation import LiveVideoFragmentsMessageQueueClient, CameraMessageQueueClient, VideoFragmentsMessageQueueClient
-from ..detection.communication import LiveDetectionClient
+from ..detection.communication import LiveDetectionMessageQueueClient
 from ..pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogMessageQueueClient
+from ..storage.communication import StorageMessageQueueClient
 
 # class LiveFragmentMessageQueueClient(BasicStreamClient):
 #     pass
