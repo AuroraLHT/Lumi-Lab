@@ -39,6 +39,14 @@
 
   </head>
   <body>
+    <label for="video_src">Choose the video src:</label>
+
+    <select id="video_src">
+      <option value="">""</option>
+      <option value="localhost:8000">localhost</option>
+      <option value="10.229.54.118:8000">lab</option>
+    </select>
+
     <br/>
     <br/>
     <br/>
@@ -110,9 +118,21 @@
             newRect.setAttribute('data-original-stroke', 'purple');
             svg.appendChild(newRect);
         }
-        const host = "10.229.54.118:8000"
+        // const host = "10.229.54.118:8000"
         // const host = "127.0.0.1:8000"
 
+        function waitForSelection() {
+            return new Promise((resolve) => {
+                document.getElementById("video_src").addEventListener("change", function() {
+                    var selectedValue = this.value;
+                    resolve(selectedValue);
+                }, { once: true });
+            });
+        }
+        await waitForSelection();
+
+        const get_host = () => { var element = document.getElementById("video_src"); console.log(element.value); return element.value };
+        var host = get_host();
         const videoElement = document.getElementById("video");
         const buttonElement = document.getElementById("button-close");
         const msgElement = document.getElementById("button-msg");
