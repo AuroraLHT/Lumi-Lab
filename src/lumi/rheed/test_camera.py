@@ -67,8 +67,16 @@ class TestCamera(threading.Thread):
             return None, None
 
     def run(self):
-
+        prev_time = time.time()
+        spf = 1 / self.config.fps
         while True:
+            curr_time = time.time()
+            if curr_time - prev_time < spf: 
+                time.sleep(self.config.idle_time)
+                continue
+            else:
+                prev_time = curr_time
+
             stop_flag = self._stop_event.wait(self.config.idle_time)
             if stop_flag : break
 
