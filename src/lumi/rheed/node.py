@@ -26,7 +26,8 @@ import logging
 
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO)
+FORMAT = '%(asctime)s %(levelname)s:%(message)s'
+logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 
 def add_time_stamp(frame, frame_header=None):
