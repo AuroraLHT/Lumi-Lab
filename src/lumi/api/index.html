@@ -78,7 +78,22 @@
       let tmp = null;
       (async () => {  
         // helper for adding rect
+        function correct_bbox(bbox_xyxy, crop_setup){
+          if (crop_setup === null) {
+              crop_setup = {
+                "sx" :0, "sy": 0,
+              };
+            }
+            bbox_xyxy = [...bbox_xyxy];
+            bbox_xyxy[0] = bbox_xyxy[0] + crop_setup['sy'];
+            bbox_xyxy[1] = bbox_xyxy[1] + crop_setup['sx'];
+            bbox_xyxy[2] = bbox_xyxy[2] + crop_setup['sy'];
+            bbox_xyxy[3] = bbox_xyxy[3] + crop_setup['sx'];
+            return bbox_xyxy;
+        }
+
         function updateRect(rect, bbox_xyxy){
+
             x = bbox_xyxy[0];
             y = bbox_xyxy[1];
             w = bbox_xyxy[2] - bbox_xyxy[0];
@@ -100,10 +115,10 @@
         }
 
         function addRect(id, svg, bbox_xyxy) {
-            x = bbox_xyxy[0]
-            y = bbox_xyxy[1]
-            w = bbox_xyxy[2] - bbox_xyxy[0]
-            h = bbox_xyxy[3] - bbox_xyxy[1]
+            x = bbox_xyxy[0];
+            y = bbox_xyxy[1];
+            w = bbox_xyxy[2] - bbox_xyxy[0];
+            h = bbox_xyxy[3] - bbox_xyxy[1];
 
             const newRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
             newRect.setAttribute('id', `box${id}`);
@@ -151,6 +166,7 @@
         websocket.binaryType = "arraybuffer";
 
         const websocket_ai = new WebSocket(`ws://${host}/RHEED/detection/live`);
+        websocket_ai.binaryType = "arraybuffer";
 
         const websocket_log = new WebSocket(`ws://${host}/chamber/log/live`);
 
@@ -272,15 +288,34 @@
         };
 
         websocket_ai.onmessage = (event) => {
-            const response = JSON.parse(event.data);
-            // console.log(response, typeof(response));
-            var bboxes = response['bboxes'];
+            // const response = JSON.parse(event.data);
+
+            const arrayBuffer = event.data;
+
+            // Read the header length (4 bytes)
+            const headerLength = new DataView(arrayBuffer, 0, 4).getUint32(0);
+
+            // Read the header JSON
+            const headerJson = new TextDecoder().decode(arrayBuffer.slice(4, 4 + headerLength));
+            const header = JSON.parse(headerJson);
+
+            const payloadJson = new TextDecoder().decode(arrayBuffer.slice(4 + headerLength));
+            const payload = JSON.parse(payloadJson);            
+            
+            console.log(header, typeof(header));
+            console.log(payload, typeof(payload));
+
+            var bboxes = payload['bboxes'];
 
             var rects = document.getElementsByClassName("bbox");
+            let crop_setup = ('crop_setup' in header)? header['crop_setup'] : null
+
             for (let i = 0; i < rects.length; i++){
                 let rect = rects[i];
                 if (rect.id.substring(3) in bboxes){
-                    updateRect(rect, bboxes[i]['bbox']);
+                    let bbox = bboxes[i]['bbox'];
+                    bbox = correct_bbox(bbox, crop_setup)
+                    updateRect(rect, bbox);
                 }else{
                     removeRect(rect);
                 };                
@@ -291,7 +326,9 @@
             for (let i = 0; i < bboxes_keys.length; i++){
                 let key = bboxes_keys[i];
                 if (key >= rects.length) {
-                    addRect(key, detectionSvgElement, bboxes[key]['bbox']);
+                    let bbox = bboxes[key]['bbox']
+                    bbox = correct_bbox(bbox, crop_setup)
+                    addRect(key, detectionSvgElement, bbox);
                 }
             }
 
