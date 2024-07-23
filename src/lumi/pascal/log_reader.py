@@ -266,7 +266,8 @@ class TestLogReader(threading.Thread):
                 with self._reader_lock:
                     # st = time.time()
                     while True:
-                        row = simulation_rows[self._csv_row_readed % len(simulation_rows)]
+                        # copy the dict
+                        row = dict( **simulation_rows[self._csv_row_readed % len(simulation_rows)] )
                         row = process_row(row)
 
                         content = (row, {})
