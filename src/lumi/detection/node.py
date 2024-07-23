@@ -1,9 +1,9 @@
-from .communication import (
+from lumi.detection.communication import (
     DetectionMessageQueueServer,
     LiveDetectionMessageQueueServer,
     CameraMessageQueueClient,
 )
-from .model import DetectorServer, DetectorConfig
+from lumi.detection.model import DetectorServer, DetectorConfig
 
 import time
 import datetime
@@ -15,7 +15,8 @@ import cv2
 import aio_pika
 from aio_pika import ExchangeType, connect
 
-logging.basicConfig(level=logging.INFO)
+FORMAT = '%(asctime)s %(levelname)s:%(message)s'
+logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 async def main(args):
     # Perform connection
@@ -39,28 +40,36 @@ async def main(args):
     detector = DetectorServer(config=config, name="detection")
     detector.start()
 
-    image_client = CameraMessageQueueClient(
-        channel=channel, exchange=rheed_exchange, routing_key="image"
+    camera_client = CameraMessageQueueClient(
+        channel=channel, 
+        exchange=rheed_exchange, 
+        routing_key="image",
+        control_routing_key="image_ctrl",
+        client_name="image",
+        time_out=10,
     )
 
-    await image_client.start()
+    await camera_client.start()
 
     detection_mq = DetectionMessageQueueServer(
         detector=detector,
+        camera_client= camera_client,
         channel=channel,
         exchange=rheed_exchange,
         routing_key="detection",
+        control_routing_key="detection_ctrl",
+        server_name="detection",
     )
     live_detection_mq = LiveDetectionMessageQueueServer(
         detector=detector,
-        image_client=image_client,
+        camera_client=camera_client,
         channel=channel,
         exchange=rheed_exchange,
-        routing_key="",
-        control_routing_key="live_detection_control",
+        control_routing_key="live_detection_ctrl",
         publish_routing_key="live_detection",
+        server_name="live detection"
     )
-    await detection_mq.start()
+    # await detection_mq.start()
     await live_detection_mq.start()
 
     print("message queue started")
