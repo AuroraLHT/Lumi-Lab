@@ -10,27 +10,48 @@ from aio_pika.abc import (
     AbstractChannel, AbstractConnection, AbstractExchange, AbstractQueue, AbstractIncomingMessage, AbstractQueue,
 )
 
+from dataclasses import dataclass
+
 from typing import Callable, List, Dict, Union, Optional, ByteString, Any, Awaitable
 
-MessageQueueResponse = namedtuple("MessageQueueResponse", ["content", "header"], defaults=[None, None])
+# MessageQueueResponse = namedtuple("MessageQueueResponse", ["content", "header"], defaults=[None, None])
+@dataclass
+class MessageQueueResponse:
+    content : Union[bytes, Dict, str]
+    header : Dict
+
+    def __post_init__(self):
+        if isinstance(self.content, dict):
+            self.content = json.dumps(self.content).encode()
+        elif isinstance(self.content, str):
+            self.content = self.content.encode()
+
 
 class BaseControlMixin:
-    control_callbacks : Dict[ str, Callable[ [ByteString, Dict], MessageQueueResponse ] ]
+    _control_callbacks : Dict[ str, Callable[ [ByteString, Dict], MessageQueueResponse ] ] = {}
 
-    def reset_control_callbacks(self):
-        self.control_callbacks = dict()
+    # def reset_control_callbacks(self):
+    #     self.control_callbacks = dict()
 
-    def register_callback(self, name:str, callback:Callable[ [ByteString, Dict], MessageQueueResponse ]):
-        self.control_callbacks[name] = callback
-
+    @classmethod
+    def register_control_callback(cls, name:str):
+        def _register_callback(callback:Callable[ [ByteString, Dict], MessageQueueResponse ]):
+            cls._control_callbacks[name] = callback
+            return callback
+        return _register_callback
+    
+    def control_callback(self, name, *args, **kargs):
+        return self._control_callbacks[name](self, *args, **kargs)
+    
     async def on_control_request(self, message : AbstractIncomingMessage):
         async with message.process():
             body, headers = message.body, message.headers
             ctrl = headers["type"]
             logging.info(f"{self.server_type} <{self.server_name}> on control message '{ctrl}'.")
 
-            if ctrl in self.control_callbacks:
-                body, headers = self.control_callbacks[ctrl](body, headers)
+            if ctrl in self._control_callbacks:
+                # body, headers = self.control_callbacks[ctrl](body, headers)
+                body, headers = self.control_callback(ctrl, body, headers)
 
             else:
                 logging.info(f"{self.server_type} <{self.server_name}> received an unknown control text '{ctrl}'")
@@ -45,7 +66,7 @@ class BaseControlMixin:
                 ),
                 routing_key=message.reply_to
             )
-            logging.info(f"{self.server_type} <{self.server_name}> control response delivered")
+            logging.info(f"{self.server_type} <{self.server_name}> control response delivered to {message.reply_to}")
 
             # the example didn't ack back if process() method is used
             # await message.ask()
@@ -104,8 +125,12 @@ class BasicClient:
         if self.callback_queue is not None and self._callback_queue_consume_tag is not None:
             await self.callback_queue.cancel(self._callback_queue_consume_tag)
             await self.callback_queue.delete()
-        self.reset_queues()
 
+        if self.control_callback_queue is not None and self._control_callback_queue_consume_tag is not None:
+            await self.control_callback_queue.cancel(self._control_callback_queue_consume_tag)
+            await self.control_callback_queue.delete()
+
+        self.reset_queues()
 
     async def on_response(self, message: AbstractIncomingMessage) -> None:
         if message.correlation_id is None:
@@ -275,15 +300,14 @@ class BasicStreamClient:
         self._control_callback_queue_consume_tag = None
 
     async def create_queues(self):
+        # this queue is for listening to stream
         self.queue = await self.channel.declare_queue(exclusive=True)
         await self.queue.bind(self.exchange, routing_key=self.routing_key)
-        self.futures = {}
         logging.info(f"{self.client_type} <{self.client_name}> creates queue: {self.queue.name}")
 
         self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
         self.control_futures = {}
         logging.info(f"{self.client_type} <{self.client_name}> creates control callback queue: {self.control_callback_queue.name}")
-
 
     async def start(self, start_consume_loop=True):
         await self.create_queues()
@@ -293,6 +317,7 @@ class BasicStreamClient:
 
             try:
                 self._consumer_tag = await self.queue.consume(self.on_response, no_ack=True)
+                self._control_callback_consumer_tag = await self.control_callback_queue.consume(self.on_control_response, no_ack=True)
             except Exception as e:
                 print(e)
         logging.info(f"{self.client_type} <{self.client_name}> starts live streaming")
@@ -303,8 +328,32 @@ class BasicStreamClient:
             await self.queue.cancel(self._consumer_tag, )
             await self.queue.delete()
 
-            self.reset_queues()
+            await self.control_callback_queue.cancel(self._control_callback_consumer_tag, )
+            await self.control_callback_queue.delete()
 
+            self.reset_queues()
+    
+    async def on_response(self, message: AbstractIncomingMessage) -> None:
+        logging.debug(f"{self.client_type} <{self.client_name}> on live response")
+
+        #TODO : add conditon for filtering bad message
+        condition = False
+        if condition:
+            logging.info(f"{self.client_type} <{self.client_name}> received a bad message {message!r}")
+            return
+
+        succ_flag = await self.on_response_callback( message )
+        if not succ_flag:
+            await self.stop()
+
+    async def on_control_response(self, message: AbstractIncomingMessage) -> None:
+        if message.correlation_id is None:
+            logging.info(f"{self.client_type} <{self.client_name}> receive bad control message {message!r}")
+            return
+        
+        logging.info(f"{self.client_type} <{self.client_name}> receives an control response ({message.correlation_id})")
+        future: asyncio.Future = self.control_futures.pop(message.correlation_id)
+        future.set_result( (message.body, message.headers) )
 
     async def request_control(self, body, headers):
         correlation_id = str(uuid.uuid4())
@@ -313,7 +362,7 @@ class BasicStreamClient:
 
         logging.info(f"{self.client_type} <{self.client_name}> request an control item ({correlation_id})")
 
-        self.futures[correlation_id] = future
+        self.control_futures[correlation_id] = future
 
         await self.exchange.publish(
             Message(
@@ -331,7 +380,6 @@ class BasicStreamClient:
         except asyncio.TimeoutError:
             logging.info(f"{self.client_type} <{self.client_name}> requests control times out")
             return self.empty_response
-
 
     async def start_streaming(self):
         body, headers = await self.request_control(
@@ -364,22 +412,8 @@ class BasicStreamClient:
         )
         return json.loads(body)
 
-
     async def get(self):
         return await self.queue.get(no_ack=True)
-    
-    async def on_response(self, message: AbstractIncomingMessage) -> None:
-        logging.debug(f"{self.client_type} <{self.client_name}> on live response")
-
-        #TODO : add conditon for filtering bad message
-        condition = False
-        if condition:
-            logging.info(f"{self.client_type} <{self.client_name}> received a bad message {message!r}")
-            return
-
-        succ_flag = await self.on_response_callback( message )
-        if not succ_flag:
-            await self.stop()
 
 
 class BasicStreamServer(BaseControlMixin):
@@ -418,23 +452,15 @@ class BasicStreamServer(BaseControlMixin):
         }
 
         self.reset_queues()
-        self.reset_control_callbacks()
-        self.register_basic_control_callback()
+        # self.reset_control_callbacks()
+        # self.register_basic_control_callback()
 
     @property
     def succ_ctrl_response(self):
         return "".encode(), {"succ":True}
-
+    
     def set_start_flag(self, state):
         self.start_flag = state
-        return self.succ_ctrl_response
-
-    def register_basic_control_callback(self):
-        self.register_callback("start", callback=( lambda body, headers: self.set_start_flag(True) ) )
-        self.register_callback("stop", callback=( lambda body, headers: self.set_start_flag(False) ) )
-        self.register_callback("cancel", callback=( lambda body, headers: self.cancel() ) )
-        self.register_callback("config", callback=( lambda body, headers: self.config_server(json.loads(body)) ) )
-        self.register_callback("status", callback=( lambda body, headers: self.server_status() ) )
 
     def reset_queues(self):
         self.control_queue = None
@@ -478,10 +504,23 @@ class BasicStreamServer(BaseControlMixin):
         # the example didn't ack back if process() method is used
         # await message.ask()
 
-    def config_server(self, config):
+    @BaseControlMixin.register_control_callback("start")
+    def start_streaming(self, body, headers):
+        self.set_start_flag(True)
+        return self.succ_ctrl_response
+
+    @BaseControlMixin.register_control_callback("stop")
+    def end_streaming(self, body, headers):
+        self.set_start_flag(False)
+        return self.succ_ctrl_response
+
+
+    @BaseControlMixin.register_control_callback("config")
+    def config_server(self, body, headers):
         raise NotImplementedError
 
-    def server_status(self):
+    @BaseControlMixin.register_control_callback("status")
+    def server_status(self, body, headers):
         raise NotImplementedError
 
     async def start(self):
@@ -496,6 +535,7 @@ class BasicStreamServer(BaseControlMixin):
             print(e)
         logging.info(f"{self.server_type} <{self.server_name}> starts up")
 
+    @BaseControlMixin.register_control_callback("cancel")
     async def cancel(self):
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
@@ -503,6 +543,14 @@ class BasicStreamServer(BaseControlMixin):
         self.reset_queues()
         self.state["is_running"] = False
         return self.succ_ctrl_response()
+    
+    # def register_basic_control_callback(self):
+    #     self.register_callback("start", callback=( lambda body, headers: self.set_start_flag(True) ) )
+    #     self.register_callback("stop", callback=( lambda body, headers: self.set_start_flag(False) ) )
+    #     self.register_callback("cancel", callback=( lambda body, headers: self.cancel() ) )
+    #     self.register_callback("config", callback=( lambda body, headers: self.config_server(json.loads(body)) ) )
+    #     self.register_callback("status", callback=( lambda body, headers: self.server_status() ) )
+
 
 class BasicServer(BaseControlMixin):
     channel : AbstractChannel
@@ -526,8 +574,8 @@ class BasicServer(BaseControlMixin):
 
         self.server_name = server_name
         self.reset_queues()
-        self.reset_control_callbacks()
-        self.register_basic_control_callback()
+        # self.reset_control_callbacks()
+        # self.register_basic_control_callback()
 
         self.state = {
             "is_running" : False,
@@ -540,10 +588,10 @@ class BasicServer(BaseControlMixin):
         self.control_queue = None
         self._control_consume_tag = None
 
-    def register_basic_control_callback(self):
-        self.register_callback("cancel", callback=( lambda body, headers: self.cancel() ) )
-        self.register_callback("config", callback=( lambda body, headers: self.config_server(json.loads(body)) ) )
-        self.register_callback("status", callback=( lambda body, headers: self.server_status() ) )
+    # def register_basic_control_callback(self):
+    #     self.register_callback("cancel", callback=( lambda body, headers: self.cancel() ) )
+    #     self.register_callback("config", callback=( lambda body, headers: self.config_server(json.loads(body)) ) )
+    #     self.register_callback("status", callback=( lambda body, headers: self.server_status() ) )
 
     async def create_queues(self):
         logging.info(f"{self.server_type} <{self.server_name}> creates temporary queue")
@@ -574,15 +622,17 @@ class BasicServer(BaseControlMixin):
                 ),
                 routing_key=message.reply_to
             )
-            logging.info(f"{self.server_type} <{self.server_name}> content delivered")
+            logging.info(f"{self.server_type} <{self.server_name}> content delivered to {message.reply_to}")
 
             # the example didn't ack back if process() method is used
             # await message.ask()
 
-    def config_server(self, config):
+    @BaseControlMixin.register_control_callback("config")
+    def config_server(self, body, headers):
         raise NotImplementedError
 
-    def server_status(self,):
+    @BaseControlMixin.register_control_callback("status")
+    def server_status(self, body, headers):
         raise NotImplementedError
 
     async def start(self):
@@ -597,6 +647,7 @@ class BasicServer(BaseControlMixin):
 
         logging.info(f"MQ server {self.server_name} starts up")
 
+    @BaseControlMixin.register_control_callback("cancel")
     async def cancel(self):
         if self.queue is not None and self._consume_tag is not None:
             await self.queue.cancel(self._consume_tag)
