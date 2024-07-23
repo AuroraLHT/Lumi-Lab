@@ -15,7 +15,7 @@ import asyncio
 
 import queue
 from .log_reader import LogReader
-from ..base.message_queue import BasicServer, BasicStreamServer, BasicClient, BasicStreamClient
+from ..base.message_queue import BasicServer, BasicStreamServer, BasicClient, BasicStreamClient, MessageQueueResponse, BaseControlMixin
 
 from typing import Callable, List, Dict, Any
 
@@ -43,7 +43,8 @@ class ChamberLogMessageQueueServer(BasicServer):
         # logging.info(f"[x] Log processing time {et-st} sec")
         return body, headers
 
-    async def server_status(self):
+    @BaseControlMixin.register_control_callback("status")
+    async def server_status(self, body, headers):
         """
             We temporary get the key from live 
         """
@@ -51,7 +52,7 @@ class ChamberLogMessageQueueServer(BasicServer):
         status = {
             "entries" : self.log_reader._csv_header
         }
-        return status
+        return MessageQueueResponse(status, {"type":"status"})
 
 class ChamberLogMessageQueueClient(BasicClient):
     async def request(self):
