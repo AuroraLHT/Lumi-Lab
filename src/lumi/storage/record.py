@@ -35,11 +35,15 @@ class Recorder:
     NAME_FRAME_DS = "frame"
     NAME_FRAME_META_DS = "frame_meta"
     NAME_PATTERN_DS = "pattern"
-    NAME_PATTERN_META_DS = "pattern_meta"
     NAME_CLASSIFICATION_DS = "classification"
     NAME_DETECTION_DS = "detection"
     NAME_INSTANCE_SEGMENTATION_DS = "instance_segmentation"
     NAME_NUM_DETECTION_DS = "num_detection"
+
+    NAME_TRACK_DS = "tracking"
+    NAME_NUM_TRACK_DS = "num_tracking"
+
+    NAME_DETECTION_META_DS = "detection_meta"
 
     RESIZE_STEP = 1000
     
@@ -52,6 +56,10 @@ class Recorder:
 
     def open_h5(self, root_folder, project_name):
         self.h5f = h5py.File( root_folder/ f"{project_name}.h5py", "a")
+
+    def close_h5(self):
+        self.h5f.flush()
+        self.h5f.close()
 
     def create_dataset(self, ):
 
@@ -150,6 +158,26 @@ class Recorder:
             )
             num_detection_dataset.attrs['size'] = 0
 
+
+            num_tracking_dataset = self.h5f.create_dataset(
+                self.NAME_NUM_TRACK_DS, 
+                (self.config.initial_size,), 
+                maxshape=(None,), 
+                chunks=True
+            )
+            num_tracking_dataset.attrs['size'] = 0
+
+
+            n_init_tracking = 2
+            tracking_dataset = self.h5f.create_dataset(
+                self.NAME_TRACK_DS, 
+                (self.config.initial_size, n_init_tracking), 
+                maxshape=(None, None), 
+                chunks=True
+            )
+            tracking_dataset.attrs['size'] = 0
+
+
     # this is the log part
     @property
     def ds_log(self):
@@ -170,8 +198,8 @@ class Recorder:
         return self.h5f[self.NAME_PATTERN_DS]
 
     @property
-    def ds_pattern_meta(self):
-        return self.h5f[self.NAME_PATTERN_META_DS]
+    def ds_detection_meta(self):
+        return self.h5f[self.NAME_DETECTION_META_DS]
 
     @property
     def ds_classification(self):
@@ -189,7 +217,21 @@ class Recorder:
     def ds_num_detection(self):
         return self.h5f[self.NAME_NUM_DETECTION_DS]
 
-    def save_log(self, chamber_log, idx=None, resize_step=None):
+    @property
+    def ds_num_tracking(self):
+        return self.h5f[self.NAME_NUM_TRACK_DS]
+
+    @property
+    def ds_tracking(self):
+        return self.h5f[self.NAME_TRACK_DS]
+
+
+    def save_log(
+            self, 
+            chamber_log, 
+            idx=None, 
+            resize_step=None
+        ):
         self.check_save(self.config.save_log, flag_name="save_log")
 
         if resize_step is None: resize_step = self.RESIZE_STEP
@@ -201,7 +243,13 @@ class Recorder:
         if _idx is None: self.ds_log.attrs['size'] += 1
 
 
-    def save_frame(self, frame, frame_headers, idx=None, resize_step=None):
+    def save_frame(
+            self, 
+            frame, 
+            frame_headers, 
+            idx=None, 
+            resize_step=None
+        ):
         self.check_save(self.save_frame, "save_frame")
 
         if resize_step is None: resize_step = self.RESIZE_STEP
@@ -224,7 +272,9 @@ class Recorder:
         bboxes,
         labels,
         scores,
-        cls_result, 
+        cls_result,
+        tracking,
+        detection_meta,        
         idx,
         resize_step
     ):
@@ -238,32 +288,47 @@ class Recorder:
         _idx = self.ds_pattern.attrs['size'] if idx is None else idx
 
         num_detection = len(masks)
-        resize_if_over(idx, self.ds_num_detection, resize_step, axis=0)
-        self.ds_num_detection[idx] = num_detection
-        
-        resize_if_over(idx, self.ds_pattern, resize_step, axis=0)
-        self.ds_pattern[idx] = pattern
-
-        resize_if_over(idx, self.ds_classification, resize_step, axis=0)
-        self.ds_classification[idx] = cls_result.detach().cpu()[0]
-
-        resize_if_over(idx, self.ds_instance_segmentation, resize_step, axis=0)
+        num_tracking = len(tracking)
+        # num detection
+        resize_if_over(_idx, self.ds_num_detection, resize_step, axis=0)
+        self.ds_num_detection[_idx] = num_detection
+        # pattern
+        resize_if_over(_idx, self.ds_pattern, resize_step, axis=0)
+        self.ds_pattern[_idx] = pattern
+        # classification
+        resize_if_over(_idx, self.ds_classification, resize_step, axis=0)
+        self.ds_classification[_idx] = cls_result.detach().cpu()[0]
+        # instance segmentation
+        resize_if_over(_idx, self.ds_instance_segmentation, resize_step, axis=0)
         resize_if_over(num_detection, self.ds_instance_segmentation, resize_absolute=num_detection, axis=1 )
-        self.ds_instance_segmentation[idx, :len(masks) ] = masks
-
-        resize_if_over(idx, self.ds_detection, resize_step, axis=0)
+        self.ds_instance_segmentation[_idx, :len(masks) ] = masks
+        # detection
+        resize_if_over(_idx, self.ds_detection, resize_step, axis=0)
         resize_if_over(num_detection, self.ds_detection, resize_absolute=num_detection, axis=1 )
 
         detections = np.concatenate( (bboxes, np.stack( (labels, scores), axis=1)), axis=1 )
         
-        self.ds_detection[idx, :len(detections) ] = detections
+        self.ds_detection[_idx, :len(detections) ] = detections
 
-        if _idx is None: self.ds_pattern.attrs['size'] += 1
-        if _idx is None: self.ds_pattern_meta.attrs['size'] += 1
+        resize_if_over(_idx, self.ds_frame_meta, resize_step=resize_step)
+        self.ds_detection_meta[_idx] = [ str(detection_meta[k]) for k in self.ds_frame_meta.attrs['columns'] ]
 
-        if _idx is None: self.ds_classification.attrs['size'] += 1
-        if _idx is None: self.ds_instance_segmentation.attrs['size'] += 1
-        if _idx is None: self.ds_detection.attrs['size'] += 1
+        # tracking
+        resize_if_over(_idx, self.ds_num_tracking, resize_step, axis=0)
+        self.ds_num_tracking[_idx] = num_tracking
+
+        resize_if_over(_idx, self.ds_tracking, resize_step, axis=0)
+        resize_if_over(num_tracking, self.ds_tracking, resize_absolute=num_tracking, axis=1 )
+        self.ds_tracking[_idx, :len(tracking) ] = tracking
+
+        if idx is None: self.ds_pattern.attrs['size'] += 1
+        if idx is None: self.ds_detection_meta.attrs['size'] += 1
+        if idx is None: self.ds_classification.attrs['size'] += 1
+        if idx is None: self.ds_instance_segmentation.attrs['size'] += 1
+        if idx is None: self.ds_detection.attrs['size'] += 1
+
+        if idx is None: self.ds_tracking.attrs['size'] += 1
+        if idx is None: self.ds_num_tracking.attrs['size'] += 1
 
 
 class RecordAnalyzer:
