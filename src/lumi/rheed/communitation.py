@@ -8,6 +8,7 @@ from aio_pika import Message, Channel, Exchange
 from aio_pika.abc import (
     AbstractChannel, AbstractExchange,  AbstractConnection, AbstractIncomingMessage, AbstractQueue,
 )
+
 import numpy as np
 import datetime
 import struct
@@ -15,13 +16,15 @@ import time
 import argparse
 import logging
 
-from .video_stream import VideoCompressor, VideoRecorder
 import json
 
 from ..utils.image import encode_img
-from ..base.message_queue import BasicServer, BasicStreamServer, BasicStreamClient, BasicClient
-from .pylon_camera import PylonCamera
-from .web_camera import WebCamera
+from ..base.message_queue import BasicServer, BasicStreamServer, BasicStreamClient, BasicClient, MessageQueueResponse, BaseControlMixin
+
+# import lumi
+# from .video_stream import VideoCompressor, VideoRecorder
+# from .pylon_camera import PylonCamera
+# from .web_camera import WebCamera
 
 import queue
 
@@ -38,11 +41,10 @@ from typing import Union, List, Dict, Any, Callable, Awaitable
 #     return body
 
 class CameraMessageQueueServer(BasicServer):
-    camera : Union[PylonCamera, WebCamera]
+    camera : Union["lumi.rheed.pylon_camera.PylonCamera", "lumi.rheed.pylon_camera.PylonCamera"]
 
     def __init__(self, camera, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str, control_routing_key:str, server_name:str):
         super().__init__(channel=channel, exchange=exchange, control_routing_key=control_routing_key, routing_key=routing_key, server_name=server_name)
-
         self.camera = camera
 
     async def on_message(self, message: AbstractIncomingMessage):
@@ -51,8 +53,8 @@ class CameraMessageQueueServer(BasicServer):
 
         return body, headers
     
-
-    async def server_status(self):
+    @BaseControlMixin.register_control_callback("status")
+    async def server_status(self, body, headers):
         """
             TODO: read all the camera adjustable configuation
         """
@@ -60,7 +62,7 @@ class CameraMessageQueueServer(BasicServer):
             "frame_dims" : self.camera.frame_dims,
             "frame_metas" : self.camera.frame_metas,
         }
-        return json.dumps(status).encode(), {"type":"status"}
+        return MessageQueueResponse(status, {"type":"status"})
 
 class CameraMessageQueueClient(BasicClient):
     async def request(self):
@@ -127,7 +129,7 @@ class CameraMessageQueueClient(BasicClient):
 #         #             logging.exception("Processing error for message %r", message)
 
 class LiveCameraMessageQueueServer(BasicStreamServer):
-    camera : Union[PylonCamera, WebCamera]
+    camera : Union["lumi.rheed.pylon_camera.PylonCamera", "lumi.rheed.pylon_camera.WebCamera"]
     camera_queue : queue.Queue
 
     def __init__(
@@ -266,9 +268,9 @@ class LiveCameraMessageQueueClient(BasicStreamClient):
 #         self._publish_task = asyncio.create_task( self.publish() )
 
 class VideoFragmentsMessageQueueServer(BasicServer):
-    video_compressor : VideoCompressor
+    video_compressor : "lumi.rheed.pylon_camera.VideoCompressor"
 
-    def __init__(self, video_compressor:VideoCompressor, channel:AbstractChannel, exchange:AbstractExchange, control_routing_key:str, routing_key:str, server_name:str):
+    def __init__(self, video_compressor:"lumi.rheed.pylon_camera.VideoCompressor", channel:AbstractChannel, exchange:AbstractExchange, control_routing_key:str, routing_key:str, server_name:str):
         super().__init__(channel=channel, exchange=exchange, control_routing_key=control_routing_key, routing_key=routing_key, server_name=server_name)
         self.video_compressor = video_compressor
 
@@ -333,13 +335,13 @@ class VideoFragmentsMessageQueueClient(BasicClient):
         return initial_fragments
 
 # class VideoFragmentsMessageQueue:
-#     video_compressor : VideoCompressor
+#     video_compressor : "VideoCompressor"
 #     channel : AbstractChannel
 #     exchange : AbstractExchange
 #     routing_key : str
 #     queue : AbstractQueue
 
-#     def __init__(self, video_compressor:VideoCompressor, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str):
+#     def __init__(self, video_compressor:"VideoCompressor", channel:AbstractChannel, exchange:AbstractExchange, routing_key:str):
 #         super().__init__()
 #         self.channel = channel
 #         self.exchange = exchange
@@ -402,9 +404,9 @@ class VideoFragmentsMessageQueueClient(BasicClient):
 #         #                 logging.exception("Processing error for message %r", message)
 
 class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
-    video_compressor : VideoCompressor
+    video_compressor : "lumi.rheed.pylon_camera.VideoCompressor"
 
-    def __init__(self, video_compressor:VideoCompressor, channel:AbstractChannel, exchange:AbstractExchange, control_routing_key:str, publish_routing_key:str, server_name:str):
+    def __init__(self, video_compressor:"lumi.rheed.pylon_camera.VideoCompressor", channel:AbstractChannel, exchange:AbstractExchange, control_routing_key:str, publish_routing_key:str, server_name:str):
         super().__init__(
             channel=channel, 
             exchange=exchange, 
@@ -420,14 +422,14 @@ class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
         return fragment, headers
 
 # class VideoMessageQueue:
-#     video_compressor : VideoCompressor
+#     video_compressor : "VideoCompressor"
 #     channel : AbstractChannel
 #     exchange : AbstractExchange
 #     routing_key : str
 #     publish_routing_key : str
 #     queue : AbstractQueue
 
-#     def __init__(self, video_compressor:VideoCompressor, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str, publish_routing_key:str):
+#     def __init__(self, video_compressor:"VideoCompressor", channel:AbstractChannel, exchange:AbstractExchange, routing_key:str, publish_routing_key:str):
 #         super().__init__()
 #         self.channel = channel
 #         self.exchange = exchange
@@ -462,13 +464,13 @@ class LiveVideoFragmentsMessageQueueClient(BasicStreamClient):
 
 
 class VideoRecorderMessageQueue:
-    video_recorder : VideoRecorder
+    video_recorder : "lumi.rheed.pylon_camera.VideoRecorder"
     channel : AbstractChannel
     exchange : AbstractExchange
     routing_key : str
     queue : AbstractQueue
 
-    def __init__(self, video_recorder:VideoRecorder, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str):
+    def __init__(self, video_recorder:"lumi.rheed.pylon_camera.VideoRecorder", channel:AbstractChannel, exchange:AbstractExchange, routing_key:str):
         super().__init__()
         self.channel = channel
         self.exchange = exchange
