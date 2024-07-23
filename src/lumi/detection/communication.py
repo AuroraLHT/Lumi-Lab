@@ -12,15 +12,53 @@ from aio_pika.abc import (
 from collections.abc import Callable, Awaitable
 
 import json
-
 # from misc import decode_img
-from ..utils.image import decode_img, encode_img
+from ..utils.image import decode_img, encode_img, encode_mask, decode_mask
 
-from .model import DetectorServer
-from ..base.message_queue import BasicClient, BasicStreamClient, BasicServer, BasicStreamServer
+# import lumi
+# from .model import DetectorServer
+from ..base.message_queue import BasicClient, BasicStreamClient, BasicServer, BasicStreamServer, BaseControlMixin, MessageQueueResponse
 from ..rheed.communitation import CameraMessageQueueClient
 
+import copy
+
 from typing import List, Dict, Any, Union
+
+def encode_detections(detector_output, detector_output_headers):
+    pattern = detector_output["instance_segementation"].rd.pattern
+    img, img_headers = encode_img(pattern, {}, to_base64=True)
+
+    bboxes = copy.deepcopy( detector_output["bboxes"] ) 
+    for k, bbox in bboxes.items():
+        mask, masks_headers = encode_mask(bbox["mask"], {}, to_base64=True)
+
+        bbox["mask"] = {"mask":mask, "mask_headers":masks_headers}
+
+    result = {
+        "pattern" : {"pattern":img, "pattern_headers":img_headers},
+        "bboxes" : bboxes,
+        "classification" : detector_output["classification"],
+        "region2tracks" : detector_output["region2tracks"],
+    }
+        
+    body = json.dumps( result ).encode()
+
+    return body, detector_output_headers
+
+def decode_detections(body, headers):
+    detector_output = json.loads(body)
+    detector_output_headers = headers
+
+    pattern, pattern_headers = decode_img(detector_output["pattern"]["pattern"], detector_output["pattern"]["pattern_headers"], from_base64=True)
+    detector_output["pattern"]["pattern"] = pattern
+    detector_output["pattern"]["pattern_headers"] = pattern_headers
+
+    bboxes = detector_output["bboxes"]
+    for k, bbox in bboxes.items():
+        bbox["mask"], bbox["mask_headers"] = decode_mask(bbox["mask"], bbox["mask_headers"], from_base64=True)
+
+    return detector_output, detector_output_headers
+
 
 # class ImageMessageQueueClient(BasicClient):
 #     async def get(self):
@@ -84,7 +122,7 @@ from typing import List, Dict, Any, Union
 
 # TODO I would like to integrate tracking into this MessageQueue since passing all prediction around the message queue invole compress and decompression
 class LiveDetectionMessageQueueServer(BasicStreamServer):
-    detector : DetectorServer
+    detector : "lumi.detection.model.DetectorServer"
     image_client: CameraMessageQueueClient
     fps : int
 
@@ -114,26 +152,31 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         self.camera_client = camera_client
         self.fps = 0
 
-    async def on_message(self):
-        body, headers = await self.camera_client.get()
+    async def on_streaming(self):
+        body, headers = await self.camera_client.request()
         img, img_header = decode_img(body, headers)
             
         #TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
-        detector_output = self.detector.predict(img, headers)
-        logging.info("Detection Acquired")
+        detector_output, detector_output_headers = self.detector.predict(img)
+        logging.info(f"{self.server_type} <{self.server_name}> detection acquired")
 
-        # print(detector_output)
-        result = {
-            "bboxes" : detector_output["bboxes"],
-            "classification" : detector_output["classification"]
-        }
-        # print(result)
+        # # print(detector_output)
+        # result = {
+        #     "bboxes" : { k : detector_output["bboxes"][k] for k in ["score", "label", "bbox"] },
+        #     "classification" : detector_output["classification"],
+        #     "region2tracks" : detector_output["region2tracks"]
+        # }
+        # # print(result)
             
-        body = json.dumps( result ).encode()
-        # print(body)
-        time_stamp = img_header['time_stamp'] if 'time_stamp' in img_header else ""
-        headers = {"time_stamp":time_stamp}
-
+        # body = json.dumps( result ).encode()
+        # time_stamp = img_header['time_stamp'] if 'time_stamp' in img_header else ""
+        # headers = {"time_stamp":time_stamp}
+        try:
+            body, headers = encode_detections(detector_output=detector_output, detector_output_headers=detector_output_headers)
+        except Exception as e:
+            print(e)
+            raise e
+        logging.info("{self.server_type} <{self.server_name}> detection encoded")
         return body, headers
 
 class LiveDetectionMessageQueueClient(BasicStreamClient):
@@ -256,8 +299,12 @@ class LiveDetectionMessageQueueClient(BasicStreamClient):
 #         await self.queue.cancel(self._consume_tag)
 #         await self._control_consume_tag.cancel(self._control_consume_tag)
 
+
+
+
 class DetectionMessageQueueServer(BasicServer):
-    detector : DetectorServer
+    # detector : DetectorServer
+    detector : "lumi.detection.model.DetectorServer"
     camera_client:CameraMessageQueueClient
 
     def __init__(self, detector, camera_client, channel:AbstractChannel, exchange:AbstractExchange, routing_key:str, control_routing_key:str, server_name:str):
@@ -265,37 +312,37 @@ class DetectionMessageQueueServer(BasicServer):
         self.detector = detector
         self.camera_client = camera_client
 
-    async def on_message(self, message):
+    async def on_message(self, message:AbstractIncomingMessage):
         body, headers = message.body, message.headers
         if len(message.body):
-            body, headers = await self.camera_client.get()
+            body, headers = await self.camera_client.request()
         img, img_header = decode_img(body, headers)
 
-        detector_output = self.detector.predict(img)
-
-        result = {
-            "bboxes" : detector_output["bboxes"],
-            "classification" : detector_output["classification"]
-        }
-            
-        body = json.dumps( result ).encode()
-        # print(body)
-        time_stamp = img_header['time_stamp'] if 'time_stamp' in img_header else ""
-        headers = {"time_stamp":time_stamp}
+        detector_output, detector_output_headers = self.detector.predict(img)
+        body, headers = encode_detections(detector_output=detector_output, detector_output_headers=detector_output_headers)
 
         return body, headers
+    
+    @BaseControlMixin.register_control_callback("status")
+    async def server_status(self, body, headers):
+        status = {
+            "pattern_dim" : self.detector.pattern_dims,
+            "detection_metas" : self.detector.metas,
+            "classifier_classes" : self.detector.aux_detector.classifier_classes,
+        }
+        return MessageQueueResponse(status, {"type":"status"})
 
 class DetectionMessageQueueClient(BasicClient):
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, client_name: str, time_out: float) -> None:
         super().__init__(channel, exchange, routing_key, client_name, time_out)
 
-    async def get(self, image=None, image_headers=None):
+    async def request(self, image=None, image_headers=None):
         logging.info(f"{self.client_name} get detection")
         image_headers = {} if image_headers is not None else image_headers
-        message, headers = encode_img(image, image_headers)
+        body, headers = encode_img(image, image_headers)
         headers.update( { "type":"detection" } )
 
-        return await super().get( message=message, headers=headers )
+        return await super().request( body=body, headers=headers )
 
 
 # class DetectionMessageQueue:
