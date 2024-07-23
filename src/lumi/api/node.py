@@ -6,16 +6,20 @@ from fastapi.responses import HTMLResponse, Response, JSONResponse
 import asyncio
 from aio_pika import Message, connect, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage
+import json
+import struct
 
 import logging
 
+from lumi.api.models import StorageRequest
 from lumi.api.communication import (
     LiveVideoFragmentsMessageQueueClient,
     VideoFragmentsMessageQueueClient,
     CameraMessageQueueClient,
     LiveDetectionMessageQueueClient,
     ChamberLogMessageQueueClient,
-    LiveChamberLogMessageQueueClient
+    LiveChamberLogMessageQueueClient,
+    StorageMessageQueueClient,
 )
 
 
@@ -44,6 +48,7 @@ async def lifespan(app: FastAPI):
     global image_client
     global video_fragment_client
     global log_client
+    global storage_client
 
     # put startup code here
     connection = await connect("amqp://guest:guest@localhost/")
@@ -51,6 +56,7 @@ async def lifespan(app: FastAPI):
 
     exchange_rheed = await channel.declare_exchange("RHEED", type=ExchangeType.DIRECT)
     exchange_chamber = await channel.declare_exchange("chamber", type=ExchangeType.DIRECT)
+    exchange_storage = await channel.declare_exchange("storage", type=ExchangeType.DIRECT)
 
     # image client is for all user that connect to this api node
     image_client = CameraMessageQueueClient(
@@ -67,6 +73,11 @@ async def lifespan(app: FastAPI):
         channel=channel, exchange=exchange_chamber, routing_key="log", control_routing_key="log_ctrl", client_name="Chamber Log", time_out=10
     )
     await log_client.start()
+
+    storage_client = StorageMessageQueueClient(
+        channel=channel, exchange=exchange_storage, routing_key="storage", control_routing_key="storage_ctrl", client_name="Storage", time_out=10
+    )
+    await storage_client.start()
 
     yield
     # put shutdown code here
@@ -118,12 +129,17 @@ async def read_root():
             headers=headers,
         )
 
-@app.get("/storage/start")
-async def start_storage():
-    global log_client
-    content, headers = await log_client.get()
+@app.post("/storage/start")
+async def start_storage(request : StorageRequest):
+    global storage_client
+    body, headers = await storage_client.start_storage(
+        project_name=request.project_name,
+        save_ai=request.save_ai,
+        save_frame=request.save_frame,
+        save_log= request.save_log
+    )
 
-    if content is None:
+    if body is None:
         return Response(
             content=None,
             status_code=500,
@@ -133,19 +149,19 @@ async def start_storage():
     
     else:
         return Response(
-            content=content,
+            content=body,
             status_code=200,
             media_type="application/json",
             headers=headers,
         )
 
 
-@app.get("/storage/end")
+@app.post("/storage/end")
 async def start_storage():
-    global log_client
-    content, headers = await log_client.get()
+    global storage_client
+    body, headers = await storage_client.end_storage()
 
-    if content is None:
+    if body is None:
         return Response(
             content=None,
             status_code=500,
@@ -155,7 +171,7 @@ async def start_storage():
     
     else:
         return Response(
-            content=content,
+            content=body,
             status_code=200,
             media_type="application/json",
             headers=headers,
@@ -265,16 +281,23 @@ async def websocket_endpoint(websocket: WebSocket):
 
         logging.info("end detection on message loop")
 
-    async def send_json(json_text):
+    async def send_payload(payload, header):
         """
         flag for success or not
         """
         # logging.info(f"send json {len(json_text)}")
         try:
+            header_json = json.dumps(header)
+            # Combine header and binary data
+            header_length = struct.pack('>I', len(header_json))
+            data = header_length + header_json.encode('utf-8') + payload            
+            await websocket.send_bytes(data)
             # await websocket.send_json(json_text, mode='text')
-            await websocket.send_text(json_text)
+            # await websocket.send_text(json_text)
         except Exception as e:
+            print(e)
             logging.error(e)
+            raise e
             return False
         return True
         # await asyncio.sleep(0.003)
@@ -287,10 +310,8 @@ async def websocket_endpoint(websocket: WebSocket):
         return : succ or not state flag
         """
         # TODO : add condition for finding other streaming option
-        headers = message.headers
+        return await send_payload(message.body, message.headers)
         # logging.info(f"publish detection with headers {headers}")
-
-        return await send_json(message.body.decode())
 
     # message = await websocket.receive()
     # logging.info(message)
@@ -304,13 +325,13 @@ async def websocket_endpoint(websocket: WebSocket):
         client_name="Live Detection",
         time_out=10
     )
-
+    await live_detection_client.start()
     ws_in_task = asyncio.create_task(on_message(), name = "ws_ai_in")
     # ws_out_task = asyncio.create_task( send_fragment(websocket=websocket ), name="ws_out" )
-    ws_out_task = asyncio.create_task(live_detection_client.start(), name = "ws_ai_out")
+    # ws_out_task = asyncio.create_task(live_detection_client.start(), name = "ws_ai_out")
 
     await ws_in_task
-    await ws_out_task
+    # await ws_out_task
 
     await asyncio.Future()
     logging.info("detection websocket exit")
@@ -373,13 +394,14 @@ async def websocket_endpoint(websocket: WebSocket):
         client_name = "Live Log",
         time_out = 10,
     )
+    await live_log_client.start()
 
     ws_in_task = asyncio.create_task(on_message(), name = "ws_log_in")
     # ws_out_task = asyncio.create_task( send_fragment(websocket=websocket ), name="ws_out" )
-    ws_out_task = asyncio.create_task(live_log_client.start(), name = "ws_log_out")
+    # ws_out_task = asyncio.create_task(, name = "ws_log_out")
 
     await ws_in_task
-    await ws_out_task
+    # await ws_out_task
 
     await asyncio.Future()
     logging.info("log websocket exit")
