@@ -15,14 +15,11 @@ from ..pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogM
 from .record import RecorderConfig, Recorder
 from ..utils.image import decode_img
 
+import logging
+
 #TODO : Move client to where the server is and we would import the client to here.
 # this reduce the redundancy in code.
 
-#TODO : need to move to config
-CONFIG = {
-    "root_folder" : "./storage",
-    "initial_size" : 1000,
-}
 
 class StorageMessageQueueClient(BasicClient):
     def __init__(
@@ -45,7 +42,7 @@ class StorageMessageQueueClient(BasicClient):
             save_log:bool=True
         ):
 
-        await self.request(
+        return await self.request(
             body = ''.encode(),
             headers= { 
                 "type" : "start",
@@ -57,12 +54,17 @@ class StorageMessageQueueClient(BasicClient):
         )
 
     async def end_storage(self):
-        await self.request(
+        return await self.request(
             body = ''.encode(),
             headers= { 
                 "type" : "end",
             }
         )
+
+@dataclass
+class StorageMessageQueueServerConfig:
+    root_folder : str
+    initial_size : int = 1000
 
 
 class StorageMessageQueueServer(BasicServer):
@@ -73,7 +75,9 @@ class StorageMessageQueueServer(BasicServer):
             detector_client : DetectionMessageQueueClient,
             live_camera_client : LiveCameraMessageQueueClient,
             live_detection_client : LiveDetectionMessageQueueClient,
-            live_chamber_client : LiveChamberLogMessageQueueClient,
+            live_log_client : LiveChamberLogMessageQueueClient,
+
+            config : StorageMessageQueueServerConfig,
 
             channel: AbstractChannel, 
             exchange: AbstractExchange, 
@@ -88,7 +92,9 @@ class StorageMessageQueueServer(BasicServer):
         self.detector_client = detector_client
         self.live_camera_client = live_camera_client
         self.live_detection_client = live_detection_client
-        self.live_chamber_client = live_chamber_client
+        self.live_log_client = live_log_client
+
+        self.config = config
 
         self.state["is_storing"] = False
         self.state["is_storing_frame"] = False
@@ -101,29 +107,33 @@ class StorageMessageQueueServer(BasicServer):
         ctrl = headers["type"]
 
         if ctrl == "start":
-            self.create_storages(body, headers)
+            await self.create_storages(body, headers)            
             await self.start_storages(body, headers)
+            logging.info(f"{self.server_type} <{self.server_name}> starts storage")
 
         if ctrl == "end":
             await self.end_storages()
             self.close_storages()
+            logging.info(f"{self.server_type} <{self.server_name}> ends storage")
 
-    def create_storages(self, body, headers):
-        camera_status = self.camera_client.get_status()
-        frame_dim = camera_status["frame_dim"]
+        return "".encode(), {"succ":True}
+
+    async def create_storages(self, body, headers):
+        camera_status = await self.camera_client.get_status()
+        frame_dim = camera_status["frame_dims"]
         frame_metas_columns = camera_status["frame_metas"]
 
-        log_status = self.log_client.get_status()
+        log_status = await self.log_client.get_status()
         log_columns = log_status["entries"]
 
-        detection_status = self.detector_client.get_status()
+        detection_status = await self.detector_client.get_status()
         pattern_dim = detection_status["pattern_dim"]
         pattern_meta_columns = detection_status["detection_metas"]
         classifier_classes = detection_status["classifier_classes"]
 
         self.recorder_config = RecorderConfig(
-            proje14ct_name = headers["project_name"],
-            root_folder = CONFIG["ROOT_FOLDER"],
+            project_name = headers["project_name"],
+            root_folder = self.config.root_folder,
 
             frame_dim = frame_dim,
             frame_meta_columns = frame_metas_columns,
@@ -135,7 +145,7 @@ class StorageMessageQueueServer(BasicServer):
 
             classifier_classes = classifier_classes,
 
-            initial_size = CONFIG["initial_size"],
+            initial_size = self.config.initial_size,
             
             save_frame = headers["save_frame"],
             save_log = headers["save_log"],
@@ -188,8 +198,8 @@ class StorageMessageQueueServer(BasicServer):
             chamber_log = json.loads(body)
             self.recorder.save_log(chamber_log=chamber_log)
 
-        self.live_chamber_client.update_reponse_callback(on_response_callback=on_response_callback)
-        await self.live_chamber_client.start(start_consume_loop=True)
+        self.live_log_client.update_reponse_callback(on_response_callback=on_response_callback)
+        await self.live_log_client.start(start_consume_loop=True)
 
     async def start_ai_storage(self):
         async def on_response_callback(message:AbstractIncomingMessage):
@@ -221,7 +231,7 @@ class StorageMessageQueueServer(BasicServer):
         await self.live_detection_client.start(start_consume_loop=True)
 
     async def end_log_storage(self):
-        await self.live_chamber_client.stop()
+        await self.live_log_client.stop()
 
     async def end_ai_storage(self):
         await self.live_detection_client.stop()
