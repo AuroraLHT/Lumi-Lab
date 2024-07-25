@@ -2,6 +2,8 @@ import h5py
 import numpy as np
 from dataclasses import dataclass
 from typing import Tuple, List, Dict
+from pathlib import Path
+import logging
 
 def resize_if_over(idx, dataset, resize_step=1000, resize_absolute=None, axis=0):
     if idx >= dataset.shape[axis]:
@@ -32,9 +34,13 @@ class RecorderConfig:
 
 class Recorder:
     NAME_LOG_DS = "log"
+   
     NAME_FRAME_DS = "frame"
     NAME_FRAME_META_DS = "frame_meta"
+
     NAME_PATTERN_DS = "pattern"
+    NAME_PATTERN_META_DS = "pattern_meta"
+
     NAME_CLASSIFICATION_DS = "classification"
     NAME_DETECTION_DS = "detection"
     NAME_INSTANCE_SEGMENTATION_DS = "instance_segmentation"
@@ -55,7 +61,8 @@ class Recorder:
         if not save_flag: raise Exception(f"save flag {flag_name} is not enabled")
 
     def open_h5(self, root_folder, project_name):
-        self.h5f = h5py.File( root_folder/ f"{project_name}.h5py", "a")
+        logging.info("Try to open h5py database file at {}".format( (Path(root_folder) / f"{project_name}.h5py").absolute() ) )
+        self.h5f = h5py.File( Path(root_folder) / f"{project_name}.h5py", "a")
 
     def close_h5(self):
         self.h5f.flush()
@@ -69,13 +76,6 @@ class Recorder:
         # self.initial_size = initial_size
 
         if self.config.save_frame:
-            log_dataset = self.h5f.create_dataset(
-                self.NAME_LOG_DS, 
-                (self.config.initial_size, len(self.config.log_columns) ), 
-                maxshape=(None, len(self.config.log_columns) ), 
-                chunks=True, 
-                dtype=h5py.string_dtype(encoding='utf-8', length=None)
-            )
 
             img_h, img_w = self.config.frame_dim
             frame_dataset = self.h5f.create_dataset(
@@ -94,13 +94,20 @@ class Recorder:
                 chunks=True, 
                 dtype=h5py.string_dtype(encoding='utf-8', length=None)
             )
-
-        if self.config.save_log:
-            log_dataset.attrs['columns'] = self.log_columns
-            log_dataset.attrs['size'] = 0
-
             frame_meta_dataset.attrs['columns'] = self.frame_meta_columns
             frame_meta_dataset.attrs['size'] = 0
+
+        if self.config.save_log:
+            log_dataset = self.h5f.create_dataset(
+                self.NAME_LOG_DS, 
+                (self.config.initial_size, len(self.config.log_columns) ), 
+                maxshape=(None, len(self.config.log_columns) ), 
+                chunks=True, 
+                dtype=h5py.string_dtype(encoding='utf-8', length=None)
+            )
+
+            log_dataset.attrs['columns'] = self.config.log_columns
+            log_dataset.attrs['size'] = 0
 
         if self.config.save_ai:
             pattern_h, pattern_w = self.config.pattern_dim
@@ -115,8 +122,8 @@ class Recorder:
 
             pattern_meta_dataset = self.h5f.create_dataset(
                 self.NAME_PATTERN_META_DS, 
-                (self.config.initial_size, len(self.pattern_meta_columns)), 
-                maxshape=(None, len(self.pattern_meta_columns)), 
+                (self.config.initial_size, len(self.config.pattern_meta_columns)), 
+                maxshape=(None, len(self.config.pattern_meta_columns)), 
                 chunks=True
             )
             pattern_meta_dataset.attrs['size'] = 0
