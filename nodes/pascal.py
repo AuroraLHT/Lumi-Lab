@@ -32,7 +32,7 @@ async def main(args):
         log_config = LogReaderConfig(queue_size=10, idle_time=0.01, log_path=args.path)
         log_reader = LogReader(config=log_config, name="log_reader", daemon=True)
     else:
-        log_config = TestLogReaderConfig(queue_size=10, idle_time=0.01, publish_interval=1, log_path=Path(__file__).parent / "assets/chamber_log_test.csv" )
+        log_config = TestLogReaderConfig(queue_size=10, idle_time=0.01, publish_interval=1, log_path=Path(__file__).parent.parent / "src/lumi/pascal/assets/chamber_log_test.csv" )
         log_reader = TestLogReader(config=log_config, name="test_log_reader", daemon=True)
 
     log_reader.start()
