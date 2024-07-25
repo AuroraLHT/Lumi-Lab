@@ -300,7 +300,7 @@ class VideoFragmentsMessageQueueServer(BasicServer):
 
 class VideoFragmentsMessageQueueClient(BasicClient):
 
-    async def request(self, n: int, is_initial:bool) -> int:
+    async def request(self, n: int, is_initial:bool) -> MessageQueueResponse:
         logging.info(f"{self.client_name} get fragment {n} is_initial:{is_initial}")
         if is_initial:
             headers = {
@@ -312,11 +312,13 @@ class VideoFragmentsMessageQueueClient(BasicClient):
             }
         return await super().request(body=str(n).encode(), headers=headers)
 
-    async def get_initial(self,) -> int:
+    async def get_initial(self,) -> List[bytes]:
         logging.info(f"{self.client_name} call get initial")
 
         initial_fragments = None
-        initial_fragment, initial_fragment_header = await self.request(0, is_initial=True) # get the first frame
+        response = await self.request(0, is_initial=True) # get the first frame
+        initial_fragment, initial_fragment_header = response.body, response.headers
+
         logging.info(f"{self.client_name} get first fragment")
 
         size = initial_fragment_header['size']
@@ -326,7 +328,7 @@ class VideoFragmentsMessageQueueClient(BasicClient):
         other_fragments_result = await asyncio.gather( *[ self.request(i, is_initial=True) for i in range(1, size)] )
         logging.info(f"{self.client_name} get rest of the fragments with total length {size}")
         for other_fragment_result in other_fragments_result:
-            fragment, headers = other_fragment_result
+            fragment, headers = other_fragment_result.body, other_fragment_result.headers
             initial_fragments[ headers["index"] ] = fragment
         logging.info(f"{self.client_name} get rest of the fragments with actual total length {len(initial_fragments)}")
 
