@@ -35,6 +35,21 @@
             pointer-events: none;
             display: none;
         }
+
+        #storageForm {
+            display: flex; /* Makes the form a flex container */
+            align-items: center; /* Vertically centers form elements */
+        }
+        #storageForm label {
+            margin-right: 10px; /* Adds space between label and next element */
+        }
+        #storageForm input[type="text"], form textarea, form input[type="checkbox"] {
+            margin-right: 20px; /* Adds space between form fields */
+        }
+        #response {
+            margin-left: 20px; /* Adds space between the form and the response message */
+        }
+
     </style>
 
   </head>
@@ -43,7 +58,7 @@
 
     <select id="video_src">
       <option value="">""</option>
-      <option value="localhost:8000">localhost</option>
+      <option value="127.0.0.1:8000">localhost</option>
       <option value="10.229.54.118:8000">lab</option>
     </select>
 
@@ -72,6 +87,26 @@
     <button id="button-log">Log</button>    
     <button id="button-log-close">Close Log</button>    
 
+    <br>
+    <form id="storageForm">
+        <label for="project_name">Project Name:</label>
+        <input type="text" id="project_name" name="project_name" required><br><br>
+
+        <label for="save_frame">Save Frame:</label>
+        <input type="checkbox" id="save_frame" name="save_frame" value=true><br><br>
+
+        <label for="save_ai">Save AI:</label>
+        <input type="checkbox" id="save_ai" name="save_ai" value=true><br><br>
+
+        <label for="save_log">Save Log:</label>
+        <input type="checkbox" id="save_log" name="save_log" value=true><br><br>
+
+        <button type="submit">Start</button>
+    </form>
+
+    <div id="storage_response"></div>
+
+    <br>
     <pre id="response">Place Holder</pre>
 
     <script>
@@ -245,7 +280,7 @@
             // total_array = []
             if (queue.length > 0 && !sourceBuffer.updating) {
               content = queue.shift();
-              console.log("append", content.byteLength);
+              // console.log("append", content.byteLength);
               sourceBuffer.appendBuffer(content);
             }
             // while (queue.length > 0) {
@@ -302,8 +337,8 @@
             const payloadJson = new TextDecoder().decode(arrayBuffer.slice(4 + headerLength));
             const payload = JSON.parse(payloadJson);            
             
-            console.log(header, typeof(header));
-            console.log(payload, typeof(payload));
+            // console.log(header, typeof(header));
+            // console.log(payload, typeof(payload));
 
             var bboxes = payload['bboxes'];
 
@@ -451,6 +486,38 @@
             rect.setAttribute('data-original-stroke', rect.getAttribute('stroke'));
         });
         
+        // storage form 
+        document.getElementById('storageForm').addEventListener('submit', async function(event) {
+            event.preventDefault(); // Prevent the form from submitting via the browser
+
+            const form = event.target;
+            const formData = new FormData(form);
+
+            const body = {};
+            formData.forEach((value, key) => {
+              body[key] = value;
+            });
+
+            try {
+                const response = await fetch(`http://${host}/storage/start`, { // Replace with your server endpoint
+                    method: 'POST',
+                    // body : formData, // does not work with this with this content type
+                    body: JSON.stringify(body),
+                    headers: {
+                      'Content-Type': 'application/json', // need this to indicate it is a json. pydantic read this field
+                    },
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    document.getElementById('response').innerHTML = '<p>Project submitted successfully!</p>';
+                } else {
+                    document.getElementById('response').innerHTML = '<p>There was an error submitting your project. Please try again.</p>';
+                }
+            } catch (error) {
+                document.getElementById('response').innerHTML = '<p>There was an error submitting your project. Please try again.</p>';
+            }
+      });        
 
 
       })();
