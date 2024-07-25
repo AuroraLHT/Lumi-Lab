@@ -70,7 +70,7 @@ class DetectorConfig:
 @dataclass
 class DetectorState:
     horizontal_center : int
-    pattern_dim : Tuple[int, int]
+    pattern_dims : Tuple[int, int]
     crop_setup : Dict
     db_track : object
     # add more
@@ -127,7 +127,7 @@ class DetectorServer(threading.Thread):
             rd = rd.crop(**self.state.crop_setup)
 
         # update the pattern_dim on the fly
-        self.state.pattern_dim = rd.pattern.shape
+        self.state.pattern_dims = rd.pattern.shape
         
         result, cls_result = self.aux_detector.predict(rd)
         rdinst = RheedInstanceSegmentation.from_mmdet(rd, result, self.aux_detector.model, auto_compute_regions=True)
