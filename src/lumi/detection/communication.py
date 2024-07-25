@@ -55,7 +55,7 @@ def decode_detections(body, headers):
 
     bboxes = detector_output["bboxes"]
     for k, bbox in bboxes.items():
-        bbox["mask"], bbox["mask_headers"] = decode_mask(bbox["mask"], bbox["mask_headers"], from_base64=True)
+        bbox["mask"]["mask"], bbox["mask"]["mask_headers"] = decode_mask(bbox["mask"]["mask"], bbox["mask"]["mask_headers"], from_base64=True)
 
     return detector_output, detector_output_headers
 
@@ -153,24 +153,13 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         self.fps = 0
 
     async def on_streaming(self):
-        body, headers = await self.camera_client.request()
-        img, img_header = decode_img(body, headers)
+        response = await self.camera_client.request()
+        img, img_header = decode_img(response.body, response.headers)
             
         #TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
         detector_output, detector_output_headers = self.detector.predict(img)
         logging.info(f"{self.server_type} <{self.server_name}> detection acquired")
 
-        # # print(detector_output)
-        # result = {
-        #     "bboxes" : { k : detector_output["bboxes"][k] for k in ["score", "label", "bbox"] },
-        #     "classification" : detector_output["classification"],
-        #     "region2tracks" : detector_output["region2tracks"]
-        # }
-        # # print(result)
-            
-        # body = json.dumps( result ).encode()
-        # time_stamp = img_header['time_stamp'] if 'time_stamp' in img_header else ""
-        # headers = {"time_stamp":time_stamp}
         try:
             body, headers = encode_detections(detector_output=detector_output, detector_output_headers=detector_output_headers)
         except Exception as e:
@@ -333,8 +322,8 @@ class DetectionMessageQueueServer(BasicServer):
         return MessageQueueResponse(status, {"type":"status"})
 
 class DetectionMessageQueueClient(BasicClient):
-    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, client_name: str, time_out: float) -> None:
-        super().__init__(channel, exchange, routing_key, client_name, time_out)
+    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, client_name: str, time_out: float) -> None:
+        super().__init__(channel, exchange, routing_key, control_routing_key, client_name, time_out)
 
     async def request(self, image=None, image_headers=None):
         logging.info(f"{self.client_name} get detection")
