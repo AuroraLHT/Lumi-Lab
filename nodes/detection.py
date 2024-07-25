@@ -69,7 +69,7 @@ async def main(args):
         publish_routing_key="live_detection",
         server_name="live detection"
     )
-    # await detection_mq.start()
+    await detection_mq.start()
     await live_detection_mq.start()
 
     print("message queue started")

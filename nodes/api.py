@@ -1,7 +1,7 @@
 from typing import Union
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse, Response, JSONResponse
 import asyncio
 from aio_pika import Message, connect, ExchangeType
@@ -10,6 +10,7 @@ import json
 import struct
 
 import logging
+from pathlib import Path
 
 from lumi.api.models import StorageRequest
 from lumi.api.communication import (
@@ -89,7 +90,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 async def read_root():
-    with open("index.html", "r") as f:
+    with open(Path(__file__).parent.parent/"src/lumi/api/index.html", "r") as f:
         html_content = f.read()
 
     return HTMLResponse(content=html_content, status_code=200)
@@ -131,50 +132,74 @@ async def read_root():
 
 @app.post("/storage/start")
 async def start_storage(request : StorageRequest):
+# async def start_storage(request: Request):
+    # print(await request.body())
+
     global storage_client
-    body, headers = await storage_client.start_storage(
+    # logging.debug(request)
+
+    # raw_body = await request.json()
+    
+    # # Print or log the raw body
+    # print("Raw data received:", raw_body)
+
+    # try:
+    #     # Try to parse the data using your Pydantic model
+    #     request = StorageRequest(**raw_body)
+    # except Exception as e:
+    #     # Handle the case where the data does not match the model
+    #     print("Error parsing data:", e)
+    #     return JSONResponse(
+    #         status_code=400,
+    #         content={"error": "Invalid data", "details": str(e)},
+    #     )
+
+    response = await storage_client.start_storage(
         project_name=request.project_name,
         save_ai=request.save_ai,
         save_frame=request.save_frame,
         save_log= request.save_log
     )
 
-    if body is None:
+    # dirty patch 
+    # headers field need all str
+
+    if response.body is None:
         return Response(
             content=None,
             status_code=500,
-            media_type="application/json",
-            headers={"msg":"fail to acquire log"},
+            media_type="application/octet-stream",
+            headers={"msg":"fail to start the storage process. visit server log for more details"},
         )
     
     else:
         return Response(
-            content=body,
+            content=response.body,
             status_code=200,
-            media_type="application/json",
-            headers=headers,
+            media_type="application/octet-stream",
+            headers= {str(k):str(v) for k, v in response.headers.items()},
         )
 
 
 @app.post("/storage/end")
-async def start_storage():
+async def end_storage():
     global storage_client
-    body, headers = await storage_client.end_storage()
+    response = await storage_client.end_storage()
 
-    if body is None:
+    if response.body is None:
         return Response(
             content=None,
             status_code=500,
-            media_type="application/json",
+            media_type="application/octet-stream",
             headers={"msg":"fail to acquire log"},
         )
     
     else:
         return Response(
-            content=body,
+            content=response.body,
             status_code=200,
-            media_type="application/json",
-            headers=headers,
+            media_type="application/octet-stream",
+            headers= {str(k):str(v) for k, v in response.headers.items()},
         )
 
 
@@ -295,9 +320,9 @@ async def websocket_endpoint(websocket: WebSocket):
             # await websocket.send_json(json_text, mode='text')
             # await websocket.send_text(json_text)
         except Exception as e:
-            print(e)
+            # print(e)
             logging.error(e)
-            raise e
+            # raise e
             return False
         return True
         # await asyncio.sleep(0.003)
