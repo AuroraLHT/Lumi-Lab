@@ -17,7 +17,7 @@ import queue
 from .log_reader import LogReader
 from ..base.message_queue import BasicServer, BasicStreamServer, BasicClient, BasicStreamClient, MessageQueueResponse, BaseControlMixin
 
-from typing import Callable, List, Dict, Any
+from typing import Callable, List, Dict, Any, Awaitable
 
 class ChamberLogMessageQueueServer(BasicServer):
     log_reader : LogReader
@@ -50,7 +50,7 @@ class ChamberLogMessageQueueServer(BasicServer):
         """
         
         status = {
-            "entries" : self.log_reader._csv_header
+            "entries" : self.log_reader.entries
         }
         return MessageQueueResponse(status, {"type":"status"})
 
@@ -125,17 +125,15 @@ class LiveChamberLogMessageQueueServer(BasicStreamServer):
 
     async def on_streaming(self):
         if not self.log_queue.empty():
-            log = self.log_queue.get()
+            log, headers = self.log_queue.get()
             body= json.dumps(log).encode()
-            headers = {}
             return body, headers
         else:
             return None, None
 
 class LiveChamberLogMessageQueueClient(BasicStreamClient):
-    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[..., Any], client_name: str, time_out: float) -> None:
+    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]], client_name: str, time_out: float) -> None:
         super().__init__(channel, exchange, routing_key, control_routing_key, on_response_callback, client_name, time_out)
-
 
 # class LiveChamberLogMessageQueue:
 #     channel : AbstractChannel
