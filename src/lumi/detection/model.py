@@ -88,7 +88,7 @@ def get_model(model_folder, device):
 
 
 class DetectorServer(threading.Thread):
-    DETECTION_METAS = ["time_stamp", "time", "crop_setup"]
+    DETECTION_METAS = ["time_stamp", "uuid", "time", "crop_setup_sx", "crop_setup_sy", "crop_setup_ex", "crop_setup_ey"]
 
     def __init__(self, config:DetectorConfig, name:Union[int, str] ) -> None:        
         super().__init__(name=name)
@@ -177,10 +177,13 @@ class DetectorServer(threading.Thread):
             "region2tracks" : region2tracks, 
             "periodicity" : periodicity,
         }
-
         result_headers = {
-            **frame_meta, "crop_setup":self.state.crop_setup
+            **frame_meta, 
         }
+        result_headers.update(
+            {f"crop_setup_{k}": v for k,v in self.state.crop_setup.items()}
+        )
+        # print("result header", result_headers)
 
         return result, result_headers
 
@@ -249,10 +252,10 @@ class DetectorServer(threading.Thread):
             if self.input_queue.empty():
                 continue
 
-            frame, headers = self.input_queue.get()
+            frame, frame_headers = self.input_queue.get()
             logging.debug("Detection Input Acquired")
 
-            result, result_headers = self.pipeline(frame, headers)
+            result, result_headers = self.pipeline(frame, frame_headers)
             logging.debug("Detection")
 
             # self.output_queue.put({"input": (frame, headers), **result })
