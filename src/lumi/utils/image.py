@@ -23,7 +23,7 @@ def decode_arr(body, headers, from_base64=False):
 
     buffer = io.BytesIO(body)
     buffer.seek(0)
-    return np.load(buffer), headers
+    return np.load(buffer, allow_pickle=False), headers
 
 def encode_img(img:np.ndarray, img_header:Dict, to_base64=False):
     # if img.ndim == 2:
