@@ -30,9 +30,6 @@ class MessageQueueResponse:
 class BaseControlMixin:
     _control_callbacks : Dict[ str, Callable[ [ByteString, Dict], Awaitable[MessageQueueResponse] ] ] = {}
 
-    # def reset_control_callbacks(self):
-    #     self.control_callbacks = dict()
-
     @classmethod
     def register_control_callback(cls, name:str):
         def _register_callback(callback:Callable[ [ByteString, Dict], Awaitable[MessageQueueResponse] ]):
@@ -50,7 +47,6 @@ class BaseControlMixin:
             logging.info(f"{self.server_type} <{self.server_name}> on control message '{ctrl}'.")
 
             if ctrl in self._control_callbacks:
-                # body, headers = self.control_callbacks[ctrl](body, headers)
                 response = await self.control_callback(ctrl, body, headers)
 
             else:
@@ -546,13 +542,6 @@ class BasicStreamServer(BaseControlMixin):
         self.state["is_running"] = False
         return self.succ_ctrl_response()
     
-    # def register_basic_control_callback(self):
-    #     self.register_callback("start", callback=( lambda body, headers: self.set_start_flag(True) ) )
-    #     self.register_callback("stop", callback=( lambda body, headers: self.set_start_flag(False) ) )
-    #     self.register_callback("cancel", callback=( lambda body, headers: self.cancel() ) )
-    #     self.register_callback("config", callback=( lambda body, headers: self.config_server(json.loads(body)) ) )
-    #     self.register_callback("status", callback=( lambda body, headers: self.server_status() ) )
-
 
 class BasicServer(BaseControlMixin):
     channel : AbstractChannel
@@ -589,11 +578,6 @@ class BasicServer(BaseControlMixin):
         self._consume_tag = None
         self.control_queue = None
         self._control_consume_tag = None
-
-    # def register_basic_control_callback(self):
-    #     self.register_callback("cancel", callback=( lambda body, headers: self.cancel() ) )
-    #     self.register_callback("config", callback=( lambda body, headers: self.config_server(json.loads(body)) ) )
-    #     self.register_callback("status", callback=( lambda body, headers: self.server_status() ) )
 
     async def create_queues(self):
         logging.info(f"{self.server_type} <{self.server_name}> creates temporary queue")
