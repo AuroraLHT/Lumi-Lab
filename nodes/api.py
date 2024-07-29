@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
     await log_client.start()
 
     storage_client = StorageMessageQueueClient(
-        channel=channel, exchange=exchange_storage, routing_key="storage", control_routing_key="storage_ctrl", client_name="Storage", time_out=60
+        channel=channel, exchange=exchange_storage, routing_key="storage", control_routing_key="storage_ctrl", client_name="Storage", time_out=10
     )
     await storage_client.start()
 
@@ -99,24 +99,24 @@ async def read_root():
 @app.get("/RHEED/image")
 async def read_root():
     global image_client
-    content, headers = await image_client.get()
+    response = await image_client.request()
     # logging.info(headers)
     return Response(
-        content=content,
+        content=response.body,
         status_code=200,
         media_type="application/octet-stream",
-        headers=headers,
+        headers={ str(k) : str(v) for k , v in response.headers.items() },
     )
 
 
 @app.get("/chamber/log")
 async def read_root():
     global log_client
-    content, headers = await log_client.get()
+    response = await log_client.request()
 
-    if content is None:
+    if response.body is None:
         return Response(
-            content=None,
+            content=response.body,
             status_code=500,
             media_type="application/json",
             headers={"msg":"fail to acquire log"},
@@ -124,10 +124,10 @@ async def read_root():
     
     else:
         return Response(
-            content=content,
+            content=response.body,
             status_code=200,
             media_type="application/json",
-            headers=headers,
+            headers={ str(k) : str(v) for k , v in response.headers.items() },
         )
 
 @app.post("/storage/start")
@@ -187,7 +187,7 @@ async def start_storage(request : StorageRequest):
     
     else:
         return JSONResponse(
-            content={"msg":"succfully start the storage"},
+            content={"msg":response.body.decode()},
             status_code=200,
             headers= {str(k):str(v) for k, v in response.headers.items()},
         )
@@ -208,7 +208,7 @@ async def end_storage():
     # print(response.body, type(response.body))
     if response.body is not None:
         return JSONResponse(
-            content={"msg":"succfully end the storage process."},
+            content={"msg":response.body.decode()},
             status_code=200,
             headers={},
         )
