@@ -128,7 +128,7 @@ class StorageMessageQueueServer(BasicServer):
         response_header = {"succ": True}
 
         if ctrl == "start":
-            if not self.start["is_storing"]
+            if not self.state["is_storing"]:
                 await self.create_storages(body, headers)
                 await self.start_storages(body, headers)
                 logging.info(f"{self.server_type} <{self.server_name}> starts storage")
@@ -137,8 +137,8 @@ class StorageMessageQueueServer(BasicServer):
                 response_header = {"succ" : False}
 
 
-        elif ctrl == "end"
-            if self.start["is_storing"]:
+        elif ctrl == "end":
+            if self.state["is_storing"]:
                 await self.end_storages()
                 logging.info(f"{self.server_type} <{self.server_name}> ends storage")
             else:
