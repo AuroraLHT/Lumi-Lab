@@ -103,11 +103,12 @@
 
         <button type="submit">Start</button>
     </form>
+    <button id="button-storage-end">End</button>
 
-    <div id="storage_response"></div>
+    <div id="storage-response"></div>
 
     <br>
-    <pre id="response">Place Holder</pre>
+    <pre id="response"></pre>
 
     <script>
       let tmp = null;
@@ -196,6 +197,7 @@
         const logElement = document.getElementById("button-log");
         const logCloseElement = document.getElementById("button-log-close");
 
+        const storageCloseElement = document.getElementById("button-storage-end");
 
         const websocket = new WebSocket(`ws://${host}/RHEED/cam/live`);
         websocket.binaryType = "arraybuffer";
@@ -343,7 +345,9 @@
             var bboxes = payload['bboxes'];
 
             var rects = document.getElementsByClassName("bbox");
-            let crop_setup = ('crop_setup' in header)? header['crop_setup'] : null
+
+            let crop_setup = ('crop_setup_sx' in header)? {"sx": header['crop_setup_sx'], "sy": header['crop_setup_sy'], "ex": header['crop_setup_ex'], "ey": header['crop_setup_ey'],} : null
+            // let crop_setup = ('crop_setup' in header)? header['crop_setup'] : null
 
             for (let i = 0; i < rects.length; i++){
                 let rect = rects[i];
@@ -448,9 +452,29 @@
             console.log("Log Close");
             websocket_log.send("stop");
         }
-
-
         // console.log((vidBuff))
+
+        storageCloseElement.onclick = async (event) => {
+            console.log("Storage Close");
+            try {
+                const response = await fetch(`http://${host}/storage/end`, { // Replace with your server endpoint
+                    method: 'POST',
+                    body: JSON.stringify({}),
+                    headers: {
+                      'Content-Type': 'application/json', // need this to indicate it is a json. pydantic read this field
+                    },
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    document.getElementById('storage-response').innerHTML = '<p>Project ended successfully!</p>';
+                } else {
+                    document.getElementById('storage-response').innerHTML = '<p>There was an error ending your project. Please try again.</p>';
+                }
+            } catch (error) {
+                document.getElementById('storage-response').innerHTML = '<p>There was an error ending your project. Please try again.</p>';
+            }
+        }
 
         // for svg 
         const svg = document.querySelector('svg');
@@ -510,12 +534,12 @@
 
                 if (response.ok) {
                     const result = await response.json();
-                    document.getElementById('response').innerHTML = '<p>Project submitted successfully!</p>';
+                    document.getElementById('storage-response').innerHTML = '<p>Project submitted successfully!</p>';
                 } else {
-                    document.getElementById('response').innerHTML = '<p>There was an error submitting your project. Please try again.</p>';
+                    document.getElementById('storage-response').innerHTML = '<p>There was an error submitting your project. Please try again.</p>';
                 }
             } catch (error) {
-                document.getElementById('response').innerHTML = '<p>There was an error submitting your project. Please try again.</p>';
+                document.getElementById('storage-response').innerHTML = '<p>There was an error submitting your project. Please try again.</p>';
             }
       });        
 
