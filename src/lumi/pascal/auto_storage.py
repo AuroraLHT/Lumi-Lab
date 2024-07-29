@@ -47,9 +47,6 @@ class CSVStorageManager:
     def __del__(self):
         self.close_writer()
         
-
-# csv_manager = CSVStorageManager(root_folder=ROOT_STORAGE_FOLDER, fieldnames=FIELDNAMES)
-
 def callback(ch, method, properties, body):
     global csv_manager
     item = json.loads(body.decode())
