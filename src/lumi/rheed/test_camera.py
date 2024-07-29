@@ -67,7 +67,7 @@ class TestCamera(threading.Thread):
             return None, None
 
     def run(self):
-        prev_time = time.time()
+        prev_time = 0
         spf = 1 / self.config.fps
         while True:
             curr_time = time.time()
@@ -78,7 +78,9 @@ class TestCamera(threading.Thread):
                 prev_time = curr_time
 
             stop_flag = self._stop_event.wait(self.config.idle_time)
-            if stop_flag : break
+            if stop_flag : 
+                logging.info(f"Test camera ({self.ident}) exits the run loop")
+                break
 
             hold_flag = self._hold_event.wait(self.config.idle_time)
             if hold_flag : 
@@ -109,15 +111,15 @@ class TestCamera(threading.Thread):
 
 
     def hold(self):
-        logging.info(f"Pylon thread ({self.ident}) receives a hold signal")
+        logging.info(f"Test camera thread ({self.ident}) receives a hold signal")
         self._hold_event.set()
 
     def resume(self):
-        logging.info(f"Pylon thread ({self.ident}) receives a resume signal")
+        logging.info(f"Test camera thread ({self.ident}) receives a resume signal")
         self._hold_event.clear()
 
     def stop(self):
-        logging.info(f"Pylon thread ({self.ident}) receives a stop signal")
+        logging.info(f"Test camera thread ({self.ident}) receives a stop signal")
         self._stop_event.set()
 
     @property
