@@ -259,7 +259,7 @@ class BasicStreamClient:
             exchange:AbstractExchange, 
             routing_key:str, 
             control_routing_key:str, 
-            on_response_callback:Callable[[AbstractIncomingMessage], Awaitable[Any] ], 
+            on_response_callback:Callable[[AbstractIncomingMessage], Awaitable[bool] ], 
             client_name:str, 
             time_out:float
         ) -> None:
@@ -278,7 +278,7 @@ class BasicStreamClient:
     def empty_response(self):
         return MessageQueueResponse(None, None)
 
-    def update_reponse_callback(self, on_response_callback:Callable[[AbstractIncomingMessage], Awaitable[Any] ]):
+    def update_reponse_callback(self, on_response_callback:Callable[[AbstractIncomingMessage], Awaitable[bool] ]):
         if not self.is_running():
             self.on_response_callback = on_response_callback
         else:
@@ -340,9 +340,10 @@ class BasicStreamClient:
             logging.info(f"{self.client_type} <{self.client_name}> received a bad message {message!r}")
             return
 
-        if self.on_control_response is not None:
+        if self.on_response_callback is not None:
             succ_flag = await self.on_response_callback( message )
             if not succ_flag:
+                logging.info(f"{self.client_type} <{self.client_name}> response callback succ_flag not True, termiante the streaming process")
                 await self.stop()
         else:
             pass

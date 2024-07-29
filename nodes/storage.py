@@ -78,7 +78,7 @@ async def main(args):
 
     storage_config = StorageMessageQueueServerConfig(
         root_folder= "../database",
-        initial_size=1000
+        initial_size=1000,
     )
 
     storage_mq = StorageMessageQueueServer(
