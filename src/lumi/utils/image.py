@@ -28,8 +28,8 @@ def decode_arr(body, headers, from_base64=False):
     return np.load(buffer), headers
 
 def encode_img(img:np.ndarray, img_header:Dict, to_base64=False):
-    if img.ndim == 2:
-        img = img[..., None]
+    # if img.ndim == 2:
+    #     img = img[..., None]
     return encode_arr(img, img_header, to_base64=to_base64)
 
 def decode_img(body, headers, from_base64=False):
