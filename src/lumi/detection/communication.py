@@ -157,7 +157,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         img, img_header = decode_img(response.body, response.headers)
             
         #TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
-        detector_output, detector_output_headers = self.detector.predict(img)
+        detector_output, detector_output_headers = self.detector.predict(img, img_header)
         logging.info(f"{self.server_type} <{self.server_name}> detection acquired")
 
         try:
@@ -169,9 +169,8 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         return body, headers
 
 class LiveDetectionMessageQueueClient(BasicStreamClient):
-    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[..., Any], client_name: str, time_out: float) -> None:
+    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]], client_name: str, time_out: float) -> None:
         super().__init__(channel, exchange, routing_key, control_routing_key, on_response_callback, client_name, time_out)
-#     pass
 
 
 # class LiveDetectionMessageQueue:
@@ -307,8 +306,11 @@ class DetectionMessageQueueServer(BasicServer):
             body, headers = await self.camera_client.request()
         img, img_header = decode_img(body, headers)
 
-        detector_output, detector_output_headers = self.detector.predict(img)
-        body, headers = encode_detections(detector_output=detector_output, detector_output_headers=detector_output_headers)
+        detector_output, detector_output_headers = self.detector.predict(img, img_header)
+        body, headers = encode_detections(
+            detector_output=detector_output, 
+            detector_output_headers=detector_output_headers
+        )
 
         return body, headers
     
