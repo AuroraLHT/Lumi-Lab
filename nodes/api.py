@@ -76,7 +76,7 @@ async def lifespan(app: FastAPI):
     await log_client.start()
 
     storage_client = StorageMessageQueueClient(
-        channel=channel, exchange=exchange_storage, routing_key="storage", control_routing_key="storage_ctrl", client_name="Storage", time_out=10
+        channel=channel, exchange=exchange_storage, routing_key="storage", control_routing_key="storage_ctrl", client_name="Storage", time_out=60
     )
     await storage_client.start()
 
@@ -153,7 +153,14 @@ async def start_storage(request : StorageRequest):
     #         status_code=400,
     #         content={"error": "Invalid data", "details": str(e)},
     #     )
-
+    # print(
+    #     dict(
+    #     project_name=request.project_name,
+    #     save_ai=request.save_ai,
+    #     save_frame=request.save_frame,
+    #     save_log= request.save_log
+    #     )
+    # )
     response = await storage_client.start_storage(
         project_name=request.project_name,
         save_ai=request.save_ai,
@@ -165,42 +172,67 @@ async def start_storage(request : StorageRequest):
     # headers field need all str
 
     if response.body is None:
-        return Response(
-            content=None,
+        # return Response(
+        #     content=None,
+        #     status_code=500,
+        #     media_type="application/octet-stream",
+        #     headers={"msg":"fail to start the storage process. visit server log for more details"},
+        # )
+        return JSONResponse(
+            content={"msg":"fail to start the storage process. visit server log for more details"},
             status_code=500,
-            media_type="application/octet-stream",
-            headers={"msg":"fail to start the storage process. visit server log for more details"},
+            headers={},
         )
+
     
     else:
-        return Response(
-            content=response.body,
+        return JSONResponse(
+            content={"msg":"succfully start the storage"},
             status_code=200,
-            media_type="application/octet-stream",
             headers= {str(k):str(v) for k, v in response.headers.items()},
         )
+        
+        # return Response(
+        #     # content=response.body,
+        #     content="succ",
+        #     status_code=200,
+        #     media_type="application/octet-stream",
+        #     headers= {str(k):str(v) for k, v in response.headers.items()},
+        # )
 
 
 @app.post("/storage/end")
 async def end_storage():
     global storage_client
     response = await storage_client.end_storage()
-
-    if response.body is None:
-        return Response(
-            content=None,
-            status_code=500,
-            media_type="application/octet-stream",
-            headers={"msg":"fail to acquire log"},
+    # print(response.body, type(response.body))
+    if response.body is not None:
+        return JSONResponse(
+            content={"msg":"succfully end the storage process."},
+            status_code=200,
+            headers={},
         )
+
+        # return Response(
+        #     content=None,
+        #     status_code=500,
+        #     media_type="application/octet-stream",
+        #     headers={"msg":"fail to acquire log"},
+        # )
     
     else:
-        return Response(
-            content=response.body,
-            status_code=200,
-            media_type="application/octet-stream",
-            headers= {str(k):str(v) for k, v in response.headers.items()},
+        return JSONResponse(
+            content={"msg":"fail to end the storage process. visit server log for more details"},
+            status_code=500,
+            headers={},
         )
+
+        # return Response(
+        #     content=response.body,
+        #     status_code=200,
+        #     media_type="application/octet-stream",
+        #     headers= {str(k):str(v) for k, v in response.headers.items()},
+        # )
 
 
 @app.websocket("/RHEED/cam/live")
