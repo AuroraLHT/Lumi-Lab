@@ -391,6 +391,13 @@ class RecorderServer(threading.Thread):
         self.recorder = recorder
         self._stop_event = threading.Event()
 
+    def create_dataset(self):
+        self.recorder.create_dataset()
+
+    def close_storages(self):
+        self.recorder.close_h5()
+        self.stop()
+
     def save_prediction(self, *args, **kargs):
         future = self.executor.submit( self.recorder.save_prediction, *args, **kargs )
         self.futures[uuid.uuid4()] = future

@@ -23,7 +23,7 @@ from ..pascal.communication import (
     ChamberLogMessageQueueClient,
 )
 
-from .record import RecorderConfig, Recorder
+from .record import RecorderConfig, Recorder, RecorderServer, RecorderServerConfig
 from ..utils.image import decode_img
 
 import logging
@@ -82,6 +82,11 @@ class StorageMessageQueueServerConfig:
 
 
 class StorageMessageQueueServer(BasicServer):
+    recorder : Recorder
+    recorder_config : RecorderConfig
+    recorder_server : RecorderServer
+    recorder_server_config : RecorderServerConfig
+
     def __init__(
         self,
         camera_client: CameraMessageQueueClient,
@@ -119,16 +124,32 @@ class StorageMessageQueueServer(BasicServer):
         body, headers = message.body, message.headers
         ctrl = headers["type"]
 
+        response_msg = f"succfully execute [{ctrl}]"
+        response_header = {"succ": True}
+
         if ctrl == "start":
-            await self.create_storages(body, headers)
-            await self.start_storages(body, headers)
-            logging.info(f"{self.server_type} <{self.server_name}> starts storage")
+            if not self.start["is_storing"]
+                await self.create_storages(body, headers)
+                await self.start_storages(body, headers)
+                logging.info(f"{self.server_type} <{self.server_name}> starts storage")
+            else:
+                response_msg = f"cannot execute [{ctrl}], the storage process have been initiated."
+                response_header = {"succ" : False}
 
-        elif ctrl == "end":
-            await self.end_storages()
-            logging.info(f"{self.server_type} <{self.server_name}> ends storage")
 
-        return "".encode(), {"succ": True}
+        elif ctrl == "end"
+            if self.start["is_storing"]:
+                await self.end_storages()
+                logging.info(f"{self.server_type} <{self.server_name}> ends storage")
+            else:
+                response_msg = f"cannot execute [{ctrl}], the storage process have been termined."
+                response_header = {"succ" : False}
+        
+        else:
+            response_msg = f"unknown ctrl [{ctrl}]"
+            response_header = {"succ" : False}
+
+        return response_msg.encode(), response_header
 
     async def create_storages(self, body, headers):
         camera_status = await self.camera_client.get_status()
@@ -157,13 +178,19 @@ class StorageMessageQueueServer(BasicServer):
             save_log=headers["save_log"],
             save_ai=headers["save_ai"],
             force_rewrite=True,
+            compression="gzip",
+            compression_opts=4,
         )
 
         self.recorder = Recorder(config=self.recorder_config)
-        self.recorder.create_dataset()
+        self.recorder_server_config = RecorderServerConfig(idle_time=0.01)
+        self.recorder_server = RecorderServer(self.recorder_server_config, self.recorder, name="recoder_server")
+        self.recorder_server.create_dataset()
+        self.recorder_server.start()
 
     async def close_storages(self):
-        self.recorder.close_h5()
+        self.recorder_server.close_storages()
+        self.recorder_server.join()
 
     async def start_storages(self, body, headers):
         if headers["save_frame"]:
@@ -185,7 +212,7 @@ class StorageMessageQueueServer(BasicServer):
             try:
                 body, headers = message.body, message.headers
                 frame, frame_headers = decode_img(body, headers)
-                self.recorder.save_frame(frame, frame_headers)
+                self.recorder_server.save_frame(frame, frame_headers)
                 return True
             
             except Exception as e:
@@ -203,7 +230,7 @@ class StorageMessageQueueServer(BasicServer):
             try:
                 body, headers = message.body, message.headers
                 chamber_log = json.loads(body)
-                self.recorder.save_log(chamber_log=chamber_log)
+                self.recorder_server.save_log(chamber_log=chamber_log)
                 return True
             
             except Exception as e:
@@ -239,7 +266,7 @@ class StorageMessageQueueServer(BasicServer):
                 cls_result = result["classification"]
                 tracking = result["region2tracks"]
 
-                self.recorder.save_prediction(
+                self.recorder_server.save_prediction(
                     pattern=pattern,
                     masks=masks,
                     bboxes=bboxes,
