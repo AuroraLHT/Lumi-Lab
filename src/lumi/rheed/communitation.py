@@ -171,7 +171,7 @@ class LiveCameraMessageQueueClient(BasicStreamClient):
             exchange: AbstractExchange, 
             routing_key: str, 
             control_routing_key: str, 
-            on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[Any] ], 
+            on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool] ], 
             client_name: str, 
             time_out: float
         ) -> None:
@@ -460,7 +460,7 @@ class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
 #             # await asyncio.sleep(0.0001)
 
 class LiveVideoFragmentsMessageQueueClient(BasicStreamClient):
-    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[..., Any], client_name: str, time_out: float) -> None:
+    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]], client_name: str, time_out: float) -> None:
         super().__init__(channel, exchange, routing_key, control_routing_key, on_response_callback, client_name, time_out)
 
 
