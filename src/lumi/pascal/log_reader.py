@@ -187,7 +187,7 @@ class TestLogReaderConfig(LogReaderConfig):
 
 class TestLogReader(LogReader):
     def __init__(self, config: TestLogReaderConfig, name: str, daemon: bool):
-        super().__init__(config, name, daemon)
+        super().__init__(config=config, name=name, daemon=daemon)
 
     def get_content(self):
         if self._csv_reader is not None:

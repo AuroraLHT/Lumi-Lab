@@ -45,8 +45,10 @@ async def main(args):
         exchange=rheed_exchange, 
         routing_key="image",
         control_routing_key="image_ctrl",
+        state_routing_key="image_state",
         client_name="image",
         time_out=10,
+        on_state_callback=None,
     )
 
     await camera_client.start()
@@ -58,6 +60,7 @@ async def main(args):
         exchange=rheed_exchange,
         routing_key="detection",
         control_routing_key="detection_ctrl",
+        state_routing_key="detection_state",
         server_name="detection",
     )
     live_detection_mq = LiveDetectionMessageQueueServer(
@@ -67,6 +70,7 @@ async def main(args):
         exchange=rheed_exchange,
         control_routing_key="live_detection_ctrl",
         publish_routing_key="live_detection",
+        state_routing_key="live_detection_state",
         server_name="live detection"
     )
     await detection_mq.start()

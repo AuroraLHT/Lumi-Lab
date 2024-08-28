@@ -108,6 +108,12 @@
     <div id="storage-response"></div>
 
     <br>
+    <h1>Server-Sent Events Display</h1>
+    <ul id="detection-node-events">
+
+    </ul>
+
+
     <pre id="response"></pre>
 
     <script>
@@ -547,6 +553,28 @@
       });        
 
 
+      // SSE
+
+        const eventSource = new EventSource(`http://${host}/RHEED/detection/live/state`);
+
+        eventSource.onmessage = function(event) {
+            // Parse the JSON data received from the server
+            console.log(event.data);
+            const data = JSON.parse(event.data);
+            console.log(data, typeof(data));
+            
+            // Display the received data
+            const listItem = document.createElement("li");
+            const text = Object.entries(data).map(([key, value]) => `${key}: ${value}`).join(', ');
+            listItem.innerText = text;
+            console.log(text);
+            document.getElementById("detection-node-events").appendChild(listItem);
+        };
+
+        eventSource.onerror = function(error) {
+            console.error("EventSource failed:", error);
+            eventSource.close();
+        };
       })();
     </script>
   </body>
