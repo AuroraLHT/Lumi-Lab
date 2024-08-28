@@ -43,6 +43,7 @@ async def main(args):
         exchange=exchange_chamber, 
         routing_key="log",
         control_routing_key="log_ctrl",
+        state_routing_key="log_state",
         server_name="ChamberLog"
     )
 
@@ -53,6 +54,7 @@ async def main(args):
         exchange=exchange_chamber, 
         control_routing_key="live_log_ctrl",
         publish_routing_key="live_log",
+        state_routing_key="live_log_state",
         server_name="LiveChamberLog"
     )
 

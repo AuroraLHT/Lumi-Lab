@@ -27,7 +27,7 @@ from .record import RecorderConfig, Recorder, RecorderServer, RecorderServerConf
 from ..utils.image import decode_img
 
 import logging
-
+from collections.abc import Callable, Awaitable
 # TODO : Move client to where the server is and we would import the client to here.
 # this reduce the redundancy in code.
 
@@ -39,12 +39,21 @@ class StorageMessageQueueClient(BasicClient):
         exchange: AbstractExchange,
         routing_key: str,
         control_routing_key: str,
+        state_routing_key: str,
+        on_state_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],    
         client_name: str,
         time_out: float,
     ) -> None:
 
         super().__init__(
-            channel, exchange, routing_key, control_routing_key, client_name, time_out
+            channel=channel,
+            exchange=exchange,
+            routing_key=routing_key,
+            control_routing_key=control_routing_key,
+            state_routing_key=state_routing_key,
+            client_name=client_name,
+            time_out=time_out,
+            on_state_callback=on_state_callback,
         )
 
     async def start_storage(
@@ -100,10 +109,16 @@ class StorageMessageQueueServer(BasicServer):
         exchange: AbstractExchange,
         control_routing_key: str,
         routing_key: str,
+        state_routing_key: str,
         server_name: str,
     ):
         super().__init__(
-            channel, exchange, control_routing_key, routing_key, server_name
+            channel=channel,
+            exchange=exchange,
+            control_routing_key=control_routing_key,
+            routing_key=routing_key,
+            state_routing_key=state_routing_key,
+            server_name=server_name
         )
 
         self.camera_client = camera_client

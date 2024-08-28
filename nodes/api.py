@@ -1,17 +1,17 @@
-from typing import Union
+from typing import Union, Optional
 from contextlib import asynccontextmanager
-
-from fastapi import FastAPI, WebSocket, Request
-from fastapi.responses import HTMLResponse, Response, JSONResponse
 import asyncio
-from aio_pika import Message, connect, ExchangeType
-from aio_pika.abc import AbstractIncomingMessage
 import json
 import struct
-
 import logging
 from pathlib import Path
 from dataclasses import dataclass
+
+from fastapi import FastAPI, WebSocket, Request
+from fastapi.responses import HTMLResponse, Response, JSONResponse
+from fastapi.responses import StreamingResponse
+from aio_pika import Message, connect, ExchangeType
+from aio_pika.abc import AbstractIncomingMessage, AbstractConnection, AbstractChannel, AbstractExchange
 
 from lumi.api.models import StorageRequest
 from lumi.api.communication import (
@@ -25,26 +25,34 @@ from lumi.api.communication import (
 )
 
 
-FORMAT = '%(asctime)s %(levelname)s:%(message)s'
+FORMAT = "%(asctime)s %(levelname)s:%(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
+
+async def basic_state_callback( message: AbstractIncomingMessage):
+    print(f"state body: {type(message.body)} {message.body}")
+    print(f"state headers: {type(message.headers)} {message.headers}")
+    return True
+
 @dataclass
 class ConnectionStateManager:
-    connection = None
-    channel = None
-    exchange_rheed = None
-    exchange_chamber = None
-    exchange_storage = None
+    connection: Optional[AbstractConnection] = None
+    channel: Optional[AbstractChannel] = None
+    exchange_rheed: Optional[AbstractExchange] = None
+    exchange_chamber: Optional[AbstractExchange] = None
+    exchange_storage: Optional[AbstractExchange] = None
 
-    image_client = None
-    video_fragment_client = None
-    log_client = None
-    storage_client = None
+    image_client: Optional[CameraMessageQueueClient] = None
+    video_fragment_client: Optional[VideoFragmentsMessageQueueClient] = None
+    log_client: Optional[ChamberLogMessageQueueClient] = None
+    storage_client: Optional[StorageMessageQueueClient] = None
 
-    live_video_client = None
-    live_log_client = None
-    live_detection_client = None
+    live_video_client: Optional[LiveVideoFragmentsMessageQueueClient] = None
+    live_log_client: Optional[LiveChamberLogMessageQueueClient] = None
+    live_detection_client: Optional[LiveDetectionMessageQueueClient] = None
+
 
 connection_state = ConnectionStateManager()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -60,36 +68,68 @@ async def lifespan(app: FastAPI):
     connection_state.channel = channel
 
     exchange_rheed = await channel.declare_exchange("RHEED", type=ExchangeType.DIRECT)
-    exchange_chamber = await channel.declare_exchange("chamber", type=ExchangeType.DIRECT)
-    exchange_storage = await channel.declare_exchange("storage", type=ExchangeType.DIRECT)
+    exchange_chamber = await channel.declare_exchange(
+        "chamber", type=ExchangeType.DIRECT
+    )
+    exchange_storage = await channel.declare_exchange(
+        "storage", type=ExchangeType.DIRECT
+    )
     connection_state.exchange_chamber = exchange_chamber
     connection_state.exchange_rheed = exchange_rheed
     connection_state.exchange_storage = exchange_storage
 
     # image client is for all user that connect to this api node
     image_client = CameraMessageQueueClient(
-        channel=channel, exchange=exchange_rheed, routing_key="image", control_routing_key="image_ctrl", client_name="Camera", time_out=10,
+        channel=channel,
+        exchange=exchange_rheed,
+        routing_key="image",
+        control_routing_key="image_ctrl",
+        state_routing_key="image_state",
+        on_state_callback=None,
+        client_name="Camera",
+        time_out=10,
     )
     await image_client.start()
     connection_state.image_client = image_client
 
     video_fragment_client = VideoFragmentsMessageQueueClient(
-        channel=channel, exchange=exchange_rheed, routing_key="live_video_history", control_routing_key="live_video_history_ctrl", client_name="Fragment", time_out=10
+        channel=channel,
+        exchange=exchange_rheed,
+        routing_key="live_video_history",
+        control_routing_key="live_video_history_ctrl",
+        state_routing_key="live_video_history_state",
+        on_state_callback=None,
+        client_name="Fragment",
+        time_out=10,
     )
     await video_fragment_client.start()
     connection_state.video_fragment_client = video_fragment_client
 
     log_client = ChamberLogMessageQueueClient(
-        channel=channel, exchange=exchange_chamber, routing_key="log", control_routing_key="log_ctrl", client_name="Chamber Log", time_out=10
+        channel=channel,
+        exchange=exchange_chamber,
+        routing_key="log",
+        control_routing_key="log_ctrl",
+        state_routing_key="log_state",
+        on_state_callback=None,
+        client_name="Chamber Log",
+        time_out=10,
     )
     await log_client.start()
     connection_state.log_client = log_client
 
     storage_client = StorageMessageQueueClient(
-        channel=channel, exchange=exchange_storage, routing_key="storage", control_routing_key="storage_ctrl", client_name="Storage", time_out=10
+        channel=channel,
+        exchange=exchange_storage,
+        routing_key="storage",
+        control_routing_key="storage_ctrl",
+        state_routing_key="storage_state",
+        on_state_callback=None,
+        client_name="Storage",
+        time_out=10,
     )
     await storage_client.start()
-    connection_state.storage_client = storage_client    
+    connection_state.storage_client = storage_client
 
     # this globle client is only open for status checking
     live_video_client = LiveVideoFragmentsMessageQueueClient(
@@ -97,34 +137,27 @@ async def lifespan(app: FastAPI):
         exchange=connection_state.exchange_rheed,
         routing_key="live_video",
         control_routing_key="live_video_ctrl",
+        state_routing_key="live_video_state",
         on_response_callback=None,
+        on_state_callback=None,
         client_name="Live Fragment Monitor",
         time_out=10,
     )
     await live_video_client.start_control()
     connection_state.live_video_client = live_video_client
 
-    live_detection_client = LiveDetectionMessageQueueClient(
-        channel = connection_state.channel,
-        exchange = connection_state.exchange_rheed,
-        routing_key = "live_detection",
-        control_routing_key = "live_detection_ctrl",
-        on_response_callback = None,
-        client_name="Live Detection Monitor",
-        time_out=10
-    )
-    await live_detection_client.start_control()
-    connection_state.live_detection_client = live_detection_client
 
 
     live_log_client = LiveChamberLogMessageQueueClient(
-        channel = connection_state.channel,
-        exchange = connection_state.exchange_chamber,
-        routing_key = "live_log",
-        control_routing_key = "live_log_ctrl",
-        on_response_callback = None,
-        client_name = "Live Log Monitor",
-        time_out = 10,
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_chamber,
+        routing_key="live_log",
+        control_routing_key="live_log_ctrl",
+        state_routing_key="live_log_state",
+        on_response_callback=None,
+        on_state_callback=None,
+        client_name="Live Log Monitor",
+        time_out=10,
     )
     await live_log_client.start_control()
     connection_state.live_log_client = live_log_client
@@ -139,23 +172,53 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 async def read_root():
-    with open(Path(__file__).parent.parent/"src/lumi/api/index.html", "r") as f:
+    with open(Path(__file__).parent.parent / "src/lumi/api/index.html", "r") as f:
         html_content = f.read()
 
     return HTMLResponse(content=html_content, status_code=200)
 
-@app.get("/RHEED/cam/live/status")
+
+@app.get("/RHEED/cam/live/state")
 async def get_rheed_cam_status():
     global connection_state
     live_rheed_node_state = connection_state.live_video_client.get_status()
     return JSONResponse(content=live_rheed_node_state)
 
 
-@app.get("/RHEED/detection/live/status")
+
+@app.get("/RHEED/detection/live/state")
 async def get_rheed_detection_status():
-    global connection_state
-    live_detection_node_state = connection_state.live_detection_client.get_status()
-    return JSONResponse(content=live_detection_node_state)
+    async def state_generator():
+        queue = asyncio.Queue()
+
+        async def on_state_callback(message: AbstractIncomingMessage):
+            logging.info(f"detection state put {message.body.decode()}")
+
+            await queue.put(message)
+
+        live_detection_client = LiveDetectionMessageQueueClient(
+            channel=connection_state.channel,
+            exchange=connection_state.exchange_rheed,
+            routing_key="live_detection",
+            control_routing_key="live_detection_ctrl",
+            state_routing_key="live_detection_state",
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
+            client_name="Live Detection Monitor",
+            time_out=10,
+        )
+        await live_detection_client.start_state()
+
+        try:
+            while True:
+                message = await queue.get()
+                logging.info(f"detection state get {message.body.decode()}")
+                # this is the format for server sent event (SSE)
+                yield f"data: {message.body.decode()}\n\n"
+        finally:
+            await live_detection_client.stop()
+
+    return StreamingResponse(state_generator(), media_type="text/event-stream")
 
 
 @app.get("/RHEED/image")
@@ -167,7 +230,7 @@ async def read_root():
         content=response.body,
         status_code=200,
         media_type="application/octet-stream",
-        headers={ str(k) : str(v) for k , v in response.headers.items() },
+        headers={str(k): str(v) for k, v in response.headers.items()},
     )
 
 
@@ -181,17 +244,18 @@ async def get_chamber_log():
             content=response.body,
             status_code=500,
             media_type="application/json",
-            headers={"msg":"fail to acquire log"},
+            headers={"msg": "fail to acquire log"},
         )
-    
+
     else:
         return Response(
             content=response.body,
             status_code=200,
             media_type="application/json",
-            headers={ str(k) : str(v) for k , v in response.headers.items() },
+            headers={str(k): str(v) for k, v in response.headers.items()},
         )
-    
+
+
 @app.get("/RHEED/detection/live/status")
 async def get_chamber_log_status():
     global connection_state
@@ -200,15 +264,15 @@ async def get_chamber_log_status():
 
 
 @app.post("/storage/start")
-async def start_storage(request : StorageRequest):
-# async def start_storage(request: Request):
+async def start_storage(request: StorageRequest):
+    # async def start_storage(request: Request):
     # print(await request.body())
 
     global connection_state
     # logging.debug(request)
 
     # raw_body = await request.json()
-    
+
     # # Print or log the raw body
     # print("Raw data received:", raw_body)
 
@@ -234,10 +298,10 @@ async def start_storage(request : StorageRequest):
         project_name=request.project_name,
         save_ai=request.save_ai,
         save_frame=request.save_frame,
-        save_log= request.save_log
+        save_log=request.save_log,
     )
 
-    # dirty patch 
+    # dirty patch
     # headers field need all str
 
     if response.body is None:
@@ -248,19 +312,20 @@ async def start_storage(request : StorageRequest):
         #     headers={"msg":"fail to start the storage process. visit server log for more details"},
         # )
         return JSONResponse(
-            content={"msg":"fail to start the storage process. visit server log for more details"},
+            content={
+                "msg": "fail to start the storage process. visit server log for more details"
+            },
             status_code=500,
             headers={},
         )
 
-    
     else:
         return JSONResponse(
-            content={"msg":response.body.decode()},
+            content={"msg": response.body.decode()},
             status_code=200,
-            headers= {str(k):str(v) for k, v in response.headers.items()},
+            headers={str(k): str(v) for k, v in response.headers.items()},
         )
-        
+
         # return Response(
         #     # content=response.body,
         #     content="succ",
@@ -277,7 +342,7 @@ async def end_storage():
     # print(response.body, type(response.body))
     if response.body is not None:
         return JSONResponse(
-            content={"msg":response.body.decode()},
+            content={"msg": response.body.decode()},
             status_code=200,
             headers={},
         )
@@ -288,10 +353,12 @@ async def end_storage():
         #     media_type="application/octet-stream",
         #     headers={"msg":"fail to acquire log"},
         # )
-    
+
     else:
         return JSONResponse(
-            content={"msg":"fail to end the storage process. visit server log for more details"},
+            content={
+                "msg": "fail to end the storage process. visit server log for more details"
+            },
             status_code=500,
             headers={},
         )
@@ -356,7 +423,9 @@ async def websocket_endpoint(websocket: WebSocket):
         exchange=connection_state.exchange_rheed,
         routing_key="live_video",
         control_routing_key="live_video_ctrl",
+        state_routing_key="live_video_state",
         on_response_callback=on_live_message_callback,
+        on_state_callback=None, 
         client_name="Live Fragment",
         time_out=10,
     )
@@ -364,7 +433,6 @@ async def websocket_endpoint(websocket: WebSocket):
     initial_fragments = await connection_state.video_fragment_client.get_initial()
     for fragment in initial_fragments:
         await send_fragment(fragment)
-
 
     # source = "test.mp4"
     # source = "BigBuckBunny.mp4"
@@ -415,8 +483,8 @@ async def websocket_endpoint(websocket: WebSocket):
         try:
             header_json = json.dumps(header)
             # Combine header and binary data
-            header_length = struct.pack('>I', len(header_json))
-            data = header_length + header_json.encode('utf-8') + payload            
+            header_length = struct.pack(">I", len(header_json))
+            data = header_length + header_json.encode("utf-8") + payload
             await websocket.send_bytes(data)
             # await websocket.send_json(json_text, mode='text')
             # await websocket.send_text(json_text)
@@ -443,16 +511,18 @@ async def websocket_endpoint(websocket: WebSocket):
     # logging.info(message)
 
     live_detection_client = LiveDetectionMessageQueueClient(
-        channel = connection_state.channel,
-        exchange = connection_state.exchange_rheed,
-        routing_key = "live_detection",
-        control_routing_key = "live_detection_ctrl",
-        on_response_callback = on_live_message_callback,
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_rheed,
+        routing_key="live_detection",
+        control_routing_key="live_detection_ctrl",
+        state_routing_key="live_detection_state",
+        on_response_callback=on_live_message_callback,
+        on_state_callback=None, 
         client_name="Live Detection",
-        time_out=10
+        time_out=10,
     )
     await live_detection_client.start()
-    ws_in_task = asyncio.create_task(on_message(), name = "ws_ai_in")
+    ws_in_task = asyncio.create_task(on_message(), name="ws_ai_in")
     # ws_out_task = asyncio.create_task( send_fragment(websocket=websocket ), name="ws_out" )
     # ws_out_task = asyncio.create_task(live_detection_client.start(), name = "ws_ai_out")
 
@@ -511,17 +581,19 @@ async def websocket_endpoint(websocket: WebSocket):
     # logging.info(message)
 
     live_log_client = LiveChamberLogMessageQueueClient(
-        channel = connection_state.channel,
-        exchange = connection_state.exchange_chamber,
-        routing_key = "live_log",
-        control_routing_key = "live_log_ctrl",
-        on_response_callback = on_live_message_callback,
-        client_name = "Live Log",
-        time_out = 10,
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_chamber,
+        routing_key="live_log",
+        control_routing_key="live_log_ctrl",
+        state_routing_key="live_log_state",
+        on_response_callback=on_live_message_callback,
+        on_state_callback=None, 
+        client_name="Live Log",
+        time_out=10,
     )
     await live_log_client.start()
 
-    ws_in_task = asyncio.create_task(on_message(), name = "ws_log_in")
+    ws_in_task = asyncio.create_task(on_message(), name="ws_log_in")
     # ws_out_task = asyncio.create_task( send_fragment(websocket=websocket ), name="ws_out" )
     # ws_out_task = asyncio.create_task(, name = "ws_log_out")
 

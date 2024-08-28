@@ -171,6 +171,7 @@ async def _main(args):
         exchange=rheed_exchange,
         control_routing_key="live_video_ctrl",
         publish_routing_key="live_video",
+        state_routing_key="live_video_state",
         server_name="live_video"
     )
     # publish to callback queue, not need publish routing key
@@ -180,6 +181,7 @@ async def _main(args):
         exchange=rheed_exchange,
         control_routing_key="live_video_history_ctrl",
         routing_key="live_video_history",
+        state_routing_key="live_video_history_state",
         server_name="live_video_history"
     )
     # publish to callback queue, not need publish routing key
@@ -189,6 +191,7 @@ async def _main(args):
         exchange=rheed_exchange, 
         routing_key="image",
         control_routing_key="image_ctrl",
+        state_routing_key="image_state",
         server_name="image"
     )
 
@@ -199,6 +202,7 @@ async def _main(args):
         exchange=rheed_exchange,
         control_routing_key="live_image_ctrl",
         publish_routing_key="live_image",
+        state_routing_key="live_image_state",
         server_name="live_image"
     )
 
