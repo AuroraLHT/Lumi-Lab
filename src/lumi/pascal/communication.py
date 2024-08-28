@@ -43,16 +43,17 @@ class ChamberLogMessageQueueServer(BasicServer):
         # logging.info(f"[x] Log processing time {et-st} sec")
         return body, headers
 
-    @BaseControlMixin.register_control_callback("status")
-    async def server_status(self, body, headers):
+    async def on_status(self, body, headers):
         """
             We temporary get the key from live 
         """
         
-        status = {
+        status = await super().on_status(body, headers)
+
+        status.update( {
             "entries" : self.log_reader.entries
-        }
-        return MessageQueueResponse(status, {"type":"status"})
+        } )
+        return status
 
 class ChamberLogMessageQueueClient(BasicClient):
     async def request(self):
@@ -79,6 +80,18 @@ class LiveChamberLogMessageQueueServer(BasicStreamServer):
             return body, headers
         else:
             return None, None
+
+    async def on_status(self, body, headers):
+        """
+            We temporary get the key from live 
+        """
+        status = await super().on_status(body, headers)
+
+        status.update( {
+            "entries" : self.log_reader.entries
+        } )
+        return status
+
 
 class LiveChamberLogMessageQueueClient(BasicStreamClient):
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]], client_name: str, time_out: float) -> None:

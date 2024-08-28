@@ -234,7 +234,77 @@ class BasicClient:
             headers = {"type":"status"}
         )
         return json.loads(response.body)
-    
+
+class BasicQueue:
+    queue : AbstractQueue
+    control_callback_queue : AbstractQueue
+    on_response_callback : Callable
+    time_out : float
+
+    channel : AbstractChannel
+    exchange : AbstractExchange
+    routing_key : str
+    control_routing_key : str
+    queue : AbstractQueue
+    control_callback_queue : AbstractQueue
+    on_response_callback : Callable
+    client_name : str
+    time_out : float
+
+    client_type : str = "MQ stream client"
+
+    def __init__(
+            self, 
+            channel:AbstractChannel, 
+            exchange:AbstractExchange, 
+            routing_key:str, 
+            control_routing_key:str, 
+            on_response_callback:Callable[[AbstractIncomingMessage], Awaitable[bool] ], 
+            client_name:str, 
+            time_out:float
+        ) -> None:
+
+        self.channel = channel
+        self.exchange = exchange
+        self.routing_key = routing_key
+        self.control_routing_key = control_routing_key
+        self.on_response_callback = on_response_callback
+        self.client_name = client_name
+        self.time_out = time_out
+
+        self.reset_queue()
+
+    async def create_queue(self):
+        # this queue is for listening to stream
+        self.queue = await self.channel.declare_queue(exclusive=True)
+        await self.queue.bind(self.exchange, routing_key=self.routing_key)
+
+    async def start(self, start_consume_loop=True):
+        await self.create_queue()
+        if start_consume_loop:
+
+            try:
+                self._consumer_tag = await self.queue.consume(self.on_response, no_ack=True)
+            except Exception as e:
+                print(e)
+
+    def is_running(self):
+        if self.queue is None and self._consumer_tag is None:
+            return False
+        else:
+            return True
+
+    def reset_queue(self):
+        self._consumer_tag = None
+        self.queue = None
+
+    async def stop(self):
+        if self.is_running():
+            await self.queue.cancel(self._consumer_tag, )
+            await self.queue.delete()
+            self.reset_queue()
+
+
 
 class BasicStreamClient:
     channel : AbstractChannel
@@ -280,52 +350,85 @@ class BasicStreamClient:
         else:
             raise Exception("Current job is not stopped, run .stop to stop the current job first.")
 
-    def is_running(self):
+    def is_main_running(self):
         if self.queue is None and self._consumer_tag is None:
             return False
         else:
             return True
 
-    def reset_queues(self):
+    def is_control_running(self):
+        if self.control_callback_queue is None and self._control_callback_consumer_tag is None:
+            return False
+        else:
+            return True
+
+    def reset_main_queue(self):
         self._consumer_tag = None
         self.queue = None
 
+    def reset_control_queue(self):
         self.control_callback_queue = None
         self._control_callback_queue_consume_tag = None
 
-    async def create_queues(self):
+    def reset_queues(self):
+        self.reset_control_queue()
+        self.reset_main_queue()
+
+    async def create_main_queue(self):
         # this queue is for listening to stream
         self.queue = await self.channel.declare_queue(exclusive=True)
         await self.queue.bind(self.exchange, routing_key=self.routing_key)
         logging.info(f"{self.client_type} <{self.client_name}> creates queue: {self.queue.name}")
 
+    async def create_control_queue(self):
         self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
         self.control_futures = {}
         logging.info(f"{self.client_type} <{self.client_name}> creates control callback queue: {self.control_callback_queue.name}")
 
-    async def start(self, start_consume_loop=True):
-        await self.create_queues()
+    # async def create_queues(self):
+    #     await self.create_main_queue()
+    #     await self.create_control_queue()
 
+    async def start_main(self, start_consume_loop=True):
+        await self.create_main_queue()
         if start_consume_loop:
             logging.info(f"{self.client_type} <{self.client_name}> starts live streaming consume loop")
 
             try:
                 self._consumer_tag = await self.queue.consume(self.on_response, no_ack=True)
+            except Exception as e:
+                print(e)
+
+    async def start_control(self, start_consume_loop=True):
+        await self.create_control_queue()
+        if start_consume_loop:
+            try:
                 self._control_callback_consumer_tag = await self.control_callback_queue.consume(self.on_control_response, no_ack=True)
             except Exception as e:
                 print(e)
+
+    async def start(self, start_consume_loop=True):
+        await self.start_main(start_consume_loop=start_consume_loop)
+        await self.start_control(start_consume_loop=start_consume_loop)
+
         logging.info(f"{self.client_type} <{self.client_name}> starts live streaming")
+
+    async def stop_main(self):
+        if self.is_main_running():
+            await self.queue.cancel(self._consumer_tag, )
+            await self.queue.delete()
+            self.reset_main_queue()
+
+    async def stop_control(self):
+        if self.is_control_running():
+            await self.control_callback_queue.cancel(self._control_callback_consumer_tag, )
+            await self.control_callback_queue.delete()
+            self.reset_control_queue()
 
     async def stop(self):
         logging.info(f"{self.client_type} <{self.client_name}> terminate consume")
-        if self.is_running():
-            await self.queue.cancel(self._consumer_tag, )
-            await self.queue.delete()
-
-            await self.control_callback_queue.cancel(self._control_callback_consumer_tag, )
-            await self.control_callback_queue.delete()
-
-            self.reset_queues()
+        await self.stop_main()
+        await self.stop_control()
     
     async def on_response(self, message: AbstractIncomingMessage) -> None:
         logging.debug(f"{self.client_type} <{self.client_name}> on live response")
@@ -512,14 +615,21 @@ class BasicStreamServer(BaseControlMixin):
         self.set_start_flag(False)
         return self.succ_ctrl_response
 
+    async def on_config(self, body, headers):
+        raise NotImplementedError
 
     @BaseControlMixin.register_control_callback("config")
     async def config_server(self, body, headers):
-        raise NotImplementedError
+        output = self.on_config(self, body, headers)
+        return MessageQueueResponse(output, {"type":"config"})
+
+    async def on_status(self, body, headers):
+        return { "is_running" : self.state["is_running"] }
 
     @BaseControlMixin.register_control_callback("status")
     async def server_status(self, body, headers):
-        raise NotImplementedError
+        status = await self.on_status(body, headers)
+        return MessageQueueResponse(status, {"type":"status"})
 
     async def start(self):
         await self.create_queues()
@@ -619,13 +729,21 @@ class BasicServer(BaseControlMixin):
             # the example didn't ack back if process() method is used
             # await message.ask()
 
+    async def on_config(self, body, headers):
+        raise NotImplementedError
+
     @BaseControlMixin.register_control_callback("config")
     async def config_server(self, body, headers):
-        raise NotImplementedError
+        output = self.on_config(self, body, headers)
+        return MessageQueueResponse(output, {"type":"config"})
+
+    async def on_status(self, body, headers) -> Dict:
+        return { "is_running" : self.state["is_running"] }
 
     @BaseControlMixin.register_control_callback("status")
     async def server_status(self, body, headers):
-        raise NotImplementedError
+        status = await self.on_status(body, headers)
+        return MessageQueueResponse(status, {"type":"status"})
 
     async def start(self):
         await self.create_queues()
