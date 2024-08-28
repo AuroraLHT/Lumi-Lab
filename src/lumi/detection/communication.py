@@ -137,14 +137,15 @@ class DetectionMessageQueueServer(BasicServer):
 
         return body, headers
     
-    @BaseControlMixin.register_control_callback("status")
-    async def server_status(self, body, headers):
-        status = {
+    async def on_status(self, body, headers):
+        status = await super().on_status(body, headers)
+
+        status.update( {
             "pattern_dim" : self.detector.pattern_dims,
             "detection_metas" : self.detector.metas,
             "classifier_classes" : self.detector.aux_detector.classifier_classes,
-        }
-        return MessageQueueResponse(status, {"type":"status"})
+        } )
+        return status
 
 class DetectionMessageQueueClient(BasicClient):
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange, routing_key: str, control_routing_key: str, client_name: str, time_out: float) -> None:

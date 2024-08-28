@@ -44,16 +44,16 @@ class CameraMessageQueueServer(BasicServer):
 
         return body, headers
     
-    @BaseControlMixin.register_control_callback("status")
-    async def server_status(self, body, headers):
+    async def on_status(self, body, headers):
         """
             TODO: read all the camera adjustable configuation
         """
-        status = {
+        status = await super().on_status(body, headers)
+        status.update({
             "frame_dims" : self.camera.frame_dims,
             "frame_metas" : self.camera.frame_metas,
-        }
-        return MessageQueueResponse(status, {"type":"status"})
+        })
+        return status
 
 class CameraMessageQueueClient(BasicClient):
     async def request(self):
