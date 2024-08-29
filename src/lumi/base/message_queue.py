@@ -342,12 +342,14 @@ class BasicClient:
 
         return response
 
-    async def get_status(self):
+    async def get_state(self, return_bytes=False):
         response = await self.request_control(
-            body="".encode(), headers={"type": "status"}
+            body="".encode(), headers={"type": "state"}
         )
-        return json.loads(response.body)
-
+        if return_bytes:
+            return response.body
+        else:
+            return json.loads(response.body)
 
 class BasicStreamClient:
     channel: Optional[AbstractChannel]
@@ -396,7 +398,7 @@ class BasicStreamClient:
     def update_reponse_callback(
         self, on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]]
     ):
-        if not self.is_running():
+        if not self.is_main_running():
             self.on_response_callback = on_response_callback
         else:
             raise Exception(
@@ -644,12 +646,15 @@ class BasicStreamClient:
             body=json.dumps(config).encode(), headers={"type": "config"}
         )
 
-    async def get_status(self):
+    async def get_state(self, return_bytes=False):
         response = await self.request_control(
-            body="".encode(), headers={"type": "status"}
+            body="".encode(), headers={"type": "state"}
         )
-        return json.loads(response.body)
-
+        if return_bytes:
+            return response.body
+        else:
+            return json.loads(response.body)
+    
     async def get(self):
         return await self.queue.get(no_ack=True)
 
@@ -750,8 +755,13 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
         )
 
         self.reset_queues()
-        # self.reset_control_callbacks()
-        # self.register_basic_control_callback()
+
+    def update_state(self):
+        """ 
+        a customizable function that use to update other part of the state the during operation.
+        Not implemented is ok, the base function will do nothing.
+        """
+        pass
 
     @property
     def succ_ctrl_response(self):
@@ -777,6 +787,9 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
 
     async def publish(self):
         while True:
+            # update the state at each iteration of the publish loop
+            self.update_state()
+
             if self.start_flag:
                 self.state["is_streaming"] = True
 
@@ -828,15 +841,19 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
     @BaseControlMixin.register_control_callback("config")
     async def config_server(self, body, headers):
         output = self.on_config(self, body, headers)
+        self.update_state()
         return MessageQueueResponse(output, {"type": "config"})
 
-    async def on_status(self, body, headers):
+    async def on_state(self, body, headers):
         return dict(self.state)
 
-    @BaseControlMixin.register_control_callback("status")
-    async def server_status(self, body, headers):
-        status = await self.on_status(body, headers)
-        return MessageQueueResponse(status, {"type": "status"})
+    @BaseControlMixin.register_control_callback("state")
+    async def server_state(self, body, headers):
+        # force update the state when query is conducted
+        self.update_state()
+
+        state = await self.on_state(body, headers)
+        return MessageQueueResponse(state, {"type": "state"})
 
     async def start(self):
         await self.create_queues()
@@ -848,6 +865,7 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
 
             # is_running means the server is running
             self.state["is_running"] = True
+            self.update_state()
         except Exception as e:
             print(e)
         logging.info(f"{self.server_type} <{self.server_name}> starts up")
@@ -894,6 +912,7 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
 
         self.server_name = server_name
         self.reset_queues()
+
         # self.reset_control_callbacks()
         # self.register_basic_control_callback()
 
@@ -903,6 +922,13 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
             },
             self.on_state_callback,
         )
+
+    def update_state(self):
+        """ 
+        update the state at each call, use to update the during operation.
+        Not implemented is ok, the base function will do nothing.
+        """
+        pass
 
     def reset_queues(self):
         self.queue = None
@@ -955,6 +981,9 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
                 f"{self.server_type} <{self.server_name}> content delivered to {message.reply_to}"
             )
 
+            # update the state at each call
+            self.update_state()
+
             # the example didn't ack back if process() method is used
             # await message.ask()
 
@@ -966,13 +995,16 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
         output = self.on_config(self, body, headers)
         return MessageQueueResponse(output, {"type": "config"})
 
-    async def on_status(self, body, headers) -> Dict:
+    async def on_state(self, body, headers) -> Dict:
         return dict(self.state)
 
-    @BaseControlMixin.register_control_callback("status")
-    async def server_status(self, body, headers):
-        status = await self.on_status(body, headers)
-        return MessageQueueResponse(status, {"type": "status"})
+    @BaseControlMixin.register_control_callback("state")
+    async def server_state(self, body, headers):
+        # force update the state when query is conducted
+        self.update_state() 
+
+        state = await self.on_state(body, headers)
+        return MessageQueueResponse(state, {"type": "state"})
 
     async def start(self):
         await self.create_queues()
@@ -983,6 +1015,7 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
             )
             self._consume_tag = await self.queue.consume(self.on_request, no_ack=False)
             self.state["is_running"] = True
+            self.update_state()
         except Exception as e:
             print(e)
 

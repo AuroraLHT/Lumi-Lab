@@ -67,26 +67,22 @@ class CameraMessageQueueServer(BasicServer):
         )
         self.camera = camera
 
-    async def on_message(self, message: AbstractIncomingMessage):
-        img, img_header = (
-            self.camera.get_frame()
-        )  # this get the latest frame from the peek queue
-        body, headers = encode_img(img, img_header)
-
-        return body, headers
-
-    async def on_status(self, body, headers):
-        """
-        TODO: read all the camera adjustable configuation
-        """
-        status = await super().on_status(body, headers)
-        status.update(
+    def update_state(self):
+        self.state.update(
             {
                 "frame_dims": self.camera.frame_dims,
                 "frame_metas": self.camera.frame_metas,
             }
         )
-        return status
+
+    async def on_message(self, message: AbstractIncomingMessage):
+        img, img_header = (
+            self.camera.get_frame()
+        )  # this get the latest frame from the peek queue
+        body, headers = encode_img(img, img_header)
+        # update the state at each read out
+
+        return body, headers
 
 
 class CameraMessageQueueClient(BasicClient):
@@ -130,12 +126,21 @@ class LiveCameraMessageQueueServer(BasicStreamServer):
         self.camera = camera
         self.camera_queue = camera_queue
 
+    def update_state(self):
+        self.state.update(
+            {
+                "frame_dims": self.camera.frame_dims,
+                "frame_metas": self.camera.frame_metas,
+            }
+        )
+
     async def on_streaming(self):
         if not self.camera_queue.empty():
             img, img_header = (
                 self.camera.get_frame()
             )  # this get the latest frame from the peek queue
             body, headers = encode_img(img, img_header)
+
             return body, headers
         else:
             return None, None
@@ -190,6 +195,18 @@ class VideoFragmentsMessageQueueServer(BasicServer):
             server_name=server_name,
         )
         self.video_compressor = video_compressor
+
+    def update_state(self):
+        # update the state at each read out
+        self.state.update(
+            {
+                "frame_dims": self.video_compressor.camera.frame_dims,
+                "frame_metas": self.video_compressor.camera.frame_metas,
+                "video_fps": self.video_compressor.config.fps,
+                "video_height": self.video_compressor.config.height,
+                "video_width": self.video_compressor.config.width,
+            }
+        )
 
     async def on_message(self, message):
         body = message.body.decode()
@@ -266,11 +283,11 @@ class VideoFragmentsMessageQueueClient(BasicClient):
 
 
 class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
-    video_compressor: "lumi.rheed.pylon_camera.VideoCompressor"
+    video_compressor: "lumi.rheed.video_stream.VideoCompressor"
 
     def __init__(
         self,
-        video_compressor: "lumi.rheed.pylon_camera.VideoCompressor",
+        video_compressor: "lumi.rheed.video_stream.VideoCompressor",
         channel: AbstractChannel,
         exchange: AbstractExchange,
         control_routing_key: str,
@@ -288,9 +305,23 @@ class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
         )
         self.video_compressor = video_compressor
 
+    def update_state(self):
+        # update the state at each read out
+        self.state.update(
+            {
+                "frame_dims": self.video_compressor.camera.frame_dims,
+                "frame_metas": self.video_compressor.camera.frame_metas,
+                "video_fps": self.video_compressor.config.fps,
+                "video_height": self.video_compressor.config.height,
+                "video_width": self.video_compressor.config.width,
+            }
+        )
+
     async def on_streaming(self):
         logging.debug(f"Message queue {self.server_name} server on stream")
         fragment, headers = self.video_compressor.get_fragment()
+
+
         return fragment, headers
 
 
@@ -307,7 +338,7 @@ class LiveVideoFragmentsMessageQueueClient(BasicStreamClient):
         client_name: str,
         time_out: float,
     ) -> None:
-        
+
         super().__init__(
             channel=channel,
             exchange=exchange,

@@ -55,26 +55,23 @@ class ChamberLogMessageQueueServer(BasicServer):
 
         self.log_reader = log_reader
 
+    def update_state(self):
+        # update the state at each read out
+        self.state.update({"entries": self.log_reader.entries, "file_path": self.log_reader._log_file_path})
+
+        # update the state at each read out
     async def on_message(self, message: AbstractIncomingMessage):
         # st = time.time()
         log, headers = (
             self.log_reader.get_log()
         )  # this get the latest frame from the peek queue
         body = json.dumps(log).encode()
+
+
         # et = time.time()
         # logging.info(f"[x] Log processing time {et-st} sec")
         return body, headers
-
-    async def on_status(self, body, headers):
-        """
-        We temporary get the key from live
-        """
-
-        status = await super().on_status(body, headers)
-
-        status.update({"entries": self.log_reader.entries})
-        return status
-
+    
 
 class ChamberLogMessageQueueClient(BasicClient):
     async def request(self):
@@ -110,22 +107,17 @@ class LiveChamberLogMessageQueueServer(BasicStreamServer):
         self.log_reader = log_reader
         self.log_queue = log_queue
 
+    def update_state(self):
+        self.state.update({"entries": self.log_reader.entries, "file_path": self.log_reader._log_file_path})
+
     async def on_streaming(self):
         if not self.log_queue.empty():
             log, headers = self.log_queue.get()
             body = json.dumps(log).encode()
+
             return body, headers
         else:
             return None, None
-
-    async def on_status(self, body, headers):
-        """
-        We temporary get the key from live
-        """
-        status = await super().on_status(body, headers)
-
-        status.update({"entries": self.log_reader.entries})
-        return status
 
 
 class LiveChamberLogMessageQueueClient(BasicStreamClient):

@@ -179,20 +179,49 @@ async def read_root():
 
 
 @app.get("/RHEED/cam/live/state")
-async def get_rheed_cam_status():
-    global connection_state
-    live_rheed_node_state = connection_state.live_video_client.get_status()
-    return JSONResponse(content=live_rheed_node_state)
-
-
-
-@app.get("/RHEED/detection/live/state")
-async def get_rheed_detection_status():
+async def get_rheed_cam_state():
     async def state_generator():
         queue = asyncio.Queue()
 
         async def on_state_callback(message: AbstractIncomingMessage):
-            logging.info(f"detection state put {message.body.decode()}")
+            # logging.info(f"RHEED cam state put {message.body.decode()}")
+            await queue.put(message)
+
+        live_video_client = LiveVideoFragmentsMessageQueueClient(
+            channel=connection_state.channel,
+            exchange=connection_state.exchange_rheed,
+            routing_key="live_video",
+            control_routing_key="live_video_ctrl",
+            state_routing_key="live_video_state",
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
+            client_name="Live RHEED Cam Monitor",
+            time_out=10,
+        )
+        await live_video_client.start_state()
+        await live_video_client.start_control()
+        state = await live_video_client.get_state(return_bytes=True)
+        yield f"data: {state.decode()}\n\n"
+
+        try:
+            while True:
+                message = await queue.get()
+                logging.debug(f"RHEED cam state yield {message.body.decode()}")
+                yield f"data: {message.body.decode()}\n\n"
+        finally:
+            await live_video_client.stop()
+
+    return StreamingResponse(state_generator(), media_type="text/event-stream")
+
+
+
+@app.get("/RHEED/detection/live/state")
+async def get_rheed_detection_state():
+    async def state_generator():
+        queue = asyncio.Queue()
+
+        async def on_state_callback(message: AbstractIncomingMessage):
+            # logging.info(f"detection state put {message.body.decode()}")
 
             await queue.put(message)
 
@@ -208,11 +237,14 @@ async def get_rheed_detection_status():
             time_out=10,
         )
         await live_detection_client.start_state()
+        await live_detection_client.start_control()
+        state = await live_detection_client.get_state(return_bytes=True)
+        yield f"data: {state.decode()}\n\n"
 
         try:
             while True:
                 message = await queue.get()
-                logging.info(f"detection state get {message.body.decode()}")
+                logging.debug(f"detection state yield {message.body.decode()}")
                 # this is the format for server sent event (SSE)
                 yield f"data: {message.body.decode()}\n\n"
         finally:
@@ -220,6 +252,41 @@ async def get_rheed_detection_status():
 
     return StreamingResponse(state_generator(), media_type="text/event-stream")
 
+@app.get("/chamber/log/live/state")
+async def get_chamber_log_state():
+    async def state_generator():
+        queue = asyncio.Queue()
+
+        async def on_state_callback(message: AbstractIncomingMessage):
+            # logging.info(f"chamber log state put {message.body.decode()}")
+            await queue.put(message)
+
+        live_log_client = LiveChamberLogMessageQueueClient(
+            channel=connection_state.channel,
+            exchange=connection_state.exchange_chamber,
+            routing_key="live_log",
+            control_routing_key="live_log_ctrl",
+            state_routing_key="live_log_state",
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
+            client_name="Live Log Monitor",
+            time_out=10,
+        )
+        await live_log_client.start_state()
+        await live_log_client.start_control()
+        state = await live_log_client.get_state(return_bytes=True)
+        yield f"data: {state.decode()}\n\n"
+
+        try:
+            while True:
+                message = await queue.get()
+                logging.debug(f"chamber log state yield {message.body.decode()}")
+                yield f"data: {message.body.decode()}\n\n"
+        finally:
+            await live_log_client.stop()
+
+    return StreamingResponse(state_generator(), media_type="text/event-stream")
+            
 
 @app.get("/RHEED/image")
 async def read_root():
@@ -255,12 +322,6 @@ async def get_chamber_log():
             headers={str(k): str(v) for k, v in response.headers.items()},
         )
 
-
-@app.get("/RHEED/detection/live/status")
-async def get_chamber_log_status():
-    global connection_state
-    live_detection_node_state = connection_state.live_detection_client.get_status()
-    return JSONResponse(content=live_detection_node_state)
 
 
 @app.post("/storage/start")
