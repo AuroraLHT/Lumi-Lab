@@ -114,6 +114,15 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         self.camera_client = camera_client
         self.fps = 0
 
+    def update_state(self):
+        self.state.update(
+            {
+                "pattern_dim": self.detector.pattern_dims,
+                "detection_metas": self.detector.metas,
+                "classifier_classes": self.detector.aux_detector.classifier_classes,
+            }
+        )
+
     async def on_streaming(self):
         response = await self.camera_client.request()
         img, img_header = decode_img(response.body, response.headers)
@@ -189,6 +198,16 @@ class DetectionMessageQueueServer(BasicServer):
         self.detector = detector
         self.camera_client = camera_client
 
+    def update_state(self):
+        self.state.update(
+            {
+                "pattern_dim": self.detector.pattern_dims,
+                "detection_metas": self.detector.metas,
+                "classifier_classes": self.detector.aux_detector.classifier_classes,
+            }
+        )
+
+
     async def on_message(self, message: AbstractIncomingMessage):
         body, headers = message.body, message.headers
         if len(message.body):
@@ -204,18 +223,6 @@ class DetectionMessageQueueServer(BasicServer):
         )
 
         return body, headers
-
-    async def on_status(self, body, headers):
-        status = await super().on_status(body, headers)
-
-        status.update(
-            {
-                "pattern_dim": self.detector.pattern_dims,
-                "detection_metas": self.detector.metas,
-                "classifier_classes": self.detector.aux_detector.classifier_classes,
-            }
-        )
-        return status
 
 
 class DetectionMessageQueueClient(BasicClient):

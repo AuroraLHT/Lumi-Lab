@@ -2,6 +2,7 @@ import asyncio
 
 import aio_pika
 from aio_pika import ExchangeType, connect
+from pathlib import Path
 
 from lumi.storage.communication import (
     StorageMessageQueueServer,
@@ -115,7 +116,7 @@ async def main(args):
     )
 
     storage_config = StorageMessageQueueServerConfig(
-        root_folder="../database",
+        root_folder= Path(__file__).parent.parent.absolute() / ("database"),
         initial_size=1000,
     )
 

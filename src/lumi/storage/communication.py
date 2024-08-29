@@ -167,17 +167,18 @@ class StorageMessageQueueServer(BasicServer):
         return response_msg.encode(), response_header
 
     async def create_storages(self, body, headers):
-        camera_status = await self.camera_client.get_status()
-        frame_dim = camera_status["frame_dims"]
-        frame_metas_columns = camera_status["frame_metas"]
+        camera_state = await self.camera_client.get_state()
+        frame_dim = camera_state["frame_dims"]
+        frame_metas_columns = camera_state["frame_metas"]
 
-        log_status = await self.log_client.get_status()
-        log_columns = log_status["entries"]
+        log_state = await self.log_client.get_state()
+        print(log_state)
+        log_columns = log_state["entries"]
 
-        detection_status = await self.detector_client.get_status()
-        pattern_dim = detection_status["pattern_dim"]
-        detection_meta_columns = detection_status["detection_metas"]
-        classifier_classes = detection_status["classifier_classes"]
+        detection_state = await self.detector_client.get_state()
+        pattern_dim = detection_state["pattern_dim"]
+        detection_meta_columns = detection_state["detection_metas"]
+        classifier_classes = detection_state["classifier_classes"]
 
         self.recorder_config = RecorderConfig(
             project_name=headers["project_name"],

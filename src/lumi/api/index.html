@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html>
   <head>
@@ -109,10 +110,12 @@
 
     <br>
     <h1>Server-Sent Events Display</h1>
-    <ul id="detection-node-events">
 
-    </ul>
-
+    <div style="display: flex; justify-content: space-between;">
+        <ul id="detection-node-events" style="flex: 1; margin: 0 10px;"></ul>
+        <ul id="cam-node-events" style="flex: 1; margin: 0 10px;"></ul>
+        <ul id="log-node-events" style="flex: 1; margin: 0 10px;"></ul>
+    </div>
 
     <pre id="response"></pre>
 
@@ -554,10 +557,33 @@
 
 
       // SSE
+      // DETECTION NODE
+        const eventSource_detection = new EventSource(`http://${host}/RHEED/detection/live/state`);
 
-        const eventSource = new EventSource(`http://${host}/RHEED/detection/live/state`);
+        eventSource_detection.onmessage = function(event) {
+            // Parse the JSON data received from the server
+            // console.log(event.data);
+            const data = JSON.parse(event.data);
+            // console.log(data, typeof(data));
+            
+            // Display the received data
+            const listItem = document.createElement("li");
+            const text = Object.entries(data).map(([key, value]) => `${key}: ${value}`).join(', ');
+            listItem.innerText = text;
+            // console.log(text);
+            const detectionNodeEvents = document.getElementById("detection-node-events");
+            detectionNodeEvents.innerHTML = ''; // Clear existing content
+            detectionNodeEvents.appendChild(listItem);
+        };
 
-        eventSource.onmessage = function(event) {
+        eventSource_detection.onerror = function(error) {
+            console.error("EventSource failed:", error);
+            eventSource_detection.close();
+        };
+        // CAM NODE
+        const eventSource_cam = new EventSource(`http://${host}/RHEED/cam/live/state`);
+
+        eventSource_cam.onmessage = function(event) {
             // Parse the JSON data received from the server
             console.log(event.data);
             const data = JSON.parse(event.data);
@@ -568,13 +594,40 @@
             const text = Object.entries(data).map(([key, value]) => `${key}: ${value}`).join(', ');
             listItem.innerText = text;
             console.log(text);
-            document.getElementById("detection-node-events").appendChild(listItem);
+            const camNodeEvents = document.getElementById("cam-node-events");
+            camNodeEvents.innerHTML = '';  // Clear existing content
+            camNodeEvents.appendChild(listItem);
         };
 
-        eventSource.onerror = function(error) {
+        eventSource_cam.onerror = function(error) {
             console.error("EventSource failed:", error);
-            eventSource.close();
+            eventSource_cam.close();
         };
+
+      // LOG NODE
+      const eventSource_log = new EventSource(`http://${host}/chamber/log/live/state`);
+
+      eventSource_log.onmessage = function(event) {
+          // Parse the JSON data received from the server
+          console.log(event.data);
+          const data = JSON.parse(event.data);
+          console.log(data, typeof(data));
+          
+          // Display the received data
+          const listItem = document.createElement("li");
+          const text = Object.entries(data).map(([key, value]) => `${key}: ${value}`).join(', ');
+          listItem.innerText = text;
+          console.log(text);
+          const logNodeEvents = document.getElementById("log-node-events");
+          logNodeEvents.innerHTML = '';  // Clear existing content
+          logNodeEvents.appendChild(listItem);
+      };
+
+      eventSource_log.onerror = function(error) {
+          console.error("EventSource failed:", error);
+          eventSource_log.close();
+      };
+
       })();
     </script>
   </body>
