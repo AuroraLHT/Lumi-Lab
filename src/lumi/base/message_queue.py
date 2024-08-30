@@ -556,7 +556,7 @@ class BasicStreamClient:
             stop_flag = await self.on_response_callback(message)
             if stop_flag:
                 logging.info(
-                    f"{self.client_type} <{self.client_name}> state callback stop_flag {stop_flag} raises, termiante the streaming process"
+                    f"{self.client_type} <{self.client_name}> response callback stop_flag {stop_flag} raises, termiante the streaming process"
                 )
                 await self.stop()
         else:
