@@ -30,7 +30,7 @@ async def main(args):
         channel=channel, exchange=exchange_rheed, routing_key="image", control_routing_key="image_ctrl", client_name="Camera", time_out=10,
     )
     await camera_client.start()
-    res = await camera_client.get_status()
+    res = await camera_client.get_state()
     print(res)
 
     # log_client = ChamberLogMessageQueueClient(
