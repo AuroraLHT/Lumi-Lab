@@ -11,6 +11,7 @@ from aio_pika.abc import (
 
 from collections.abc import Callable, Awaitable
 
+from ..base.message_queue import BasicStreamClient
 from ..rheed.communitation import LiveVideoFragmentsMessageQueueClient, CameraMessageQueueClient, VideoFragmentsMessageQueueClient
 from ..detection.communication import LiveDetectionMessageQueueClient
 from ..pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogMessageQueueClient
