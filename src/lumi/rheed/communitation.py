@@ -321,7 +321,6 @@ class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
         logging.debug(f"Message queue {self.server_name} server on stream")
         fragment, headers = self.video_compressor.get_fragment()
 
-
         return fragment, headers
 
 
