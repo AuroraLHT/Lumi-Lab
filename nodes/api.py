@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse, Response, JSONResponse
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+
 from aio_pika import Message, connect, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage, AbstractConnection, AbstractChannel, AbstractExchange
 
@@ -23,6 +25,29 @@ from lumi.api.communication import (
     LiveChamberLogMessageQueueClient,
     StorageMessageQueueClient,
 )
+
+"""
+TODO: refactor into this structure
+api/
+├── __init__.py
+├── main.py
+├── connection_state.py
+├── websocket_handlers.py
+├── routes.py
+├── lifespan.py
+└── utils.py
+"""
+
+
+# Allow all origins, or specify a list of allowed origins
+origins = [
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://[::1]:5173",  # IPv6 localhost
+    "http://0.0.0.0:5173",  # Any IPv4 address
+    # Add other origins if needed
+]
+
 
 
 FORMAT = "%(asctime)s %(levelname)s:%(message)s"
@@ -169,6 +194,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # You can also set to ["*"] to allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Or specify allowed methods like ["GET", "POST"]
+    allow_headers=["*"],  # Or specify allowed headers
+)
+
 
 @app.get("/")
 async def read_root():
@@ -177,7 +210,11 @@ async def read_root():
 
     return HTMLResponse(content=html_content, status_code=200)
 
-
+def update_state(body : bytes, state : dict) -> str:
+    content : dict = json.loads(body)
+    content.update(state)
+    return json.dumps(content)
+    
 @app.get("/RHEED/cam/live/state")
 async def get_rheed_cam_state():
     async def state_generator():
@@ -185,7 +222,7 @@ async def get_rheed_cam_state():
 
         async def on_state_callback(message: AbstractIncomingMessage):
             # logging.info(f"RHEED cam state put {message.body.decode()}")
-            await queue.put(message)
+            await queue.put(message.body)
 
         live_video_client = LiveVideoFragmentsMessageQueueClient(
             channel=connection_state.channel,
@@ -200,14 +237,24 @@ async def get_rheed_cam_state():
         )
         await live_video_client.start_state()
         await live_video_client.start_control()
-        state = await live_video_client.get_state(return_bytes=True)
-        yield f"data: {state.decode()}\n\n"
+
+        try:
+            state = await asyncio.wait_for(live_video_client.get_state(return_bytes=True), timeout=5.0)
+            state = update_state(state, {"is_available": True})
+        except asyncio.TimeoutError:
+            state = json.dumps({"is_available": False})
+
+        print(state)
+
+        yield f"data: {state}\n\n"
 
         try:
             while True:
-                message = await queue.get()
-                logging.debug(f"RHEED cam state yield {message.body.decode()}")
-                yield f"data: {message.body.decode()}\n\n"
+                body : bytes = await queue.get()
+                state = update_state(body, {"is_available": True})
+
+                logging.debug(f"RHEED cam state yield {state}")
+                yield f"data: {state}\n\n"
         finally:
             await live_video_client.stop()
 
@@ -223,7 +270,7 @@ async def get_rheed_detection_state():
         async def on_state_callback(message: AbstractIncomingMessage):
             # logging.info(f"detection state put {message.body.decode()}")
 
-            await queue.put(message)
+            await queue.put(message.body)
 
         live_detection_client = LiveDetectionMessageQueueClient(
             channel=connection_state.channel,
@@ -238,15 +285,23 @@ async def get_rheed_detection_state():
         )
         await live_detection_client.start_state()
         await live_detection_client.start_control()
-        state = await live_detection_client.get_state(return_bytes=True)
-        yield f"data: {state.decode()}\n\n"
+        try:
+            state = await asyncio.wait_for(live_detection_client.get_state(return_bytes=True), timeout=5.0)
+            state = update_state(state, {"is_available": True})
+        except asyncio.TimeoutError:
+            state = json.dumps({"is_available": False})
+
+        print(state)
+
+        yield f"data: {state}\n\n"
 
         try:
             while True:
-                message = await queue.get()
-                logging.debug(f"detection state yield {message.body.decode()}")
-                # this is the format for server sent event (SSE)
-                yield f"data: {message.body.decode()}\n\n"
+                body : bytes = await queue.get()
+                state = update_state(body, {"is_available": True})
+
+                logging.debug(f"RHEED cam state yield {state}")
+                yield f"data: {state}\n\n"
         finally:
             await live_detection_client.stop()
 
@@ -259,7 +314,7 @@ async def get_chamber_log_state():
 
         async def on_state_callback(message: AbstractIncomingMessage):
             # logging.info(f"chamber log state put {message.body.decode()}")
-            await queue.put(message)
+            await queue.put(message.body)
 
         live_log_client = LiveChamberLogMessageQueueClient(
             channel=connection_state.channel,
@@ -274,14 +329,23 @@ async def get_chamber_log_state():
         )
         await live_log_client.start_state()
         await live_log_client.start_control()
-        state = await live_log_client.get_state(return_bytes=True)
-        yield f"data: {state.decode()}\n\n"
+        try:
+            state = await asyncio.wait_for(live_log_client.get_state(return_bytes=True), timeout=5.0)
+            state = update_state(state, {"is_available": True})
+        except asyncio.TimeoutError:
+            state = json.dumps({"is_available": False})
+
+        print(state)
+
+        yield f"data: {state}\n\n"
 
         try:
             while True:
-                message = await queue.get()
-                logging.debug(f"chamber log state yield {message.body.decode()}")
-                yield f"data: {message.body.decode()}\n\n"
+                body : bytes = await queue.get()
+                state = update_state(body, {"is_available": True})
+
+                logging.debug(f"RHEED cam state yield {state}")
+                yield f"data: {state}\n\n"
         finally:
             await live_log_client.stop()
 
@@ -437,16 +501,19 @@ async def websocket_endpoint(websocket: WebSocket):
     global connection_state
 
     async def on_message():
-        logging.info("start message")
+        logging.info("start rheed video on_message loop")
         async for message in websocket.iter_text():
-            logging.info(message)
-            await asyncio.sleep(0.1)
-        # while True:
-        #     message = await websocket.receive()
-        #     logging.info(message)
-        #     await asyncio.sleep(0.1)
+            logging.info(f"rheed video on message {message}")
+            if message == "start":
+                await live_client.start_streaming()
+            elif message == "stop":
+                await live_client.stop_streaming()
 
-        logging.info("end in")
+            logging.debug(message)
+            await asyncio.sleep(0.1)
+
+        logging.info("end rheed video on message loop")
+
 
     async def send_fragment(fragment):
         """
