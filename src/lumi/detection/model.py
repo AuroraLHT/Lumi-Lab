@@ -279,7 +279,7 @@ class DetectorServer(threading.Thread):
         if self.state.pattern_dims is not None:
             return self.state.pattern_dims
         else:
-            logging.info("Cannot access the pattern_dim state. Return empty dims")
+            logging.debug("Cannot access the pattern_dim state. Return empty dims")
             return []
     
     @property
