@@ -53,11 +53,6 @@ origins = [
 FORMAT = "%(asctime)s %(levelname)s:%(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 
-async def basic_state_callback( message: AbstractIncomingMessage):
-    print(f"state body: {type(message.body)} {message.body}")
-    print(f"state headers: {type(message.headers)} {message.headers}")
-    return True
-
 @dataclass
 class ConnectionStateManager:
     connection: Optional[AbstractConnection] = None
@@ -517,15 +512,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
     async def send_fragment(fragment):
         """
-        flag for success or not
+        flag for stop or not
         """
         # logging.info(f"send fragment {len(fragment)}")
         try:
             await websocket.send_bytes(fragment)
         except Exception as e:
             logging.error(f"Video websocket {e}")
-            return False
-        return True
+            return True
+        return False
         # await asyncio.sleep(0.003)
 
     await websocket.accept()
@@ -605,7 +600,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     async def send_payload(payload, header):
         """
-        flag for success or not
+        flag for stop or not
         """
         # logging.info(f"send json {len(json_text)}")
         try:
@@ -620,8 +615,8 @@ async def websocket_endpoint(websocket: WebSocket):
             # print(e)
             logging.error(e)
             # raise e
-            return False
-        return True
+            return True
+        return False
         # await asyncio.sleep(0.003)
 
     await websocket.accept()
@@ -680,7 +675,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
     async def send_json(json_text):
         """
-        flag for success or not
+        flag for stop or not
         """
         # logging.info(f"send json {len(json_text)}")
         try:
@@ -688,8 +683,8 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.send_text(json_text)
         except Exception as e:
             logging.error(e)
-            return False
-        return True
+            return True
+        return False
         # await asyncio.sleep(0.003)
 
     await websocket.accept()
