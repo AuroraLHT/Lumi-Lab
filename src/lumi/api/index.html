@@ -315,8 +315,12 @@
         console.log("create media source and start streaming");
 
         websocket.onopen = () => {
-          websocket.send("start"); // tell the server to start streaming
-          console.log("websocket open");
+            console.log("websocket open");
+            // websocket.send("init"); // tell the server to send initialization value
+            
+            websocket.send("start_streaming"); // tell the server to send initialization value
+            websocket.send("start_server"); // tell the server to start streaming
+
         };
         websocket.onclose = () => {
           console.log("websocket close");
