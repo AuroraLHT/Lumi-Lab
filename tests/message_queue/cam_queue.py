@@ -198,7 +198,7 @@ async def main():
         await simulate_shutdown(fragment)
 
     await live_client.start()
-    await live_client.start_streaming()
+    await live_client.start_server_streaming()
 
     # await ws_out_task
     while True:

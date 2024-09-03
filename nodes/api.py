@@ -28,6 +28,8 @@ from lumi.api.communication import (
     StorageMessageQueueClient,
 )
 
+import traceback
+
 """
 TODO: refactor into this structure
 api/
@@ -45,6 +47,10 @@ sys.setrecursionlimit(10000)
 
 # Allow all origins, or specify a list of allowed origins
 origins = [
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://[::1]:8000",  # IPv6 localhost
+
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://[::1]:5173",  # IPv6 localhost
@@ -243,7 +249,7 @@ async def get_rheed_cam_state():
         except asyncio.TimeoutError:
             state = json.dumps({"is_available": False})
 
-        print(state)
+        # print(state)
 
         yield f"data: {state}\n\n"
 
@@ -290,7 +296,7 @@ async def get_rheed_detection_state():
         except asyncio.TimeoutError:
             state = json.dumps({"is_available": False})
 
-        print(state)
+        # print(state)
 
         yield f"data: {state}\n\n"
 
@@ -334,7 +340,7 @@ async def get_chamber_log_state():
         except asyncio.TimeoutError:
             state = json.dumps({"is_available": False})
 
-        print(state)
+        # print(state)
 
         yield f"data: {state}\n\n"
 
@@ -504,32 +510,10 @@ async def generic_websocket_handler(
     endpoint_name: str,
     initial_data_function: Optional[Callable[[], Awaitable[list[Any]]]] = None,
 ):
-    async def on_message():
-        try:
-            logging.info(f"start {endpoint_name} on_message loop")
-            async for message in websocket.iter_text():
-                logging.info(f"{endpoint_name} on message {message}")
-                if message == "start":
-                    await client.start_streaming()
-                elif message == "stop":
-                    await client.stop_streaming()
-                logging.debug(message)
-                await asyncio.sleep(0.1)
-        except Exception as e:
-            logging.error(f"{endpoint_name} on_message error: {e}")
-        logging.info(f"end {endpoint_name} on message loop")
-
     async def on_live_message_callback(message: AbstractIncomingMessage):
         return await send_function(message.body, message.headers)
 
-    await websocket.accept()
-    logging.info(f"{endpoint_name} websocket accepted")
-
-    if initial_data_function:
-        initial_data = await initial_data_function()
-        for data in initial_data:
-            await send_function(data, {})
-
+    # client = None
     client = client_class(
         **client_params,
         on_response_callback=on_live_message_callback,
@@ -537,11 +521,63 @@ async def generic_websocket_handler(
         client_name=f"Live {endpoint_name}",
         time_out=10,
     )
-    await client.start()
+    await client.start_control()
+    # client.start_state()
+
+    async def on_message():
+        nonlocal client
+        try:
+            logging.info(f"start {endpoint_name} on_message loop")
+            async for message in websocket.iter_text():
+                logging.info(f"{endpoint_name} on message {message}")
+                if message == "start_server":
+                    if client is not None:
+                        await client.start_server_streaming()
+                elif message == "stop_server":
+                    if client is not None:
+                        await client.stop_server_streaming()
+                # elif message == "init":
+                elif message == "start_streaming":
+                    if client is not None: await client.stop()
+
+
+                    if initial_data_function is not None:
+                        initial_data = await initial_data_function()
+                        for data in initial_data:
+                            await send_function(data, {})
+                            logging.info(f"{endpoint_name} send initialization data")
+
+                    await client.start_main()
+                elif message == "end_streaming":
+                    if client is not None:                        
+                        await client.stop()
+                        client = None
+
+                logging.debug(message)
+                await asyncio.sleep(0.1)
+        except Exception as e:
+            logging.error(f"{endpoint_name} on_message error: {e}")
+
+            error_info = traceback.extract_tb(e.__traceback__)[-1]
+            file_name = error_info.filename
+            line_number = error_info.lineno
+            logging.error(f"{endpoint_name} Error in {file_name} at line {line_number}: {str(e)}")
+
+        logging.info(f"end {endpoint_name} on message loop")
+
+    await websocket.accept()
+    logging.info(f"{endpoint_name} websocket accepted")
+
 
     ws_in_task = asyncio.create_task(on_message(), name=f"ws_{endpoint_name}_in")
-    await ws_in_task
+    try:
+        await ws_in_task
+    except Exception as e:
+        logging.info(f"{endpoint_name} websocket received an exception: {e}")
+
     # await asyncio.Future()
+    if client is not None:
+        await client.stop()
     logging.info(f"{endpoint_name} websocket exit")
 
 @app.websocket("/RHEED/cam/live")
@@ -604,7 +640,7 @@ async def rheed_detection_live(websocket: WebSocket):
 async def chamber_log_live(websocket: WebSocket):
     async def send_json(body, headers):
         try:
-            json_text = json.dumps(body)
+            json_text = body.decode()
             await websocket.send_text(json_text)
         except Exception as e:
             logging.error(f"/chamber/log/live send_json error: {e}")

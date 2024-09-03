@@ -626,12 +626,12 @@ class BasicStreamClient:
             )
             return self.empty_response
 
-    async def start_streaming(self):
+    async def start_server_streaming(self):
         response = await self.request_control(
             body="".encode(), headers={"type": "start"}
         )
 
-    async def stop_streaming(self):
+    async def stop_server_streaming(self):
         response = await self.request_control(
             body="".encode(), headers={"type": "stop"}
         )
