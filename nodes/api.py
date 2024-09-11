@@ -63,6 +63,11 @@ origins = [
 FORMAT = "%(asctime)s %(levelname)s:%(message)s"
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 
+def package_payload(payload : bytes, headers : dict) -> bytes:
+    header_json = json.dumps(headers)
+    header_length = struct.pack(">I", len(header_json))
+    return header_length + header_json.encode("utf-8") + payload
+
 @dataclass
 class ConnectionStateManager:
     connection: Optional[AbstractConnection] = None
@@ -299,13 +304,13 @@ async def get_rheed_detection_state():
         # print(state)
 
         yield f"data: {state}\n\n"
-
+        # print(state)
         try:
             while True:
                 body : bytes = await queue.get()
                 state = update_state(body, {"is_available": True})
 
-                logging.debug(f"RHEED cam state yield {state}")
+                logging.debug(f"RHEED detection state yield {state}")
                 yield f"data: {state}\n\n"
         finally:
             await live_detection_client.stop()
@@ -538,19 +543,18 @@ async def generic_websocket_handler(
                         await client.stop_server_streaming()
                 # elif message == "init":
                 elif message == "start_streaming":
-                    if client is not None: await client.stop()
+                    if not client.is_main_running():
+                        if initial_data_function is not None:
+                            initial_data = await initial_data_function()
+                            for data, headers in initial_data:
+                                await send_function(data, headers)
+                                logging.info(f"{endpoint_name} send initialization data {headers}")
 
+                        await client.start_main()
 
-                    if initial_data_function is not None:
-                        initial_data = await initial_data_function()
-                        for data in initial_data:
-                            await send_function(data, {})
-                            logging.info(f"{endpoint_name} send initialization data")
-
-                    await client.start_main()
                 elif message == "end_streaming":
                     if client is not None:                        
-                        await client.stop()
+                        await client.stop_main()
                         client = None
 
                 logging.debug(message)
@@ -582,11 +586,16 @@ async def generic_websocket_handler(
 
 @app.websocket("/RHEED/cam/live")
 async def rheed_cam_live(websocket: WebSocket):
-    async def send_fragment(fragment, _):
+    async def send_fragment(fragment, headers):
+
         try:
-            await websocket.send_bytes(fragment)
+            # header_json = json.dumps(headers)
+            # header_length = struct.pack(">I", len(header_json))
+            # data = header_length + header_json.encode("utf-8") + fragment
+            data = package_payload(fragment, headers)
+            await websocket.send_bytes(data)
         except Exception as e:
-            logging.error(f"/RHEED/cam/live send_fragment error: {e}")
+            logging.error(f"/RHEED/detection/live send_fragment error: {e}")
             return True
         return False
 
@@ -611,9 +620,10 @@ async def rheed_cam_live(websocket: WebSocket):
 async def rheed_detection_live(websocket: WebSocket):
     async def send_payload(payload, header):
         try:
-            header_json = json.dumps(header)
-            header_length = struct.pack(">I", len(header_json))
-            data = header_length + header_json.encode("utf-8") + payload
+            # header_json = json.dumps(header)
+            # header_length = struct.pack(">I", len(header_json))
+            # data = header_length + header_json.encode("utf-8") + payload
+            data = package_payload(payload, header)
             await websocket.send_bytes(data)
         except Exception as e:
             logging.error(f"/RHEED/detection/live send_payload error: {e}")

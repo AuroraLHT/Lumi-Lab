@@ -39,7 +39,7 @@ from ..base.message_queue import (
 
 import queue
 
-from typing import Union, List, Dict, Any, Callable, Awaitable
+from typing import Tuple, Union, List, Dict, Any, Callable, Awaitable
 
 
 class CameraMessageQueueServer(BasicServer):
@@ -248,10 +248,10 @@ class VideoFragmentsMessageQueueClient(BasicClient):
 
     async def get_initial(
         self,
-    ) -> List[bytes]:
+    ) -> List[Tuple[bytes, dict]]:
         logging.info(f"{self.client_name} call get initial")
 
-        initial_fragments = None
+        initial_fragments : List[Tuple[bytes, dict]] = []
         response = await self.request(0, is_initial=True)  # get the first frame
         initial_fragment, initial_fragment_header = response.body, response.headers
 
@@ -259,7 +259,7 @@ class VideoFragmentsMessageQueueClient(BasicClient):
 
         size = initial_fragment_header["size"]
         initial_fragments = [None] * size
-        initial_fragments[0] = initial_fragment
+        initial_fragments[0] = (initial_fragment, initial_fragment_header)
 
         other_fragments_result = await asyncio.gather(
             *[self.request(i, is_initial=True) for i in range(1, size)]
@@ -272,13 +272,12 @@ class VideoFragmentsMessageQueueClient(BasicClient):
                 other_fragment_result.body,
                 other_fragment_result.headers,
             )
-            initial_fragments[headers["index"]] = fragment
+            initial_fragments[headers["index"]] = (fragment, headers)
         logging.info(
             f"{self.client_name} get rest of the fragments with actual total length {len(initial_fragments)}"
         )
 
         logging.info(f"{self.client_name} return get initial")
-
         return initial_fragments
 
 
