@@ -23,13 +23,14 @@ import logging
 import json
 
 from ..utils.image import encode_img
+from ..utils.common import encode_json, decode_json
+
 from ..base.message_queue import (
     BasicServer,
     BasicStreamServer,
     BasicStreamClient,
     BasicClient,
     MessageQueueResponse,
-    BaseControlMixin,
 )
 
 # import lumi
@@ -136,9 +137,11 @@ class LiveCameraMessageQueueServer(BasicStreamServer):
 
     async def on_streaming(self):
         if not self.camera_queue.empty():
-            img, img_header = (
-                self.camera.get_frame()
-            )  # this get the latest frame from the peek queue
+            img, img_header = self.camera_queue.get()
+            # this get the latest frame from the peek queue            
+            # img, img_header = (
+            #     self.camera.get_frame()
+            # )  
             body, headers = encode_img(img, img_header)
 
             return body, headers
@@ -349,6 +352,316 @@ class LiveVideoFragmentsMessageQueueClient(BasicStreamClient):
             time_out=time_out,
         )
 
+
+class IntegratorMessageQueueServer(BasicServer):
+    integrator: Union[
+        "lumi.rheed.integrator.MultiBoxIntegrator"
+    ]
+
+    def __init__(
+        self,
+        integrator: "lumi.rheed.integrator.MultiBoxIntegrator",
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        routing_key: str,
+        control_routing_key: str,
+        state_routing_key: str,
+        server_name: str,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            control_routing_key=control_routing_key,
+            routing_key=routing_key,
+            state_routing_key=state_routing_key,
+            server_name=server_name,
+        )
+        self.integrator = integrator
+
+    def update_state(self):
+        pass
+        # self.state.update(
+        #     {
+        #         "frame_dims": self.camera.frame_dims,
+        #         "frame_metas": self.camera.frame_metas,
+        #     }
+        # )
+
+    async def on_message(self, message: AbstractIncomingMessage):
+        message_headers = message.headers
+        message_body = decode_json(message.body)
+
+        if message_headers["type"] == "cache":
+            bbox_id = message_body["bbox_id"]
+            contents = self.integrator.get_integration_cache(bbox_id)
+            body = encode_json(contents)
+            headers = {"type": "cache"}
+
+        elif message_headers["type"] == "register":
+            bbox_id = message_body["bbox_id"]
+            bbox = message_body["bbox"]
+            self.integrator.register_bbox(bbox_id, bbox)
+            body = "".encode()
+            headers = {"type": "register"}
+
+        elif message_headers["type"] == "bboxes":
+            bboxes = self.integrator.bboxes
+            body = encode_json(bboxes)
+            headers = {"type": "bboxes"}
+        else:
+            raise ValueError(f"Unexpected message type: {message_headers['type']}")
+        
+        return body, headers
+
+
+class IntegratorMessageQueueClient(BasicClient):
+    
+    async def get_cache(self, bbox_id: int):
+        logging.info(f"{self.log_prefix} get cache for bbox_id {bbox_id}")
+        body = encode_json({"bbox_id": bbox_id})
+        headers = {"type": "cache"}
+        return await super().request(body=body, headers=headers)
+    
+    async def get_bboxes(self):
+        logging.info(f"{self.log_prefix} get bboxes")
+        headers = {"type": "bboxes"}
+        return await super().request(body="".encode(), headers=headers)
+    
+    async def register_bbox(self, bbox_id: int, bbox: Dict[str, Any]):
+        logging.info(f"{self.log_prefix} register bbox {bbox_id}")
+        body = encode_json({"bbox_id": bbox_id, "bbox": bbox})
+        headers = {"type": "register"}
+        return await super().request(body=body, headers=headers)
+
+
+class LiveIntegratorMessageQueueServer(BasicStreamServer):
+    integrator: Union[
+        "lumi.rheed.pylon_camera.PylonCamera", "lumi.rheed.pylon_camera.WebCamera"
+    ]
+    integrator_queue: queue.Queue
+
+    def __init__(
+        self,
+        integrator,
+        integrator_queue,
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        control_routing_key: str,
+        publish_routing_key: str,
+        state_routing_key: str,
+        server_name: str,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            control_routing_key=control_routing_key,
+            publish_routing_key=publish_routing_key,
+            state_routing_key=state_routing_key,
+            server_name=server_name,
+        )
+
+        self.integrator = integrator
+        self.integrator_queue = integrator_queue
+
+    def update_state(self):
+        pass
+        # self.state.update(
+        #     {
+        #         "frame_dims": self.camera.frame_dims,
+        #         "frame_metas": self.camera.frame_metas,
+        #     }
+        # )
+
+    async def on_streaming(self):
+        if not self.integrator_queue.empty():
+            integration, integration_header = self.integrator_queue.get()
+            body, headers = encode_json(integration), integration_header
+
+            return body, headers
+        else:
+            return None, None
+
+
+class LiveIntegratorMessageQueueClient(BasicStreamClient):
+    def __init__(
+        self,
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        routing_key: str,
+        control_routing_key: str,
+        state_routing_key: str,
+        on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
+        on_state_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
+        client_name: str,
+        time_out: float,
+    ) -> None:
+
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            routing_key=routing_key,
+            control_routing_key=control_routing_key,
+            state_routing_key=state_routing_key,
+            on_response_callback=on_response_callback,
+            on_state_callback=on_state_callback,
+            client_name=client_name,
+            time_out=time_out,
+        )
+
+
+class STFTMessageQueueServer(BasicServer):
+    stft_calculator: Union[
+        "lumi.rheed.livefft.STFTCalculator"
+    ]
+
+    def __init__(
+        self,
+        stft_calculator: "lumi.rheed.livefft.STFTCalculator",
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        routing_key: str,
+        control_routing_key: str,
+        state_routing_key: str,
+        server_name: str,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            control_routing_key=control_routing_key,
+            routing_key=routing_key,
+            state_routing_key=state_routing_key,
+            server_name=server_name,
+        )
+        self.stft_calculator = stft_calculator
+
+    def update_state(self):
+        pass
+        # self.state.update(
+        #     {
+        #         "frame_dims": self.camera.frame_dims,
+        #         "frame_metas": self.camera.frame_metas,
+        #     }
+        # )
+
+    async def on_message(self, message: AbstractIncomingMessage):
+        message_headers = message.headers
+        message_body = decode_json(message.body)
+
+        if message_headers["type"] == "cache":
+            bbox_id = message_body["bbox_id"]
+            contents = self.stft_calculator.get_cache(bbox_id)
+            body = encode_json(contents)
+            headers = {"type": "cache"}
+
+        elif message_headers["type"] == "register":
+            bbox_id = message_body["bbox_id"]
+            self.stft_calculator.register_integration(bbox_id)
+            body = "".encode()
+            headers = {"type": "register"}
+
+        elif message_headers["type"] == "bboxes":
+            bboxes = self.stft_calculator.bboxes
+            body = encode_json(bboxes)
+            headers = {"type": "bboxes"}
+        else:
+            raise ValueError(f"Unexpected message type: {message_headers['type']}")
+        
+        return body, headers
+
+
+class STFTMessageQueueClient(BasicClient):
+    
+    async def get_cache(self, bbox_id: int):
+        logging.info(f"{self.log_prefix} get cache for bbox_id {bbox_id}")
+        body = encode_json({"bbox_id": bbox_id})
+        headers = {"type": "cache"}
+        return await super().request(body=body, headers=headers)
+    
+    async def get_bboxes(self):
+        logging.info(f"{self.log_prefix} get bboxes")
+        headers = {"type": "bboxes"}
+        return await super().request(body="".encode(), headers=headers)
+    
+    async def register_bbox(self, bbox_id: int):
+        logging.info(f"{self.log_prefix} register bbox {bbox_id}")
+        body = encode_json({"bbox_id": bbox_id})
+        headers = {"type": "register"}
+        return await super().request(body=body, headers=headers)
+
+
+class LiveSTFTMessageQueueServer(BasicStreamServer):
+    stft_calculator: Union[
+        "lumi.rheed.livefft.STFTCalculator"
+    ]
+    stft_calculator_queue: queue.Queue
+
+    def __init__(
+        self,
+        stft_calculator,
+        stft_calculator_queue,
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        control_routing_key: str,
+        publish_routing_key: str,
+        state_routing_key: str,
+        server_name: str,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            control_routing_key=control_routing_key,
+            publish_routing_key=publish_routing_key,
+            state_routing_key=state_routing_key,
+            server_name=server_name,
+        )
+
+        self.stft_calculator = stft_calculator
+        self.stft_calculator_queue = stft_calculator_queue
+
+    def update_state(self):
+        pass
+        # self.state.update(
+        #     {
+        #         "frame_dims": self.camera.frame_dims,
+        #         "frame_metas": self.camera.frame_metas,
+        #     }
+        # )
+
+    async def on_streaming(self):
+        if not self.stft_calculator_queue.empty():
+            stft_body, stft_header = self.stft_calculator_queue.get()
+            body, headers = encode_json(stft_body), stft_header
+
+            return body, headers
+        else:
+            return None, None
+
+
+class LiveSTFTMessageQueueClient(BasicStreamClient):
+    def __init__(
+        self,
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        routing_key: str,
+        control_routing_key: str,
+        state_routing_key: str,
+        on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
+        on_state_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
+        client_name: str,
+        time_out: float,
+    ) -> None:
+
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            routing_key=routing_key,
+            control_routing_key=control_routing_key,
+            state_routing_key=state_routing_key,
+            on_response_callback=on_response_callback,
+            on_state_callback=on_state_callback,
+            client_name=client_name,
+            time_out=time_out,
+        )
 
 # class VideoRecorderMessageQueue:
 #     video_recorder: "lumi.rheed.pylon_camera.VideoRecorder"

@@ -8,11 +8,18 @@ from lumi.rheed.pylon_camera import PylonCamera, PylonCameraConfig, list_devices
 from lumi.rheed.web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
 from lumi.rheed.test_camera import TestCameraConfig, TestCamera
 
+from lumi.rheed.integrator import MultiBoxIntegratorConfig, MultiBoxIntegrator
+from lumi.rheed.livefft import STFTCalculator, STFTCalculatorConfig
+
 from lumi.rheed.communitation import (
     LiveVideoFragmentsMessageQueueServer,
     VideoFragmentsMessageQueueServer,
     CameraMessageQueueServer,
     LiveCameraMessageQueueServer,
+    IntegratorMessageQueueServer,
+    LiveIntegratorMessageQueueServer,
+    STFTMessageQueueServer,
+    LiveSTFTMessageQueueServer,
 )
 import time
 import datetime
@@ -47,6 +54,7 @@ def add_time_stamp(frame, frame_header=None):
             )
     return frame
 
+
 def frame_processing_testcam(frame, frame_header=None):
     # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     frame = cv2.convertScaleAbs(frame, alpha=(255.0 / 4095.0))
@@ -74,8 +82,6 @@ def frame_processing_pylon(frame, frame_header=None):
     # Put current DateTime on each frame
     frame = add_time_stamp(frame, frame_header)
     return frame
-
-
 
 
 async def _main(args):
@@ -117,6 +123,7 @@ async def _main(args):
     # record_camera_queue = camera.register_queue("record")
     live_video_camera_queue = camera.register_queue("live_video")
     live_image_camera_queue = camera.register_queue("live_image")
+    live_integration_camera_queue = camera.register_queue("live_integration")
 
     # Perform connection
     connection = await connect(f"amqp://guest:guest@{args.host}/")
@@ -165,6 +172,24 @@ async def _main(args):
     #     name="video_record",
     # )
 
+
+    stft_config = STFTCalculatorConfig(
+        idle_time=0.005,
+        output_queue_size=3000, # we keep the queue size big enought to include all simulated input
+        window_size=60,
+        hop_size=0.5,
+        time_resolution= 1/20
+    )
+
+    integrator_config = MultiBoxIntegratorConfig(
+        idle_time=0.005,
+        output_queue_size=3000,
+    )
+
+    integrator = MultiBoxIntegrator(camera=None, camera_queue=live_integration_camera_queue, config=integrator_config)
+    stft_calculator = STFTCalculator(integrator=integrator, config=stft_config)
+
+
     live_video_mq = LiveVideoFragmentsMessageQueueServer(
         video_compressor=live_video_compressor,
         channel=channel,
@@ -206,17 +231,71 @@ async def _main(args):
         server_name="live_image"
     )
 
+    live_integrator_mq = LiveIntegratorMessageQueueServer(
+        integrator=integrator,
+        integrator_queue=integrator.output_queue,
+        channel=channel,
+        exchange=rheed_exchange,
+        control_routing_key="live_integrator_ctrl",
+        publish_routing_key="live_integrator",
+        state_routing_key="live_integrator_state",
+        server_name="live_integrator"
+    )
+    integrator_mq = IntegratorMessageQueueServer(
+        integrator=integrator,
+        channel=channel,
+        exchange=rheed_exchange,
+        routing_key="integrator",
+        control_routing_key="integrator_ctrl",
+        state_routing_key="integrator_state",
+        server_name="integrator"
+    )
+
+    live_stft_mq = LiveSTFTMessageQueueServer(
+        stft_calculator=stft_calculator,
+        stft_calculator_queue=stft_calculator.output_queue,
+        channel=channel,
+        exchange=rheed_exchange,
+        control_routing_key="live_stft_ctrl",
+        publish_routing_key="live_stft",
+        state_routing_key="live_stft_state",
+        server_name="live_stft"
+    )
+
+    stft_mq = STFTMessageQueueServer(
+        stft_calculator=stft_calculator,
+        channel=channel,
+        exchange=rheed_exchange,
+        routing_key="stft",
+        control_routing_key="stft_ctrl",
+        state_routing_key="stft_state",
+        server_name="stft"
+    )
+
+
     camera.daemon = True
     camera.start()
 
     live_video_compressor.daemon = True
     live_video_compressor.start()
 
+    integrator.daemon = True
+    integrator.start()
+
+    stft_calculator.daemon = True
+    stft_calculator.start()
+
+
     logging.info("image and video started")
     await image_mq.start()
     await live_image_mq.start()
     await live_video_mq.start()
     await live_video_history_mq.start()
+
+    await live_integrator_mq.start()
+    await integrator_mq.start()
+    await live_stft_mq.start()
+    await stft_mq.start()
 
     logging.info("message queue started")
     await asyncio.Future()
