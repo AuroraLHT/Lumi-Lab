@@ -69,16 +69,14 @@ class BaseControlMixin:
         async with message.process():
             body, headers = message.body, message.headers
             ctrl = headers["type"]
-            logging.info(
-                f"{self.server_type} <{self.server_name}> on control message '{ctrl}'."
-            )
+            logging.info(f"{self.log_prefix} on control message '{ctrl}'.")
 
             if ctrl in self._control_callbacks:
                 response = await self.control_callback(ctrl, body, headers)
 
             else:
                 logging.info(
-                    f"{self.server_type} <{self.server_name}> received an unknown control text '{ctrl}'"
+                    f"{self.log_prefix} received an unknown control text '{ctrl}'"
                 )
 
             assert (
@@ -94,7 +92,7 @@ class BaseControlMixin:
                 routing_key=message.reply_to,
             )
             logging.info(
-                f"{self.server_type} <{self.server_name}> control response delivered to {message.reply_to}"
+                f"{self.log_prefix} control response delivered to {message.reply_to}"
             )
 
             # the example didn't ack back if process() method is used
@@ -110,7 +108,7 @@ class BasicClient:
     callback_queue: Optional[AbstractQueue]
     client_name: str
     time_out: float
-    on_state_callback: Optional[ Callable[[AbstractIncomingMessage], Awaitable[bool]] ]
+    on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
 
     client_type: str = "MQ client"
 
@@ -123,7 +121,9 @@ class BasicClient:
         state_routing_key: str,
         client_name: str,
         time_out: float,
-        on_state_callback: Optional[ Callable[[AbstractIncomingMessage], Awaitable[bool]] ],
+        on_state_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ],
     ) -> None:
         self.channel = channel
         self.exchange = exchange
@@ -146,7 +146,7 @@ class BasicClient:
         self._state_consume_tag = None
 
     async def create_state_queue(self):
-        logging.info(f"{self.client_type} <{self.client_name}> creates state queue")
+        logging.info(f"{self.log_prefix} creates state queue")
         self.state_queue = await self.channel.declare_queue(exclusive=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
 
@@ -155,14 +155,14 @@ class BasicClient:
 
         self.futures = {}
         logging.info(
-            f"{self.client_type} <{self.client_name}> creates callback queue: {self.callback_queue.name}"
+            f"{self.log_prefix} creates callback queue: {self.callback_queue.name}"
         )
 
         self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
 
         self.control_futures = {}
         logging.info(
-            f"{self.client_type} <{self.client_name}> creates control callback queue: {self.control_callback_queue.name}"
+            f"{self.log_prefix} creates control callback queue: {self.control_callback_queue.name}"
         )
 
         await self.create_state_queue()
@@ -184,7 +184,7 @@ class BasicClient:
             self.on_state_response, no_ack=True
         )
 
-        logging.info(f"{self.client_type} <{self.client_name}> starts up")
+        logging.info(f"{self.log_prefix} starts up")
 
         return self
 
@@ -209,46 +209,38 @@ class BasicClient:
 
     async def on_response(self, message: AbstractIncomingMessage) -> None:
         if message.correlation_id is None:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> receives bad message {message!r}"
-            )
+            logging.info(f"{self.log_prefix} receives bad message {message!r}")
             return
 
-        logging.info(
-            f"{self.client_type} <{self.client_name}> receives an item ({message.correlation_id})"
-        )
+        logging.info(f"{self.log_prefix} receives an item ({message.correlation_id})")
         future: asyncio.Future = self.futures.pop(message.correlation_id)
         future.set_result(MessageQueueResponse(message.body, message.headers))
 
     async def on_control_response(self, message: AbstractIncomingMessage) -> None:
         if message.correlation_id is None:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> receive bad control message {message!r}"
-            )
+            logging.info(f"{self.log_prefix} receive bad control message {message!r}")
             return
 
         logging.info(
-            f"{self.client_type} <{self.client_name}> receives an control response ({message.correlation_id})"
+            f"{self.log_prefix} receives an control response ({message.correlation_id})"
         )
         future: asyncio.Future = self.control_futures.pop(message.correlation_id)
         future.set_result(MessageQueueResponse(message.body, message.headers))
 
     async def on_state_response(self, message: AbstractIncomingMessage) -> None:
-        logging.info(f"{self.client_type} <{self.client_name}> on state response")
+        logging.info(f"{self.log_prefix} on state response")
 
         # TODO : add conditon for filtering bad message
         condition = False
         if condition:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> received a bad message {message!r}"
-            )
+            logging.info(f"{self.log_prefix} received a bad message {message!r}")
             return
 
         if self.on_state_callback is not None:
             stop_flag = await self.on_state_callback(message)
             if stop_flag:
                 logging.info(
-                    f"{self.client_type} <{self.client_name}> state callback stop_flag: {stop_flag} raises, termiante the streaming process"
+                    f"{self.log_prefix} state callback stop_flag: {stop_flag} raises, termiante the streaming process"
                 )
                 await self.stop()
         else:
@@ -263,9 +255,7 @@ class BasicClient:
         loop = asyncio.get_running_loop()
         future = loop.create_future()
 
-        logging.info(
-            f"{self.client_type} <{self.client_name}> requests an item ({correlation_id})"
-        )
+        logging.info(f"{self.log_prefix} requests an item ({correlation_id})")
 
         self.futures[correlation_id] = future
 
@@ -292,12 +282,12 @@ class BasicClient:
         # timeout unit is in second
         try:
             logging.info(
-                f"{self.client_type} <{self.client_name}> waits for response with timeout {self.time_out}s"
+                f"{self.log_prefix} waits for response with timeout {self.time_out}s"
             )
             return await asyncio.wait_for(future, timeout=self.time_out)
 
         except asyncio.TimeoutError:
-            logging.info(f"{self.client_type} <{self.client_name}> resquests time out")
+            logging.info(f"{self.log_prefix} resquests time out")
             return self.empty_response
 
     async def request_control(self, body, headers):
@@ -325,9 +315,7 @@ class BasicClient:
         try:
             return await asyncio.wait_for(future, timeout=self.time_out)
         except asyncio.TimeoutError:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> requests control times out"
-            )
+            logging.info(f"{self.log_prefix} requests control times out")
             return self.empty_response
 
     async def shutdown_server(self):
@@ -351,6 +339,11 @@ class BasicClient:
         else:
             return json.loads(response.body)
 
+    @property
+    def log_prefix(self):
+        return f"{self.client_type} <{self.client_name}>"
+
+
 class BasicStreamClient:
     channel: Optional[AbstractChannel]
     exchange: Optional[AbstractExchange]
@@ -359,8 +352,8 @@ class BasicStreamClient:
     state_routing_key: str
     queue: Optional[AbstractQueue]
     control_callback_queue: Optional[AbstractQueue]
-    on_response_callback: Optional[ Callable[[AbstractIncomingMessage], Awaitable[bool]] ]
-    on_state_callback: Optional[ Callable[[AbstractIncomingMessage], Awaitable[bool]] ]
+    on_response_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
+    on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
     client_name: str
     time_out: float
 
@@ -373,8 +366,12 @@ class BasicStreamClient:
         routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
-        on_response_callback: Optional[ Callable[[AbstractIncomingMessage], Awaitable[bool]] ],
-        on_state_callback: Optional[ Callable[[AbstractIncomingMessage], Awaitable[bool]] ],
+        on_response_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ],
+        on_state_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ],
         client_name: str,
         time_out: float,
     ) -> None:
@@ -447,19 +444,17 @@ class BasicStreamClient:
         # this queue is for listening to stream
         self.queue = await self.channel.declare_queue(exclusive=True)
         await self.queue.bind(self.exchange, routing_key=self.routing_key)
-        logging.info(
-            f"{self.client_type} <{self.client_name}> creates queue: {self.queue.name}"
-        )
+        logging.info(f"{self.log_prefix} creates queue: {self.queue.name}")
 
     async def create_control_queue(self):
         self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
         self.control_futures = {}
         logging.info(
-            f"{self.client_type} <{self.client_name}> creates control callback queue: {self.control_callback_queue.name}"
+            f"{self.log_prefix} creates control callback queue: {self.control_callback_queue.name}"
         )
 
     async def create_state_queue(self):
-        logging.info(f"{self.client_type} <{self.client_name}> creates state queue")
+        logging.info(f"{self.log_prefix} creates state queue")
         self.state_queue = await self.channel.declare_queue(exclusive=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
 
@@ -471,9 +466,7 @@ class BasicStreamClient:
     async def start_main(self, start_consume_loop=True):
         await self.create_main_queue()
         if start_consume_loop:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> starts live streaming consume loop"
-            )
+            logging.info(f"{self.log_prefix} starts live streaming consume loop")
 
             try:
                 self._consumer_tag = await self.queue.consume(
@@ -509,7 +502,7 @@ class BasicStreamClient:
         await self.start_control(start_consume_loop=start_consume_loop)
         await self.start_state(start_consume_loop=start_consume_loop)
 
-        logging.info(f"{self.client_type} <{self.client_name}> starts live streaming")
+        logging.info(f"{self.log_prefix} starts live streaming")
 
     async def stop_main(self):
         if self.is_main_running():
@@ -536,27 +529,25 @@ class BasicStreamClient:
             self.reset_state_queue()
 
     async def stop(self):
-        logging.info(f"{self.client_type} <{self.client_name}> terminate consume")
+        logging.info(f"{self.log_prefix} terminate consume")
         await self.stop_main()
         await self.stop_control()
         await self.stop_state()
 
     async def on_response(self, message: AbstractIncomingMessage) -> None:
-        logging.debug(f"{self.client_type} <{self.client_name}> on live response")
+        logging.debug(f"{self.log_prefix} on live response")
 
         # TODO : add conditon for filtering bad message
         condition = False
         if condition:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> received a bad message {message!r}"
-            )
+            logging.info(f"{self.log_prefix} received a bad message {message!r}")
             return
 
         if self.on_response_callback is not None:
             stop_flag = await self.on_response_callback(message)
             if stop_flag:
                 logging.info(
-                    f"{self.client_type} <{self.client_name}> response callback stop_flag {stop_flag} raises, termiante the streaming process"
+                    f"{self.log_prefix} response callback stop_flag {stop_flag} raises, termiante the streaming process"
                 )
                 await self.stop()
         else:
@@ -564,33 +555,29 @@ class BasicStreamClient:
 
     async def on_control_response(self, message: AbstractIncomingMessage) -> None:
         if message.correlation_id is None:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> receive bad control message {message!r}"
-            )
+            logging.info(f"{self.log_prefix} receive bad control message {message!r}")
             return
 
         logging.info(
-            f"{self.client_type} <{self.client_name}> receives an control response ({message.correlation_id})"
+            f"{self.log_prefix} receives an control response ({message.correlation_id})"
         )
         future: asyncio.Future = self.control_futures.pop(message.correlation_id)
         future.set_result(MessageQueueResponse(message.body, message.headers))
 
     async def on_state_response(self, message: AbstractIncomingMessage) -> None:
-        logging.info(f"{self.client_type} <{self.client_name}> on state response")
+        logging.info(f"{self.log_prefix} on state response")
 
         # TODO : add conditon for filtering bad message
         condition = False
         if condition:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> received a bad message {message!r}"
-            )
+            logging.info(f"{self.log_prefix} received a bad message {message!r}")
             return
 
         if self.on_state_callback is not None:
             stop_flag = await self.on_state_callback(message)
             if stop_flag:
                 logging.info(
-                    f"{self.client_type} <{self.client_name}> state callback stop_flag: {stop_flag}, termiante the streaming process"
+                    f"{self.log_prefix} state callback stop_flag: {stop_flag}, termiante the streaming process"
                 )
                 await self.stop()
         else:
@@ -601,9 +588,7 @@ class BasicStreamClient:
         loop = asyncio.get_running_loop()
         future = loop.create_future()
 
-        logging.info(
-            f"{self.client_type} <{self.client_name}> request an control item ({correlation_id})"
-        )
+        logging.info(f"{self.log_prefix} request an control item ({correlation_id})")
 
         self.control_futures[correlation_id] = future
 
@@ -621,9 +606,7 @@ class BasicStreamClient:
         try:
             return await asyncio.wait_for(future, timeout=self.time_out)
         except asyncio.TimeoutError:
-            logging.info(
-                f"{self.client_type} <{self.client_name}> requests control times out"
-            )
+            logging.info(f"{self.log_prefix} requests control times out")
             return self.empty_response
 
     async def start_server_streaming(self):
@@ -654,9 +637,13 @@ class BasicStreamClient:
             return response.body
         else:
             return json.loads(response.body)
-    
+
     async def get(self):
         return await self.queue.get(no_ack=True)
+
+    @property
+    def log_prefix(self):
+        return f"{self.client_type} <{self.client_name}>"
 
 
 class ServerState(dict):
@@ -683,18 +670,17 @@ class ServerState(dict):
 
     def _notify_state_change(self):
         if self.on_state_change_callback:
-            asyncio.create_task(self.on_state_change_callback(self) )
+            asyncio.create_task(self.on_state_change_callback(self))
 
 
 class StateCallbackMixin:
     exchange: AbstractExchange
     state_routing_key: str
-    server_name: str
-    server_type: str
+    log_prefix: str
 
     async def on_state_callback(self, state: Dict):
         response = MessageQueueResponse(body=state, headers={"type": "state"})
-        logging.info(f"{self.server_type} <{self.server_name}> state prepared")
+        logging.info(f"{self.log_prefix} state prepared")
 
         await self.exchange.publish(
             Message(
@@ -703,7 +689,7 @@ class StateCallbackMixin:
             ),
             routing_key=self.state_routing_key,
         )
-        logging.info(f"{self.server_type} <{self.server_name}> send state content")
+        logging.info(f"{self.log_prefix} send state content")
 
 
 class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
@@ -756,8 +742,12 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
 
         self.reset_queues()
 
+    @property
+    def log_prefix(self):
+        return f"{self.server_type} <{self.server_name}>"
+
     def update_state(self):
-        """ 
+        """
         a customizable function that use to update other part of the state the during operation.
         Not implemented is ok, the base function will do nothing.
         """
@@ -775,7 +765,7 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
         self._control_consume_tag = None
 
     async def create_control_queue(self):
-        logging.info(f"{self.server_type} <{self.server_name}> creates control queue")
+        logging.info(f"{self.log_prefix} creates control queue")
         self.control_queue = await self.channel.declare_queue(exclusive=True)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
@@ -795,9 +785,7 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
 
                 body, headers = await self.on_streaming()
                 if body is not None:
-                    logging.debug(
-                        f"{self.server_type} <{self.server_name}> content prepared"
-                    )
+                    logging.debug(f"{self.log_prefix} content prepared")
 
                     await self.exchange.publish(
                         Message(
@@ -806,20 +794,14 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
                         ),
                         routing_key=self.publish_routing_key,
                     )
-                    logging.debug(
-                        f"{self.server_type} <{self.server_name}> send content"
-                    )
+                    logging.debug(f"{self.log_prefix} send content")
                 else:
-                    logging.debug(
-                        f"{self.server_type} <{self.server_name}> fail to prepare content"
-                    )
+                    logging.debug(f"{self.log_prefix} fail to prepare content")
                     await asyncio.sleep(0.01)
             else:
                 self.state["is_streaming"] = False
 
-                logging.debug(
-                    f"{self.server_type} <{self.server_name}> stream loop is paused"
-                )
+                logging.debug(f"{self.log_prefix} stream loop is paused")
                 await asyncio.sleep(0.1)
 
         # the example didn't ack back if process() method is used
@@ -868,7 +850,7 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
             self.update_state()
         except Exception as e:
             print(e)
-        logging.info(f"{self.server_type} <{self.server_name}> starts up")
+        logging.info(f"{self.log_prefix} starts up")
 
     @BaseControlMixin.register_control_callback("cancel")
     async def cancel(self):
@@ -923,8 +905,12 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
             self.on_state_callback,
         )
 
+    @property
+    def log_prefix(self):
+        return f"{self.server_type} <{self.server_name}>"
+
     def update_state(self):
-        """ 
+        """
         update the state at each call, use to update the during operation.
         Not implemented is ok, the base function will do nothing.
         """
@@ -937,12 +923,12 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
         self._control_consume_tag = None
 
     async def create_control_queue(self):
-        logging.info(f"{self.server_type} <{self.server_name}> creates control queue")
+        logging.info(f"{self.log_prefix} creates control queue")
         self.control_queue = await self.channel.declare_queue(exclusive=True)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
     async def create_main_queue(self):
-        logging.info(f"{self.server_type} <{self.server_name}> creates main queue")
+        logging.info(f"{self.log_prefix} creates main queue")
         self.queue = await self.channel.declare_queue(exclusive=True)
         await self.queue.bind(self.exchange, routing_key=self.routing_key)
 
@@ -960,14 +946,14 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
         raise NotImplementedError()
 
     async def on_request(self, message: AbstractIncomingMessage):
-        logging.info(f"{self.server_type} <{self.server_name}> on request")
+        logging.info(f"{self.log_prefix} on request")
         async with message.process():
             assert (
                 message.reply_to is not None
             ), f"Receive a bad request without .reply_to field"
 
             body, headers = await self.on_message(message)
-            logging.info(f"{self.server_type} <{self.server_name}> content is prepared")
+            logging.info(f"{self.log_prefix} content is prepared")
 
             await self.callback_exchange.publish(
                 Message(
@@ -977,9 +963,7 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
                 ),
                 routing_key=message.reply_to,
             )
-            logging.info(
-                f"{self.server_type} <{self.server_name}> content delivered to {message.reply_to}"
-            )
+            logging.info(f"{self.log_prefix} content delivered to {message.reply_to}")
 
             # update the state at each call
             self.update_state()
@@ -1001,7 +985,7 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
     @BaseControlMixin.register_control_callback("state")
     async def server_state(self, body, headers):
         # force update the state when query is conducted
-        self.update_state() 
+        self.update_state()
 
         state = await self.on_state(body, headers)
         return MessageQueueResponse(state, {"type": "state"})
@@ -1019,7 +1003,7 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
         except Exception as e:
             print(e)
 
-        logging.info(f"{self.server_type} <{self.server_name}> starts up")
+        logging.info(f"{self.log_prefix} starts up")
 
     @BaseControlMixin.register_control_callback("cancel")
     async def cancel(self):
