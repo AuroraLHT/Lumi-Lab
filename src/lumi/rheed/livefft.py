@@ -118,6 +118,8 @@ class STFTCalculator(threading.Thread):
         logging.info(f"Thread[{self.name}] start live fft")
 
         prev_frame_uuid = None
+        bbox_to_remove = queue.Queue()
+
         while True:
             # Encode the frame and write it to the buffer
             if self.integrator.is_updated(prev_frame_uuid) and self.is_next_integration_ready():
@@ -125,9 +127,9 @@ class STFTCalculator(threading.Thread):
                 prev_frame_uuid = self.integrator.get_processed_frame_uuid()
 
                 for bbox_id, bbox in self.registered_integrations.items():
-                    bbox_to_remove = []
+                    
                     if bbox_id not in self.integrator.bboxes:
-                        bbox_to_remove.append(bbox_id)
+                        bbox_to_remove.put(bbox_id)
                         continue
                     integration_time, intergration = self.integrator.get_integration_history(bbox_id)
                     fft_freq, fft, resampled_time, resampled_signal = self.compute_fft(signal=intergration, signal_time=integration_time)
@@ -137,9 +139,9 @@ class STFTCalculator(threading.Thread):
 
                     yield content
                         
-                for bbox_id in bbox_to_remove:
+                while not bbox_to_remove.empty():
+                    bbox_id = bbox_to_remove.get()
                     self.remove_integration(bbox_id)
-                bbox_to_remove = []
 
             stop_flag = self._stop_event.wait(self.config.idle_time)
             if stop_flag : 
