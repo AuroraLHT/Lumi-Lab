@@ -52,7 +52,7 @@ integrator.start()
 bbox = [30, 50, 600, 680] # xyxy format
 integrator.register_bbox(bbox=bbox, bbox_id=1)
 
-live_fft_calculator = LiveFFTCalculator(integrator=integrator, integrator_queue=integrator.output_queue, config=fft_config)
+live_fft_calculator = LiveFFTCalculator(integrator=integrator, config=fft_config)
 
 live_fft_calculator.start()
 live_fft_calculator.register_integration(bbox_id=1)

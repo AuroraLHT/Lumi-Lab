@@ -32,13 +32,12 @@ class LiveFFTConfig:
 
 
 class LiveFFTCalculator(threading.Thread):
-    def __init__(self, integrator, integrator_queue:queue.Queue, config:LiveFFTConfig, name:Union[int|str]=""):
+    def __init__(self, integrator, config:LiveFFTConfig, name:Union[int|str]=""):
         super().__init__(name=name)
         self.io_lock = threading.Lock()
         self.config = config
         self.output_queue = queue.Queue(maxsize=self.config.output_queue_size)
         self.integrator = integrator
-        self.integrator_queue = integrator_queue
         self._stop_event = threading.Event()
 
         self.registered_integrations = {}
