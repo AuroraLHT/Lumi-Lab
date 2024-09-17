@@ -31,7 +31,6 @@ from collections.abc import Callable, Awaitable
 # TODO : Move client to where the server is and we would import the client to here.
 # this reduce the redundancy in code.
 
-
 class StorageMessageQueueClient(BasicClient):
     def __init__(
         self,
@@ -82,7 +81,6 @@ class StorageMessageQueueClient(BasicClient):
                 "type": "end",
             },
         )
-
 
 @dataclass
 class StorageMessageQueueServerConfig:
@@ -146,7 +144,7 @@ class StorageMessageQueueServer(BasicServer):
             if not self.state["is_storing"]:
                 await self.create_storages(body, headers)
                 await self.start_storages(body, headers)
-                logging.info(f"{self.server_type} <{self.server_name}> starts storage")
+                logging.info(f"{self.log_prefix} starts storage")
             else:
                 response_msg = f"cannot execute [{ctrl}], the storage process have been initiated."
                 response_header = {"succ" : False}
@@ -155,7 +153,7 @@ class StorageMessageQueueServer(BasicServer):
         elif ctrl == "end":
             if self.state["is_storing"]:
                 await self.end_storages()
-                logging.info(f"{self.server_type} <{self.server_name}> ends storage")
+                logging.info(f"{self.log_prefix} ends storage")
             else:
                 response_msg = f"cannot execute [{ctrl}], the storage process have been termined."
                 response_header = {"succ" : False}
@@ -239,7 +237,13 @@ class StorageMessageQueueServer(BasicServer):
             on_response_callback=on_response_callback
         )
         await self.live_camera_client.start(start_consume_loop=True)
-        logging.info(f"{self.server_type} <{self.server_name}> starts frame storage.")
+
+        # add a check to see if the live camera is streaming, if not, start the server streaming
+        state = await self.live_camera_client.get_state()
+        if not state["is_streaming"]:
+            await self.live_camera_client.start_server_streaming()
+        
+        logging.info(f"{self.log_prefix} starts frame storage.")
 
     async def start_log_storage(self):
         async def on_response_callback(message: AbstractIncomingMessage):
@@ -257,7 +261,7 @@ class StorageMessageQueueServer(BasicServer):
             on_response_callback=on_response_callback
         )
         await self.live_log_client.start(start_consume_loop=True)
-        logging.info(f"{self.server_type} <{self.server_name}> starts log storage.")
+        logging.info(f"{self.log_prefix} starts log storage.")
 
     async def start_ai_storage(self):
         async def on_response_callback(message: AbstractIncomingMessage):
@@ -301,22 +305,22 @@ class StorageMessageQueueServer(BasicServer):
             on_response_callback=on_response_callback
         )
         await self.live_detection_client.start(start_consume_loop=True)
-        logging.info(f"{self.server_type} <{self.server_name}> starts ai storage.")
+        logging.info(f"{self.log_prefix} starts ai storage.")
 
     async def end_log_storage(self):
         await self.live_log_client.stop()
         self.state["is_storing_log"] = False
-        logging.info(f"{self.server_type} <{self.server_name}> ends log storage.")
+        logging.info(f"{self.log_prefix} ends log storage.")
 
     async def end_ai_storage(self):
         await self.live_detection_client.stop()
         self.state["is_storing_ai"] = False
-        logging.info(f"{self.server_type} <{self.server_name}> ends ai storage.")
+        logging.info(f"{self.log_prefix} ends ai storage.")
 
     async def end_frame_storage(self):
         await self.live_camera_client.stop()
         self.state["is_storing_frame"] = False
-        logging.info(f"{self.server_type} <{self.server_name}> ends frame storage.")
+        logging.info(f"{self.log_prefix} ends frame storage.")
 
     async def end_storages(self):
         await self.end_frame_storage()
