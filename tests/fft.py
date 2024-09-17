@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import queue
-from lumi.rheed.livefft import LiveFFTCalculator, LiveFFTConfig
+from lumi.rheed.livefft import STFTCalculator, STFTCalculatorConfig
 from lumi.rheed.integrator import MultiBoxIntegratorConfig, MultiBoxIntegrator
 import time
 import datetime
@@ -12,7 +12,7 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-fft_config = LiveFFTConfig(
+fft_config = STFTCalculatorConfig(
     idle_time=0.005,
     output_queue_size=3000, # we keep the queue size big enought to include all simulated input
     window_size=5,
@@ -52,7 +52,7 @@ integrator.start()
 bbox = [30, 50, 600, 680] # xyxy format
 integrator.register_bbox(bbox=bbox, bbox_id=1)
 
-live_fft_calculator = LiveFFTCalculator(integrator=integrator, config=fft_config)
+live_fft_calculator = STFTCalculator(integrator=integrator, config=fft_config)
 
 live_fft_calculator.start()
 live_fft_calculator.register_integration(bbox_id=1)

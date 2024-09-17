@@ -15,7 +15,7 @@ from collections.abc import Callable, Awaitable
 import json
 
 @dataclass
-class LiveFFTConfig:
+class STFTCalculatorConfig:
     idle_time: float = field(default=None, metadata={"unit": "s", "description": "Time to wait when no data is available"})
     output_queue_size: int = field(default=1000, metadata={"description": "Maximum size of the output queue"})
     window_size: float = field(default=50, metadata={"unit": "s", "description": "Size of the sliding window for FFT calculation"})
@@ -31,8 +31,8 @@ class LiveFFTConfig:
         return self.window_size // self.time_resolution
 
 
-class LiveFFTCalculator(threading.Thread):
-    def __init__(self, integrator, config:LiveFFTConfig, name:Union[int|str]=""):
+class STFTCalculator(threading.Thread):
+    def __init__(self, integrator, config:STFTCalculatorConfig, name:Union[int|str]=""):
         super().__init__(name=name)
         self.io_lock = threading.Lock()
         self.config = config
@@ -41,19 +41,19 @@ class LiveFFTCalculator(threading.Thread):
         self._stop_event = threading.Event()
 
         self.registered_integrations = {}
-        self.live_fft_cache : Dict[Union[int, str], Deque] = {}
+        self.live_stft_cache : Dict[Union[int, str], Deque] = {}
 
         self.current_time = time.time()
 
     def register_integration(self, bbox_id):
         self.registered_integrations[bbox_id] = self.integrator.bboxes[bbox_id]
-        self.live_fft_cache[bbox_id] = deque([], maxlen=1000)
+        self.live_stft_cache[bbox_id] = deque([], maxlen=1000)
 
     def remove_integration(self, bbox_id):
         if bbox_id in self.registered_integrations:
             self.registered_integrations.pop(bbox_id)
-        if bbox_id in self.live_fft_cache:
-            self.live_fft_cache.pop(bbox_id)
+        if bbox_id in self.live_stft_cache:
+            self.live_stft_cache.pop(bbox_id)
 
     def is_next_integration_ready(self):
         prev_time = self.current_time
@@ -132,7 +132,7 @@ class LiveFFTCalculator(threading.Thread):
                     integration_time, intergration = self.integrator.get_integration_history(bbox_id)
                     fft_freq, fft, resampled_time, resampled_signal = self.compute_fft(signal=intergration, signal_time=integration_time)
                     
-                    self.live_fft_cache[bbox_id].append( (fft_freq, fft)  )
+                    self.live_stft_cache[bbox_id].append( (fft_freq, fft)  )
                     content = self.prepare_content( fft_freq, fft, resampled_time, resampled_signal, {"bbox_id": bbox_id})
 
                     yield content
@@ -157,7 +157,7 @@ class LiveFFTCalculator(threading.Thread):
         while not self.output_queue.empty():
             self.output_queue.get()
         self.registered_integrations = {}
-        self.live_fft_cache = {}
+        self.live_stft_cache = {}
         
         
     def stop(self):
@@ -167,3 +167,8 @@ class LiveFFTCalculator(threading.Thread):
         self.clear()
         self._stop_event.set()
 
+    def get_cache(self, bbox_id):
+        if bbox_id in self.live_stft_cache:
+            return self.live_stft_cache[bbox_id]
+        else:
+            return None
