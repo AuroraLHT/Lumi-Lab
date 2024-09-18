@@ -247,8 +247,8 @@ class DetectorServer(threading.Thread):
         # the top of the queue would always be the latest frame
 
         tmp_counter = 0
+        logging.debug("Detection Loop start")
         while self.is_continue():
-            logging.debug("Detection Loop start")
             if self.input_queue.empty():
                 continue
 
