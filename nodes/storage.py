@@ -8,7 +8,7 @@ from lumi.storage.communication import (
     StorageMessageQueueServer,
     StorageMessageQueueServerConfig,
 )
-from lumi.rheed.communitation import (
+from lumi.rheed.communication import (
     LiveCameraMessageQueueClient,
     CameraMessageQueueClient,
 )

@@ -12,7 +12,7 @@ import numpy as np
 from dataclasses import dataclass
 
 from ..base.message_queue import BasicServer, BasicClient
-from ..rheed.communitation import LiveCameraMessageQueueClient, CameraMessageQueueClient
+from ..rheed.communication import LiveCameraMessageQueueClient, CameraMessageQueueClient
 from ..detection.communication import (
     LiveDetectionMessageQueueClient,
     DetectionMessageQueueClient,

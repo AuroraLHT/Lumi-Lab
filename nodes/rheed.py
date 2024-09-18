@@ -11,7 +11,7 @@ from lumi.rheed.test_camera import TestCameraConfig, TestCamera
 from lumi.rheed.integrator import MultiBoxIntegratorConfig, MultiBoxIntegrator
 from lumi.rheed.livefft import STFTCalculator, STFTCalculatorConfig
 
-from lumi.rheed.communitation import (
+from lumi.rheed.communication import (
     LiveVideoFragmentsMessageQueueServer,
     VideoFragmentsMessageQueueServer,
     CameraMessageQueueServer,
