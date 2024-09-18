@@ -38,6 +38,7 @@ async def main(args):
     )
 
     detector = DetectorServer(config=config, name="detection")
+    detector.daemon = True
     detector.start()
 
     camera_client = CameraMessageQueueClient(

@@ -28,8 +28,10 @@ async def main(args):
     )
 
     detector = DetectorServer(config=config, name="detection")
+    detector.daemon = True
     detector.start()
 
+    await asyncio.Future()
     detector.join()
     print("program exit")
 
