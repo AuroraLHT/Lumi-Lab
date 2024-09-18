@@ -31,7 +31,7 @@ from ..base.message_queue import (
     BaseControlMixin,
     MessageQueueResponse,
 )
-from ..rheed.communitation import CameraMessageQueueClient
+from ..rheed.communication import CameraMessageQueueClient
 
 import copy
 

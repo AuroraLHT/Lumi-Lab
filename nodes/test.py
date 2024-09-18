@@ -4,7 +4,7 @@ import aio_pika
 from aio_pika import ExchangeType, connect
 
 from lumi.storage.communication import StorageMessageQueueServer
-from lumi.rheed.communitation import LiveCameraMessageQueueClient, CameraMessageQueueClient
+from lumi.rheed.communication import LiveCameraMessageQueueClient, CameraMessageQueueClient
 from lumi.detection.communication import DetectionMessageQueueClient, LiveDetectionMessageQueueClient
 from lumi.pascal.communication import ChamberLogMessageQueueClient, LiveChamberLogMessageQueueClient
 
