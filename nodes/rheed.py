@@ -58,7 +58,6 @@ def add_time_stamp(frame, frame_header=None):
 def frame_processing_testcam(frame, frame_header=None):
     # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     frame = cv2.convertScaleAbs(frame, alpha=(255.0 / 4095.0))
-    # print(frame.max())
     frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
 
     frame = add_time_stamp(frame, frame_header)
