@@ -17,7 +17,7 @@ from aio_pika.abc import AbstractIncomingMessage
 from lumi.api.models import StorageRequest
 
 from .base import generic_websocket_handler
-from ..utils import update_state, package_payload
+from ..utils import update_state, pack_payload
 from ..connection_state import ConnectionState
 
 
