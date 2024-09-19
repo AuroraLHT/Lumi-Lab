@@ -32,7 +32,7 @@ class TestCamera(threading.Thread):
         self.config = config
 
         # self.source_img = cv2.imread(config.source)
-        self.source_img = np.load(config.source)
+        self.source_img : np.ndarray = np.load(config.source)
         self.queues = {}
         self.peek_queue = collections.deque(maxlen=10) # this queue for component that need to get the latest image
 
@@ -91,7 +91,9 @@ class TestCamera(threading.Thread):
             frame_time = time.time()
             frame_uuid = str(uuid.uuid4())
             
-            frame = self.source_img.copy()
+            # so the frame would oscillate the brighness now
+            frame : np.ndarray = self.source_img.copy() * (np.sin(2* np.pi * 1/10 * time.time()) + 1) / 2
+            frame = frame.astype(self.source_img.dtype)
 
             if frame.ndim < 2 or frame.size == 0: continue # frame might be empty
 
