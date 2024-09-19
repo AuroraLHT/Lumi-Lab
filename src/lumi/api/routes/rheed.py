@@ -20,10 +20,9 @@ from lumi.api.communication import (
     LiveVideoFragmentsMessageQueueClient,
     LiveDetectionMessageQueueClient,
 )
-from .base import generic_websocket_handler
-from ..utils import update_state, package_payload
+from .base import generic_websocket_handler, WebsocketHandler
+from ..utils import update_state, pack_payload
 from ..connection_state import ConnectionState
-
 
 router = APIRouter()
 
@@ -101,7 +100,7 @@ async def rheed_cam_live(websocket: WebSocket):
             # header_json = json.dumps(headers)
             # header_length = struct.pack(">I", len(header_json))
             # data = header_length + header_json.encode("utf-8") + fragment
-            data = package_payload(fragment, headers)
+            data = pack_payload(fragment, headers)
             await websocket.send_bytes(data)
         except Exception as e:
             logging.error(f"/RHEED/detection/live send_fragment error: {e}")
@@ -125,38 +124,64 @@ async def rheed_cam_live(websocket: WebSocket):
         connection_state.video_fragment_client.get_initial,
     )
 
+# @router.websocket("/RHEED/detection/live")
+# async def rheed_detection_live(websocket: WebSocket):
+#     connection_state = websocket.app.state.connection_state
+
+#     async def send_payload(payload, header):
+#         try:
+#             # header_json = json.dumps(header)
+#             # header_length = struct.pack(">I", len(header_json))
+#             # data = header_length + header_json.encode("utf-8") + payload
+#             data = pack_payload(payload, header)
+#             await websocket.send_bytes(data)
+#         except Exception as e:
+#             logging.error(f"/RHEED/detection/live send_payload error: {e}")
+#             return True
+#         return False
+
+#     client_params = {
+#         "channel": connection_state.channel,
+#         "exchange": connection_state.exchange_rheed,
+#         "routing_key": "live_detection",
+#         "control_routing_key": "live_detection_ctrl",
+#         "state_routing_key": "live_detection_state",
+#     }
+
+#     await generic_websocket_handler(
+#         websocket,
+#         LiveDetectionMessageQueueClient,
+#         client_params,
+#         send_payload,
+#         "RHEED detection"
+#     )
+
 @router.websocket("/RHEED/detection/live")
 async def rheed_detection_live(websocket: WebSocket):
-    connection_state = websocket.app.state.connection_state
+    connection_state : ConnectionState = websocket.app.state.connection_state
 
-    async def send_payload(payload, header):
-        try:
-            # header_json = json.dumps(header)
-            # header_length = struct.pack(">I", len(header_json))
-            # data = header_length + header_json.encode("utf-8") + payload
-            data = package_payload(payload, header)
-            await websocket.send_bytes(data)
-        except Exception as e:
-            logging.error(f"/RHEED/detection/live send_payload error: {e}")
-            return True
-        return False
+    live_detection_client = LiveDetectionMessageQueueClient(
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_rheed,
+        routing_key="live_detection",
+        control_routing_key="live_detection_ctrl",
+        state_routing_key="live_detection_state",
+        on_response_callback=None,
+        on_state_callback=None,
+        client_name="Live Detection",
+        time_out=10,
 
-    client_params = {
-        "channel": connection_state.channel,
-        "exchange": connection_state.exchange_rheed,
-        "routing_key": "live_detection",
-        "control_routing_key": "live_detection_ctrl",
-        "state_routing_key": "live_detection_state",
-    }
-
-    await generic_websocket_handler(
-        websocket,
-        LiveDetectionMessageQueueClient,
-        client_params,
-        send_payload,
-        "RHEED detection"
     )
+    await live_detection_client.start_control()
 
+    websocket_handler = WebsocketHandler(websocket, "Live Analysis")
+    websocket_handler.register_client(live_detection_client, )
+
+    await websocket_handler.start()
+
+
+# TODO: refactor all the state SSE into in url
+# TODO: maybe merge them into Websocket? 
 @router.get("/RHEED/detection/live/state")
 async def get_rheed_detection_state(request: Request):
     connection_state : ConnectionState = request.app.state.connection_state
