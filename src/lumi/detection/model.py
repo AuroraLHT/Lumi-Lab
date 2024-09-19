@@ -137,14 +137,18 @@ class DetectorServer(threading.Thread):
         region2tracks = self.tracker.update(detections, self._frame_idx)
 
         # center is extracted from the initial figure
-        if any( [ l ==3 for l in rdinst.regions_label ] ):
-            db_xy, db_r_i, self.state.db_track = rdinst.get_direct_beam(method='top+tracker', direct_beam_label=3, tracker=self.tracker, track=self.state.db_track)
-            self.state.horizontal_center = db_xy[1]
+        if len(rdinst.regions) == 0:
+            # self.state.horizontal_center  = r_max_centroid[1]
+            pass # find not region do not update the center
         else:
-            # guess center by finding the region with the maximum mean intensity
-            rid_max_intensity = np.argmax( [ r.intensity_mean for r in rdinst.regions ] )
-            r_max_centroid = rdinst.regions[rid_max_intensity].centroid_weighted
-            self.state.horizontal_center  = r_max_centroid[1]
+            if any( [ l ==3 for l in rdinst.regions_label ] ):
+                db_xy, db_r_i, self.state.db_track = rdinst.get_direct_beam(method='top+tracker', direct_beam_label=3, tracker=self.tracker, track=self.state.db_track)
+                self.state.horizontal_center = db_xy[1]
+            else:
+                # guess center by finding the region with the maximum mean intensity
+                rid_max_intensity = np.argmax( [ r.intensity_mean for r in rdinst.regions ] )
+                r_max_centroid = rdinst.regions[rid_max_intensity].centroid_weighted
+                self.state.horizontal_center  = r_max_centroid[1]
                         
         rdinst.get_regions_collapse()
         rdinst.clean_collapse()

@@ -124,14 +124,27 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         )
 
     async def on_streaming(self):
-        response = await self.camera_client.request()
+        try:
+            response = await self.camera_client.request()
+        except asyncio.TimeoutError:
+            logging.error(f"{self.log_prefix} Timeout while getting image from camera")
+            return None, None
+        
+        except Exception as e:
+            logging.error(f"{self.log_prefix} Failed to get image from camera: {e}")
+            return None, None
+        
+        if response is None:
+            logging.warning(f"{self.log_prefix} Received None response from camera")
+            return None, None
+        
         img, img_header = decode_img(response.body, response.headers)
 
         # TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
         detector_output, detector_output_headers = self.detector.predict(
             img, img_header
         )
-        logging.info(f"{self.server_type} <{self.server_name}> detection acquired")
+        logging.info(f"{self.log_prefix} detection acquired")
 
         try:
             body, headers = encode_detections(
@@ -139,9 +152,10 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
                 detector_output_headers=detector_output_headers,
             )
         except Exception as e:
-            print(e)
+            logging.error(f"{self.log_prefix} Failed to encode detection: {e}")
             raise e
-        logging.info("{self.server_type} <{self.server_name}> detection encoded")
+        
+        logging.info(f"{self.log_prefix} detection encoded")
         return body, headers
 
 
