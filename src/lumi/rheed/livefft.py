@@ -1,9 +1,11 @@
+import datetime
 import time
 import asyncio
 import threading
 import queue
 from collections import deque
 import logging
+import uuid
 
 import numpy as np
 
@@ -98,21 +100,30 @@ class STFTCalculator(threading.Thread):
         # compute the fft
         fft = np.fft.rfft(resampled_signal)
         fft_freq = np.fft.rfftfreq(len(resampled_signal), self.config.time_resolution)
+
+        mask = fft_freq > 0
+        fft_freq = fft_freq[mask]
+        fft = fft[mask]
         # fft_freq = fft_freq[fft_freq>=0]
         
         return fft_freq, fft, resampled_time, resampled_signal
 
 
-    def prepare_content(self, fft_freq, fft, resampled_time, resampled_signal, header):
+    def package_fft_result(self, fft_freq, fft, resampled_time, resampled_signal):
         result = {
             "fft_freq": fft_freq.tolist(),
             "fft_mag": np.abs(fft).tolist(),
             "fft_phase": np.angle(fft).tolist(),
             "time_end" : resampled_time[-1],
+            "timestamp_end" : datetime.datetime.fromtimestamp(resampled_time[-1]).isoformat(),
             "time_start" : resampled_time[0],
+            "timestamp_start" : datetime.datetime.fromtimestamp(resampled_time[0]).isoformat(),
             "time_resolution" : self.config.time_resolution,
         }
-        return ( result, header )
+        return result
+    
+    def prepare_content(self, result, header):
+        return (result, header)
 
     def yield_content(self):
         logging.info(f"Thread[{self.name}] start live fft")
@@ -126,18 +137,21 @@ class STFTCalculator(threading.Thread):
                 # print("fft triggered")
                 prev_frame_uuid = self.integrator.get_processed_frame_uuid()
 
+                stfts = {} # Not sure if this is the best way to do it
+                # Need to know the different between sending each individual bbox data or sending them all at once
                 for bbox_id, bbox in self.registered_integrations.items():
-                    
                     if bbox_id not in self.integrator.bboxes:
                         bbox_to_remove.put(bbox_id)
                         continue
-                    integration_time, intergration = self.integrator.get_integration_history(bbox_id)
+                    integration_time, intergration, latest_header = self.integrator.get_integration_history(bbox_id)
                     fft_freq, fft, resampled_time, resampled_signal = self.compute_fft(signal=intergration, signal_time=integration_time)
                     
                     self.live_stft_cache[bbox_id].append( (fft_freq, fft)  )
-                    content = self.prepare_content( fft_freq, fft, resampled_time, resampled_signal, {"bbox_id": bbox_id})
+                    content = self.package_fft_result( fft_freq, fft, resampled_time, resampled_signal )
+                    stfts[bbox_id] = content
 
-                    yield content
+                content = self.prepare_content(stfts, {"stft_uuid": str(uuid.uuid4())})
+                yield content
                         
                 while not bbox_to_remove.empty():
                     bbox_id = bbox_to_remove.get()

@@ -19,8 +19,12 @@ from lumi.api.models import StorageRequest
 from lumi.api.communication import (
     LiveVideoFragmentsMessageQueueClient,
     LiveDetectionMessageQueueClient,
+    LiveIntegratorMessageQueueClient,
+    LiveSTFTMessageQueueClient
 )
-from .base import generic_websocket_handler, WebsocketHandler
+from ..websockets.base import generic_websocket_handler, WebsocketMultiClientsHandler, BaseClientMessageMapper, BaseStreamClientMessageMapper
+from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper
+
 from ..utils import update_state, pack_payload
 from ..connection_state import ConnectionState
 
@@ -156,8 +160,8 @@ async def rheed_cam_live(websocket: WebSocket):
 #         "RHEED detection"
 #     )
 
-@router.websocket("/RHEED/detection/live")
-async def rheed_detection_live(websocket: WebSocket):
+@router.websocket("/RHEED/analysis/live")
+async def rheed_analysis_live(websocket: WebSocket):
     connection_state : ConnectionState = websocket.app.state.connection_state
 
     live_detection_client = LiveDetectionMessageQueueClient(
@@ -170,12 +174,43 @@ async def rheed_detection_live(websocket: WebSocket):
         on_state_callback=None,
         client_name="Live Detection",
         time_out=10,
-
     )
     await live_detection_client.start_control()
 
-    websocket_handler = WebsocketHandler(websocket, "Live Analysis")
-    websocket_handler.register_client(live_detection_client, )
+    live_integrator_client = LiveIntegratorMessageQueueClient(
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_rheed,
+        routing_key="live_integrator",
+        control_routing_key="live_integrator_ctrl",
+        state_routing_key="live_integrator_state",
+        on_response_callback=None,
+        on_state_callback=None,
+        client_name="Live Integrator",
+        time_out=10,
+    )
+    await live_integrator_client.start_control()
+
+    live_stft_client = LiveSTFTMessageQueueClient(
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_rheed,
+        routing_key="live_stft",
+        control_routing_key="live_stft_ctrl",
+        state_routing_key="live_stft_state",
+        on_response_callback=None,
+        on_state_callback=None,
+        client_name="Live STFT",
+        time_out=10,
+    )
+    await live_stft_client.start_control()
+
+    
+    websocket_handler = WebsocketMultiClientsHandler(websocket, "Live Analysis")
+    websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_detection_client), )
+    websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_integrator_client), )
+    websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_stft_client), )
+
+    websocket_handler.register_client( IntegratorClientMessageMapper(connection_state.integrator_client), )
+    websocket_handler.register_client( STFTClientMessageMapper(connection_state.stft_client), )
 
     await websocket_handler.start()
 
@@ -229,3 +264,98 @@ async def get_rheed_detection_state(request: Request):
 
     return StreamingResponse(state_generator(), media_type="text/event-stream")
 
+
+@router.get("/RHEED/stft/live/state")
+async def get_rheed_stft_state(request: Request):
+    connection_state : ConnectionState = request.app.state.connection_state
+
+    async def state_generator():
+        queue = asyncio.Queue()
+
+        async def on_state_callback(message: AbstractIncomingMessage):
+            # logging.info(f"detection state put {message.body.decode()}")
+
+            await queue.put(message.body)
+
+        live_stft_client = LiveSTFTMessageQueueClient(
+            channel=connection_state.channel,
+            exchange=connection_state.exchange_rheed,
+            routing_key="live_stft",
+            control_routing_key="live_stft_ctrl",
+            state_routing_key="live_stft_state",
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
+            client_name="Live STFT Monitor",
+            time_out=10,
+        )
+        await live_stft_client.start_state()
+        await live_stft_client.start_control()
+        try:
+            state = await asyncio.wait_for(live_stft_client.get_state(return_bytes=True), timeout=5.0)
+            state = update_state(state, {"is_available": True})
+        except asyncio.TimeoutError:
+            state = json.dumps({"is_available": False})
+
+        # print(state)
+
+        yield f"data: {state}\n\n"
+        # print(state)
+        try:
+            while True:
+                body : bytes = await queue.get()
+                state = update_state(body, {"is_available": True})
+
+                logging.debug(f"RHEED stft state yield {state}")
+                yield f"data: {state}\n\n"
+        finally:
+            await live_stft_client.stop()
+
+    return StreamingResponse(state_generator(), media_type="text/event-stream")
+
+
+@router.get("/RHEED/integrator/live/state")
+async def get_rheed_stft_state(request: Request):
+    connection_state : ConnectionState = request.app.state.connection_state
+
+    async def state_generator():
+        queue = asyncio.Queue()
+
+        async def on_state_callback(message: AbstractIncomingMessage):
+            # logging.info(f"detection state put {message.body.decode()}")
+
+            await queue.put(message.body)
+
+        live_integrator_client = LiveIntegratorMessageQueueClient(
+            channel=connection_state.channel,
+            exchange=connection_state.exchange_rheed,
+            routing_key="live_integrator",
+            control_routing_key="live_integrator_ctrl",
+            state_routing_key="live_integrator_state",
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
+            client_name="Live Integrator Monitor",
+            time_out=10,
+        )
+        await live_integrator_client.start_state()
+        await live_integrator_client.start_control()
+        try:
+            state = await asyncio.wait_for(live_integrator_client.get_state(return_bytes=True), timeout=5.0)
+            state = update_state(state, {"is_available": True})
+        except asyncio.TimeoutError:
+            state = json.dumps({"is_available": False})
+
+        # print(state)
+
+        yield f"data: {state}\n\n"
+        # print(state)
+        try:
+            while True:
+                body : bytes = await queue.get()
+                state = update_state(body, {"is_available": True})
+
+                logging.debug(f"RHEED integrator state yield {state}")
+                yield f"data: {state}\n\n"
+        finally:
+            await live_integrator_client.stop()
+
+    return StreamingResponse(state_generator(), media_type="text/event-stream")

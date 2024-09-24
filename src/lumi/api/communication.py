@@ -16,4 +16,4 @@ from ..rheed.communication import LiveVideoFragmentsMessageQueueClient, CameraMe
 from ..detection.communication import LiveDetectionMessageQueueClient
 from ..pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogMessageQueueClient
 from ..storage.communication import StorageMessageQueueClient
-from ..rheed.communication import LiveSTFTMessageQueueClient, STFTMessageQueueClient, LiveIntegratorMessageQueueServer, IntegratorMessageQueueClient
+from ..rheed.communication import LiveSTFTMessageQueueClient, STFTMessageQueueClient, LiveIntegratorMessageQueueClient, IntegratorMessageQueueClient

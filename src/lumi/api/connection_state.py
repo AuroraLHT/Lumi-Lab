@@ -26,6 +26,8 @@ from lumi.api.communication import (
     ChamberLogMessageQueueClient,
     LiveChamberLogMessageQueueClient,
     StorageMessageQueueClient,
+    STFTMessageQueueClient,
+    IntegratorMessageQueueClient,
 )
 
 import traceback
@@ -42,6 +44,8 @@ class ConnectionState:
     video_fragment_client: Optional[VideoFragmentsMessageQueueClient] = None
     log_client: Optional[ChamberLogMessageQueueClient] = None
     storage_client: Optional[StorageMessageQueueClient] = None
+    integrator_client: Optional[IntegratorMessageQueueClient] = None
+    stft_client: Optional[STFTMessageQueueClient] = None
 
     live_video_client: Optional[LiveVideoFragmentsMessageQueueClient] = None
     live_log_client: Optional[LiveChamberLogMessageQueueClient] = None
