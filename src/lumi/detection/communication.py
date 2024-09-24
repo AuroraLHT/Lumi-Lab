@@ -84,7 +84,7 @@ def decode_detections(body, headers):
 # TODO I would like to integrate tracking into this MessageQueue since passing all prediction around the message queue invole compress and decompression
 class LiveDetectionMessageQueueServer(BasicStreamServer):
     detector: "lumi.detection.model.DetectorServer"
-    image_client: CameraMessageQueueClient
+    camera_client: CameraMessageQueueClient
     fps: int
 
     def __init__(
@@ -124,17 +124,9 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         )
 
     async def on_streaming(self):
-        try:
-            response = await self.camera_client.request()
-        except asyncio.TimeoutError:
-            logging.error(f"{self.log_prefix} Timeout while getting image from camera")
-            return None, None
-        
-        except Exception as e:
-            logging.error(f"{self.log_prefix} Failed to get image from camera: {e}")
-            return None, None
-        
-        if response is None:
+        response = await self.camera_client.request()
+                
+        if response.body is None:
             logging.warning(f"{self.log_prefix} Received None response from camera")
             return None, None
         

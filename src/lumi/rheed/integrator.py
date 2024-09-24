@@ -6,6 +6,7 @@ from collections import deque
 import fractions
 import datetime
 import logging
+import uuid
 
 import numpy as np
 
@@ -44,8 +45,13 @@ class MultiBoxIntegrator(threading.Thread):
         self.state = {"processed_frame_uuid": None}
 
     def register_bbox(self, bbox, bbox_id):
-        self.bboxes[bbox_id] = bbox
-        self.bboxes_integration_cache[bbox_id] = deque([], maxlen=1000)
+        try:
+            bbox = np.array(bbox).round().astype(int).tolist()
+            self.bboxes[bbox_id] = bbox
+            self.bboxes_integration_cache[bbox_id] = deque([], maxlen=1000)
+        except Exception as e:
+            logging.error(f"Failed to register bbox: {e}. Bbox: {bbox}, Bbox ID: {bbox_id}")
+            raise e
 
     def remove_bbox(self, bbox_id):
         if bbox_id in self.bboxes:  
@@ -61,8 +67,12 @@ class MultiBoxIntegrator(threading.Thread):
         return cv_frame, cv_frame_header
 
     def compute_integration(self, image, bbox):
-        aoi = image[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-        return {"mean": np.mean(aoi), "max": np.max(aoi), "min": np.min(aoi), "width": bbox[2]-bbox[0], "height": bbox[3]-bbox[1]}
+        try:
+            aoi = image[bbox[1]:bbox[3], bbox[0]:bbox[2]]
+            return {"mean": np.mean(aoi), "max": np.max(aoi), "min": np.min(aoi), "width": bbox[2]-bbox[0], "height": bbox[3]-bbox[1]}
+        except Exception as e:
+            logging.error(f"Failed to compute integration: {e}. Bbox: {bbox}, Image shape: {image.shape}")
+            raise e
 
     def prepare_content(self, integration, header):
         return ( integration, header )
@@ -71,16 +81,22 @@ class MultiBoxIntegrator(threading.Thread):
         logging.info("start bbox integration")
 
         while True:
-            if not self.camera_queue.empty():
+            if not self.camera_queue.empty() and len(self.bboxes) > 0:
+                integrations = {}
                 cv_frame, cv_frame_header = self.get_image(timeout=60)
                 for bbox_id, bbox in self.bboxes.items():
                     integration = self.compute_integration(cv_frame, bbox)
-                    
-                    content = self.prepare_content( integration, {"bbox_id": bbox_id, **cv_frame_header})
-                    self.bboxes_integration_cache[bbox_id].append( content )
+                    headers = {**cv_frame_header, "bbox_id": bbox_id}
+                    single_content = self.prepare_content(integration, headers)
+                    self.bboxes_integration_cache[bbox_id].append( single_content )
+                    integrations[bbox_id] = integration
+                    # yield content
 
-                    yield content
                 self.state["processed_frame_uuid"] = cv_frame_header["uuid"]
+
+                content = self.prepare_content( integrations, {**cv_frame_header, "integration_uuid": str(uuid.uuid4()) } )
+                # print("integration_uuid", content[1]["integration_uuid"])
+                yield content
 
             stop_flag = self._stop_event.wait(self.config.idle_time)
             if stop_flag : 
@@ -104,6 +120,7 @@ class MultiBoxIntegrator(threading.Thread):
     def run(self):
         for content in self.yield_integration():
             self.output_queue.put(content)
+            # print(content)
 
     def clear(self):
         while not self.output_queue.empty():
@@ -122,9 +139,10 @@ class MultiBoxIntegrator(threading.Thread):
         if cache is not None:
             integration_time = np.array([x[1]["time"] for x in cache])
             integration = np.array([x[0]["mean"] for x in cache])
-            return integration_time, integration
+            latest_header = cache[-1][1]
+            return integration_time, integration, latest_header
         else:
-            return None
+            return None, None, None
 
     def stop(self):
         logging.info(f"Live Integrator thread receives a stop signal")

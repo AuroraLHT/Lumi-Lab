@@ -18,7 +18,7 @@ from lumi.api.communication import (
 
 import traceback
 
-from .base import generic_websocket_handler
+from ..websockets.base import generic_websocket_handler
 from ..utils import update_state
 from ..connection_state import ConnectionState
 

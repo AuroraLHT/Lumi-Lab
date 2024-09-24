@@ -392,19 +392,29 @@ class IntegratorMessageQueueServer(BasicServer):
         message_body = decode_json(message.body)
 
         if message_headers["type"] == "cache":
+            logging.info(f"{self.log_prefix} get cache for bbox_id {message_body['bbox_id']}")
             bbox_id = message_body["bbox_id"]
             contents = self.integrator.get_integration_cache(bbox_id)
             body = encode_json(contents)
             headers = {"type": "cache"}
 
         elif message_headers["type"] == "register":
+            logging.info(f"{self.log_prefix} register integration for bbox_id {message_body['bbox_id']}")
             bbox_id = message_body["bbox_id"]
             bbox = message_body["bbox"]
-            self.integrator.register_bbox(bbox_id, bbox)
+            self.integrator.register_bbox(bbox=bbox, bbox_id=bbox_id)
             body = "".encode()
             headers = {"type": "register"}
 
+        elif message_headers["type"] == "remove":
+            logging.info(f"{self.log_prefix} remove integration for bbox_id {message_body['bbox_id']}")
+            bbox_id = message_body["bbox_id"]
+            self.integrator.remove_bbox(bbox_id)
+            body = "".encode()
+            headers = {"type": "remove"}
+
         elif message_headers["type"] == "bboxes":
+            logging.info(f"{self.log_prefix} get bboxes")
             bboxes = self.integrator.bboxes
             body = encode_json(bboxes)
             headers = {"type": "bboxes"}
@@ -431,6 +441,12 @@ class IntegratorMessageQueueClient(BasicClient):
         logging.info(f"{self.log_prefix} register bbox {bbox_id}")
         body = encode_json({"bbox_id": bbox_id, "bbox": bbox})
         headers = {"type": "register"}
+        return await super().request(body=body, headers=headers)
+
+    async def remove_bbox(self, bbox_id: int):
+        logging.info(f"{self.log_prefix} remove bbox {bbox_id}")
+        body = encode_json({"bbox_id": bbox_id})
+        headers = {"type": "remove"}
         return await super().request(body=body, headers=headers)
 
 
@@ -475,9 +491,13 @@ class LiveIntegratorMessageQueueServer(BasicStreamServer):
     async def on_streaming(self):
         if not self.integrator_queue.empty():
             integration, integration_header = self.integrator_queue.get()
-            body, headers = encode_json(integration), integration_header
-
-            return body, headers
+            try:
+                body, headers = encode_json(integration), integration_header
+                # logging.info(f"Integrator Message Queue Server on stream: {body}")
+                return body, headers
+            except Exception as e:
+                logging.error(f"Integrator Message Queue Server on stream: {e}")
+                return None, None
         else:
             return None, None
 
@@ -548,19 +568,29 @@ class STFTMessageQueueServer(BasicServer):
         message_body = decode_json(message.body)
 
         if message_headers["type"] == "cache":
+            logging.info(f"{self.log_prefix} get cache for bbox_id {message_body['bbox_id']}")
             bbox_id = message_body["bbox_id"]
             contents = self.stft_calculator.get_cache(bbox_id)
             body = encode_json(contents)
             headers = {"type": "cache"}
 
         elif message_headers["type"] == "register":
+            logging.info(f"{self.log_prefix} register integration for bbox_id {message_body['bbox_id']}")
             bbox_id = message_body["bbox_id"]
             self.stft_calculator.register_integration(bbox_id)
             body = "".encode()
             headers = {"type": "register"}
+        
+        elif message_headers["type"] == "remove":
+            logging.info(f"{self.log_prefix} remove integration for bbox_id {message_body['bbox_id']}")
+            bbox_id = message_body["bbox_id"]
+            self.stft_calculator.remove_integration(bbox_id)
+            body = "".encode()
+            headers = {"type": "remove"}
 
         elif message_headers["type"] == "bboxes":
-            bboxes = self.stft_calculator.bboxes
+            logging.info(f"{self.log_prefix} get bboxes")
+            bboxes = self.stft_calculator.registered_integrations
             body = encode_json(bboxes)
             headers = {"type": "bboxes"}
         else:
@@ -586,6 +616,12 @@ class STFTMessageQueueClient(BasicClient):
         logging.info(f"{self.log_prefix} register bbox {bbox_id}")
         body = encode_json({"bbox_id": bbox_id})
         headers = {"type": "register"}
+        return await super().request(body=body, headers=headers)
+    
+    async def remove_bbox(self, bbox_id: int):
+        logging.info(f"{self.log_prefix} remove bbox {bbox_id}")
+        body = encode_json({"bbox_id": bbox_id})
+        headers = {"type": "remove"}
         return await super().request(body=body, headers=headers)
 
 

@@ -22,6 +22,7 @@ from lumi.api.models import StorageRequest
 from lumi.api.communication import (
     BasicStreamClient,
 )
+from lumi.base.message_queue import BasicClient, MessageQueueResponse
 
 from ..models import WebsocketMessageHeaders
 from ..utils import unpack_websocket_payload, parse_payload, pack_websocket_payload
@@ -109,12 +110,67 @@ async def generic_websocket_handler(
     logging.info(f"{endpoint_name} websocket exit")
 
 
-class WebsocketHandler:
+class BaseClientMessageMapper:
+    client : BasicClient
+
+    def __init__(self, client: BasicClient):
+        self.client = client
+
+    async def map(
+        self,
+        operation: str,
+        headers: dict,
+        parsed_payload: Union[dict, str, bytes],
+    ):
+        if operation == "request":
+            return await self.client.request(parsed_payload, headers)
+        
+        return self.client.empty_response
+
+
+class BaseStreamClientMessageMapper:
+    client: BasicStreamClient
+    initial_data_function: Optional[Callable[[], Awaitable[list[Any]]]] = None
+
+    def __init__(self, client: BasicStreamClient, initial_data_function: Optional[Callable[[], Awaitable[list[Any]]]] = None):
+        self.client = client
+        self.initial_data_function = initial_data_function
+
+    async def map(
+        self,
+        operation: str,
+        headers: dict,
+        parsed_payload: Union[dict, str, bytes],
+    ):
+        if operation == "control":
+            if headers["type"] == "start_server":
+                if self.client is not None:
+                    await self.client.start_server_streaming()
+            elif headers["type"] == "stop_server":
+                if self.client is not None:
+                    await self.client.stop_server_streaming()
+
+            elif headers["type"] == "start_streaming":
+                if not self.client.is_main_running():
+                    if self.initial_data_function is not None:
+                        initial_data = await self.initial_data_function()
+                        for data, headers in initial_data:
+                            await self.send_data(self.client.client_name, headers, data)
+                    await self.client.start_main()
+
+            elif headers["type"] == "end_streaming":
+                if self.client is not None:
+                    await self.client.stop_main()
+                    self.client = None
+
+
+class WebsocketMultiClientsHandler:
     def __init__(self, websocket: WebSocket, endpoint_name: str):
         self.websocket = websocket
         self.endpoint_name = endpoint_name
+        self.stream_clients = {}
         self.clients = {}
-        self.client_initial_data_functions = {}
+        self.stream_client_initial_data_functions = {}
         # self.clients_queue = asyncio.Queue()
 
     async def send_data(self, target: str, headers: dict, data: bytes):
@@ -129,14 +185,29 @@ class WebsocketHandler:
             logging.error(f"{target} send_data error: {e}")
             return True
         return False
+    
+    async def send_response(self, target: str, response: MessageQueueResponse):
+        try:
+            websocket_headers = WebsocketMessageHeaders(
+                target=target, operation="response", payload_type="bytes"
+            )
+            await self.websocket.send_bytes(
+                pack_websocket_payload(response.body, response.headers, websocket_headers.to_dict())
+            )
+        except Exception as e:
+            logging.error(f"{target} send_response error: {e}")
+            return True
+        return False
 
-        
     def register_client(
         self,
-        client: BasicStreamClient,
-        client_initial_data_function: Optional[
-            Callable[[], Awaitable[list[Any]]]
-        ] = None,
+        client: BaseClientMessageMapper,
+    ):        
+        self.clients[client.client.client_name] = client
+
+    def register_stream_client(
+        self,
+        client: BaseStreamClientMessageMapper,
     ):
         """
         Register a client to the websocket handler. The handler would forward the data from the client to the websocket.
@@ -146,18 +217,10 @@ class WebsocketHandler:
         """
 
         async def on_response_callback(message: AbstractIncomingMessage):
-            await self.send_data(client.client_name, message.headers, message.body)
-            # websocket_headers = WebsocketMessageHeaders(
-            #     target=client.client_name, operation="data", payload_type="bytes"
-            # )
-            # await self.websocket.send_bytes(
-            #     pack_websocket_payload(data, headers, websocket_headers.to_dict())
-            # )
-            # await self.clients_queue.put((WebsocketMessageHeaders(target=client_name, operation="data"), headers, data))
+            await self.send_data(client.client.client_name, message.headers, message.body)
 
-        self.clients[client.client_name] = client
-        self.client_initial_data_functions[client.client_name] = client_initial_data_function
-        client.update_reponse_callback(on_response_callback)
+        client.client.update_reponse_callback(on_response_callback)
+        self.stream_clients[client.client.client_name] = client
 
     def parse_message(self, message: bytes):
         websocket_headers, headers, payload = unpack_websocket_payload(message)
@@ -165,66 +228,33 @@ class WebsocketHandler:
 
         return websocket_headers, headers, parsed_payload
 
-    def parse_topic(self, topic: str):
-        # we expect topic to be in format "target.operation"
-        target, operation = topic.split(".")
-        return target, operation
-
-    async def get_initial_data(self, client_name: str):
-        if client_name not in self.client_initial_data_functions or self.client_initial_data_functions[client_name] is None:
-            return []
-        else:
-            return await self.client_initial_data_functions[client_name]()
-
-    async def on_client_message(
-        self,
-        client_name: str,
-        operation: str,
-        headers: dict,
-        parsed_payload: Union[dict, str, bytes],
-    ):
-        if client_name not in self.clients:
-            logging.error(f"client {client_name} not found")
-            return
-        else:
-            client: BasicStreamClient = self.clients[client_name]
-
-        if operation == "control":
-            if headers["type"] == "start_server":
-                if client is not None:
-                    await client.start_server_streaming()
-            elif headers["type"] == "stop_server":
-                if client is not None:
-                    await client.stop_server_streaming()
-
-            elif headers["type"] == "start_streaming":
-                if not client.is_main_running():
-                    if client_name in self.client_initial_data_functions is not None:
-                        initial_data = await self.get_initial_data(client_name)
-                        for data, headers in initial_data:
-                            await self.send_data(client_name, headers, data)
-                            logging.info(
-                                f"{self.endpoint_name} send initialization data {headers}"
-                            )
-
-                    await client.start_main()
-
-            elif headers["type"] == "end_streaming":
-                if client is not None:
-                    await client.stop_main()
-                    client = None
-
     async def handle_incoming_messages(self):
         logging.info(f"start {self.endpoint_name} on_message loop")
         async for message in self.websocket.iter_bytes():
             websocket_headers, headers, parsed_payload = self.parse_message(message)
-            await self.on_client_message(
-                websocket_headers.target,
-                websocket_headers.operation,
-                headers,
-                parsed_payload,
-            )
 
+            if websocket_headers.target in self.stream_clients:
+                mapper : BaseStreamClientMessageMapper = self.stream_clients[websocket_headers.target]
+                await mapper.map(
+                    websocket_headers.operation,
+                    headers,
+                    parsed_payload,
+                )
+
+            elif websocket_headers.target in self.clients:
+                mapper : BaseClientMessageMapper = self.clients[websocket_headers.target]
+                response =await mapper.map(
+                    websocket_headers.operation,
+                    headers,
+                    parsed_payload,
+                )
+                try:    
+                    if response is not None and response.body is not None:
+                        await self.send_response(websocket_headers.target, response)
+                except Exception as e:
+                    logging.error(f"{websocket_headers.target} send_response error: {e}. Response: {response}")
+                    raise e
+                
     async def start(self):
         await self.websocket.accept()
         logging.info(f"{self.endpoint_name} websocket accepted")
@@ -233,10 +263,12 @@ class WebsocketHandler:
         try:
             await ws_in_task
         except Exception as e:
-            raise e
             logging.info(f"{self.endpoint_name} websocket received an exception: {e}")
+            raise e
 
         # await asyncio.Future()
-        for client in self.clients.values():
-            await client.stop()
+        for client_mapper in self.stream_clients.values():
+            client_mapper : BaseStreamClientMessageMapper
+
+            await client_mapper.client.stop()
         logging.info(f"{self.endpoint_name} websocket exit")

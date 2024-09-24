@@ -26,6 +26,8 @@ from lumi.api.communication import (
     ChamberLogMessageQueueClient,
     LiveChamberLogMessageQueueClient,
     StorageMessageQueueClient,
+    STFTMessageQueueClient,
+    IntegratorMessageQueueClient,
 )
 
 import traceback
@@ -113,6 +115,32 @@ async def lifespan(app: FastAPI):
     await storage_client.start()
     connection_state.storage_client = storage_client
 
+    integrator_client = IntegratorMessageQueueClient(
+        channel=channel,
+        exchange=exchange_rheed,
+        routing_key="integrator",
+        control_routing_key="integrator_ctrl",
+        state_routing_key="integrator_state",
+        on_state_callback=None,
+        client_name="Integrator",
+        time_out=10,
+    )
+    await integrator_client.start()
+    connection_state.integrator_client = integrator_client
+
+    stft_client = STFTMessageQueueClient(
+        channel=channel,
+        exchange=exchange_rheed,
+        routing_key="stft",
+        control_routing_key="stft_ctrl",
+        state_routing_key="stft_state",
+        on_state_callback=None,
+        client_name="STFT",
+        time_out=10,
+    )
+    await stft_client.start()
+    connection_state.stft_client = stft_client
+    
     # this globle client is only open for status checking
     live_video_client = LiveVideoFragmentsMessageQueueClient(
         channel=connection_state.channel,
