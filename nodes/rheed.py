@@ -90,6 +90,9 @@ async def _main(args):
         height = 540
         width = 720
         devices = list_devices()
+        if len(devices) == 0:
+            raise ValueError("No pylon camera found, check network or physical connection")
+        
         pylon_camera_config = PylonCameraConfig(
             device=devices[0],
             fps=30,
