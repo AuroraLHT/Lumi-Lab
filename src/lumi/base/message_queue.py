@@ -48,6 +48,8 @@ class MessageQueueResponse:
 
 
 class BaseControlMixin:
+    callback_exchange: AbstractExchange
+    log_prefix: str
     _control_callbacks: Dict[
         str, Callable[[ByteString, Dict], Awaitable[MessageQueueResponse]]
     ] = {}
@@ -83,17 +85,20 @@ class BaseControlMixin:
                 message.reply_to is not None
             ), f"Receive a bad control request without .reply_to field"
 
-            await self.callback_exchange.publish(
-                Message(
+            try:
+                await self.callback_exchange.publish(
+                    Message(
                     body=response.body,
                     correlation_id=message.correlation_id,
                     headers=response.headers,
                 ),
-                routing_key=message.reply_to,
-            )
-            logging.info(
-                f"{self.log_prefix} control response delivered to {message.reply_to}"
-            )
+                    routing_key=message.reply_to,
+                )
+                logging.info(
+                    f"{self.log_prefix} control response delivered to {message.reply_to}"
+                )
+            except Exception as e:
+                logging.error(f"{self.log_prefix} fail to deliver control response: {e}")
 
             # the example didn't ack back if process() method is used
             # await message.ask()
@@ -259,8 +264,9 @@ class BasicClient:
 
         self.futures[correlation_id] = future
 
-        await self.exchange.publish(
-            Message(
+        try:
+            await self.exchange.publish(
+                Message(
                 body,
                 content_type="text/plain",
                 correlation_id=correlation_id,
@@ -268,7 +274,10 @@ class BasicClient:
                 headers=headers,
             ),
             routing_key=self.routing_key,
-        )
+            )
+        except Exception as e:
+            logging.error(f"{self.log_prefix} fail to publish content: {e}")
+            raise e
 
         # this code block works for python 3.12
         # try:
@@ -301,8 +310,9 @@ class BasicClient:
 
         self.control_futures[correlation_id] = future
 
-        await self.exchange.publish(
-            Message(
+        try:
+            await self.exchange.publish(
+                Message(
                 body,
                 content_type="text/plain",
                 correlation_id=correlation_id,
@@ -310,7 +320,10 @@ class BasicClient:
                 headers=headers,
             ),
             routing_key=self.control_routing_key,
-        )
+            )
+        except Exception as e:
+            logging.error(f"{self.log_prefix} fail to publish control content: {e}")
+            raise e
 
         try:
             return await asyncio.wait_for(future, timeout=self.time_out)
@@ -592,8 +605,9 @@ class BasicStreamClient:
 
         self.control_futures[correlation_id] = future
 
-        await self.exchange.publish(
-            Message(
+        try:
+            await self.exchange.publish(
+                Message(
                 body,
                 content_type="text/plain",
                 correlation_id=correlation_id,
@@ -601,7 +615,10 @@ class BasicStreamClient:
                 headers=headers,
             ),
             routing_key=self.control_routing_key,
-        )
+            )
+        except Exception as e:
+            logging.error(f"{self.log_prefix} fail to publish control content: {e}")
+            raise e
 
         try:
             return await asyncio.wait_for(future, timeout=self.time_out)
@@ -682,15 +699,18 @@ class StateCallbackMixin:
         response = MessageQueueResponse(body=state, headers={"type": "state"})
         logging.info(f"{self.log_prefix} state prepared")
 
-        await self.exchange.publish(
-            Message(
+        try:
+            await self.exchange.publish(
+                Message(
                 body=response.body,
                 headers=response.headers,
             ),
             routing_key=self.state_routing_key,
         )
-        logging.info(f"{self.log_prefix} send state content")
-
+            logging.info(f"{self.log_prefix} send state content")
+        except Exception as e:
+            logging.error(f"{self.log_prefix} fail to publish state content: {e}")
+            raise e
 
 class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
 
@@ -783,17 +803,33 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
             if self.start_flag:
                 self.state["is_streaming"] = True
 
-                body, headers = await self.on_streaming()
+                try:
+                    body, headers = await self.on_streaming()
+                except Exception as e:
+                    logging.error(f"{self.log_prefix} content preparation failed: {e}")
+                    body, headers = None, None
+
                 if body is not None:
                     logging.debug(f"{self.log_prefix} content prepared")
-
-                    await self.exchange.publish(
-                        Message(
-                            body=body,
-                            headers=headers,
-                        ),
-                        routing_key=self.publish_routing_key,
-                    )
+                    try:
+                        # print(f"{self.log_prefix} try to publish content")
+                        await self.exchange.publish(
+                            Message(
+                                body=body,
+                                headers=headers,
+                            ),
+                            routing_key=self.publish_routing_key,
+                        )
+                    except Exception as e:
+                        logging.error(f"{self.log_prefix} fail to publish content: {e}")
+                        # all for these shows up
+                        # logging.info(f"{self.log_prefix} {'info'*10} fail to publish content: {e}")
+                        # logging.debug(f"{self.log_prefix} {'debug'*10} fail to publish content: {e}")
+                        # logging.critical(f"{self.log_prefix} {'critucal'*10} fail to publish content: {e}")
+                        # logging.warning(f"{self.log_prefix} {'warning'*10} fail to publish content: {e}")
+                        # print("shittttttttttttt"*10)
+                        raise e
+                    
                     logging.debug(f"{self.log_prefix} send content")
                 else:
                     logging.debug(f"{self.log_prefix} fail to prepare content")
@@ -955,15 +991,19 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
             body, headers = await self.on_message(message)
             logging.info(f"{self.log_prefix} content is prepared")
 
-            await self.callback_exchange.publish(
-                Message(
+            try:
+                await self.callback_exchange.publish(
+                    Message(
                     body=body,
                     correlation_id=message.correlation_id,
                     headers=headers,
                 ),
-                routing_key=message.reply_to,
-            )
-            logging.info(f"{self.log_prefix} content delivered to {message.reply_to}")
+                    routing_key=message.reply_to,
+                )
+                logging.debug(f"{self.log_prefix} content delivered to {message.reply_to}")
+            except Exception as e:
+                logging.error(f"{self.log_prefix} fail to deliver content: {e}")
+                raise e
 
             # update the state at each call
             self.update_state()
@@ -976,7 +1016,7 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
 
     @BaseControlMixin.register_control_callback("config")
     async def config_server(self, body, headers):
-        output = self.on_config(self, body, headers)
+        output = await self.on_config(self, body, headers)
         return MessageQueueResponse(output, {"type": "config"})
 
     async def on_state(self, body, headers) -> Dict:
@@ -1001,7 +1041,7 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
             self.state["is_running"] = True
             self.update_state()
         except Exception as e:
-            print(e)
+            logging.error(f"{self.log_prefix} experience an error: {e}")
 
         logging.info(f"{self.log_prefix} starts up")
 
