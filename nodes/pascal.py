@@ -10,10 +10,6 @@ from pathlib import Path
 FORMAT = '%(asctime)s %(levelname)s:%(message)s'
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 
-if __name__ == "__main__":
-
-    pass
-
 async def main(args):
 
     # Perform connection
@@ -29,6 +25,7 @@ async def main(args):
 
 
     if args.src == "path":
+        assert Path(args.path).exists(), f"Log path: {args.path} ({Path(args.path).absolute()}) does not exist"
         log_config = LogReaderConfig(queue_size=10, idle_time=0.01, log_path=args.path)
         log_reader = LogReader(config=log_config, name="log_reader", daemon=True)
     else:
@@ -79,7 +76,7 @@ if __name__ == "__main__":
     parser.add_argument("--host", type=str, default="localhost")
     parser.add_argument("--src", type=str, default="path", help="Options [path | test]")
 
-    parser.add_argument("-p", "--path", type=str, default="")
+    parser.add_argument("-p", "--path", type=str, default="chamber_log")
 
     args= parser.parse_args()
 
