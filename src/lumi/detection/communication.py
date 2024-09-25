@@ -40,9 +40,13 @@ import copy
 from typing import List, Dict, Any, Union
 
 
-def encode_detections(detector_output, detector_output_headers, drop_mask=False):
+def encode_detections(detector_output, detector_output_headers, drop_mask=False, drop_pattern=False):
     pattern = detector_output["instance_segementation"].rd.pattern
-    img, img_headers = encode_img(pattern, {}, to_base64=True)
+    if drop_pattern:
+        pattern = None
+    else:
+        img, img_headers = encode_img(pattern, {}, to_base64=True)
+        pattern = {"pattern": img, "pattern_headers": img_headers}
 
     bboxes = copy.deepcopy(detector_output["bboxes"])
 
@@ -55,7 +59,7 @@ def encode_detections(detector_output, detector_output_headers, drop_mask=False)
             bbox["mask"] = {"mask": mask, "mask_headers": masks_headers}
 
     result = {
-        "pattern": {"pattern": img, "pattern_headers": img_headers},
+        "pattern": pattern,
         "bboxes": bboxes,
         "classification": detector_output["classification"],
         "region2tracks": detector_output["region2tracks"],
@@ -69,14 +73,15 @@ def encode_detections(detector_output, detector_output_headers, drop_mask=False)
 def decode_detections(body, headers):
     detector_output = json.loads(body)
     detector_output_headers = headers
-
-    pattern, pattern_headers = decode_img(
-        detector_output["pattern"]["pattern"],
-        detector_output["pattern"]["pattern_headers"],
-        from_base64=True,
-    )
-    detector_output["pattern"]["pattern"] = pattern
-    detector_output["pattern"]["pattern_headers"] = pattern_headers
+    
+    if "pattern" in detector_output and detector_output["pattern"] is not None:
+        pattern, pattern_headers = decode_img(
+            detector_output["pattern"]["pattern"],
+            detector_output["pattern"]["pattern_headers"],
+            from_base64=True,
+        )
+        detector_output["pattern"]["pattern"] = pattern
+        detector_output["pattern"]["pattern_headers"] = pattern_headers
 
     bboxes = detector_output["bboxes"]
     for k, bbox in bboxes.items():
@@ -94,7 +99,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
     camera_client: CameraMessageQueueClient
     fps: int
     drop_mask: bool
-
+    drop_pattern: bool
     def __init__(
         self,
         detector,
@@ -105,7 +110,8 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         publish_routing_key: str,
         state_routing_key: str,
         server_name: str,
-        drop_mask: bool = True,
+        drop_mask: bool = False,
+        drop_pattern: bool = False,
     ):
         """
         No need input routing key
@@ -123,7 +129,8 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         self.camera_client = camera_client
         self.fps = 0
         self.drop_mask = drop_mask
-        # self.cache = None
+        self.drop_pattern = drop_pattern
+        self.cache = None
 
     def update_state(self):
         self.state.update(
@@ -143,15 +150,16 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
             logging.warning(f"{self.log_prefix} Received None response from camera")
             return None, None
         
-        img, img_header = decode_img(response.body, response.headers)
-        #     self.cache = (img, img_header)
-        # else:
-        #     img, img_header = self.cache
-
-        # TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
-        detector_output, detector_output_headers = self.detector.predict(
-            img, img_header
-        )
+        if self.cache is None:
+            img, img_header = decode_img(response.body, response.headers)
+            # TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
+            detector_output, detector_output_headers = self.detector.predict(
+                img, img_header
+            )
+            # self.cache = (img, img_header, detector_output, detector_output_headers)
+        else:
+            await asyncio.sleep(0.2) # 5Hz update speed
+            img, img_header, detector_output, detector_output_headers = self.cache
         logging.info(f"{self.log_prefix} detection acquired")
 
         try:
@@ -159,6 +167,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
                 detector_output=detector_output,
                 detector_output_headers=detector_output_headers,
                 drop_mask=self.drop_mask,
+                drop_pattern=self.drop_pattern,
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} Failed to encode detection: {e}")
