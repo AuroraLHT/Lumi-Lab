@@ -18,6 +18,8 @@ from collections.abc import Callable, Awaitable
 
 import json
 
+import numpy as np
+
 # from misc import decode_img
 from ..utils.image import decode_img, encode_img, encode_mask, decode_mask
 
@@ -38,15 +40,19 @@ import copy
 from typing import List, Dict, Any, Union
 
 
-def encode_detections(detector_output, detector_output_headers):
+def encode_detections(detector_output, detector_output_headers, drop_mask=False):
     pattern = detector_output["instance_segementation"].rd.pattern
     img, img_headers = encode_img(pattern, {}, to_base64=True)
 
     bboxes = copy.deepcopy(detector_output["bboxes"])
-    for k, bbox in bboxes.items():
-        mask, masks_headers = encode_mask(bbox["mask"], {}, to_base64=True)
 
-        bbox["mask"] = {"mask": mask, "mask_headers": masks_headers}
+    if drop_mask:
+        for k, bbox in bboxes.items():
+            bbox["mask"] = None
+    else:
+        for k, bbox in bboxes.items():
+            mask, masks_headers = encode_mask(bbox["mask"], {}, to_base64=True)
+            bbox["mask"] = {"mask": mask, "mask_headers": masks_headers}
 
     result = {
         "pattern": {"pattern": img, "pattern_headers": img_headers},
@@ -74,9 +80,10 @@ def decode_detections(body, headers):
 
     bboxes = detector_output["bboxes"]
     for k, bbox in bboxes.items():
-        bbox["mask"]["mask"], bbox["mask"]["mask_headers"] = decode_mask(
-            bbox["mask"]["mask"], bbox["mask"]["mask_headers"], from_base64=True
-        )
+        if bbox["mask"] is not None:
+            bbox["mask"]["mask"], bbox["mask"]["mask_headers"] = decode_mask(
+                bbox["mask"]["mask"], bbox["mask"]["mask_headers"], from_base64=True
+            )
 
     return detector_output, detector_output_headers
 
@@ -86,6 +93,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
     detector: "lumi.detection.model.DetectorServer"
     camera_client: CameraMessageQueueClient
     fps: int
+    drop_mask: bool
 
     def __init__(
         self,
@@ -97,6 +105,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         publish_routing_key: str,
         state_routing_key: str,
         server_name: str,
+        drop_mask: bool = True,
     ):
         """
         No need input routing key
@@ -113,6 +122,8 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         self.detector = detector
         self.camera_client = camera_client
         self.fps = 0
+        self.drop_mask = drop_mask
+        # self.cache = None
 
     def update_state(self):
         self.state.update(
@@ -124,6 +135,8 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         )
 
     async def on_streaming(self):
+        # if self.cache is None:
+        # await asyncio.sleep(1) # throttle test
         response = await self.camera_client.request()
                 
         if response.body is None:
@@ -131,6 +144,9 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
             return None, None
         
         img, img_header = decode_img(response.body, response.headers)
+        #     self.cache = (img, img_header)
+        # else:
+        #     img, img_header = self.cache
 
         # TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
         detector_output, detector_output_headers = self.detector.predict(
@@ -142,6 +158,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
             body, headers = encode_detections(
                 detector_output=detector_output,
                 detector_output_headers=detector_output_headers,
+                drop_mask=self.drop_mask,
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} Failed to encode detection: {e}")
