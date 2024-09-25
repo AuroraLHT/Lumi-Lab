@@ -171,7 +171,6 @@ class VideoCompressor(threading.Thread):
         frame_idx = 0
         frame_bytes_idx = 0
 
-
         _current_frag_frame_start_time = None
         _current_frag_frame_end_time = None
 
