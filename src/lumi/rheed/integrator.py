@@ -20,7 +20,7 @@ import json
 @dataclass
 class MultiBoxIntegratorConfig:
     idle_time : float = None
-    output_queue_size : int = 1000
+    output_queue_size : int = 50
     
     def __post_init__(self):
 

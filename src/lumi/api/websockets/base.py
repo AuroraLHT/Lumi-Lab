@@ -136,6 +136,15 @@ class BaseStreamClientMessageMapper:
         self.client = client
         self.initial_data_function = initial_data_function
 
+    async def stream_map(
+        self,
+        target: str,
+        headers: dict,
+        body: bytes,
+    ):
+        # by default, do nothing, just return the original target, headers, body
+        return target, headers, body
+
     async def map(
         self,
         operation: str,
@@ -159,9 +168,7 @@ class BaseStreamClientMessageMapper:
                     await self.client.start_main()
 
             elif headers["type"] == "end_streaming":
-                if self.client is not None:
-                    await self.client.stop_main()
-                    self.client = None
+                await self.client.stop_main()
 
 
 class WebsocketMultiClientsHandler:
@@ -178,9 +185,10 @@ class WebsocketMultiClientsHandler:
             websocket_headers = WebsocketMessageHeaders(
                 target=target, operation="data", payload_type="bytes"
             )
-            await self.websocket.send_bytes(
-                pack_websocket_payload(data, headers, websocket_headers.to_dict())
-            )
+            payload = pack_websocket_payload(data, headers, websocket_headers.to_dict())
+            # logging.info(f"{target} send_data payload size: {len(payload)}")
+            await self.websocket.send_bytes(payload)
+
         except Exception as e:
             logging.error(f"{target} send_data error: {e}")
             return True
@@ -191,9 +199,10 @@ class WebsocketMultiClientsHandler:
             websocket_headers = WebsocketMessageHeaders(
                 target=target, operation="response", payload_type="bytes"
             )
-            await self.websocket.send_bytes(
-                pack_websocket_payload(response.body, response.headers, websocket_headers.to_dict())
-            )
+            payload = pack_websocket_payload(response.body, response.headers, websocket_headers.to_dict())
+            logging.info(f"{target} send_response payload size: {len(payload)}")
+
+            await self.websocket.send_bytes(payload)
         except Exception as e:
             logging.error(f"{target} send_response error: {e}")
             return True
@@ -217,7 +226,8 @@ class WebsocketMultiClientsHandler:
         """
 
         async def on_response_callback(message: AbstractIncomingMessage):
-            await self.send_data(client.client.client_name, message.headers, message.body)
+            target, headers, body = await client.stream_map(client.client.client_name, message.headers, message.body)
+            await self.send_data(target, headers, body)
 
         client.client.update_reponse_callback(on_response_callback)
         self.stream_clients[client.client.client_name] = client
