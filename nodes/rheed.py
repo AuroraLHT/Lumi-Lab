@@ -180,6 +180,7 @@ async def _main(args):
         output_queue_size=3000, # we keep the queue size big enought to include all simulated input
         window_size=60,
         hop_size=0.5,
+        # hop_size=0.1,
         time_resolution= 1/20
     )
 
