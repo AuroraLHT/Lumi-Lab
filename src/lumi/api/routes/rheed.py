@@ -23,7 +23,7 @@ from lumi.api.communication import (
     LiveSTFTMessageQueueClient
 )
 from ..websockets.base import generic_websocket_handler, WebsocketMultiClientsHandler, BaseClientMessageMapper, BaseStreamClientMessageMapper
-from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper
+from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper, LiveDetectionStreamClientMessageMapper
 
 from ..utils import update_state, pack_payload
 from ..connection_state import ConnectionState
@@ -205,7 +205,7 @@ async def rheed_analysis_live(websocket: WebSocket):
 
     
     websocket_handler = WebsocketMultiClientsHandler(websocket, "Live Analysis")
-    websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_detection_client), )
+    websocket_handler.register_stream_client( LiveDetectionStreamClientMessageMapper(live_detection_client), )
     websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_integrator_client), )
     websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_stft_client), )
 
