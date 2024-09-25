@@ -36,21 +36,22 @@ sys.setrecursionlimit(10000)
 
 # Allow all origins, or specify a list of allowed origins
 origins = [
-    "http://127.0.0.1:8000",
-    "http://localhost:8000",
-    "http://[::1]:8000",  # IPv6 localhost
+    "*" # this should allow all origins
+    
+    # "http://127.0.0.1:8000",
+    # "http://localhost:8000",
+    # "http://[::1]:8000",  # IPv6 localhost
 
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
-    "http://[::1]:5173",  # IPv6 localhost
-    "http://0.0.0.0:5173",  # Any IPv4 address
-    # Add other origins if needed
+    # "http://127.0.0.1:5173",
+    # "http://localhost:5173",
+    # "http://[::1]:5173",  # IPv6 localhost
+    # "http://0.0.0.0:5173",  # Any IPv4 address
+    # # Add other origins if needed
 
-    "http://127.0.0.1:5174",
-    "http://localhost:5174",
-    "http://[::1]:5174",  # IPv6 localhost
-    "http://0.0.0.0:5174",  # Any IPv4 address
-
+    # "http://127.0.0.1:5174",
+    # "http://localhost:5174",
+    # "http://[::1]:5174",  # IPv6 localhost
+    # "http://0.0.0.0:5174",  # Any IPv4 address
 ]
 
 FORMAT = "%(asctime)s %(levelname)s:%(message)s"
