@@ -1,7 +1,26 @@
-from lumi.api.websockets.base import BaseClientMessageMapper
-from lumi.api.communication import IntegratorMessageQueueClient, STFTMessageQueueClient
+from lumi.api.websockets.base import BaseClientMessageMapper, BaseStreamClientMessageMapper
+from lumi.api.communication import IntegratorMessageQueueClient, STFTMessageQueueClient, LiveDetectionMessageQueueClient
 from typing import Union
 import logging
+from lumi.utils.common import encode_json, decode_json
+
+class LiveDetectionStreamClientMessageMapper(BaseStreamClientMessageMapper):
+    client : LiveDetectionMessageQueueClient
+
+    async def stream_map(
+        self,
+        target: str,
+        headers: dict,
+        body: bytes
+    ):
+        body = decode_json(body)
+        body["pattern"] = None
+        if "bboxes" in body:
+            for key, value in body["bboxes"].items():
+                if "mask" in value: value["mask"] = None
+        body = encode_json(body)
+
+        return target, headers, body
 
 class IntegratorClientMessageMapper(BaseClientMessageMapper):
     client : IntegratorMessageQueueClient

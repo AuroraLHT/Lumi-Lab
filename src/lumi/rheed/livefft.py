@@ -19,7 +19,7 @@ import json
 @dataclass
 class STFTCalculatorConfig:
     idle_time: float = field(default=None, metadata={"unit": "s", "description": "Time to wait when no data is available"})
-    output_queue_size: int = field(default=1000, metadata={"description": "Maximum size of the output queue"})
+    output_queue_size: int = field(default=50, metadata={"description": "Maximum size of the output queue"})
     window_size: float = field(default=50, metadata={"unit": "s", "description": "Size of the sliding window for FFT calculation"})
     hop_size: float = field(default=1, metadata={"unit": "s", "description": "Step size between consecutive FFT calculations"})
     time_resolution: float = field(default=0.1, metadata={"unit": "s", "description": "Time resolution for resampling the signal before FFT"})

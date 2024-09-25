@@ -177,7 +177,7 @@ async def _main(args):
 
     stft_config = STFTCalculatorConfig(
         idle_time=0.005,
-        output_queue_size=3000, # we keep the queue size big enought to include all simulated input
+        output_queue_size=50,
         window_size=60,
         hop_size=0.5,
         # hop_size=0.1,
@@ -186,7 +186,7 @@ async def _main(args):
 
     integrator_config = MultiBoxIntegratorConfig(
         idle_time=0.005,
-        output_queue_size=3000,
+        output_queue_size=50,
     )
 
     integrator = MultiBoxIntegrator(camera=None, camera_queue=live_integration_camera_queue, config=integrator_config)
