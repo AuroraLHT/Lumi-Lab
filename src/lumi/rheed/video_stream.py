@@ -70,10 +70,38 @@ class VideoCompressor(threading.Thread):
         self.frame_processing = frame_processing
         self._stop_event = threading.Event()
 
+        self.frame_start_time = None
+        self.frame_current_time = None
+        self.frame_prev_pts = None
 
-    def get_video_frame(self, start_time=None, prev_pts=None):
+    def get_time_diff(self, current_time):
+        time_diff = current_time - self.frame_start_time
+        return time_diff
+    
+    def get_frame_time_diff(self, current_time):
+        if self.frame_current_time is None:
+            self.frame_current_time = current_time
+            time_diff = 0
+        else:
+            time_diff = current_time - self.frame_current_time
+        return time_diff
+
+    def create_av_frame(self, cv_frame, time_diff):
+        frame = av.VideoFrame.from_ndarray(cv_frame, format='rgb24')
+        
+        pts = round(time_diff / self.config.time_base)
+        if pts == self.frame_prev_pts: pts+=1
+        frame.pts = pts
+        frame.dts = pts
+        frame.time_base = self.config.time_base
+
+        self.frame_prev_pts = pts
+
+        return frame, pts
+    
+    def get_video_frame(self):
         # extract camera frame
-        # print(f"is queue full {self.camera_queue.full()} ")
+        filler_frames = []
         cv_frame, cv_frame_header = self.camera_queue.get()
         current_time = cv_frame_header['time']
         # cv_frame, current_time = self.camera.get_frame()
@@ -83,24 +111,32 @@ class VideoCompressor(threading.Thread):
             cv_frame = self.frame_processing(cv_frame, cv_frame_header)
             # cv_frame = cv2.cvtColor(cv_frame, cv2.COLOR_GRAY2RGB)
 
+        maximum_frame_time_diff = 60 * 10 # 10 minutes
 
-        frame = av.VideoFrame.from_ndarray(cv_frame, format='rgb24')
+        # frame = av.VideoFrame.from_ndarray(cv_frame, format='rgb24')
         
-        # add time stamp info to the frame
-        if start_time is None:
-            start_time = current_time
-            time_diff = 0
-        else:
-            time_diff = current_time - start_time
+        if self.frame_start_time is None:
+            self.frame_start_time = current_time
+        
+        if self.frame_current_time is None:
+            self.frame_current_time = current_time
 
-        pts = round(time_diff / self.config.time_base)
-        if pts == prev_pts: pts+=1
-        frame.pts = pts
-        frame.dts = pts
-        frame.time_base = self.config.time_base
-        # print(frame.pts, frame.dts)
+        time_diff = self.get_time_diff(current_time)
+        frame_time_diff = self.get_frame_time_diff(current_time)
 
-        return frame, start_time, current_time, pts
+        if frame_time_diff > maximum_frame_time_diff:
+            for i in range(1, round(frame_time_diff // maximum_frame_time_diff)):
+                filler_time_diff = self.get_time_diff(self.frame_current_time + maximum_frame_time_diff * i)
+                filler_frame, filler_pts = self.create_av_frame(cv_frame, filler_time_diff)
+                filler_frames.append(filler_frame)
+
+        frame, pts = self.create_av_frame(cv_frame, time_diff)
+    
+        frames = filler_frames + [frame]
+
+        # update frame time
+        self.frame_current_time = current_time
+        return frames, pts, current_time, 
 
 
     def yield_video(self):
@@ -122,7 +158,7 @@ class VideoCompressor(threading.Thread):
         )
 
         # Define the codec and create a video stream
-        stream = container.add_stream('h264', rate=self.config.fps)
+        stream : av.video.Stream = container.add_stream('h264', rate=self.config.fps)
         # stream = container.add_stream('hevc', rate=self.config.fps)
 
         stream.width = self.config.width
@@ -135,50 +171,59 @@ class VideoCompressor(threading.Thread):
         frame_idx = 0
         frame_bytes_idx = 0
 
-        start_time = None
-        prev_pts= None
-        stop_flag = False
 
         _current_frag_frame_start_time = None
         _current_frag_frame_end_time = None
 
         while True:
             # Encode the frame and write it to the buffer
-            av_frame, start_time, current_time, prev_pts = self.get_video_frame(start_time=start_time, prev_pts=prev_pts)
-            if _current_frag_frame_start_time is None: _current_frag_frame_start_time = datetime.datetime.fromtimestamp(current_time)
-            _current_frag_frame_end_time = datetime.datetime.fromtimestamp(current_time)
+            if not self.camera_queue.empty():
 
-            for packet in stream.encode(av_frame):
-                container.mux(packet)
+                av_frames, pts, current_time = self.get_video_frame()
+                if _current_frag_frame_start_time is None: _current_frag_frame_start_time = datetime.datetime.fromtimestamp(current_time)
+                _current_frag_frame_end_time = datetime.datetime.fromtimestamp(current_time)
 
-                if packet.is_keyframe and frame_idx > 0:
+                try:
+                    for av_frame in av_frames:
+                        for packet in stream.encode(av_frame):
+                            # print("packet duration", packet.duration, "packet pts", packet.pts, "packet dts", packet.dts, "av_frame dts", av_frame.dts)
+                            try:
+                                container.mux(packet)
+                            except Exception as e:
+                                logging.error(f"Error in muxing packet: {e}")
+                                raise e
 
-                    frame_bytes = extract_buffer(output_buffer=output_buffer)
+                            if packet.is_keyframe and frame_idx > 0:
 
-                    # logging.info(f"Video compressor: at frame {frame_idx}, at fragment {frame_bytes_idx}, create package: {len(frame_bytes)}")
+                                frame_bytes = extract_buffer(output_buffer=output_buffer)
 
-                    # condition = frame_bytes_idx % 20 != 0 # simulate loss one packet
-                    # condition = frame_bytes_idx < 4 or frame_bytes_idx > 20
-                    condition = True
-                    if frame_bytes_idx > 0 and condition:
-                        # test_writer.write(frame_bytes)
-                        # test_writer.flush()
+                                # logging.info(f"Video compressor: at frame {frame_idx}, at fragment {frame_bytes_idx}, create package: {len(frame_bytes)}")
 
-                        content = frame_bytes, {"frame_start":str(_current_frag_frame_start_time), "frame_end":str(_current_frag_frame_end_time), "frag_idx":frame_bytes_idx}
-                        if frame_bytes_idx < self.config.cached_startup_fragments:
-                            self.startup_fragments.append(content)
-                            logging.info("add startup fragment")
+                                # condition = frame_bytes_idx % 20 != 0 # simulate loss one packet
+                                # condition = frame_bytes_idx < 4 or frame_bytes_idx > 20
+                                condition = True
+                                if frame_bytes_idx > 0 and condition:
+                                    # test_writer.write(frame_bytes)
+                                    # test_writer.flush()
 
-                        # logging.info(f"Fragment yield for frame from {_current_frag_frame_start_time} to {_current_frag_frame_end_time} current time {datetime.datetime.now()}")
+                                    content = frame_bytes, {"frame_start":str(_current_frag_frame_start_time), "frame_end":str(_current_frag_frame_end_time), "frag_idx":frame_bytes_idx}
+                                    if frame_bytes_idx < self.config.cached_startup_fragments:
+                                        self.startup_fragments.append(content)
+                                        logging.info("add startup fragment")
 
-                        # yield (frame_bytes, frame_bytes_idx)
-                        yield content
-                        _current_frag_frame_start_time = None
-                        
+                                    # logging.info(f"Fragment yield for frame from {_current_frag_frame_start_time} to {_current_frag_frame_end_time} current time {datetime.datetime.now()}")
 
-                    frame_bytes_idx += 1
+                                    # yield (frame_bytes, frame_bytes_idx)
+                                    yield content
+                                    _current_frag_frame_start_time = None
+                                    
 
-            frame_idx+=1
+                                frame_bytes_idx += 1
+                except Exception as e:
+                    logging.error(f"Error in video compression at frame {frame_idx}: {e}")
+                    raise e
+            
+                frame_idx+=1
 
             stop_flag = self._stop_event.wait(self.config.idle_time/3)
             if stop_flag : 
@@ -283,7 +328,6 @@ class VideoRecorder(threading.Thread):
         # print(f"is queue full {self.camera_queue.full()} ")
         cv_frame, cv_frame_header = self.camera_queue.get()
         current_time = cv_frame_header['time']
-        # cv_frame, current_time = self.camera.get_frame()
         # the camera we have is monocolor version
         # convert to rgb from gray signal
         if self.frame_processing is not None:
@@ -304,7 +348,6 @@ class VideoRecorder(threading.Thread):
         frame.pts = pts
         frame.dts = pts
         frame.time_base = self.config.time_base
-        # print(frame.pts, frame.dts)
 
         return frame, start_time, current_time, pts
 
