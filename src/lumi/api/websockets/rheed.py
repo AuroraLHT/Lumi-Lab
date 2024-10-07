@@ -50,6 +50,7 @@ class IntegratorClientMessageMapper(BaseClientMessageMapper):
                 elif headers["type"] == "bboxes":
                     response = await client.get_bboxes()
             else:
+                logging.warning(f"Invalid operation in IntegratorClientMessageMapper: {operation}. Payload: {parsed_payload}, headers: {headers}")
                 response = client.empty_response
         except Exception as e:
             logging.error(f"Error in IntegratorClientMessageMapper: {e}. Payload: {parsed_payload}, headers: {headers}")
@@ -84,9 +85,10 @@ class STFTClientMessageMapper(BaseClientMessageMapper):
                 elif headers["type"] == "bboxes":
                     response = await client.get_bboxes()
             else:
+                logging.warning(f"Invalid operation in STFTClientMessageMapper: {operation}. Payload: {parsed_payload}, headers: {headers}")
                 response = client.empty_response
         except Exception as e:
-            logging.error(f"Error in IntegratorClientMessageMapper: {e}. Payload: {parsed_payload}, headers: {headers}")
+            logging.error(f"Error in STFTClientMessageMapper: {e}. Payload: {parsed_payload}, headers: {headers}")
             raise e
         
         return response
