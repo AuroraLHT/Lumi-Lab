@@ -71,9 +71,15 @@ class Recorder:
         if not save_flag: raise Exception(f"save flag {flag_name} is not enabled")
 
     def open_h5(self, root_folder, project_name):
-        logging.info("Try to open h5py database file at {}".format( (Path(root_folder) / f"{project_name}.h5py").absolute() ) )
-        open_mode = "w" if self.config.force_rewrite else "a"
-        self.h5f = h5py.File( Path(root_folder) / f"{project_name}.h5py", open_mode)
+        h5_path = Path(root_folder) / f"{project_name}.h5py"
+        logging.info("Try to open h5py database file at {}".format( h5_path.absolute() ) )
+
+        if h5_path.exists() and not self.config.force_rewrite:
+            logging.info(f"h5py database file {h5_path} already exists, set force_rewrite to True to rewrite")
+            raise FileExistsError(f"h5py database file {h5_path} already exists, set force_rewrite to True to rewrite")
+
+        open_mode = "w" 
+        self.h5f = h5py.File( h5_path, open_mode)
 
     def close_h5(self):
         self.h5f.flush()
