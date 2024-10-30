@@ -61,6 +61,7 @@ class StorageMessageQueueClient(BasicClient):
         save_frame: bool = True,
         save_ai: bool = True,
         save_log: bool = True,
+        force_rewrite: bool = False,
     ):
 
         return await self.request(
@@ -71,6 +72,7 @@ class StorageMessageQueueClient(BasicClient):
                 "save_ai": save_ai,
                 "save_log": save_log,
                 "project_name": project_name,
+                "force_rewrite": force_rewrite,
             },
         )
 
@@ -133,6 +135,9 @@ class StorageMessageQueueServer(BasicServer):
         self.state["is_storing_ai"] = False
         self.state["is_storing_log"] = False
 
+        self.recorder_server = None
+        self.recorder_server_config = None
+
     async def on_message(self, message: AbstractIncomingMessage):
         body, headers = message.body, message.headers
         ctrl = headers["type"]
@@ -142,9 +147,16 @@ class StorageMessageQueueServer(BasicServer):
 
         if ctrl == "start":
             if not self.state["is_storing"]:
-                await self.create_storages(body, headers)
-                await self.start_storages(body, headers)
-                logging.info(f"{self.log_prefix} starts storage")
+                status = await self.create_storages(body, headers)
+                if status["succ"]:
+                    status =await self.start_storages(body, headers)
+                    logging.info(f"{self.log_prefix} starts storage")
+                    if not status["succ"]:
+                        response_msg = status["msg"]
+                        response_header = {"succ" : False}
+                else:
+                    response_msg = status["msg"]
+                    response_header = {"succ" : False}
             else:
                 response_msg = f"cannot execute [{ctrl}], the storage process have been initiated."
                 response_header = {"succ" : False}
@@ -165,19 +177,21 @@ class StorageMessageQueueServer(BasicServer):
         return response_msg.encode(), response_header
 
     async def create_storages(self, body, headers):
-        camera_state = await self.camera_client.get_state()
-        frame_dim = camera_state["frame_dims"]
-        frame_metas_columns = camera_state["frame_metas"]
+        try:
+            camera_state = await self.camera_client.get_state()
+            frame_dim = camera_state["frame_dims"]
+            frame_metas_columns = camera_state["frame_metas"]
 
-        log_state = await self.log_client.get_state()
-        print(log_state)
-        log_columns = log_state["entries"]
+            log_state = await self.log_client.get_state()
+            log_columns = log_state["entries"]
 
-        detection_state = await self.detector_client.get_state()
-        pattern_dim = detection_state["pattern_dim"]
-        detection_meta_columns = detection_state["detection_metas"]
-        classifier_classes = detection_state["classifier_classes"]
-
+            detection_state = await self.detector_client.get_state()
+            pattern_dim = detection_state["pattern_dim"]
+            detection_meta_columns = detection_state["detection_metas"]
+            classifier_classes = detection_state["classifier_classes"]
+        except Exception as e:
+            return {"succ": False, "msg": str("failed to obtain metadata")}
+        
         self.recorder_config = RecorderConfig(
             project_name=headers["project_name"],
             root_folder=self.config.root_folder,
@@ -191,47 +205,63 @@ class StorageMessageQueueServer(BasicServer):
             save_frame=headers["save_frame"],
             save_log=headers["save_log"],
             save_ai=headers["save_ai"],
-            force_rewrite=True,
+            force_rewrite=headers["force_rewrite"],
             compression="gzip",
             compression_opts=4,
         )
 
-        self.recorder = Recorder(config=self.recorder_config)
+        # TODO: make custom exception for recorder
+        try:
+            self.recorder = Recorder(config=self.recorder_config)
+        except FileExistsError as e:
+            # print("-"*10)
+            # print(e)
+            # print("-"*10)
+            return {"succ": False, "msg": str(e)}
+
         self.recorder_server_config = RecorderServerConfig(idle_time=0.01)
         self.recorder_server = RecorderServer(self.recorder_server_config, self.recorder, name="recoder_server")
         self.recorder_server.create_dataset()
         self.recorder_server.start()
 
+        return {"succ": True, "msg": "success to create storages"}
+
     async def close_storages(self):
-        self.recorder_server.close_storages()
-        self.recorder_server.join()
+        if self.recorder_server is not None:
+            self.recorder_server.close_storages()
+            self.recorder_server.join()
 
     async def start_storages(self, body, headers):
-        if headers["save_frame"]:
-            await self.start_frame_storage()
-            self.state["is_storing_frame"] = True
+        try:
+            if headers["save_frame"]:
+                await self.start_frame_storage()
+                self.state["is_storing_frame"] = True
 
-        if headers["save_log"]:
-            await self.start_log_storage()
-            self.state["is_storing_log"] = True
+            if headers["save_log"]:
+                await self.start_log_storage()
+                self.state["is_storing_log"] = True
 
-        if headers["save_ai"]:
-            await self.start_ai_storage()
-            self.state["is_storing_ai"] = True
+            if headers["save_ai"]:
+                await self.start_ai_storage()
+                self.state["is_storing_ai"] = True
 
-        self.state["is_storing"] = True
-
+            self.state["is_storing"] = True
+        except Exception as e:
+            return {"succ": False, "msg": str(e)}
+        
+        return {"succ": True, "msg": "success to start storages"}
+    
     async def start_frame_storage(self):
         async def on_response_callback(message: AbstractIncomingMessage):
             try:
                 body, headers = message.body, message.headers
                 frame, frame_headers = decode_img(body, headers)
                 self.recorder_server.save_frame(frame, frame_headers)
-                return True
+                return False
             
             except Exception as e:
                 logging.error(e)
-                return False
+                return True
 
         self.live_camera_client.update_reponse_callback(
             on_response_callback=on_response_callback
@@ -251,11 +281,11 @@ class StorageMessageQueueServer(BasicServer):
                 body, headers = message.body, message.headers
                 chamber_log = json.loads(body)
                 self.recorder_server.save_log(chamber_log=chamber_log)
-                return True
+                return False
             
             except Exception as e:
                 logging.error(e)
-                return False
+                return True
 
         self.live_log_client.update_reponse_callback(
             on_response_callback=on_response_callback
@@ -296,10 +326,10 @@ class StorageMessageQueueServer(BasicServer):
                     tracking=tracking,
                     detection_meta=result_headers,
                 )
-                return True
+                return False
             except Exception as e:
                 logging.error(e)
-                return False
+                return True
 
         self.live_detection_client.update_reponse_callback(
             on_response_callback=on_response_callback
