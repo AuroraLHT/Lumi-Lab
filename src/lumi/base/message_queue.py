@@ -388,6 +388,26 @@ class BasicStreamClient:
         client_name: str,
         time_out: float,
     ) -> None:
+        """
+        Initialize a BasicStreamClient.
+
+        Args:
+            channel (Optional[AbstractChannel]): The channel for communication.
+            exchange (Optional[AbstractExchange]): The exchange for routing messages.
+            routing_key (str): The routing key for main messages.
+            control_routing_key (str): The routing key for control messages.
+            state_routing_key (str): The routing key for state messages.
+            on_response_callback (Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]): 
+                Callback function for handling responses, return True to stop the streaming.
+            on_state_callback (Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]): 
+                Callback function for handling state changes, return True to stop the streaming.
+            client_name (str): The name of the client.
+            time_out (float): The timeout duration for operations.
+
+        This class sets up a basic streaming client with capabilities for main, control, 
+        and state message handling. It provides methods for starting and stopping 
+        message consumption, as well as sending requests and handling responses.
+        """
 
         self.channel = channel
         self.exchange = exchange
@@ -408,6 +428,16 @@ class BasicStreamClient:
     def update_reponse_callback(
         self, on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]]
     ):
+        """
+        Update the response callback function.
+
+        Args:
+            on_response_callback (Callable[[AbstractIncomingMessage], Awaitable[bool]]): 
+                The callback function for handling responses, return True to stop the streaming.
+
+        Raises:
+            Exception: If the current job is not stopped, raise an exception.
+        """
         if not self.is_main_running():
             self.on_response_callback = on_response_callback
         else:
