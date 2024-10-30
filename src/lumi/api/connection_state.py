@@ -32,6 +32,8 @@ from lumi.api.communication import (
 
 import traceback
 
+from lumi.rheed.communication import LiveCameraMessageQueueClient
+
 @dataclass
 class ConnectionState:
     connection: Optional[AbstractConnection] = None
@@ -50,3 +52,4 @@ class ConnectionState:
     live_video_client: Optional[LiveVideoFragmentsMessageQueueClient] = None
     live_log_client: Optional[LiveChamberLogMessageQueueClient] = None
     live_detection_client: Optional[LiveDetectionMessageQueueClient] = None
+    live_camera_client: Optional[LiveCameraMessageQueueClient] = None
