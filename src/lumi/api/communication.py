@@ -14,6 +14,6 @@ from collections.abc import Callable, Awaitable
 from ..base.message_queue import BasicStreamClient
 from ..rheed.communication import LiveVideoFragmentsMessageQueueClient, CameraMessageQueueClient, VideoFragmentsMessageQueueClient
 from ..detection.communication import LiveDetectionMessageQueueClient
-from ..pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogMessageQueueClient
+from ..pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogMessageQueueClient, MIModeMessageQueueClient
 from ..storage.communication import StorageMessageQueueClient
 from ..rheed.communication import LiveSTFTMessageQueueClient, STFTMessageQueueClient, LiveIntegratorMessageQueueClient, IntegratorMessageQueueClient
