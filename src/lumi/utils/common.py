@@ -1,5 +1,6 @@
 import json
 import numpy as np
+from typing import Any, Union, Dict, List
 
 def convert_np_to_py(obj):
     if isinstance(obj, np.integer):
@@ -12,9 +13,9 @@ def convert_np_to_py(obj):
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
     return obj
 
-def encode_json(data):
+def encode_json(data: Union[Dict, List]):
     return json.dumps(data, default=convert_np_to_py).encode("utf-8")
 
-def decode_json(data):
+def decode_json(data: Union[bytes, str]):
     # return json.loads(data.decode("utf-8"))
     return json.loads(data)
