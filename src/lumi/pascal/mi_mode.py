@@ -13,8 +13,11 @@ import queue
 import collections
 import time
 from enum import Enum, auto
-from typing import Callable, Dict, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, TypedDict, Union
 import asyncio
+
+class MIModeResponseHeader(TypedDict):
+    pass
 
 class MIState(Enum):
     IDLE = ""
@@ -69,7 +72,7 @@ def get_mi_state(filename: str, base_filename: str) -> str:
 
 class MIModeExecution:
     def __init__(
-        self, uuid: str, commands: str, assist_filename: str, mi_folder: str
+        self, uuid: str, commands: str, assist_filename: str, mi_folder: str, on_state_change_callbacks: Dict[str, Callable]
     ) -> None:
         self.state = MIState.IDLE
         self.is_execution_finished = False
@@ -152,6 +155,17 @@ class MIModeExecution:
         if aborted_assist_file.exists():
             aborted_assist_file.unlink()
 
+    def to_dict(self):
+        return {
+            "commands": self.commands,
+            "commands_uuid": self.uuid,
+            "state": self.state,
+            "is_execution_finished": self.is_execution_finished,
+            "is_aborted": self.is_execution_aborted,
+            "is_cleaned_up": self.is_cleaned_up,
+            "is_stopped": self.is_stopped,
+        }
+
 
 # TODO: we need to make sure the mi_server is not deleted before the mi_execution and mi_execution should be available for the mi_file_system_handler
 
@@ -181,7 +195,7 @@ class MIModeFileSystemHandler(FileSystemEventHandler):
         if is_mi_file_trigger(filename=src_filename, base_filename=self.based_filename):
             logging.info(f"assist file state move {get_mi_state(filename=src_filename, base_filename=self.based_filename)} -> {get_mi_state(filename=dest_filename, base_filename=self.based_filename)}" )
             if self.mi_execution is not None:
-                self.mi_execution.change_state(
+                self.mi_server.change_current_execution_state(
                     get_mi_state(
                         filename=dest_filename, base_filename=self.based_filename
                     )
@@ -200,7 +214,7 @@ class MIModeFileSystemHandler(FileSystemEventHandler):
         if is_mi_file_trigger(filename=src_filename, base_filename=self.based_filename):
             logging.info(f"assist file modified to state -> {get_mi_state(filename=src_filename, base_filename=self.based_filename)}" )
             if self.mi_execution is not None:
-                self.mi_execution.change_state(
+                self.mi_server.change_current_execution_state(
                     get_mi_state(
                         filename=src_filename, base_filename=self.based_filename
                     )
@@ -222,8 +236,10 @@ class MIModeServerConfig:
 class MIModeServer(threading.Thread):
     current_mi_execution: MIModeExecution
     queue: "queue.Queue"
+    update_queue: "queue.Queue"
+
     executions: collections.OrderedDict[str, MIModeExecution]
-    execution_finish_callbacks: Dict[str, Callable]
+    execution_callbacks: Dict[str, Callable]
     command_futures: Dict[str, asyncio.Future]
 
     def __init__(self, config: MIModeServerConfig, name: str, daemon: bool):
@@ -232,7 +248,10 @@ class MIModeServer(threading.Thread):
         self._observer = None
 
         self.config = config
+        
         self.queue = queue.Queue(maxsize=config.queue_size)
+        self.update_queue = queue.Queue(maxsize=config.queue_size)
+
         self.executions = collections.OrderedDict()
         self.command_futures = {}
         # self.output_queue = queue.Queue(maxsize=config.queue_size)
@@ -245,20 +264,38 @@ class MIModeServer(threading.Thread):
 
         self.current_mi_execution = None
         self.mi_execution_history = collections.deque(maxlen=5)
-        self.execution_finish_callbacks = {}
+        self.execution_callbacks = {}
+
+        self.register_execution_callback(self.default_execution_callback)
 
     def clear_queue(self):
         while not self.queue.empty():
             self.queue.get()
 
+        while not self.update_queue.empty():
+            self.update_queue.get()            
+
     def stop_execution(self):
         if self.current_mi_execution is not None:
             self.current_mi_execution.stop()
 
-    def register_execution_finish_callback(self, execution_finish_callback: Callable):
+    def register_execution_callback(self, execution_callback: Callable[[MIModeExecution], None]):
+        """
+        Register a callback function that will be called at each step of the execution.
+        The callback function will receive one argument:
+        - mi_execution: the current mi execution
+        """
         callback_uuid = str(uuid.uuid4())
-        self.execution_finish_callbacks[ callback_uuid, (execution_finish_callback) ]
+        self.execution_callbacks[ callback_uuid ] = execution_callback
         return callback_uuid
+
+    @staticmethod
+    def default_execution_callback(mi_server: "MIModeServer", mi_execution: MIModeExecution):
+        if not mi_server.update_queue.full():
+            mi_server.update_queue.put( ( mi_execution.to_dict(), {"update_content": "current_execution"} ) )
+            
+        if not mi_server.update_queue.full():
+            mi_server.update_queue.put( ( mi_server.list_executions(), {"update_content": "all_executions"} ) )
 
     def register_commands(self, commands: str, commands_uuid: str):
         logging.info(f"register commands_uuid: {commands_uuid}")
@@ -279,11 +316,6 @@ class MIModeServer(threading.Thread):
         self.command_futures[ commands_uuid ] = command_future
         return command_future
 
-    # def get_next_commands(self, timeout: float) -> Tuple[str, str]:
-    #     if self.queue.empty():
-    #         return None, None
-    #     return self.queue.get(block=False, timeout=timeout)
-
     def get_next_execution(self, timeout:float):
         if self.queue.empty():
             return None
@@ -297,23 +329,21 @@ class MIModeServer(threading.Thread):
             self.current_mi_execution = next_execution
             self.mi_execution_history.append(self.current_mi_execution)
 
+    def change_current_execution_state(self, state: MIState):
+        if self.current_mi_execution is not None:
+            self.current_mi_execution.change_state(state)
+
+        for callback in self.execution_callbacks.values():
+            callback(self, self.current_mi_execution)
 
     def execution_finished(self, mi_execution: MIModeExecution):
         # self.output_queue.put(
         # )
-        result = {
-            "commands_uuid": mi_execution.uuid,
-            "is_aborted": mi_execution.is_execution_aborted,
-            "is_cleaned_up": mi_execution.is_cleaned_up,
-            "is_stopped": mi_execution.is_stopped,
-        }
+        result = mi_execution.to_dict()
 
         future = self.command_futures.pop(mi_execution.uuid, None)
         if future:
             future.set_result(result)
-
-        for callback_uuid, callback in self.execution_finish_callbacks.items():
-            callback(result)
 
         self.clean_up_mi_execution(mi_execution=mi_execution)
 
@@ -338,26 +368,15 @@ class MIModeServer(threading.Thread):
             return False
 
     def create_mi_execution(self, commands, commands_uuid):
-        mi_execution = MIModeExecution(uuid=commands_uuid, commands=commands, assist_filename=self.config.assist_file_name, mi_folder=self.config.mi_folder)
+        mi_execution = MIModeExecution(
+            uuid=commands_uuid, 
+            commands=commands, 
+            assist_filename=self.config.assist_file_name, 
+            mi_folder=self.config.mi_folder,
+            on_state_change_callbacks=self.execution_callbacks,
+        )
         self.executions[commands_uuid] = mi_execution
         return mi_execution
-
-
-    # def create_mi_execution(self,):
-    #     commands, commands_uuid = self.get_next_commands(timeout=0.1)
-    #     if (
-    #         commands is not None
-    #         and len(commands) > 0
-    #         and commands_uuid is not None
-    #         and len(commands_uuid) > 0
-    #     ):
-    #         self.mi_execution = MIModeExecution(uuid=commands_uuid, commands=commands, assist_filename=self.config.assist_file_name, mi_folder=self.config.mi_folder)
-    #         logging.info(f"mi execution created: {self.mi_execution.script_file}")
-    #         self.mi_execution.generate_scripts()
-    #         self.mi_execution_history.append(self.mi_execution)
-    #         return True
-    #     else:
-    #         return False
 
     def clean_up_mi_execution(self, mi_execution:MIModeExecution):
         if mi_execution is not None:
@@ -406,7 +425,7 @@ class MIModeServer(threading.Thread):
         if len(self.mi_execution_history) > 0:
             return self.mi_execution_history[-1]
         else:
-            return MIModeExecution(uuid="", commands="", assist_filename=self.config.assist_file_name, mi_folder=self.config.mi_folder)
+            return MIModeExecution(uuid="", commands="", assist_filename=self.config.assist_file_name, mi_folder=self.config.mi_folder, on_state_change_callbacks={})
 
     def hold(self):
         logging.info(f"MI Mode thread ({self.ident}) receives a hold signal")
@@ -422,16 +441,8 @@ class MIModeServer(threading.Thread):
         self._observer.stop()
         self._observer.join()
 
-    def list_executions(self):
-        return [ {"commands":v.commands, "uuid": v.uuid} for k, v in self.executions.items() ]
-
-
-# class TestMIModeFileSystemHandler(MIModeFileSystemHandler):
-#     def __init__(self, based_filename: str, backend : "TestMIModeBackend"):
-#         super().__init__(based_filename=based_filename, backend=backend)
-
-#     def on_any_event(self, event: FileSystemEvent) -> None:
-#         print(f"on event: {event}")
+    def list_executions(self) -> List[Dict]:
+        return [ v.to_dict() for k, v in self.executions.items() ]
 
 
 class MIModeBackendSimulator(threading.Thread):

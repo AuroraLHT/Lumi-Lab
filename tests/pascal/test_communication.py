@@ -83,7 +83,7 @@ async def test_handle_execution_request(
     mock_mimode_server, mock_channel, mock_exchange
 ):
     server = MIModeMessageQueueServer(
-        mimode_server=mock_mimode_server,
+        mi_mode_server=mock_mimode_server,
         channel=mock_channel,
         exchange=mock_exchange,
         routing_key="test",
@@ -111,7 +111,7 @@ async def test_on_message_execution_request(
     mock_mimode_server, mock_channel, mock_exchange, mock_message
 ):
     server = MIModeMessageQueueServer(
-        mimode_server=mock_mimode_server,
+        mi_mode_server=mock_mimode_server,
         channel=mock_channel,
         exchange=mock_exchange,
         routing_key="test",
@@ -139,9 +139,10 @@ async def test_mimode_message_queue_client_request(mock_channel, mock_exchange):
     client = MIModeMessageQueueClient(
         channel=mock_channel,
         exchange=mock_exchange,
-        routing_key="test",
-        control_routing_key="test",
-        state_routing_key="test",
+        request_routing_key="test_request",
+        response_routing_key="test_response",
+        control_routing_key="test_ctrl",
+        state_routing_key="test_state",
         on_response_callback=AsyncMock(),
         on_state_callback=AsyncMock(),
         client_name="test_client",

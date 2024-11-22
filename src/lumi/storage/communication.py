@@ -8,6 +8,7 @@ from aio_pika.abc import (
     AbstractQueue,
 )
 import json
+from lumi.base.models import BaseResponseMessageHeader, RequestMessageQueueMessage, ResponseMessageQueueMessage
 import numpy as np
 from dataclasses import dataclass
 
@@ -63,26 +64,26 @@ class StorageMessageQueueClient(BasicClient):
         save_log: bool = True,
         force_rewrite: bool = False,
     ):
+        request_message = self.create_request_message(
 
-        return await self.request(
             body="".encode(),
             headers={
-                "type": "start",
                 "save_frame": save_frame,
                 "save_ai": save_ai,
                 "save_log": save_log,
                 "project_name": project_name,
                 "force_rewrite": force_rewrite,
             },
+            request_type="start",
         )
-
+        return await self.request(request_message)
     async def end_storage(self):
-        return await self.request(
+        request_message = self.create_request_message(
             body="".encode(),
-            headers={
-                "type": "end",
-            },
+            headers={},
+            request_type="end",
         )
+        return await self.request(request_message)
 
 @dataclass
 class StorageMessageQueueServerConfig:
@@ -138,43 +139,95 @@ class StorageMessageQueueServer(BasicServer):
         self.recorder_server = None
         self.recorder_server_config = None
 
-    async def on_message(self, message: AbstractIncomingMessage):
+    async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
         body, headers = message.body, message.headers
-        ctrl = headers["type"]
+        request_type = headers["request_type"]
 
-        response_msg = f"succfully execute [{ctrl}]"
-        response_header = {"succ": True}
+        if request_type == "start":
+            response = self.create_response_message(
+                body="",
+                headers={},
+                request_type="start",
+                response_type="start",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
 
-        if ctrl == "start":
             if not self.state["is_storing"]:
                 status = await self.create_storages(body, headers)
                 if status["succ"]:
                     status =await self.start_storages(body, headers)
                     logging.info(f"{self.log_prefix} starts storage")
                     if not status["succ"]:
-                        response_msg = status["msg"]
-                        response_header = {"succ" : False}
+                        response = self.create_response_message(
+                            body="",
+                            headers={},
+                            request_type="start",
+                            response_type="start",
+                            succ=False,
+                            error_type="ServerError",
+                            error_message= status["msg"],
+                        )
                 else:
-                    response_msg = status["msg"]
-                    response_header = {"succ" : False}
+                    response = self.create_response_message(
+                        body="",
+                        headers={},
+                        request_type="start",
+                        response_type="start",
+                        succ=False,
+                        error_type="StorageInitError",
+                        error_message= status["msg"],
+                    )
             else:
-                response_msg = f"cannot execute [{ctrl}], the storage process have been initiated."
-                response_header = {"succ" : False}
+                response = self.create_response_message(
+                    body="",
+                    headers={},
+                    request_type="start",
+                    response_type="start",
+                    succ=False,
+                    error_type="StorageInitError",
+                    error_message= f"cannot execute [{request_type}], the storage process have been initiated.",
+                )
 
 
-        elif ctrl == "end":
+        elif request_type == "end":
             if self.state["is_storing"]:
                 await self.end_storages()
                 logging.info(f"{self.log_prefix} ends storage")
+                response = self.create_response_message(
+                    body="",
+                    headers={},
+                    request_type="end",
+                    response_type="end",
+                    succ=True,
+                    error_type="",
+                    error_message="",
+                )
+
             else:
-                response_msg = f"cannot execute [{ctrl}], the storage process have been termined."
-                response_header = {"succ" : False}
+                response = self.create_response_message(
+                    body="",
+                    headers={},
+                    request_type="end",
+                    response_type="end",
+                    succ=False,
+                    error_type="StorageTerminationError",
+                    error_message=f"cannot execute [{request_type}], the storage process have been termined.",
+                )                
         
         else:
-            response_msg = f"unknown ctrl [{ctrl}]"
-            response_header = {"succ" : False}
+            response = self.create_response_message(
+                body="",
+                headers={},
+                request_type=request_type,
+                response_type=request_type,
+                succ=False,
+                error_type="UnknownRequestError",
+                error_message=f"unknown request [{request_type}]",
+            )
 
-        return response_msg.encode(), response_header
+        return response
 
     async def create_storages(self, body, headers):
         try:
@@ -263,7 +316,7 @@ class StorageMessageQueueServer(BasicServer):
                 logging.error(e)
                 return True
 
-        self.live_camera_client.update_reponse_callback(
+        self.live_camera_client.update_on_reponse_callback(
             on_response_callback=on_response_callback
         )
         await self.live_camera_client.start(start_consume_loop=True)
@@ -287,7 +340,7 @@ class StorageMessageQueueServer(BasicServer):
                 logging.error(e)
                 return True
 
-        self.live_log_client.update_reponse_callback(
+        self.live_log_client.update_on_reponse_callback(
             on_response_callback=on_response_callback
         )
         await self.live_log_client.start(start_consume_loop=True)
@@ -331,7 +384,7 @@ class StorageMessageQueueServer(BasicServer):
                 logging.error(e)
                 return True
 
-        self.live_detection_client.update_reponse_callback(
+        self.live_detection_client.update_on_reponse_callback(
             on_response_callback=on_response_callback
         )
         await self.live_detection_client.start(start_consume_loop=True)

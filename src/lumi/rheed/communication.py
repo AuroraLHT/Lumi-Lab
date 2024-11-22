@@ -4,6 +4,7 @@
 # Importing the PIL library
 
 import asyncio
+import base64
 from aio_pika import Message, Channel, Exchange
 from aio_pika.abc import (
     AbstractChannel,
@@ -27,10 +28,10 @@ from ..utils.common import encode_json, decode_json
 
 from ..base.message_queue import (
     BasicServer,
+    BasicClient,
     BasicStreamServer,
     BasicStreamClient,
-    BasicClient,
-    MessageQueueResponse,
+    BaseMessageQueueMessage,
 )
 
 # import lumi
@@ -39,13 +40,14 @@ from ..base.message_queue import (
 # from .web_camera import WebCamera
 
 import queue
+from lumi.base.models import BaseMessageHeader, BaseControlRequestMessageHeader, BaseRequestMessageHeader, RequestMessageQueueMessage, ResponseMessageQueueMessage, StreamMessageQueueMessage
 
 from typing import Tuple, Union, List, Dict, Any, Callable, Awaitable
 
 
 class CameraMessageQueueServer(BasicServer):
     camera: Union[
-        "lumi.rheed.pylon_camera.PylonCamera", "lumi.rheed.pylon_camera.PylonCamera"
+        "lumi.rheed.pylon_camera.PylonCamera", "lumi.rheed.test_camera.TestCamera"
     ]
 
     def __init__(
@@ -76,23 +78,44 @@ class CameraMessageQueueServer(BasicServer):
             }
         )
 
-    async def on_message(self, message: AbstractIncomingMessage):
+    async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
         img, img_header = (
             self.camera.get_frame()
         )  # this get the latest frame from the peek queue
-        body, headers = encode_img(img, img_header)
-        # update the state at each read out
 
-        return body, headers
+        if img is not None:
+            body, headers = encode_img(img, img_header)
+            # update the state at each read out
+
+            response= self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="image",
+                response_type="image",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
+        else:
+            response = self.create_response_message(
+                body="".encode(),
+                headers={},
+                request_type="image",
+                response_type="image",
+                succ=False,
+                error_type="CameraError",
+                error_message="No frame available",
+            )
+        return response
 
 
 class CameraMessageQueueClient(BasicClient):
-    async def request(self):
+    async def get_live_image(self):
         logging.info(f"{self.client_name} get live image")
 
-        headers = {"type": "image"}
-
-        return await super().request(body="".encode(), headers=headers)
+        request_message = self.create_request_message(
+            body="".encode(), headers={}, request_type="image")
+        return await self.request(request_message)
 
 
 class LiveCameraMessageQueueServer(BasicStreamServer):
@@ -135,18 +158,20 @@ class LiveCameraMessageQueueServer(BasicStreamServer):
             }
         )
 
-    async def on_streaming(self):
+    async def on_streaming(self) -> StreamMessageQueueMessage | None:
         if not self.camera_queue.empty():
             img, img_header = self.camera_queue.get()
-            # this get the latest frame from the peek queue            
-            # img, img_header = (
-            #     self.camera.get_frame()
-            # )  
             body, headers = encode_img(img, img_header)
 
-            return body, headers
+            response = self.create_stream_message(
+                body=body, 
+                headers=headers,
+                stream_type="live_camera",
+            )
         else:
-            return None, None
+            response = None
+
+        return response
 
 
 class LiveCameraMessageQueueClient(BasicStreamClient):
@@ -211,43 +236,83 @@ class VideoFragmentsMessageQueueServer(BasicServer):
             }
         )
 
-    async def on_message(self, message):
+    async def on_message(self, message) -> ResponseMessageQueueMessage:
         body = message.body.decode()
-        headers = message.headers
-        # print(body, headers)
+        headers : BaseRequestMessageHeader = message.headers
 
-        logging.info(f"Video Initial Queue receive message: {body}")
-        fragment_idx = int(body)
-        logging.info(f"get fragment {fragment_idx}")
+        # logging.info(f"Video Initial Queue receive message: {body}")
 
-        if headers["type"] == "initial":
+        if headers["request_type"] == "initial_fragments_size":
             num_fragments = (
                 self.video_compressor.number_of_startup_fragments()
             )  # this get the latest frame from the peek queue
-        else:
+            body = {"size": num_fragments}
+            response = self.create_response_message(
+                body=encode_json(body), 
+                headers={},
+                request_type="initial_fragments_size",
+                response_type="initial_fragments_size",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
+
+        elif headers["request_type"] == "video_fragment":
+            fragment_idx = int(body)
             num_fragments = 1
 
-        body, headers = self.video_compressor.get_history_fragment(fragment_idx)
-        headers.update(
-            {
-                "size": num_fragments,
-                "index": fragment_idx,
-            }
-        )
-        logging.info(f"fragment length {len(body)}")
+            body, headers = self.video_compressor.get_history_fragment(fragment_idx)
+            headers.update({"index": fragment_idx,})
 
-        return body, headers
+            response = self.create_response_message(
+                body=body, 
+                headers=headers,
+                request_type="video_fragment",
+                response_type="video_fragment",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
 
+        elif headers["request_type"] == "initial_fragments":
+            content = self.video_compressor.get_startup_fragments()
+            logging.info(f"fragment length {len(content)}")
+            body = {}
+            headers = {}
+            for idx, (fragment, fragment_headers) in enumerate(content):
+                body[str(idx)] = base64.b64encode(fragment).decode('utf-8')
+                headers[str(idx)] = fragment_headers
+
+            response = self.create_response_message(
+                body=encode_json(body),
+                headers=headers,
+                request_type="initial_fragments",
+                response_type="initial_fragments",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
+
+        
+
+        return response
 
 class VideoFragmentsMessageQueueClient(BasicClient):
-
-    async def request(self, n: int, is_initial: bool) -> MessageQueueResponse:
-        logging.info(f"{self.client_name} get fragment {n} is_initial:{is_initial}")
-        if is_initial:
-            headers = {"type": "initial"}
-        else:
-            headers = {"type": "history"}
-        return await super().request(body=str(n).encode(), headers=headers)
+    
+    async def get_initial_fragments_size(self) -> ResponseMessageQueueMessage:
+        request_message = self.create_request_message(
+            body="".encode(), headers={}, request_type="initial_fragments_size")
+        return await self.request(request_message)
+    
+    async def get_video_fragment(self, fragment_idx: int) -> ResponseMessageQueueMessage:
+        request_message = self.create_request_message(
+            body=str(fragment_idx).encode(), headers={}, request_type="video_fragment")
+        return await self.request(request_message)
+    
+    async def get_initial_fragments(self) -> ResponseMessageQueueMessage:
+        request_message = self.create_request_message(
+            body="".encode(), headers={}, request_type="initial_fragments")
+        return await self.request(request_message)
 
     async def get_initial(
         self,
@@ -255,25 +320,25 @@ class VideoFragmentsMessageQueueClient(BasicClient):
         logging.info(f"{self.client_name} call get initial")
 
         initial_fragments : List[Tuple[bytes, dict]] = []
-        response = await self.request(0, is_initial=True)  # get the first frame
-        initial_fragment, initial_fragment_header = response.body, response.headers
+        response = await self.get_initial_fragments_size()  # get the first frame
 
         logging.info(f"{self.client_name} get first fragment")
 
-        size = initial_fragment_header["size"]
+        size = decode_json(response.body)["size"]
         initial_fragments = [None] * size
-        initial_fragments[0] = (initial_fragment, initial_fragment_header)
 
-        other_fragments_result = await asyncio.gather(
-            *[self.request(i, is_initial=True) for i in range(1, size)]
+        fragments_result = await asyncio.gather(
+            *[self.request(i, is_initial=True) for i in range(0, size)]
         )
         logging.info(
             f"{self.client_name} get rest of the fragments with total length {size}"
         )
-        for other_fragment_result in other_fragments_result:
+        for fragment_result in fragments_result:
+            fragment_result : ResponseMessageQueueMessage 
+            
             fragment, headers = (
-                other_fragment_result.body,
-                other_fragment_result.headers,
+                fragment_result.body,
+                fragment_result.headers,
             )
             initial_fragments[headers["index"]] = (fragment, headers)
         logging.info(
@@ -319,11 +384,20 @@ class LiveVideoFragmentsMessageQueueServer(BasicStreamServer):
             }
         )
 
-    async def on_streaming(self):
+    async def on_streaming(self) -> StreamMessageQueueMessage | None:
         logging.debug(f"Message queue {self.server_name} server on stream")
-        fragment, headers = self.video_compressor.get_fragment()
+        content = self.video_compressor.get_fragment()
+        if content is not None:
+            fragment, headers = content
+            response = self.create_stream_message(
+                body=fragment, 
+                headers=headers,
+                stream_type="live_video",
+            )
+        else:
+            response = None
 
-        return fragment, headers
+        return response
 
 
 class LiveVideoFragmentsMessageQueueClient(BasicStreamClient):
@@ -387,41 +461,87 @@ class IntegratorMessageQueueServer(BasicServer):
         #     }
         # )
 
-    async def on_message(self, message: AbstractIncomingMessage):
+    async def on_message(self, message: AbstractIncomingMessage) -> RequestMessageQueueMessage:
         message_headers = message.headers
         message_body = decode_json(message.body)
 
-        if message_headers["type"] == "cache":
+        if message_headers["request_type"] == "cache":
             logging.info(f"{self.log_prefix} get cache for bbox_id {message_body['bbox_id']}")
             bbox_id = message_body["bbox_id"]
             contents = self.integrator.get_integration_cache(bbox_id)
             body = encode_json(contents)
-            headers = {"type": "cache"}
+            headers = {}
+            response = self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="cache",
+                response_type="cache",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
 
-        elif message_headers["type"] == "register":
+        elif message_headers["request_type"] == "register":
             logging.info(f"{self.log_prefix} register integration for bbox_id {message_body['bbox_id']}")
             bbox_id = message_body["bbox_id"]
             bbox = message_body["bbox"]
             self.integrator.register_bbox(bbox=bbox, bbox_id=bbox_id)
             body = "".encode()
-            headers = {"type": "register"}
+            headers = {}
+            response = self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="register",
+                response_type="register",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
 
-        elif message_headers["type"] == "remove":
+        elif message_headers["request_type"] == "remove":
             logging.info(f"{self.log_prefix} remove integration for bbox_id {message_body['bbox_id']}")
             bbox_id = message_body["bbox_id"]
             self.integrator.remove_bbox(bbox_id)
             body = "".encode()
-            headers = {"type": "remove"}
+            headers = {}
+            response = self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="remove",
+                response_type="remove",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
 
-        elif message_headers["type"] == "bboxes":
+        elif message_headers["request_type"] == "bboxes":
             logging.info(f"{self.log_prefix} get bboxes")
             bboxes = self.integrator.bboxes
             body = encode_json(bboxes)
-            headers = {"type": "bboxes"}
+            headers = {}
+            response = self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="bboxes",
+                response_type="bboxes",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
+
         else:
-            raise ValueError(f"Unexpected message type: {message_headers['type']}")
-        
-        return body, headers
+            # raise ValueError(f"Unexpected message type: {message_headers['type']}")
+            response = self.create_response_message(
+                body=b"",
+                headers={},
+                request_type="bboxes",
+                response_type="bboxes",
+                succ=False,
+                error_type="UnknownRequest",
+                error_message=f"Unexpected message type: {message_headers['request_type']}",
+            )
+
+        return response
 
 
 class IntegratorMessageQueueClient(BasicClient):
@@ -429,25 +549,32 @@ class IntegratorMessageQueueClient(BasicClient):
     async def get_cache(self, bbox_id: int):
         logging.info(f"{self.log_prefix} get cache for bbox_id {bbox_id}")
         body = encode_json({"bbox_id": bbox_id})
-        headers = {"type": "cache"}
-        return await super().request(body=body, headers=headers)
+        headers = {}
+        request_message = self.create_request_message(
+            body=body, headers=headers, request_type="cache")
+        return await self.request(request_message)
     
     async def get_bboxes(self):
         logging.info(f"{self.log_prefix} get bboxes")
-        headers = {"type": "bboxes"}
-        return await super().request(body="".encode(), headers=headers)
+        request_message = self.create_request_message(
+            body="".encode(), headers={}, request_type="bboxes")
+        return await self.request(request_message)
     
     async def register_bbox(self, bbox_id: int, bbox: Dict[str, Any]):
         logging.info(f"{self.log_prefix} register bbox {bbox_id}")
         body = encode_json({"bbox_id": bbox_id, "bbox": bbox})
-        headers = {"type": "register"}
-        return await super().request(body=body, headers=headers)
+        headers = {}
+        request_message = self.create_request_message(
+            body=body, headers=headers, request_type="register")
+        return await self.request(request_message)
 
     async def remove_bbox(self, bbox_id: int):
         logging.info(f"{self.log_prefix} remove bbox {bbox_id}")
         body = encode_json({"bbox_id": bbox_id})
-        headers = {"type": "remove"}
-        return await super().request(body=body, headers=headers)
+        headers = {}
+        request_message = self.create_request_message(
+            body=body, headers=headers, request_type="remove")
+        return await self.request(request_message)
 
 
 class LiveIntegratorMessageQueueServer(BasicStreamServer):
@@ -488,18 +615,24 @@ class LiveIntegratorMessageQueueServer(BasicStreamServer):
         #     }
         # )
 
-    async def on_streaming(self):
+    async def on_streaming(self) -> StreamMessageQueueMessage | None:
         if not self.integrator_queue.empty():
             integration, integration_header = self.integrator_queue.get()
             try:
                 body, headers = encode_json(integration), integration_header
                 # logging.info(f"Integrator Message Queue Server on stream: {body}")
-                return body, headers
+                response = self.create_stream_message(
+                    body=body, 
+                    headers=headers,
+                    stream_type="live_integrator",
+                )
             except Exception as e:
                 logging.error(f"Integrator Message Queue Server on stream: {e}")
-                return None, None
+                response = None
         else:
-            return None, None
+            response = None
+
+        return response
 
 
 class LiveIntegratorMessageQueueClient(BasicStreamClient):
@@ -530,9 +663,8 @@ class LiveIntegratorMessageQueueClient(BasicStreamClient):
 
 
 class STFTMessageQueueServer(BasicServer):
-    stft_calculator: Union[
-        "lumi.rheed.livefft.STFTCalculator"
-    ]
+    stft_calculator: "lumi.rheed.livefft.STFTCalculator"
+    
 
     def __init__(
         self,
@@ -563,40 +695,82 @@ class STFTMessageQueueServer(BasicServer):
         #     }
         # )
 
-    async def on_message(self, message: AbstractIncomingMessage):
+    async def on_message(self, message: AbstractIncomingMessage) -> RequestMessageQueueMessage:
         message_headers = message.headers
-        message_body = decode_json(message.body)
 
-        if message_headers["type"] == "cache":
-            logging.info(f"{self.log_prefix} get cache for bbox_id {message_body['bbox_id']}")
+        if message_headers["request_type"] == "cache":
+            message_body = decode_json(message.body)
             bbox_id = message_body["bbox_id"]
             contents = self.stft_calculator.get_cache(bbox_id)
             body = encode_json(contents)
-            headers = {"type": "cache"}
+            headers = {}
+            
+            logging.info(f"{self.log_prefix} get cache for bbox_id {message_body['bbox_id']}")
+            response = self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="cache",
+                response_type="cache",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
 
-        elif message_headers["type"] == "register":
-            logging.info(f"{self.log_prefix} register integration for bbox_id {message_body['bbox_id']}")
+        elif message_headers["request_type"] == "register":
+            message_body = decode_json(message.body)
             bbox_id = message_body["bbox_id"]
             self.stft_calculator.register_integration(bbox_id)
             body = "".encode()
-            headers = {"type": "register"}
+            headers = {}
+
+            logging.info(f"{self.log_prefix} register integration for bbox_id {message_body['bbox_id']}")
+            response = self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="register",
+                response_type="register",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
         
-        elif message_headers["type"] == "remove":
-            logging.info(f"{self.log_prefix} remove integration for bbox_id {message_body['bbox_id']}")
+        elif message_headers["request_type"] == "remove":
+            message_body = decode_json(message.body)
             bbox_id = message_body["bbox_id"]
             self.stft_calculator.remove_integration(bbox_id)
             body = "".encode()
-            headers = {"type": "remove"}
+            headers = {}
 
-        elif message_headers["type"] == "bboxes":
-            logging.info(f"{self.log_prefix} get bboxes")
+            logging.info(f"{self.log_prefix} remove integration for bbox_id {message_body['bbox_id']}")
+            response = self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="remove",
+                response_type="remove",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
+
+        elif message_headers["request_type"] == "bboxes":
             bboxes = self.stft_calculator.registered_integrations
             body = encode_json(bboxes)
-            headers = {"type": "bboxes"}
+            headers = {}
+
+            logging.info(f"{self.log_prefix} get bboxes")
+            response = self.create_response_message(
+                body=body,
+                headers=headers,
+                request_type="bboxes",
+                response_type="bboxes",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
         else:
-            raise ValueError(f"Unexpected message type: {message_headers['type']}")
+            raise ValueError(f"Unexpected message type: {message_headers['request_type']}")
         
-        return body, headers
+        return response
 
 
 class STFTMessageQueueClient(BasicClient):
@@ -604,25 +778,33 @@ class STFTMessageQueueClient(BasicClient):
     async def get_cache(self, bbox_id: int):
         logging.info(f"{self.log_prefix} get cache for bbox_id {bbox_id}")
         body = encode_json({"bbox_id": bbox_id})
-        headers = {"type": "cache"}
-        return await super().request(body=body, headers=headers)
+        headers = {}
+        request_message = self.create_request_message(
+            body=body, headers=headers, request_type="cache")
+        return await self.request(request_message)
     
     async def get_bboxes(self):
         logging.info(f"{self.log_prefix} get bboxes")
-        headers = {"type": "bboxes"}
-        return await super().request(body="".encode(), headers=headers)
+        headers = {}
+        request_message = self.create_request_message(
+            body="".encode(), headers=headers, request_type="bboxes")
+        return await self.request(request_message)
     
     async def register_bbox(self, bbox_id: int):
         logging.info(f"{self.log_prefix} register bbox {bbox_id}")
         body = encode_json({"bbox_id": bbox_id})
-        headers = {"type": "register"}
-        return await super().request(body=body, headers=headers)
+        headers = {}
+        request_message = self.create_request_message(
+            body=body, headers=headers, request_type="register")
+        return await self.request(request_message)
     
     async def remove_bbox(self, bbox_id: int):
         logging.info(f"{self.log_prefix} remove bbox {bbox_id}")
         body = encode_json({"bbox_id": bbox_id})
-        headers = {"type": "remove"}
-        return await super().request(body=body, headers=headers)
+        headers = {}
+        request_message = self.create_request_message(
+            body=body, headers=headers, request_type="remove")
+        return await self.request(request_message)
 
 
 class LiveSTFTMessageQueueServer(BasicStreamServer):
@@ -656,21 +838,21 @@ class LiveSTFTMessageQueueServer(BasicStreamServer):
 
     def update_state(self):
         pass
-        # self.state.update(
-        #     {
-        #         "frame_dims": self.camera.frame_dims,
-        #         "frame_metas": self.camera.frame_metas,
-        #     }
-        # )
 
-    async def on_streaming(self):
+    async def on_streaming(self) -> StreamMessageQueueMessage | None:
         if not self.stft_calculator_queue.empty():
             stft_body, stft_header = self.stft_calculator_queue.get()
             body, headers = encode_json(stft_body), stft_header
 
-            return body, headers
+            response = self.create_stream_message(
+                body=body, 
+                headers=headers,
+                stream_type="live_stft",
+                )
         else:
-            return None, None
+            response = None
+
+        return response
 
 
 class LiveSTFTMessageQueueClient(BasicStreamClient):
