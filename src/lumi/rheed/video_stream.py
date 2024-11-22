@@ -259,8 +259,11 @@ class VideoCompressor(threading.Thread):
             # self.fragments.clear()
         self.startup_fragments = []
         
-    def get_fragment(self):
-        return self.fragments.get()
+    def get_fragment(self) -> tuple[bytes, dict] | None:
+        if not self.fragments.empty():
+            return self.fragments.get()
+        else:
+            return None
         # with self.io_lock:
         #     return 
 
