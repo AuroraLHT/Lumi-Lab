@@ -1,6 +1,11 @@
 import json
 import numpy as np
 from typing import Any, Union, Dict, List
+import datetime
+
+def get_current_timestamp():
+    current = datetime.datetime.now()
+    return current.isoformat()
 
 def convert_np_to_py(obj):
     if isinstance(obj, np.integer):
@@ -18,4 +23,6 @@ def encode_json(data: Union[Dict, List]):
 
 def decode_json(data: Union[bytes, str]):
     # return json.loads(data.decode("utf-8"))
+    if len(data) == 0:
+        return {}
     return json.loads(data)
