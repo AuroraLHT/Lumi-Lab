@@ -75,7 +75,7 @@ app.include_router(storage.router)
 
 @app.get("/")
 async def read_root():
-    with open(Path(__file__).parent.parent / "src/lumi/api/index.html", "r") as f:
+    with open(Path(__file__).parent / "index.html", "r") as f:
         html_content = f.read()
 
     return HTMLResponse(content=html_content, status_code=200)
