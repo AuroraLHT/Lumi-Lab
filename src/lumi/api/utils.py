@@ -1,6 +1,8 @@
 import json
 import struct
 from typing import Union
+
+from lumi.utils.common import decode_json
 from .models import WebsocketMessageHeaders
 
 
@@ -62,7 +64,7 @@ def unpack_websocket_payload(
 def parse_payload(payload: bytes, websocket_headers: WebsocketMessageHeaders) -> Union[dict, str, bytes]:
     payload_type = websocket_headers.payload_type
     if payload_type == "json":
-        return json.loads(payload)
+        return decode_json(payload)
     elif payload_type == "text":
         return payload.decode("utf-8")
     elif payload_type == "bytes":
