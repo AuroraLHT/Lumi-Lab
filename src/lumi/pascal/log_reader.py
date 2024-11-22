@@ -13,6 +13,7 @@ from watchdog.observers import Observer
 from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 
 from .chamber_log import process_row
+from typing import TypedDict
 
 class FileModifyHandler(FileSystemEventHandler):
     def __init__(self, log_reader) -> None:
@@ -27,6 +28,8 @@ class FileModifyHandler(FileSystemEventHandler):
             # self.log_reader._log_file_path = event.src_path
             self.log_reader.update_log_file(event.src_path)
 
+class LogContentHeader(TypedDict):
+    pass
 
 @dataclass
 class LogReaderConfig:
@@ -125,8 +128,9 @@ class LogReader(threading.Thread):
                     # st = time.time()
                     for row in self._csv_reader:
                         row = process_row(row)
+                        headers : LogContentHeader = {}
 
-                        content = (row, {})
+                        content = (row, headers)
 
                         if not self.queue.full():
                             self.queue.put(content)

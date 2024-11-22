@@ -20,7 +20,7 @@ from lumi.api.communication import (
 import traceback
 
 from ..websockets.base import generic_websocket_handler, WebsocketMultiClientsHandler, BaseClientMessageMapper, BaseStreamClientMessageMapper
-
+from ..websockets.chamber import LiveChamberLogClientMessageMapper, MIModePubSubClientMessageMapper
 from ..utils import update_state
 from ..connection_state import ConnectionState
 
@@ -48,34 +48,34 @@ async def get_chamber_log(request: Request):
 
 
 
-@router.websocket("/chamber/log/live")
-async def chamber_log_live(websocket: WebSocket):
-    connection_state : ConnectionState = websocket.app.state.connection_state
+# @router.websocket("/chamber/log/live")
+# async def chamber_log_live(websocket: WebSocket):
+#     connection_state : ConnectionState = websocket.app.state.connection_state
 
-    async def send_json(body, headers):
-        try:
-            json_text = body.decode()
-            await websocket.send_text(json_text)
-        except Exception as e:
-            logging.error(f"/chamber/log/live send_json error: {e}")
-            return True
-        return False
+#     async def send_json(body, headers):
+#         try:
+#             json_text = body.decode()
+#             await websocket.send_text(json_text)
+#         except Exception as e:
+#             logging.error(f"/chamber/log/live send_json error: {e}")
+#             return True
+#         return False
 
-    client_params = {
-        "channel": connection_state.channel,
-        "exchange": connection_state.exchange_chamber,
-        "routing_key": "live_log",
-        "control_routing_key": "live_log_ctrl",
-        "state_routing_key": "live_log_state",
-    }
+#     client_params = {
+#         "channel": connection_state.channel,
+#         "exchange": connection_state.exchange_chamber,
+#         "routing_key": "live_log",
+#         "control_routing_key": "live_log_ctrl",
+#         "state_routing_key": "live_log_state",
+#     }
 
-    await generic_websocket_handler(
-        websocket,
-        LiveChamberLogMessageQueueClient,
-        client_params,
-        send_json,
-        "chamber log"
-    )
+#     await generic_websocket_handler(
+#         websocket,
+#         LiveChamberLogMessageQueueClient,
+#         client_params,
+#         send_json,
+#         "chamber log"
+#     )
 
 
 @router.websocket("/chamber/live")
@@ -98,47 +98,64 @@ async def chamber_live(websocket: WebSocket):
         control_routing_key = "live_log_ctrl",
         state_routing_key = "live_log_state",
         on_response_callback=send_json,
-        on_state_callback=None
+        on_state_callback=None,
+        client_name="Live Chamber Log",
+        time_out=10,
     )
 
     await live_log_client.start_control()
 
-    
-    websocket_handler = WebsocketMultiClientsHandler(websocket, "Live Analysis")
-    websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_log_client), )
+    mi_mode_client = MIModeMessageQueueClient(
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_chamber,
+        request_routing_key="mi_mode_request",
+        response_routing_key="mi_mode_response",
+        update_routing_key="mi_mode_update",
+        control_routing_key="mi_mode_ctrl",
+        state_routing_key="mi_mode_state",
+        on_update_callback=None,
+        on_state_callback=None,
+        client_name="MI Mode",
+        time_out=10,
+    )
 
-    websocket_handler.register_client( IntegratorClientMessageMapper(connection_state.integrator_client), )
+    await mi_mode_client.start_control()
+
+    
+    websocket_handler = WebsocketMultiClientsHandler(websocket, "Chamber")
+    websocket_handler.register_stream_client( LiveChamberLogClientMessageMapper(live_log_client), )
+    websocket_handler.register_pubsub_client( MIModePubSubClientMessageMapper(mi_mode_client), )
 
     await websocket_handler.start()
 
-@router.websocket("/chamber/log/live")
-async def chamber_log_live(websocket: WebSocket):
-    connection_state : ConnectionState = websocket.app.state.connection_state
+# @router.websocket("/chamber/log/live")
+# async def chamber_log_live(websocket: WebSocket):
+#     connection_state : ConnectionState = websocket.app.state.connection_state
 
-    async def send_json(body, headers):
-        try:
-            json_text = body.decode()
-            await websocket.send_text(json_text)
-        except Exception as e:
-            logging.error(f"/chamber/log/live send_json error: {e}")
-            return True
-        return False
+#     async def send_json(body, headers):
+#         try:
+#             json_text = body.decode()
+#             await websocket.send_text(json_text)
+#         except Exception as e:
+#             logging.error(f"/chamber/log/live send_json error: {e}")
+#             return True
+#         return False
 
-    client_params = {
-        "channel": connection_state.channel,
-        "exchange": connection_state.exchange_chamber,
-        "routing_key": "live_log",
-        "control_routing_key": "live_log_ctrl",
-        "state_routing_key": "live_log_state",
-    }
+#     client_params = {
+#         "channel": connection_state.channel,
+#         "exchange": connection_state.exchange_chamber,
+#         "routing_key": "live_log",
+#         "control_routing_key": "live_log_ctrl",
+#         "state_routing_key": "live_log_state",
+#     }
 
-    await generic_websocket_handler(
-        websocket,
-        LiveChamberLogMessageQueueClient,
-        client_params,
-        send_json,
-        "chamber log"
-    )
+#     await generic_websocket_handler(
+#         websocket,
+#         LiveChamberLogMessageQueueClient,
+#         client_params,
+#         send_json,
+#         "chamber log"
+#     )
 
 
 

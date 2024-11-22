@@ -29,53 +29,244 @@ from typing import (
     Awaitable,
 )
 
+from .models import (
+    BaseControlRequestMessageHeader,
+    BaseControlResponseMessageHeader,
+    BaseMessageHeader,
+    BaseRequestMessageHeader,
+    BaseResponseMessageHeader,
+    BaseStateMessageHeader,
+    BaseMessageQueueMessage,
+    BaseStreamMessageHeader,
+    BaseUpdateMessageHeader,
+    ControlRequestMessageQueueMessage,
+    ControlResponseMessageQueueMessage,
+    RequestMessageQueueMessage,
+    ResponseMessageQueueMessage,
+    StateMessageQueueMessage,
+    StreamMessageQueueMessage,
+    UpdateMessageQueueMessage,
+)
+from ..utils.common import get_current_timestamp
 
-# MessageQueueResponse = namedtuple("MessageQueueResponse", ["content", "header"], defaults=[None, None])
-class MessageQueueResponse:
-    body: bytes
-    headers: Dict
 
-    def __init__(self, body: Union[bytes, Dict, str], headers: Dict):
-        self.body = self.encode_body(body)
-        self.headers = headers
+class BaseMessageHeaderMixin:
+    log_prefix: str
 
-    def encode_body(self, body: Union[bytes, Dict, str]):
-        if isinstance(body, dict):
-            body = json.dumps(body).encode()
-        elif isinstance(body, str):
-            body = body.encode()
-        return body
+    def create_base_headers(
+        self,
+        message_type: str,
+        message_source: str = None,
+        message_timestamp: str = None,
+    ):
+        return {
+            "message_source": message_source or self.log_prefix,
+            "message_timestamp": message_timestamp or get_current_timestamp(),
+            "message_type": message_type,
+        }
+
+
+class BaseControlMessageMixin(BaseMessageHeaderMixin):
+    def create_control_request_message(
+        self, body: bytes | str | dict, headers: dict, control_request_type: str
+    ) -> ControlRequestMessageQueueMessage:
+        control_request_headers: BaseControlRequestMessageHeader = {
+            "control_request_type": control_request_type,
+            **self.create_base_headers(
+                message_type=ControlRequestMessageQueueMessage.message_type,
+            ),
+        }
+        return ControlRequestMessageQueueMessage(
+            body,
+            headers={
+                **headers,
+                **control_request_headers,
+            },
+        )
+
+    def create_control_response_message(
+        self,
+        body: bytes | str | dict,
+        headers: dict,
+        control_request_type: str,
+        control_response_type: str,
+        succ: bool = True,
+        error_type: str = "",
+        error_message: str = "",
+    ) -> ControlResponseMessageQueueMessage:
+        control_response_headers: BaseControlResponseMessageHeader = {
+            "control_request_type": control_request_type,
+            "control_response_type": control_response_type,
+            "succ": succ,
+            "error_type": error_type,
+            "error_message": error_message,
+            **self.create_base_headers(
+                message_type=ControlResponseMessageQueueMessage.message_type,
+            ),
+        }
+
+        return ControlResponseMessageQueueMessage(
+            body,
+            headers={
+                **headers,
+                **control_response_headers,
+            },
+        )
+
+
+class BaseRequestMessageMixin(BaseMessageHeaderMixin):
+    def create_update_message(
+        self, body: bytes | str | dict, headers: dict, update_type: str
+    ):
+        update_headers: BaseUpdateMessageHeader = {
+            "update_type": update_type,
+            **self.create_base_headers(
+                message_type=UpdateMessageQueueMessage.message_type,
+            ),
+        }
+        return UpdateMessageQueueMessage(body, {
+            **headers,
+            **update_headers,
+        })
+
+    def create_request_message(
+        self, body: bytes | str | dict, headers: dict, request_type: str
+    ):
+        request_headers: BaseRequestMessageHeader = {
+            "request_type": request_type,
+            **self.create_base_headers(
+                message_type=RequestMessageQueueMessage.message_type,
+            ),
+        }
+        return RequestMessageQueueMessage(
+            body,
+            headers={
+                **headers,
+                **request_headers,
+            },
+        )
+
+    def create_response_message(
+        self,
+        body: bytes | str | dict,
+        headers: dict,
+        request_type: str,
+        response_type: str,
+        succ: bool = True,
+        error_type: str = "",
+        error_message: str = "",
+    ):
+        request_response_headers: BaseResponseMessageHeader = {
+            "request_type": request_type,
+            "response_type": response_type,
+            "succ": succ,
+            "error_type": error_type,
+            "error_message": error_message,
+            **self.create_base_headers(
+                message_type=ResponseMessageQueueMessage.message_type,
+            ),
+        }
+        return ResponseMessageQueueMessage(
+            body,
+            headers={
+                **headers,
+                **request_response_headers,
+            },
+        )
+
+
+class BaseStreamMessageMixin(BaseMessageHeaderMixin):
+    def create_stream_message(
+        self, body: bytes | str | dict, headers: dict, stream_type: str
+    ):
+        stream_headers: BaseStreamMessageHeader = {
+            "stream_type": stream_type,
+            **self.create_base_headers(
+                message_type=StreamMessageQueueMessage.message_type,
+            ),
+        }
+        return StreamMessageQueueMessage(
+            body,
+            headers={
+                **headers,
+                **stream_headers,
+            },
+        )
+
+
+class BaseStateMessageMixin(BaseMessageHeaderMixin):
+    def create_state_message(
+        self, body: bytes | str | dict, headers: dict, state_type: str
+    ):
+        state_headers: BaseStateMessageHeader = {
+            "state_type": state_type,
+            **self.create_base_headers(
+                message_type=StateMessageQueueMessage.message_type,
+            ),
+        }
+        return StateMessageQueueMessage(
+            body,
+            headers={
+                **headers,
+                **state_headers,
+            },
+        )
 
 
 class BaseControlMixin:
     callback_exchange: AbstractExchange
     log_prefix: str
     _control_callbacks: Dict[
-        str, Callable[[ByteString, Dict], Awaitable[MessageQueueResponse]]
+        str, Callable[[ByteString, Dict], Awaitable[BaseMessageQueueMessage]]
     ] = {}
 
     @classmethod
     def register_control_callback(cls, name: str):
         def _register_callback(
-            callback: Callable[[ByteString, Dict], Awaitable[MessageQueueResponse]]
+            callback: Callable[[ByteString, Dict], Awaitable[BaseMessageQueueMessage]]
         ):
             cls._control_callbacks[name] = callback
             return callback
 
         return _register_callback
 
-    def control_callback(self, name, *args, **kargs):
-        return self._control_callbacks[name](self, *args, **kargs)
+    async def control_callback(
+        self, name, body: bytes, headers: Dict
+    ) -> ControlResponseMessageQueueMessage:
+        return await self._control_callbacks[name](self, body, headers)
 
     async def on_control_request(self, message: AbstractIncomingMessage):
         async with message.process():
-            body, headers = message.body, message.headers
-            ctrl = headers["type"]
+
+            if "control_request_type" not in message.headers:
+                logging.error(f"{self.log_prefix} received a bad control message without control_request_type in its headers:{message.headers}")
+                return
+            
+            else:
+                body = message.body
+                headers : BaseControlRequestMessageHeader = message.headers
+
+            ctrl = headers["control_request_type"]
             logging.info(f"{self.log_prefix} on control message '{ctrl}'.")
 
             if ctrl in self._control_callbacks:
                 response = await self.control_callback(ctrl, body, headers)
-
+                try:
+                    await self.callback_exchange.publish(
+                        Message(
+                            body=response.body,
+                            correlation_id=message.correlation_id,
+                            headers=response.headers,
+                        ),
+                        routing_key=message.reply_to,
+                    )
+                    logging.info(
+                        f"{self.log_prefix} control response delivered to {message.reply_to}"
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"{self.log_prefix} fail to deliver control response: {e}"
+                    )
             else:
                 logging.info(
                     f"{self.log_prefix} received an unknown control text '{ctrl}'"
@@ -85,23 +276,9 @@ class BaseControlMixin:
                 message.reply_to is not None
             ), f"Receive a bad control request without .reply_to field"
 
-            try:
-                await self.callback_exchange.publish(
-                    Message(
-                    body=response.body,
-                    correlation_id=message.correlation_id,
-                    headers=response.headers,
-                ),
-                    routing_key=message.reply_to,
-                )
-                logging.info(
-                    f"{self.log_prefix} control response delivered to {message.reply_to}"
-                )
-            except Exception as e:
-                logging.error(f"{self.log_prefix} fail to deliver control response: {e}")
-
             # the example didn't ack back if process() method is used
             # await message.ask()
+
 
 """
 TODO:
@@ -115,46 +292,77 @@ TODO:
     The base client and server should only have state and control queue
 """
 
-class PubSubClient:
+
+class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
     channel: Optional[AbstractChannel]
     exchange: Optional[AbstractExchange]
-    routing_key: str
+    request_routing_key: str
+    response_routing_key: str
     control_routing_key: str
+    update_routing_key: str
     state_routing_key: str
     response_queue: Optional[AbstractQueue]
     client_name: str
     time_out: float
+    response_futures: Dict[str, asyncio.Future]
+
     on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
+    on_update_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
 
     client_type: str = "MQ PubSub client"
-
 
     def __init__(
         self,
         channel: Optional[AbstractChannel],
         exchange: Optional[AbstractExchange],
-        routing_key: str,
+        request_routing_key: str,
+        response_routing_key: str,
         control_routing_key: str,
+        update_routing_key: str,
         state_routing_key: str,
         client_name: str,
         time_out: float,
         on_state_callback: Optional[
             Callable[[AbstractIncomingMessage], Awaitable[bool]]
         ],
-        on_response_callback: Optional[
-            Callable[[AbstractIncomingMessage], Awaitable[None]]
+        # on_response_callback: Optional[
+        #     Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        # ],
+        on_update_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
         ],
     ) -> None:
         self.channel = channel
         self.exchange = exchange
-        self.routing_key = routing_key
+
+        self.request_routing_key = request_routing_key
+        self.response_routing_key = response_routing_key
+        self.update_routing_key = update_routing_key
+
         self.control_routing_key = control_routing_key
         self.state_routing_key = state_routing_key
         self.client_name = client_name
         self.time_out = time_out
         self.on_state_callback = on_state_callback
-        self.on_response_callback = on_response_callback
+        # self.on_response_callback = on_response_callback
+        self.on_update_callback = on_update_callback
         self.reset_queues()
+
+    def update_on_update_callback(
+        self, on_update_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]]
+    ):
+        """
+        Update the on response callback function. No check for background process.
+
+        Args:
+            on_update_callback (Callable[[AbstractIncomingMessage], Awaitable[bool]]):
+                The callback function for handling responses, return True to stop the streaming.
+
+        Raises:
+            Exception: If the current job is not stopped, raise an exception.
+        """
+        self.on_update_callback = on_update_callback
+
 
     def reset_queues(self):
         self.response_queue = None
@@ -166,19 +374,26 @@ class PubSubClient:
         self.state_queue = None
         self._state_consume_tag = None
 
+
     async def create_state_queue(self):
         self.state_queue = await self.channel.declare_queue(exclusive=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
-        logging.info(
-            f"{self.log_prefix} creates state queue: {self.state_queue.name}"
-        )
+        logging.info(f"{self.log_prefix} creates state queue: {self.state_queue.name}")
 
     async def create_response_queues(self):
+        self.response_futures = {}
         self.response_queue = await self.channel.declare_queue(exclusive=True)
-        await self.response_queue.bind(self.exchange, self.routing_key)
+        await self.response_queue.bind(self.exchange, self.response_routing_key)
         logging.info(
             f"{self.log_prefix} creates response queue: {self.response_queue.name}"
         )
+
+    async def create_update_queue(self):
+        self.update_queue = await self.channel.declare_queue(exclusive=True)
+        await self.update_queue.bind(self.exchange, self.update_routing_key)
+        logging.info(
+            f"{self.log_prefix} creates update queue: {self.update_queue.name}"
+        )        
 
     async def create_control_callback_queue(self):
         self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
@@ -191,13 +406,16 @@ class PubSubClient:
         await self.create_control_callback_queue()
         await self.create_response_queues()
         await self.create_state_queue()
-
+        await self.create_update_queue()
+        
     async def start_state(self):
+        await self.create_state_queue()
         self._state_consume_tag = await self.state_queue.consume(
             self.on_state_response, no_ack=True
         )
 
     async def start_control(self):
+        await self.create_control_callback_queue()
         self._control_callback_queue_consume_tag = (
             await self.control_callback_queue.consume(
                 self.on_control_response, no_ack=True
@@ -205,10 +423,16 @@ class PubSubClient:
         )
 
     async def start_response(self):
-        await self.create_queues()
+        await self.create_response_queues()
         # the consume here is not blocking
         self._response_queue_consume_tag = await self.response_queue.consume(
             self.on_response, no_ack=True
+        )
+
+    async def start_update(self):
+        await self.create_update_queue()
+        self._update_queue_consume_tag = await self.update_queue.consume(
+            self.on_update, no_ack=True
         )
 
     async def start(self):
@@ -239,27 +463,33 @@ class PubSubClient:
 
         self.reset_queues()
 
+    async def on_update(self, message: AbstractIncomingMessage) -> None:
+        logging.info(f"{self.log_prefix} on update response")
+        if self.on_update_callback is not None:
+            await self.on_update_callback(message)
+
     async def on_response(self, message: AbstractIncomingMessage) -> None:
-        if self.on_response_callback is not None:
-            stop_flag = await self.on_response_callback(message)
-            if stop_flag:
-                logging.info(
-                    f"{self.log_prefix} response callback stop_flag: {stop_flag} raises, termiante the streaming process"
-                )
-                await self.stop()
+        if message.correlation_id in self.response_futures:
+            response_future = self.response_futures.pop(message.correlation_id)
+            response_future.set_result(
+                ResponseMessageQueueMessage(message.body, message.headers)
+            )
+        # elif self.on_response_callback is not None:
+        #     await self.on_response_callback(message)
         else:
             pass
 
     async def on_control_response(self, message: AbstractIncomingMessage) -> None:
         if message.correlation_id is None:
             logging.info(f"{self.log_prefix} receive bad control message {message!r}")
-            return
-
-        logging.info(
-            f"{self.log_prefix} receives an control response ({message.correlation_id})"
-        )
-        future: asyncio.Future = self.control_futures.pop(message.correlation_id)
-        future.set_result(MessageQueueResponse(message.body, message.headers))
+        else:
+            logging.info(
+                f"{self.log_prefix} receives an control response ({message.correlation_id})"
+            )
+            future: asyncio.Future = self.control_futures.pop(message.correlation_id)
+            future.set_result(
+                ControlResponseMessageQueueMessage(message.body, message.headers)
+            )
 
     async def on_state_response(self, message: AbstractIncomingMessage) -> None:
         logging.info(f"{self.log_prefix} on state response")
@@ -280,36 +510,36 @@ class PubSubClient:
         else:
             pass
 
-    @property
-    def empty_response(self):
-        return MessageQueueResponse(None, None)
-
-    async def request(self, body, headers) -> MessageQueueResponse:
-        # correlation_id = str(uuid.uuid4())
-        # loop = asyncio.get_running_loop()
-        # future = loop.create_future()
+    async def request(self, message: RequestMessageQueueMessage) -> ResponseMessageQueueMessage:
 
         # logging.info(f"{self.log_prefix} requests an item ({correlation_id})")
         logging.info(f"{self.log_prefix} requests an item")
 
         try:
+            correlation_id = str(uuid.uuid4())
+            loop = asyncio.get_running_loop()
+            future = loop.create_future()
+
             await self.exchange.publish(
                 Message(
-                body,
-                content_type="text/plain",
-                # correlation_id=correlation_id,
-                correlation_id=None,
-                reply_to=None,
-                headers=headers,
-            ),
-            routing_key=self.routing_key,
+                    message.body,
+                    content_type="text/plain",
+                    correlation_id=correlation_id,
+                    reply_to=None,
+                    headers=message.headers,
+                ),
+                routing_key=self.request_routing_key,
             )
+            self.response_futures[correlation_id] = future
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to publish content: {e}")
             raise e
+        
+        return await future
 
-
-    async def request_control(self, body, headers):
+    async def request_control(
+        self, control_request_message: ControlRequestMessageQueueMessage
+    ):
         correlation_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         future = loop.create_future()
@@ -323,13 +553,13 @@ class PubSubClient:
         try:
             await self.exchange.publish(
                 Message(
-                body,
-                content_type="text/plain",
-                correlation_id=correlation_id,
-                reply_to=self.control_callback_queue.name,
-                headers=headers,
-            ),
-            routing_key=self.control_routing_key,
+                    control_request_message.body,
+                    content_type="text/plain",
+                    correlation_id=correlation_id,
+                    reply_to=self.control_callback_queue.name,
+                    headers=control_request_message.headers,
+                ),
+                routing_key=self.control_routing_key,
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to publish control content: {e}")
@@ -339,24 +569,39 @@ class PubSubClient:
             return await asyncio.wait_for(future, timeout=self.time_out)
         except asyncio.TimeoutError:
             logging.info(f"{self.log_prefix} requests control times out")
-            return self.empty_response
+            return self.create_control_response_message(
+                b"",
+                headers={},
+                control_request_type=control_request_message.headers["control_request_type"],
+                control_response_type=control_request_message.headers["control_response_type"],
+                succ=False,
+                error_type="timeout",
+                error_message="request control times out",
+            )
 
     async def shutdown_server(self):
-        response = await self.request_control(
-            body="".encode(), headers={"type": "shutdown"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="shutdown"
         )
 
+        response = await self.request_control(message)
+        return response
+
     async def config_server(self, config):
-        response = await self.request_control(
-            body=json.dumps(config).encode(), headers={"type": "config"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="config"
         )
+
+        response = await self.request_control(message)
 
         return response
 
     async def get_state(self, return_bytes=False):
-        response = await self.request_control(
-            body="".encode(), headers={"type": "state"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="state"
         )
+
+        response = await self.request_control(message)
         if return_bytes:
             return response.body
         else:
@@ -366,7 +611,8 @@ class PubSubClient:
     def log_prefix(self):
         return f"{self.client_type} <{self.client_name}>"
 
-class BasicClient:
+
+class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
     channel: Optional[AbstractChannel]
     exchange: Optional[AbstractExchange]
     routing_key: str
@@ -481,7 +727,7 @@ class BasicClient:
 
         logging.info(f"{self.log_prefix} receives an item ({message.correlation_id})")
         future: asyncio.Future = self.futures.pop(message.correlation_id)
-        future.set_result(MessageQueueResponse(message.body, message.headers))
+        future.set_result(BaseMessageQueueMessage(message.body, message.headers))
 
     async def on_control_response(self, message: AbstractIncomingMessage) -> None:
         if message.correlation_id is None:
@@ -492,7 +738,7 @@ class BasicClient:
             f"{self.log_prefix} receives an control response ({message.correlation_id})"
         )
         future: asyncio.Future = self.control_futures.pop(message.correlation_id)
-        future.set_result(MessageQueueResponse(message.body, message.headers))
+        future.set_result(BaseMessageQueueMessage(message.body, message.headers))
 
     async def on_state_response(self, message: AbstractIncomingMessage) -> None:
         logging.info(f"{self.log_prefix} on state response")
@@ -515,9 +761,11 @@ class BasicClient:
 
     @property
     def empty_response(self):
-        return MessageQueueResponse(None, None)
+        return BaseMessageQueueMessage(None, None)
 
-    async def request(self, body, headers) -> MessageQueueResponse:
+    async def request(
+        self, message: RequestMessageQueueMessage
+    ) -> ResponseMessageQueueMessage:
         correlation_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         future = loop.create_future()
@@ -529,13 +777,13 @@ class BasicClient:
         try:
             await self.exchange.publish(
                 Message(
-                body,
-                content_type="text/plain",
-                correlation_id=correlation_id,
-                reply_to=self.callback_queue.name,
-                headers=headers,
-            ),
-            routing_key=self.routing_key,
+                    message.body,
+                    content_type="text/plain",
+                    correlation_id=correlation_id,
+                    reply_to=self.callback_queue.name,
+                    headers=message.headers,
+                ),
+                routing_key=self.routing_key,
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to publish content: {e}")
@@ -561,7 +809,9 @@ class BasicClient:
             logging.info(f"{self.log_prefix} resquests time out")
             return self.empty_response
 
-    async def request_control(self, body, headers):
+    async def request_control(
+        self, control_request_message: ControlRequestMessageQueueMessage
+    ):
         correlation_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         future = loop.create_future()
@@ -575,13 +825,13 @@ class BasicClient:
         try:
             await self.exchange.publish(
                 Message(
-                body,
-                content_type="text/plain",
-                correlation_id=correlation_id,
-                reply_to=self.control_callback_queue.name,
-                headers=headers,
-            ),
-            routing_key=self.control_routing_key,
+                    control_request_message.body,
+                    content_type="text/plain",
+                    correlation_id=correlation_id,
+                    reply_to=self.control_callback_queue.name,
+                    headers=control_request_message.headers,
+                ),
+                routing_key=self.control_routing_key,
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to publish control content: {e}")
@@ -594,21 +844,26 @@ class BasicClient:
             return self.empty_response
 
     async def shutdown_server(self):
-        response = await self.request_control(
-            body="".encode(), headers={"type": "shutdown"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="shutdown"
         )
+        response = await self.request_control(message)
+        return response
 
     async def config_server(self, config):
-        response = await self.request_control(
-            body=json.dumps(config).encode(), headers={"type": "config"}
+        message = self.create_control_request_message(
+            config, headers={}, control_request_type="config"
         )
+        response = await self.request_control(message)
 
         return response
 
     async def get_state(self, return_bytes=False):
-        response = await self.request_control(
-            body="".encode(), headers={"type": "state"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="state"
         )
+        response = await self.request_control(message)
+
         if return_bytes:
             return response.body
         else:
@@ -619,7 +874,7 @@ class BasicClient:
         return f"{self.client_type} <{self.client_name}>"
 
 
-class BasicStreamClient:
+class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
     channel: Optional[AbstractChannel]
     exchange: Optional[AbstractExchange]
     routing_key: str
@@ -659,15 +914,15 @@ class BasicStreamClient:
             routing_key (str): The routing key for main messages.
             control_routing_key (str): The routing key for control messages.
             state_routing_key (str): The routing key for state messages.
-            on_response_callback (Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]): 
+            on_response_callback (Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]):
                 Callback function for handling responses, return True to stop the streaming.
-            on_state_callback (Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]): 
+            on_state_callback (Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]):
                 Callback function for handling state changes, return True to stop the streaming.
             client_name (str): The name of the client.
             time_out (float): The timeout duration for operations.
 
-        This class sets up a basic streaming client with capabilities for main, control, 
-        and state message handling. It provides methods for starting and stopping 
+        This class sets up a basic streaming client with capabilities for main, control,
+        and state message handling. It provides methods for starting and stopping
         message consumption, as well as sending requests and handling responses.
         """
 
@@ -685,16 +940,16 @@ class BasicStreamClient:
 
     @property
     def empty_response(self):
-        return MessageQueueResponse(None, None)
+        return BaseMessageQueueMessage(None, None)
 
-    def update_reponse_callback(
+    def update_on_reponse_callback(
         self, on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]]
     ):
         """
         Update the response callback function.
 
         Args:
-            on_response_callback (Callable[[AbstractIncomingMessage], Awaitable[bool]]): 
+            on_response_callback (Callable[[AbstractIncomingMessage], Awaitable[bool]]):
                 The callback function for handling responses, return True to stop the streaming.
 
         Raises:
@@ -763,10 +1018,10 @@ class BasicStreamClient:
         self.state_queue = await self.channel.declare_queue(exclusive=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
 
-    # async def create_queues(self):
-    #     await self.create_main_queue()
-    #     await self.create_control_queue()
-    #     await self.create_state_queue()
+    async def create_queues(self):
+        await self.create_main_queue()
+        await self.create_control_queue()
+        await self.create_state_queue()
 
     async def start_main(self, start_consume_loop=True):
         await self.create_main_queue()
@@ -867,7 +1122,7 @@ class BasicStreamClient:
             f"{self.log_prefix} receives an control response ({message.correlation_id})"
         )
         future: asyncio.Future = self.control_futures.pop(message.correlation_id)
-        future.set_result(MessageQueueResponse(message.body, message.headers))
+        future.set_result(BaseMessageQueueMessage(message.body, message.headers))
 
     async def on_state_response(self, message: AbstractIncomingMessage) -> None:
         logging.info(f"{self.log_prefix} on state response")
@@ -888,7 +1143,9 @@ class BasicStreamClient:
         else:
             pass
 
-    async def request_control(self, body, headers):
+    async def request_control(
+        self, control_request_message: ControlRequestMessageQueueMessage
+    ):
         correlation_id = str(uuid.uuid4())
         loop = asyncio.get_running_loop()
         future = loop.create_future()
@@ -900,13 +1157,13 @@ class BasicStreamClient:
         try:
             await self.exchange.publish(
                 Message(
-                body,
-                content_type="text/plain",
-                correlation_id=correlation_id,
-                reply_to=self.control_callback_queue.name,
-                headers=headers,
-            ),
-            routing_key=self.control_routing_key,
+                    control_request_message.body,
+                    content_type="text/plain",
+                    correlation_id=correlation_id,
+                    reply_to=self.control_callback_queue.name,
+                    headers=control_request_message.headers,
+                ),
+                routing_key=self.control_routing_key,
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to publish control content: {e}")
@@ -919,36 +1176,38 @@ class BasicStreamClient:
             return self.empty_response
 
     async def start_server_streaming(self):
-        response = await self.request_control(
-            body="".encode(), headers={"type": "start"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="start"
         )
+        response = await self.request_control(message)
 
     async def stop_server_streaming(self):
-        response = await self.request_control(
-            body="".encode(), headers={"type": "stop"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="stop"
         )
+        response = await self.request_control(message)
 
     async def shutdown_server(self):
-        response = await self.request_control(
-            body="".encode(), headers={"type": "shutdown"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="shutdown"
         )
+        response = await self.request_control(message)
 
     async def config_server(self, config):
-        response = await self.request_control(
-            body=json.dumps(config).encode(), headers={"type": "config"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="config"
         )
+        response = await self.request_control(message)
 
     async def get_state(self, return_bytes=False):
-        response = await self.request_control(
-            body="".encode(), headers={"type": "state"}
+        message = self.create_control_request_message(
+            "", headers={}, control_request_type="state"
         )
+        response = await self.request_control(message)
         if return_bytes:
             return response.body
         else:
             return json.loads(response.body)
-
-    async def get(self):
-        return await self.queue.get(no_ack=True)
 
     @property
     def log_prefix(self):
@@ -982,29 +1241,39 @@ class ServerState(dict):
             asyncio.create_task(self.on_state_change_callback(self))
 
 
-class StateCallbackMixin:
+class StateCallbackMixin(BaseStateMessageMixin):
     exchange: AbstractExchange
     state_routing_key: str
     log_prefix: str
 
     async def on_state_callback(self, state: Dict):
-        response = MessageQueueResponse(body=state, headers={"type": "state"})
+        response = self.create_state_message(
+            body=state,
+            headers={},
+            state_type="mono",
+        )
         logging.info(f"{self.log_prefix} state prepared")
 
         try:
             await self.exchange.publish(
                 Message(
-                body=response.body,
-                headers=response.headers,
-            ),
-            routing_key=self.state_routing_key,
-        )
+                    body=response.body,
+                    headers=response.headers,
+                ),
+                routing_key=self.state_routing_key,
+            )
             logging.info(f"{self.log_prefix} send state content")
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to publish state content: {e}")
             raise e
 
-class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
+
+class BasicStreamServer(
+    BaseControlMixin,
+    StateCallbackMixin,
+    BaseControlMessageMixin,
+    BaseStreamMessageMixin,
+):
 
     channel: AbstractChannel
     exchange: AbstractExchange
@@ -1015,7 +1284,7 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
     control_queue: AbstractQueue
     server_name: str
 
-    start_flag: bool
+    stream_flag: bool
     state: ServerState
 
     server_type: str = "MQ stream server"
@@ -1043,7 +1312,7 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
 
         self.server_name = server_name
 
-        self.start_flag = False
+        self.stream_flag = False
         self.state = ServerState(
             {
                 "is_running": False,
@@ -1065,12 +1334,8 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
         """
         pass
 
-    @property
-    def succ_ctrl_response(self):
-        return MessageQueueResponse("".encode(), {"succ": True})
-
-    def set_start_flag(self, state):
-        self.start_flag = state
+    def set_stream_flag(self, state):
+        self.stream_flag = state
 
     def reset_queues(self):
         self.control_queue = None
@@ -1084,48 +1349,50 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
     async def create_queues(self):
         await self.create_control_queue()
 
-    async def on_streaming(self):
+    async def on_streaming(self) -> StreamMessageQueueMessage | None:
+        """
+        return None if no content is prepared else return a StreamMessageQueueMessage
+        """
         raise NotImplementedError()
 
-    async def publish(self):
+    async def streaming(self):
         while True:
             # update the state at each iteration of the publish loop
             self.update_state()
 
-            if self.start_flag:
+            if self.stream_flag:
                 self.state["is_streaming"] = True
 
                 try:
-                    body, headers = await self.on_streaming()
+                    stream_message = await self.on_streaming()
+                    logging.debug(f"{self.log_prefix} content prepared")
                 except Exception as e:
                     logging.error(f"{self.log_prefix} content preparation failed: {e}")
-                    body, headers = None, None
+                    await asyncio.sleep(0.01)
 
-                if body is not None:
-                    logging.debug(f"{self.log_prefix} content prepared")
-                    try:
-                        # print(f"{self.log_prefix} try to publish content")
+                try:
+                    # print(f"{self.log_prefix} try to publish content")
+                    if stream_message is not None:
                         await self.exchange.publish(
                             Message(
-                                body=body,
-                                headers=headers,
+                                body=stream_message.body,
+                                headers=stream_message.headers,
                             ),
                             routing_key=self.publish_routing_key,
                         )
-                    except Exception as e:
-                        logging.error(f"{self.log_prefix} fail to publish content: {e}")
-                        # all for these shows up
-                        # logging.info(f"{self.log_prefix} {'info'*10} fail to publish content: {e}")
-                        # logging.debug(f"{self.log_prefix} {'debug'*10} fail to publish content: {e}")
-                        # logging.critical(f"{self.log_prefix} {'critucal'*10} fail to publish content: {e}")
-                        # logging.warning(f"{self.log_prefix} {'warning'*10} fail to publish content: {e}")
-                        # print("shittttttttttttt"*10)
-                        raise e
-                    
-                    logging.debug(f"{self.log_prefix} send content")
-                else:
-                    logging.debug(f"{self.log_prefix} fail to prepare content")
-                    await asyncio.sleep(0.01)
+                        logging.debug(f"{self.log_prefix} send content")
+                    else:
+                        await asyncio.sleep(0.01)
+
+                except Exception as e:
+                    logging.error(f"{self.log_prefix} fail to publish content: {e}")
+                    raise e
+                # stream_message = self.create_stream_message(
+                #     f"fail to prepare content, error_message {e}", {}, "error"
+                # )
+
+                # logging.debug(f"{self.log_prefix} fail to prepare content")
+
             else:
                 self.state["is_streaming"] = False
 
@@ -1137,33 +1404,62 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
 
     @BaseControlMixin.register_control_callback("start")
     async def start_streaming(self, body, headers):
-        self.set_start_flag(True)
-        return self.succ_ctrl_response
+        self.set_stream_flag(True)
+        return self.create_control_response_message(
+            "",
+            {},
+            control_request_type="start",
+            control_response_type="start",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
     @BaseControlMixin.register_control_callback("stop")
     async def end_streaming(self, body, headers):
-        self.set_start_flag(False)
-        return self.succ_ctrl_response
+        self.set_stream_flag(False)
+        return self.create_control_response_message(
+            "",
+            {},
+            control_request_type="stop",
+            control_response_type="stop",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
-    async def on_config(self, body, headers):
+    async def on_config(self, body, headers) -> Tuple[Union[Dict, str, bytes], Dict]:
         raise NotImplementedError
 
     @BaseControlMixin.register_control_callback("config")
     async def config_server(self, body, headers):
-        output = self.on_config(self, body, headers)
+        body, headers = await self.on_config(self, body, headers)
         self.update_state()
-        return MessageQueueResponse(output, {"type": "config"})
-
-    async def on_state(self, body, headers):
-        return dict(self.state)
+        return self.create_control_response_message(
+            body,
+            headers,
+            control_request_type="config",
+            control_response_type="config",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
     @BaseControlMixin.register_control_callback("state")
     async def server_state(self, body, headers):
         # force update the state when query is conducted
         self.update_state()
 
-        state = await self.on_state(body, headers)
-        return MessageQueueResponse(state, {"type": "state"})
+        state = dict(self.state)
+        return self.create_control_response_message(
+            state,
+            {},
+            control_request_type="state",
+            control_response_type="state",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
     async def start(self):
         await self.create_queues()
@@ -1171,7 +1467,7 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
             self._control_consume_tag = await self.control_queue.consume(
                 callback=self.on_control_request, no_ack=False
             )
-            self._publish_task = asyncio.create_task(self.publish())
+            self._streaming_task = asyncio.create_task(self.streaming())
 
             # is_running means the server is running
             self.state["is_running"] = True
@@ -1180,17 +1476,35 @@ class BasicStreamServer(BaseControlMixin, StateCallbackMixin):
             print(e)
         logging.info(f"{self.log_prefix} starts up")
 
-    @BaseControlMixin.register_control_callback("cancel")
     async def cancel(self):
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
+        
+        # this is to stop the streaming task
+        self.set_stream_flag(False)
 
         self.reset_queues()
-        self.state["is_running"] = False
-        return self.succ_ctrl_response()
+
+    @BaseControlMixin.register_control_callback("terminate")
+    async def terminate_server(self):
+        await self.cancel()
+        return self.create_control_response_message(
+            "",
+            {},
+            control_request_type="terminate",
+            control_response_type="terminate",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
 
-class BasicServer(BaseControlMixin, StateCallbackMixin):
+class BasicServer(
+    BaseControlMixin,
+    BaseRequestMessageMixin,
+    StateCallbackMixin,
+    BaseControlMessageMixin,
+):
     channel: AbstractChannel
     exchange: AbstractExchange
     callback_exchange: AbstractExchange
@@ -1264,38 +1578,45 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
         await self.create_main_queue()
         await self.create_control_queue()
 
-    async def on_message(self, message: AbstractIncomingMessage) -> Tuple[bytes, Dict]:
+    async def on_message(
+        self, message: AbstractIncomingMessage
+    ) -> ResponseMessageQueueMessage:
         """
         Overwrite this base method with the implementation of the server functionality.
-        Outputs:
-            body : bytes
-            headers : Dict
+        Returns:
+            RequestMessageQueueMessage: Message containing body and headers to send back
         """
         raise NotImplementedError()
-    
-    async def publish_callback(self, body: bytes, headers: Dict, message: AbstractIncomingMessage):
-        """
-            publish the content to the callback queue
-            raise exception if fail to publish
 
-            Args:
-                body: The message body as bytes to publish
-                headers: Dict of message headers to include
-                message: The original incoming message containing correlation_id and reply_to
-            
-            Raises:
-                Exception: If publishing fails
+    async def publish_callback(
+        self,
+        response_message: ResponseMessageQueueMessage,
+        received_message: AbstractIncomingMessage,
+    ):
+        """
+        publish the content to the callback queue
+        raise exception if fail to publish
+
+        Args:
+            body: The message body as bytes to publish
+            headers: Dict of message headers to include
+            message: The original incoming message containing correlation_id and reply_to
+
+        Raises:
+            Exception: If publishing fails
         """
         try:
             await self.callback_exchange.publish(
                 Message(
-                body=body,
-                correlation_id=message.correlation_id,
-                headers=headers,
-            ),
-                routing_key=message.reply_to,
+                    body=response_message.body,
+                    headers=response_message.headers,
+                    correlation_id=received_message.correlation_id,
+                ),
+                routing_key=received_message.reply_to,
             )
-            logging.debug(f"{self.log_prefix} content delivered to {message.reply_to}")
+            logging.debug(
+                f"{self.log_prefix} content delivered to {received_message.reply_to}"
+            )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to deliver content: {e}")
             raise e
@@ -1310,10 +1631,10 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
                 message.reply_to is not None
             ), f"Receive a bad request without .reply_to field"
 
-            body, headers = await self.on_message(message)
+            response = await self.on_message(message)
             logging.info(f"{self.log_prefix} content is prepared")
 
-            await self.publish_callback(body, headers, message)
+            await self.publish_callback(response, message)
             # the example didn't ack back if process() method is used
             # await message.ask()
 
@@ -1322,19 +1643,32 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
 
     @BaseControlMixin.register_control_callback("config")
     async def config_server(self, body, headers):
-        output = await self.on_config(self, body, headers)
-        return MessageQueueResponse(output, {"type": "config"})
-
-    async def on_state(self, body, headers) -> Dict:
-        return dict(self.state)
+        body, headers = await self.on_config(self, body, headers)
+        return self.create_control_response_message(
+            body,
+            headers,
+            control_request_type="config",
+            control_response_type="config",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
     @BaseControlMixin.register_control_callback("state")
     async def server_state(self, body, headers):
         # force update the state when query is conducted
         self.update_state()
 
-        state = await self.on_state(body, headers)
-        return MessageQueueResponse(state, {"type": "state"})
+        state = dict(self.state)
+        return self.create_control_response_message(
+            state,
+            {},
+            control_request_type="state",
+            control_response_type="state",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
     async def start(self):
         await self.create_queues()
@@ -1351,7 +1685,6 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
 
         logging.info(f"{self.log_prefix} starts up")
 
-    @BaseControlMixin.register_control_callback("cancel")
     async def cancel(self):
         if self.queue is not None and self._consume_tag is not None:
             await self.queue.cancel(self._consume_tag)
@@ -1364,17 +1697,38 @@ class BasicServer(BaseControlMixin, StateCallbackMixin):
         self.reset_queues()
         self.state["is_running"] = False
 
+    @BaseControlMixin.register_control_callback("terminate")
+    async def terminate_server(self):
+        await self.cancel()
+        return self.create_control_response_message(
+            "",
+            {},
+            control_request_type="terminate",
+            control_response_type="terminate",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
-class PubSubServer(BaseControlMixin, StateCallbackMixin):
+
+class PubSubServer(
+    BaseControlMixin,
+    StateCallbackMixin,
+    BaseRequestMessageMixin,
+    BaseControlMessageMixin,
+):
     channel: AbstractChannel
     exchange: AbstractExchange
     callback_exchange: AbstractExchange
     control_routing_key: str
-    routing_key: str
+    request_routing_key: str
+    response_routing_key: str
+
     state_routing_key: str
     queue: AbstractQueue
     server_name: str
 
+    update_flag: bool
     state: ServerState
     server_type: str = "MQ PubSub server"
 
@@ -1383,7 +1737,9 @@ class PubSubServer(BaseControlMixin, StateCallbackMixin):
         channel: AbstractChannel,
         exchange: AbstractExchange,
         control_routing_key: str,
-        routing_key: str,
+        request_routing_key: str,
+        response_routing_key: str,
+        update_routing_key: str,
         state_routing_key: str,
         server_name: str,
     ):
@@ -1391,12 +1747,15 @@ class PubSubServer(BaseControlMixin, StateCallbackMixin):
         self.channel = channel
         self.exchange = exchange
         self.callback_exchange = exchange
-        self.routing_key = routing_key
+        self.request_routing_key = request_routing_key
+        self.response_routing_key = response_routing_key
         self.control_routing_key = control_routing_key
         self.state_routing_key = state_routing_key
-
+        self.update_routing_key = update_routing_key
         self.server_name = server_name
         self.reset_queues()
+
+        self.update_flag = True
 
         self.state = ServerState(
             {
@@ -1430,43 +1789,51 @@ class PubSubServer(BaseControlMixin, StateCallbackMixin):
     async def create_main_queue(self):
         logging.info(f"{self.log_prefix} creates main queue")
         self.queue = await self.channel.declare_queue(exclusive=True)
-        await self.queue.bind(self.exchange, routing_key=self.routing_key)
+        await self.queue.bind(self.exchange, routing_key=self.request_routing_key)
 
     async def create_queues(self):
         await self.create_main_queue()
         await self.create_control_queue()
 
-    async def on_message(self, message: AbstractIncomingMessage) -> Tuple[bytes, Dict]:
+    async def on_message(
+        self, message: AbstractIncomingMessage
+    ) -> ResponseMessageQueueMessage:
         """
         Overwrite this base method with the implementation of the server functionality.
-        Outputs:
-            body : bytes
-            headers : Dict
+        Returns:
+            RequestMessageQueueMessage: Message containing:
+                - body (bytes): The response message body
+                - headers (Dict): Headers for the response message
         """
         raise NotImplementedError()
-    
-    async def publish_callback(self, body: bytes, headers: Dict, message: AbstractIncomingMessage):
-        """
-            publish the content to the callback queue
-            raise exception if fail to publish
 
-            Args:
-                body: The message body as bytes to publish
-                headers: Dict of message headers to include
-                message: The original incoming message containing correlation_id and reply_to
-            
-            Raises:
-                Exception: If publishing fails
+    async def publish_response(
+        self,
+        response_message: ResponseMessageQueueMessage,
+        received_message: AbstractIncomingMessage,
+    ):
+        """
+        publish the content to the callback queue
+        raise exception if fail to publish
+
+        Args:
+            body: The message body as bytes to publish
+            headers: Dict of message headers to include
+            message: The original incoming message containing correlation_id and reply_to
+
+        Raises:
+            Exception: If publishing fails
         """
         try:
             await self.callback_exchange.publish(
                 Message(
-                body=body,
-                headers=headers,
-            ),
-                routing_key=self.routing_key,
+                    body=response_message.body,
+                    headers=response_message.headers,
+                    correlation_id=received_message.correlation_id,
+                ),
+                routing_key=self.response_routing_key,
             )
-            logging.debug(f"{self.log_prefix} content delivered to {self.routing_key}")
+            logging.debug(f"{self.log_prefix} content delivered to {self.response_routing_key}")
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to deliver content: {e}")
             raise e
@@ -1474,34 +1841,113 @@ class PubSubServer(BaseControlMixin, StateCallbackMixin):
         # update the state at each call
         self.update_state()
 
+    async def on_update(self) -> UpdateMessageQueueMessage | None:
+        """
+        return None if no content is prepared else return a UpdateMessageQueueMessage
+        """
+        raise NotImplementedError()
+
+    async def updating(self):
+        while True:
+            if self.update_flag:
+                self.state["is_updating"] = True
+
+                try:
+                    update_message = await self.on_update()
+                    logging.debug(f"{self.log_prefix} content prepared")
+                except Exception as e:
+                    logging.error(f"{self.log_prefix} content preparation failed: {e}")
+                    await asyncio.sleep(0.01)
+
+                try:
+                    # print(f"{self.log_prefix} try to publish content")
+                    if update_message is not None:
+                        await self.publish_update(update_message)
+                    else:
+                        await asyncio.sleep(0.01)
+
+                except Exception as e:
+                    logging.error(f"{self.log_prefix} fail to publish content: {e}")
+                    await asyncio.sleep(0.01)
+                    raise e
+
+            else:
+                self.state["is_updating"] = False
+
+                logging.debug(f"{self.log_prefix} update loop is paused")
+                await asyncio.sleep(0.1)
+
+
+    async def publish_update(
+        self,
+        update_message: UpdateMessageQueueMessage,
+    ):
+        """
+        publish the content to the callback queue
+        raise exception if fail to publish
+
+        Args:
+            body: The message body as bytes to publish
+            headers: Dict of message headers to include
+            message: The original incoming message containing correlation_id and reply_to
+
+        Raises:
+            Exception: If publishing fails
+        """
+        try:
+            await self.callback_exchange.publish(
+                Message(
+                    body=update_message.body,
+                    headers=update_message.headers,
+                ),
+                routing_key=self.update_routing_key,
+            )
+            logging.debug(f"{self.log_prefix} content delivered to {self.update_routing_key}")
+        except Exception as e:
+            logging.error(f"{self.log_prefix} fail to deliver content: {e}")
+            raise e
+
     async def on_request(self, message: AbstractIncomingMessage):
         logging.info(f"{self.log_prefix} on request")
         async with message.process():
-            body, headers = await self.on_message(message)
+            response = await self.on_message(message)
             logging.info(f"{self.log_prefix} content is prepared")
 
-            await self.publish_callback(body, headers, message)
+            await self.publish_response(response, message)
             # the example didn't ack back if process() method is used
             # await message.ask()
 
-    async def on_config(self, body, headers):
+    async def on_config(self, body, headers) -> Tuple[Union[Dict, str, bytes], Dict]:
         raise NotImplementedError
 
     @BaseControlMixin.register_control_callback("config")
     async def config_server(self, body, headers):
-        output = await self.on_config(self, body, headers)
-        return MessageQueueResponse(output, {"type": "config"})
-
-    async def on_state(self, body, headers) -> Dict:
-        return dict(self.state)
+        body, headers = await self.on_config(self, body, headers)
+        return self.create_control_response_message(
+            body,
+            headers,
+            control_request_type="config",
+            control_response_type="config",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
     @BaseControlMixin.register_control_callback("state")
     async def server_state(self, body, headers):
         # force update the state when query is conducted
         self.update_state()
 
-        state = await self.on_state(body, headers)
-        return MessageQueueResponse(state, {"type": "state"})
+        state = dict(self.state)
+        return self.create_control_response_message(
+            state,
+            {},
+            control_request_type="state",
+            control_response_type="state",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
 
     async def start(self):
         await self.create_queues()
@@ -1518,7 +1964,6 @@ class PubSubServer(BaseControlMixin, StateCallbackMixin):
 
         logging.info(f"{self.log_prefix} starts up")
 
-    @BaseControlMixin.register_control_callback("cancel")
     async def cancel(self):
         if self.queue is not None and self._consume_tag is not None:
             await self.queue.cancel(self._consume_tag)
@@ -1530,3 +1975,16 @@ class PubSubServer(BaseControlMixin, StateCallbackMixin):
 
         self.reset_queues()
         self.state["is_running"] = False
+
+    @BaseControlMixin.register_control_callback("terminate")
+    async def terminate_server(self):
+        await self.cancel()
+        return self.create_control_response_message(
+            "",
+            {},
+            control_request_type="terminate",
+            control_response_type="terminate",
+            succ=True,
+            error_type="",
+            error_message="",
+        )

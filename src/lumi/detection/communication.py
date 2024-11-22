@@ -18,6 +18,7 @@ from collections.abc import Callable, Awaitable
 
 import json
 
+from lumi.base.models import RequestMessageQueueMessage, ResponseMessageQueueMessage, StreamMessageQueueMessage
 import numpy as np
 
 # from misc import decode_img
@@ -31,7 +32,7 @@ from ..base.message_queue import (
     BasicServer,
     BasicStreamServer,
     BaseControlMixin,
-    MessageQueueResponse,
+    BaseMessageQueueMessage,
 )
 from ..rheed.communication import CameraMessageQueueClient
 
@@ -141,41 +142,44 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
             }
         )
 
-    async def on_streaming(self):
+    async def on_streaming(self) -> StreamMessageQueueMessage | None:
         # if self.cache is None:
         # await asyncio.sleep(1) # throttle test
-        response = await self.camera_client.request()
-                
-        if response.body is None:
-            logging.warning(f"{self.log_prefix} Received None response from camera")
-            return None, None
+        response = await self.camera_client.get_live_image()
         
-        if self.cache is None:
+        if not response.headers["succ"]:
+            logging.warning(f"{self.log_prefix} Received None response from camera")
+            response = None
+        else:
             img, img_header = decode_img(response.body, response.headers)
             # TODO: we could move the whole AI stack into seperate backend API server then this could be awaitable
             detector_output, detector_output_headers = self.detector.predict(
                 img, img_header
             )
             # self.cache = (img, img_header, detector_output, detector_output_headers)
-        else:
-            await asyncio.sleep(0.2) # 5Hz update speed
-            img, img_header, detector_output, detector_output_headers = self.cache
-        logging.info(f"{self.log_prefix} detection acquired")
+            # img, img_header, detector_output, detector_output_headers = self.cache
+            logging.info(f"{self.log_prefix} detection acquired")
 
-        try:
-            body, headers = encode_detections(
-                detector_output=detector_output,
-                detector_output_headers=detector_output_headers,
-                drop_mask=self.drop_mask,
-                drop_pattern=self.drop_pattern,
-            )
-        except Exception as e:
-            logging.error(f"{self.log_prefix} Failed to encode detection: {e}")
-            raise e
-        
-        logging.info(f"{self.log_prefix} detection encoded")
-        return body, headers
+            try:
+                body, headers = encode_detections(
+                    detector_output=detector_output,
+                    detector_output_headers=detector_output_headers,
+                    drop_mask=self.drop_mask,
+                    drop_pattern=self.drop_pattern,
+                )
 
+                response =  self.create_stream_message(
+                    body=body, 
+                    headers=headers,
+                    stream_type="live_detection",
+                )
+                logging.info(f"{self.log_prefix} detection encoded")
+            except Exception as e:
+                logging.error(f"{self.log_prefix} Failed to encode detection: {e}")
+                # raise e
+                response = None
+                  
+        return response
 
 class LiveDetectionMessageQueueClient(BasicStreamClient):
     def __init__(
@@ -240,22 +244,41 @@ class DetectionMessageQueueServer(BasicServer):
         )
 
 
-    async def on_message(self, message: AbstractIncomingMessage):
+    async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
         body, headers = message.body, message.headers
         if len(message.body):
-            body, headers = await self.camera_client.request()
-        img, img_header = decode_img(body, headers)
+            body, headers = await self.camera_client.get_live_image()
+        if not headers["succ"]:
+            response = self.create_response_message(
+                body=b"",
+                headers={},
+                request_type="detection",
+                response_type="detection",
+                succ=False,
+                error_type=headers["error_type"],
+                error_message=headers["error_message"],
+            )
+        else:
+            img, img_header = decode_img(body, headers)
 
-        detector_output, detector_output_headers = self.detector.predict(
-            img, img_header
-        )
-        body, headers = encode_detections(
-            detector_output=detector_output,
+            detector_output, detector_output_headers = self.detector.predict(
+                img, img_header
+            )
+            body, headers = encode_detections(
+                detector_output=detector_output,
             detector_output_headers=detector_output_headers,
-        )
+            )
+            response = self.create_response_message(
+                body=body, 
+                headers={},
+                request_type="detection",
+                response_type="detection",
+                succ=True,
+                error_type="",
+            error_message="",
+            )
 
-        return body, headers
-
+        return response
 
 class DetectionMessageQueueClient(BasicClient):
     def __init__(
@@ -284,6 +307,8 @@ class DetectionMessageQueueClient(BasicClient):
         logging.info(f"{self.client_name} get detection")
         image_headers = {} if image_headers is not None else image_headers
         body, headers = encode_img(image, image_headers)
-        headers.update({"type": "detection"})
 
-        return await super().request(body=body, headers=headers)
+        request_message = self.create_request_message(
+            body=body, headers=headers, request_type="detection")
+
+        return await super().request(request_message)

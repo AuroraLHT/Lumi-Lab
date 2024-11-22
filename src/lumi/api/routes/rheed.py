@@ -23,7 +23,7 @@ from lumi.api.communication import (
     LiveSTFTMessageQueueClient
 )
 from ..websockets.base import generic_websocket_handler, WebsocketMultiClientsHandler, BaseClientMessageMapper, BaseStreamClientMessageMapper
-from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper, LiveDetectionStreamClientMessageMapper
+from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper, LiveDetectionStreamClientMessageMapper, VideoFragmentsMessageMapper
 
 from ..utils import update_state, pack_payload
 from ..connection_state import ConnectionState
@@ -94,39 +94,62 @@ async def read_root(request: Request):
 
 
 
+# @router.websocket("/RHEED/cam/live")
+# async def rheed_cam_live(websocket: WebSocket):
+#     connection_state : ConnectionState = websocket.app.state.connection_state
+
+#     async def send_fragment(fragment, headers):
+
+#         try:
+#             # header_json = json.dumps(headers)
+#             # header_length = struct.pack(">I", len(header_json))
+#             # data = header_length + header_json.encode("utf-8") + fragment
+#             data = pack_payload(fragment, headers)
+#             await websocket.send_bytes(data)
+#         except Exception as e:
+#             logging.error(f"/RHEED/detection/live send_fragment error: {e}")
+#             return True
+#         return False
+
+#     client_params = {
+#         "channel": connection_state.channel,
+#         "exchange": connection_state.exchange_rheed,
+#         "routing_key": "live_video",
+#         "control_routing_key": "live_video_ctrl",
+#         "state_routing_key": "live_video_state",
+#     }
+
+#     await generic_websocket_handler(
+#         websocket,
+#         LiveVideoFragmentsMessageQueueClient,
+#         client_params,
+#         send_fragment,
+#         "RHEED cam",
+#         connection_state.video_fragment_client.get_initial,
+#     )
+
 @router.websocket("/RHEED/cam/live")
-async def rheed_cam_live(websocket: WebSocket):
-    connection_state = websocket.app.state.connection_state
+async def rheed_analysis_live(websocket: WebSocket):
+    connection_state : ConnectionState = websocket.app.state.connection_state
 
-    async def send_fragment(fragment, headers):
-
-        try:
-            # header_json = json.dumps(headers)
-            # header_length = struct.pack(">I", len(header_json))
-            # data = header_length + header_json.encode("utf-8") + fragment
-            data = pack_payload(fragment, headers)
-            await websocket.send_bytes(data)
-        except Exception as e:
-            logging.error(f"/RHEED/detection/live send_fragment error: {e}")
-            return True
-        return False
-
-    client_params = {
-        "channel": connection_state.channel,
-        "exchange": connection_state.exchange_rheed,
-        "routing_key": "live_video",
-        "control_routing_key": "live_video_ctrl",
-        "state_routing_key": "live_video_state",
-    }
-
-    await generic_websocket_handler(
-        websocket,
-        LiveVideoFragmentsMessageQueueClient,
-        client_params,
-        send_fragment,
-        "RHEED cam",
-        connection_state.video_fragment_client.get_initial,
+    live_video_client = LiveVideoFragmentsMessageQueueClient(
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_rheed,
+        routing_key="live_video",
+        control_routing_key="live_video_ctrl", 
+        state_routing_key="live_video_state",
+        on_response_callback=None,
+        on_state_callback=None,
+        client_name="Live RHEED Camera",
+        time_out=10,
     )
+    await live_video_client.start_control()
+
+    websocket_handler = WebsocketMultiClientsHandler(websocket, "RHEED")
+    websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_video_client), )
+    websocket_handler.register_client( VideoFragmentsMessageMapper(connection_state.video_fragment_client), )
+
+    await websocket_handler.start()
 
 # @router.websocket("/RHEED/detection/live")
 # async def rheed_detection_live(websocket: WebSocket):
