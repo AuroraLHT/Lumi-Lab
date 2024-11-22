@@ -9,6 +9,7 @@ import uuid
 import datetime
 from dataclasses import dataclass
 from typing import Union, Tuple, Optional
+import numpy as np
 
 def get_camera(index=0, device=None):
     tl_factory = pylon.TlFactory.GetInstance()
@@ -88,7 +89,7 @@ class PylonCamera(threading.Thread):
         with self.camera_io_lock:
             return len(self.frame_queue) > 0
 
-    def get_frame(self):
+    def get_frame(self) -> tuple[np.ndarray | None, dict | None]:
         # return self.queue.get()
         with self.camera_io_lock:
             if len(self.peek_queue):
