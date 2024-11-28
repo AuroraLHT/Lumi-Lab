@@ -77,6 +77,7 @@ class StorageMessageQueueClient(BasicClient):
             request_type="start",
         )
         return await self.request(request_message)
+    
     async def end_storage(self):
         request_message = self.create_request_message(
             body="".encode(),

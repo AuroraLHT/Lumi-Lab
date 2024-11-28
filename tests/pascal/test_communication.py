@@ -149,7 +149,7 @@ async def test_mimode_message_queue_client_request(mock_channel, mock_exchange):
         time_out=5.0,
     )
 
-    client.request = AsyncMock(
+    client.register_commands = AsyncMock(
         return_value=(
             encode_json(
                 {
@@ -163,7 +163,7 @@ async def test_mimode_message_queue_client_request(mock_channel, mock_exchange):
         )
     )
 
-    body, headers = await client.request(commands="test", commands_uuid="test-uuid")
+    body, headers = await client.register_commands(commands="test", commands_uuid="test-uuid")
 
     assert headers["type"] == "execution_result"
     assert headers["success"] is True

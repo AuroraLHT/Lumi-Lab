@@ -83,7 +83,7 @@ async def get_rheed_cam_state(request: Request):
 @router.get("/RHEED/image")
 async def read_root(request: Request):
     connection_state : ConnectionState = request.app.state.connection_state
-    response = await connection_state.image_client.request()
+    response = await connection_state.image_client.get_live_image()
     # logging.info(headers)
     return Response(
         content=response.body,

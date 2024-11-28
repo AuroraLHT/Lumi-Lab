@@ -439,6 +439,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         await self.start_response()
         await self.start_control()
         await self.start_state()
+        await self.start_update()
 
         logging.info(f"{self.log_prefix} starts up")
 
@@ -1791,6 +1792,27 @@ class PubSubServer(
         self.queue = await self.channel.declare_queue(exclusive=True)
         await self.queue.bind(self.exchange, routing_key=self.request_routing_key)
 
+    async def start_control(self):
+        await self.create_control_queue()
+        try:
+            self._control_consume_tag = await self.control_queue.consume(
+                callback=self.on_control_request, no_ack=False
+            )
+            self.state["is_control_running"] = True
+            self.update_state()
+        except Exception as e:
+            logging.error(f"{self.log_prefix} experience an error: {e}")
+
+    async def start_main(self):
+        await self.create_main_queue()
+        try:
+            self._consume_tag = await self.queue.consume(self.on_request, no_ack=False)
+            self.state["is_main_running"] = True
+            self.update_state()
+        except Exception as e:
+            logging.error(f"{self.log_prefix} experience an error: {e}")
+
+
     async def create_queues(self):
         await self.create_main_queue()
         await self.create_control_queue()
@@ -1862,8 +1884,10 @@ class PubSubServer(
                 try:
                     # print(f"{self.log_prefix} try to publish content")
                     if update_message is not None:
+                        logging.debug(f"{self.log_prefix} publish content")
                         await self.publish_update(update_message)
                     else:
+                        # logging.info(f"{self.log_prefix} no content to publish, pause 0.01s")
                         await asyncio.sleep(0.01)
 
                 except Exception as e:
@@ -1876,7 +1900,6 @@ class PubSubServer(
 
                 logging.debug(f"{self.log_prefix} update loop is paused")
                 await asyncio.sleep(0.1)
-
 
     async def publish_update(
         self,
@@ -1950,17 +1973,21 @@ class PubSubServer(
         )
 
     async def start(self):
-        await self.create_queues()
+        # await self.create_queues()
 
-        try:
-            self._control_consume_tag = await self.control_queue.consume(
-                callback=self.on_control_request, no_ack=False
-            )
-            self._consume_tag = await self.queue.consume(self.on_request, no_ack=False)
-            self.state["is_running"] = True
-            self.update_state()
-        except Exception as e:
-            logging.error(f"{self.log_prefix} experience an error: {e}")
+        # try:
+        #     self._control_consume_tag = await self.control_queue.consume(
+        #         callback=self.on_control_request, no_ack=False
+        #     )
+        #     self._consume_tag = await self.queue.consume(self.on_request, no_ack=False)
+        #     self.state["is_running"] = True
+        #     self.update_state()
+        # except Exception as e:
+        #     logging.error(f"{self.log_prefix} experience an error: {e}")
+
+        await self.start_control()
+        await self.start_main()
+        self._updating_task = asyncio.create_task(self.updating())
 
         logging.info(f"{self.log_prefix} starts up")
 
@@ -1968,13 +1995,19 @@ class PubSubServer(
         if self.queue is not None and self._consume_tag is not None:
             await self.queue.cancel(self._consume_tag)
             await self.queue.delete()
+            self.state["is_main_running"] = False
 
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
             await self.control_queue.delete()
+            self.state["is_control_running"] = False
+
+        if self._updating_task is not None:
+            self.update_flag = False
 
         self.reset_queues()
         self.state["is_running"] = False
+        self.update_state()
 
     @BaseControlMixin.register_control_callback("terminate")
     async def terminate_server(self):
