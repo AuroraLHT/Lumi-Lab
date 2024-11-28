@@ -37,15 +37,15 @@ from ..utils.common import decode_json, encode_json
 from typing import Callable, List, Dict, Any, Awaitable, Optional, TypedDict
 
 
-class ChamberLogMessageHeader(LogContentHeader):
-    """Interface for message queue headers that require type and success fields"""
-    type: str
-    success: bool
+# class ChamberLogMessageHeader(LogContentHeader):
+#     """Interface for message queue headers that require type and success fields"""
+#     type: str
+#     success: bool
 
-class MIModeMessageHeader(MIModeResponseHeader):
-    """Interface for message queue headers that require type and success fields"""
-    type: str
-    success: bool
+# class MIModeMessageHeader(MIModeResponseHeader):
+#     """Interface for message queue headers that require type and success fields"""
+#     type: str
+#     success: bool
 
 class ChamberLogMessageQueueServer(BasicServer):
     log_reader: LogReader
@@ -107,11 +107,11 @@ class ChamberLogMessageQueueServer(BasicServer):
         
 
 class ChamberLogMessageQueueClient(BasicClient):
-    async def request(self):
+    async def get_log(self):
         logging.info(f"{self.log_prefix} get Log")
         request_message = self.create_request_message(
             body="".encode(), headers={}, request_type="log")
-        return await super().request(request_message)
+        return await self.request(request_message)
 
 
 
@@ -151,12 +151,12 @@ class MIModeMessageQueueServer(PubSubServer):
 
     async def handle_register_commands_request(self, content, headers, message: AbstractIncomingMessage):
         def register_commands_callback(future : asyncio.Future):
-            response = self.create_update_message(
+            update_message = self.create_update_message(
                 body=future.result(),
                 headers={},
                 update_type="execution_commands",
             )
-            asyncio.create_task( self.publish_update(response, message) )
+            asyncio.create_task( self.publish_update(update_message) )
 
         try:
             command_future = self.mi_mode_server.register_commands(content["commands"], content["commands_uuid"])
@@ -220,6 +220,8 @@ class MIModeMessageQueueServer(PubSubServer):
             )
         
     async def on_update(self) -> UpdateMessageQueueMessage | None:
+        if self.mi_mode_server.update_queue.empty():
+            return None
         content, headers = self.mi_mode_server.update_queue.get()
         return self.create_update_message(
             body=encode_json(content),

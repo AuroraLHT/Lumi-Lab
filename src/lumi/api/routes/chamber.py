@@ -28,7 +28,7 @@ router = APIRouter()
 @router.get("/chamber/log")
 async def get_chamber_log(request: Request):
     connection_state : ConnectionState = request.app.state.connection_state
-    response = await connection_state.log_client.request()
+    response = await connection_state.log_client.get_log()
 
     if len(response.body) == 0:
         return Response(

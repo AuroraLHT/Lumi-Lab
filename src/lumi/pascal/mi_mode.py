@@ -159,7 +159,7 @@ class MIModeExecution:
         return {
             "commands": self.commands,
             "commands_uuid": self.uuid,
-            "state": self.state,
+            "state": self.state.name,
             "is_execution_finished": self.is_execution_finished,
             "is_aborted": self.is_execution_aborted,
             "is_cleaned_up": self.is_cleaned_up,

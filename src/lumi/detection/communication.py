@@ -38,10 +38,10 @@ from ..rheed.communication import CameraMessageQueueClient
 
 import copy
 
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any, Tuple, Union
 
 
-def encode_detections(detector_output, detector_output_headers, drop_mask=False, drop_pattern=False):
+def encode_detections(detector_output, detector_output_headers, drop_mask=False, drop_pattern=False) -> Tuple[bytes, Dict]:
     pattern = detector_output["instance_segementation"].rd.pattern
     if drop_pattern:
         pattern = None
@@ -71,7 +71,7 @@ def encode_detections(detector_output, detector_output_headers, drop_mask=False,
     return body, detector_output_headers
 
 
-def decode_detections(body, headers):
+def decode_detections(body : bytes, headers: Dict):
     detector_output = json.loads(body)
     detector_output_headers = headers
     
@@ -303,7 +303,7 @@ class DetectionMessageQueueClient(BasicClient):
             time_out=time_out,
         )
 
-    async def request(self, image=None, image_headers=None):
+    async def get_detection(self, image=None, image_headers=None):
         logging.info(f"{self.client_name} get detection")
         image_headers = {} if image_headers is not None else image_headers
         body, headers = encode_img(image, image_headers)
@@ -311,4 +311,4 @@ class DetectionMessageQueueClient(BasicClient):
         request_message = self.create_request_message(
             body=body, headers=headers, request_type="detection")
 
-        return await super().request(request_message)
+        return await self.request(request_message)
