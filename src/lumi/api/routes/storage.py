@@ -14,12 +14,13 @@ from fastapi.responses import HTMLResponse, Response, JSONResponse, StreamingRes
 
 from aio_pika.abc import AbstractIncomingMessage
 
-from lumi.api.models import StorageRequest
+from ..models import StorageRequest
 
 from ..websockets.base import generic_websocket_handler
 from ..utils import update_state, pack_payload
-from ..connection_state import ConnectionState
+from ..connection import ConnectionManager
 
+from lumi.config import settings
 
 router = APIRouter()
 
@@ -28,7 +29,7 @@ async def start_storage(request: StorageRequest, resquest_obj: Request):
     # async def start_storage(request: Request):
     # print(await request.body())
 
-    connection_state : ConnectionState = resquest_obj.app.state.connection_state
+    connection_state : ConnectionManager = resquest_obj.app.state.connection_state
     # logging.debug(request)
 
     # raw_body = await request.json()
@@ -97,7 +98,7 @@ async def start_storage(request: StorageRequest, resquest_obj: Request):
 
 @router.post("/storage/end")
 async def end_storage(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    connection_state : ConnectionManager = request.app.state.connection_state
     response = await connection_state.storage_client.end_storage()
     # print(response.body, type(response.body))
     if response.body is not None:

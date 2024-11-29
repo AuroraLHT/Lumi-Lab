@@ -76,7 +76,7 @@ class DetectorState:
     # add more
 
 def get_model(model_folder, device):
-
+    model_folder = Path(model_folder)
     aux_detector = CascadeMaskRCNNDetectorAndClassifier(
         config_path = str(model_folder / "config_predict.py"),
         checkpoint_path = str(model_folder / "epoch_12.pth"),
@@ -90,8 +90,8 @@ def get_model(model_folder, device):
 class DetectorServer(threading.Thread):
     DETECTION_METAS = ["time_stamp", "uuid", "time", "crop_setup_sx", "crop_setup_sy", "crop_setup_ex", "crop_setup_ey"]
 
-    def __init__(self, config:DetectorConfig, name:Union[int, str] ) -> None:        
-        super().__init__(name=name)
+    def __init__(self, config:DetectorConfig, name:Union[int, str], daemon:bool=True ) -> None:        
+        super().__init__(name=name, daemon=daemon)
         self.config = config
         # TODO: may we initialize it with some config or some cache
         self.state = DetectorState(None, None, {"sx":60, "sy":0, "ex":500, "ey":720}, None)

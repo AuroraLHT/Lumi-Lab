@@ -4,12 +4,13 @@ from aio_pika.abc import AbstractIncomingMessage, AbstractConnection, AbstractCh
 from lumi.rheed.communication import CameraMessageQueueClient, LiveCameraMessageQueueClient
 from lumi.storage.communication import StorageMessageQueueClient
 
-from lumi.api.lifespan import ConnectionState
+from lumi.api.lifespan import ConnectionManager
+from lumi.config import settings
 
-connection_state = ConnectionState()
+connection_state = ConnectionManager()
 
 async def start():
-    connection = await connect("amqp://guest:guest@localhost/")
+    connection = await connect(f"amqp://guest:guest@{settings.rabbitmq.host}/")
     connection_state.connection = connection
 
     channel = await connection.channel()
@@ -24,11 +25,11 @@ async def start():
     image_client = CameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key="image",
-        control_routing_key="image_ctrl",
-        state_routing_key="image_state",
+        routing_key=settings.rheed.mq.image.request,
+        control_routing_key=settings.rheed.mq.image.ctrl,
+        state_routing_key=settings.rheed.mq.image.state,
         on_state_callback=None,
-        client_name="Camera",
+        client_name=settings.rheed.mq.image.name,
         time_out=10,
     )
     await image_client.start()
@@ -38,11 +39,11 @@ async def start():
     live_camera_client = LiveCameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key="live_image",
-        control_routing_key="live_image_ctrl",
-        state_routing_key="live_image_state",
+        routing_key=settings.rheed.mq.live_image.request,
+        control_routing_key=settings.rheed.mq.live_image.ctrl,
+        state_routing_key=settings.rheed.mq.live_image.state,
         on_response_callback=lambda x: print(x),
-        client_name="Live Image",
+        client_name=settings.rheed.mq.live_image.name,
         time_out=10,
         on_state_callback=lambda x: print(x),
     )

@@ -1,3 +1,4 @@
+from lumi.path import PROJECT_ROOT
 from lumi.rheed.video_stream import (
     VideoCompressorConfig,
     VideoCompressor,
@@ -32,6 +33,7 @@ import asyncio
 import logging
 
 from pathlib import Path
+from lumi.config import settings
 
 FORMAT = '%(asctime)s %(levelname)s:%(message)s'
 logging.basicConfig(level=logging.INFO, format=FORMAT)
@@ -84,48 +86,48 @@ def frame_processing_pylon(frame, frame_header=None):
 
 
 async def _main(args):
-    # TODO turn it into a argument
     if args.src == "pylon":
         frame_processing = frame_processing_pylon  
-        height = 540
-        width = 720
+        height = settings.rheed.pylon.height
+        width = settings.rheed.pylon.width
         devices = list_devices()
         if len(devices) == 0:
             raise ValueError("No pylon camera found, check network or physical connection")
         
         pylon_camera_config = PylonCameraConfig(
             device=devices[0],
-            fps=30,
+            fps=settings.rheed.pylon.fps,
             frame_dims=(height, width),
         )
-        camera = PylonCamera(config=pylon_camera_config, name="pylon_cam")
+        camera = PylonCamera(config=pylon_camera_config, name=settings.rheed.pylon.name)
 
     elif args.src == "webcam":
         frame_processing = frame_processing_webcam
-        height = 480
-        width = 640
+        height = settings.rheed.webcam.height
+        width = settings.rheed.webcam.width
         web_camera_config = WebCameraConfig(
-            fps=30,  # the maximum is 30 for this webcam
+            fps=settings.rheed.webcam.fps,  # the maximum is 30 for this webcam
             queue_size=60,
         )
-        camera = WebCamera(config=web_camera_config, name="web_cam")
+        camera = WebCamera(config=web_camera_config, name=settings.rheed.webcam.name)
 
     else:
         frame_processing = frame_processing_testcam
-        height = 540
-        width = 720
+        height = settings.rheed.testcam.height
+        width = settings.rheed.testcam.width
+        source = PROJECT_ROOT / settings.rheed.testcam.source if Path(settings.rheed.testcam.source).is_absolute() else settings.rheed.testcam.source
         test_camera_config = TestCameraConfig(
             frame_dims=(height, width),
-            source= Path(__file__).parent.parent / "src/lumi/rheed/assets/test_frame.npy",
-            fps=30,
+            source= source,
+            fps = settings.rheed.testcam.fps,
             queue_size=2,
         )
-        camera = TestCamera(config=test_camera_config, name="test_cam")
+        camera = TestCamera(config=test_camera_config, name=settings.rheed.testcam.name)
 
     # record_camera_queue = camera.register_queue("record")
-    live_video_camera_queue = camera.register_queue("live_video")
-    live_image_camera_queue = camera.register_queue("live_image")
-    live_integration_camera_queue = camera.register_queue("live_integration")
+    live_video_camera_queue = camera.register_queue(settings.rheed.video_compressor.name)
+    live_image_camera_queue = camera.register_queue(settings.rheed.mq.live_image.name)
+    live_integration_camera_queue = camera.register_queue(settings.rheed.mq.live_integrator.name)
 
     # Perform connection
     connection = await connect(f"amqp://guest:guest@{args.host}/")
@@ -134,18 +136,18 @@ async def _main(args):
     channel = await connection.channel()
 
     rheed_exchange = await channel.declare_exchange(
-        "RHEED",
-        ExchangeType.DIRECT,
+        settings.rheed.exchange,
+        ExchangeType(settings.rheed.exchange_type),
     )
 
     # video_compressor = VideoCompressor(camera_queue=pylon_camera.queue, config=video_compressor_config, frame_processing=lambda cv_frame: cv2.cvtColor(cv_frame, cv2.COLOR_GRAY2RGB))
 
     live_video_compressor_config = VideoCompressorConfig(
-        fps=60,  # the minimum is 30 fps
-        frames_per_keyframe=1,
-        fragment_queue_size=60,
-        cached_startup_fragments=5,
-        bit_rate=12_000_000,
+        fps=settings.rheed.video_compressor.fps,  # the minimum is 30 fps
+        frames_per_keyframe=settings.rheed.video_compressor.frames_per_keyframe,
+        fragment_queue_size=settings.rheed.video_compressor.fragment_queue_size,
+        cached_startup_fragments=settings.rheed.video_compressor.cached_startup_fragments,
+        bit_rate=settings.rheed.video_compressor.bit_rate,
         height=height,
         width=width,
     )
@@ -155,13 +157,13 @@ async def _main(args):
         camera_queue=live_video_camera_queue,
         config=live_video_compressor_config,
         frame_processing=frame_processing,
-        name="video",
+        name=settings.rheed.video_compressor.name,
     )
 
     video_recorder_config = VideoRecorderConfig(
-        fps=60,  # the minimum is 30 fps
-        frames_per_keyframe=10,
-        bit_rate=12_000_000,
+        fps=settings.rheed.video_recorder.fps,  # the minimum is 30 fps
+        frames_per_keyframe=settings.rheed.video_recorder.frames_per_keyframe,
+        bit_rate=settings.rheed.video_recorder.bit_rate,
         height=height,
         width=width,
     )
@@ -176,51 +178,49 @@ async def _main(args):
 
 
     stft_config = STFTCalculatorConfig(
-        idle_time=0.005,
-        output_queue_size=50,
-        window_size=60,
-        hop_size=0.5,
-        # hop_size=0.1,
-        time_resolution= 1/20
+        idle_time=settings.rheed.stft_calculator.idle_time,
+        output_queue_size=settings.rheed.stft_calculator.output_queue_size,
+        window_size=settings.rheed.stft_calculator.window_size,
+        hop_size=settings.rheed.stft_calculator.hop_size,
+        time_resolution= settings.rheed.stft_calculator.time_resolution
     )
 
     integrator_config = MultiBoxIntegratorConfig(
-        idle_time=0.005,
-        output_queue_size=50,
+        idle_time=settings.rheed.integrator.idle_time,
+        output_queue_size=settings.rheed.integrator.output_queue_size,
     )
 
     integrator = MultiBoxIntegrator(camera=None, camera_queue=live_integration_camera_queue, config=integrator_config)
     stft_calculator = STFTCalculator(integrator=integrator, config=stft_config)
 
-
     live_video_mq = LiveVideoFragmentsMessageQueueServer(
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key="live_video_ctrl",
-        publish_routing_key="live_video",
-        state_routing_key="live_video_state",
-        server_name="live_video"
+        control_routing_key=settings.rheed.mq.live_video.ctrl,
+        publish_routing_key=settings.rheed.mq.live_video.publish,
+        state_routing_key=settings.rheed.mq.live_video.state,
+        server_name=settings.rheed.mq.live_video.name
     )
     # publish to callback queue, not need publish routing key
-    live_video_history_mq = VideoFragmentsMessageQueueServer(
+    video_mq = VideoFragmentsMessageQueueServer(
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key="live_video_history_ctrl",
-        routing_key="live_video_history",
-        state_routing_key="live_video_history_state",
-        server_name="live_video_history"
+        control_routing_key=settings.rheed.mq.video.ctrl,
+        routing_key=settings.rheed.mq.video.request,
+        state_routing_key=settings.rheed.mq.video.state,
+        server_name=settings.rheed.mq.video.name
     )
     # publish to callback queue, not need publish routing key
     image_mq = CameraMessageQueueServer(
         camera=camera, 
         channel=channel, 
         exchange=rheed_exchange, 
-        routing_key="image",
-        control_routing_key="image_ctrl",
-        state_routing_key="image_state",
-        server_name="image"
+        routing_key=settings.rheed.mq.image.request,
+        control_routing_key=settings.rheed.mq.image.ctrl,
+        state_routing_key=settings.rheed.mq.image.state,
+        server_name=settings.rheed.mq.image.name
     )
 
     live_image_mq = LiveCameraMessageQueueServer(
@@ -228,10 +228,10 @@ async def _main(args):
         camera_queue=live_image_camera_queue,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key="live_image_ctrl",
-        publish_routing_key="live_image",
-        state_routing_key="live_image_state",
-        server_name="live_image"
+        control_routing_key=settings.rheed.mq.live_image.ctrl,
+        publish_routing_key=settings.rheed.mq.live_image.publish,
+        state_routing_key=settings.rheed.mq.live_image.state,
+        server_name=settings.rheed.mq.live_image.name
     )
 
     live_integrator_mq = LiveIntegratorMessageQueueServer(
@@ -239,19 +239,20 @@ async def _main(args):
         integrator_queue=integrator.output_queue,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key="live_integrator_ctrl",
-        publish_routing_key="live_integrator",
-        state_routing_key="live_integrator_state",
-        server_name="live_integrator"
+        control_routing_key=settings.rheed.mq.live_integrator.ctrl,
+        publish_routing_key=settings.rheed.mq.live_integrator.publish,
+        state_routing_key=settings.rheed.mq.live_integrator.state,
+        server_name=settings.rheed.mq.live_integrator.name
     )
+
     integrator_mq = IntegratorMessageQueueServer(
         integrator=integrator,
         channel=channel,
         exchange=rheed_exchange,
-        routing_key="integrator",
-        control_routing_key="integrator_ctrl",
-        state_routing_key="integrator_state",
-        server_name="integrator"
+        routing_key=settings.rheed.mq.integrator.request,
+        control_routing_key=settings.rheed.mq.integrator.ctrl,
+        state_routing_key=settings.rheed.mq.integrator.state,
+        server_name=settings.rheed.mq.integrator.name
     )
 
     live_stft_mq = LiveSTFTMessageQueueServer(
@@ -259,22 +260,21 @@ async def _main(args):
         stft_calculator_queue=stft_calculator.output_queue,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key="live_stft_ctrl",
-        publish_routing_key="live_stft",
-        state_routing_key="live_stft_state",
-        server_name="live_stft"
+        control_routing_key=settings.rheed.mq.live_stft.ctrl,
+        publish_routing_key=settings.rheed.mq.live_stft.publish,
+        state_routing_key=settings.rheed.mq.live_stft.state,
+        server_name=settings.rheed.mq.live_stft.name
     )
 
     stft_mq = STFTMessageQueueServer(
         stft_calculator=stft_calculator,
         channel=channel,
         exchange=rheed_exchange,
-        routing_key="stft",
-        control_routing_key="stft_ctrl",
-        state_routing_key="stft_state",
-        server_name="stft"
+        routing_key=settings.rheed.mq.stft.request,
+        control_routing_key=settings.rheed.mq.stft.ctrl,
+        state_routing_key=settings.rheed.mq.stft.state,
+        server_name=settings.rheed.mq.stft.name
     )
-
 
     camera.daemon = True
     camera.start()
@@ -288,12 +288,11 @@ async def _main(args):
     stft_calculator.daemon = True
     stft_calculator.start()
 
-
     logging.info("image and video started")
     await image_mq.start()
     await live_image_mq.start()
     await live_video_mq.start()
-    await live_video_history_mq.start()
+    await video_mq.start()
 
     await live_integrator_mq.start()
     await integrator_mq.start()
@@ -325,9 +324,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="Detection Node", description="...", epilog="..."
+        prog="RHEED Node", description="...", epilog="..."
     )
-    parser.add_argument("--host", type=str, default="localhost")
+    parser.add_argument("--host", type=str, default=settings.rabbitmq.host)
     parser.add_argument("--src", type=str, default="pylon", help="Could be [pylon, webcam, or test]")    
     args = parser.parse_args()
 

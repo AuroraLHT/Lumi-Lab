@@ -11,8 +11,8 @@ from fastapi.responses import HTMLResponse, Response, JSONResponse, StreamingRes
 
 from aio_pika.abc import AbstractIncomingMessage
 
-from lumi.api.models import StorageRequest
-from lumi.api.communication import (
+from ..models import StorageRequest
+from ..communication import (
     LiveChamberLogMessageQueueClient,
     MIModeMessageQueueClient
 )
@@ -22,12 +22,14 @@ import traceback
 from ..websockets.base import generic_websocket_handler, WebsocketMultiClientsHandler, BaseClientMessageMapper, BaseStreamClientMessageMapper
 from ..websockets.chamber import LiveChamberLogClientMessageMapper, MIModePubSubClientMessageMapper
 from ..utils import update_state
-from ..connection_state import ConnectionState
+from ..connection import ConnectionManager
+
+from lumi.config import settings
 
 router = APIRouter()
 @router.get("/chamber/log")
 async def get_chamber_log(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    connection_state : ConnectionManager = request.app.state.connection_state
     response = await connection_state.log_client.get_log()
 
     if len(response.body) == 0:
@@ -89,17 +91,17 @@ async def chamber_live(websocket: WebSocket):
             return True
         return False
 
-    connection_state : ConnectionState = websocket.app.state.connection_state
+    connection_state : ConnectionManager = websocket.app.state.connection_state
 
     live_log_client = LiveChamberLogMessageQueueClient(
         channel = connection_state.channel,
-        exchange = connection_state.exchange_chamber,
-        routing_key = "live_log",
-        control_routing_key = "live_log_ctrl",
-        state_routing_key = "live_log_state",
+        exchange = connection_state.exchange_pascal,
+        routing_key = settings.pascal.mq.live_chamber_log.publish,
+        control_routing_key = settings.pascal.mq.live_chamber_log.ctrl,
+        state_routing_key = settings.pascal.mq.live_chamber_log.state,
         on_response_callback=send_json,
         on_state_callback=None,
-        client_name="Live Chamber Log",
+        client_name=settings.pascal.mq.live_chamber_log.name,
         time_out=10,
     )
 
@@ -107,15 +109,15 @@ async def chamber_live(websocket: WebSocket):
 
     mi_mode_client = MIModeMessageQueueClient(
         channel=connection_state.channel,
-        exchange=connection_state.exchange_chamber,
-        request_routing_key="mi_mode_request",
-        response_routing_key="mi_mode_response",
-        update_routing_key="mi_mode_update",
-        control_routing_key="mi_mode_ctrl",
-        state_routing_key="mi_mode_state",
+        exchange=connection_state.exchange_pascal,
+        request_routing_key=settings.pascal.mq.mi_mode.request,
+        response_routing_key=settings.pascal.mq.mi_mode.response,
+        update_routing_key=settings.pascal.mq.mi_mode.update,
+        control_routing_key=settings.pascal.mq.mi_mode.ctrl,
+        state_routing_key=settings.pascal.mq.mi_mode.state,
         on_update_callback=None,
         on_state_callback=None,
-        client_name="MI Mode",
+        client_name=settings.pascal.mq.mi_mode.name,
         time_out=10,
     )
 
@@ -161,7 +163,10 @@ async def chamber_live(websocket: WebSocket):
 
 @router.get("/chamber/log/live/state")
 async def get_chamber_log_state(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    # logging.info("get_chamber_log_state connection_state")
+    # logging.info("-" * 100)
+
+    connection_state : ConnectionManager = request.app.state.connection_state
 
     async def state_generator():
         queue = asyncio.Queue()
@@ -172,13 +177,13 @@ async def get_chamber_log_state(request: Request):
 
         live_log_client = LiveChamberLogMessageQueueClient(
             channel=connection_state.channel,
-            exchange=connection_state.exchange_chamber,
-            routing_key="live_log",
-            control_routing_key="live_log_ctrl",
-            state_routing_key="live_log_state",
+            exchange=connection_state.exchange_pascal,
+            routing_key=settings.pascal.mq.live_chamber_log.publish,
+            control_routing_key=settings.pascal.mq.live_chamber_log.ctrl,
+            state_routing_key=settings.pascal.mq.live_chamber_log.state,
             on_response_callback=None,
             on_state_callback=on_state_callback,
-            client_name="Live Log Monitor",
+            client_name=settings.pascal.mq.live_chamber_log.state_monitor_name,
             time_out=10,
         )
         await live_log_client.start_state()
@@ -186,10 +191,12 @@ async def get_chamber_log_state(request: Request):
         try:
             state = await asyncio.wait_for(live_log_client.get_state(return_bytes=True), timeout=5.0)
             state = update_state(state, {"is_available": True})
-        except asyncio.TimeoutError:
-            state = json.dumps({"is_available": False})
+        except asyncio.TimeoutError as e:
+            state = json.dumps({"is_available": False, "error": "Timeout Error"})
+            # logging.error(f"Chamber Log state timeout error: {e}")
 
-        # print(state)
+        # logging.info(f"Chamber Log state yield {state}")
+        # logging.info("-" * 100)
 
         yield f"data: {state}\n\n"
 
@@ -198,8 +205,10 @@ async def get_chamber_log_state(request: Request):
                 body : bytes = await queue.get()
                 state = update_state(body, {"is_available": True})
 
-                logging.debug(f"Chamber Log state yield {state}")
+                logging.info(f"Chamber Log state yield {state}")
+                logging.info("-" * 100)
                 yield f"data: {state}\n\n"
+
         finally:
             await live_log_client.stop()
 
@@ -208,7 +217,7 @@ async def get_chamber_log_state(request: Request):
 
 @router.get("/chamber/mi/live/state")
 async def get_chamber_mi_state(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    connection_state : ConnectionManager = request.app.state.connection_state
 
     async def state_generator():
         queue = asyncio.Queue()
@@ -219,13 +228,13 @@ async def get_chamber_mi_state(request: Request):
 
         mi_mode_client = MIModeMessageQueueClient(
             channel=connection_state.channel,
-            exchange=connection_state.exchange_chamber,
-            routing_key="mi_mode",
-            control_routing_key="mi_mode_ctrl",
-            state_routing_key="mi_mode_state",
+            exchange=connection_state.exchange_pascal,
+            routing_key=settings.pascal.mq.mi_mode.request,
+            control_routing_key=settings.pascal.mq.mi_mode.ctrl,
+            state_routing_key=settings.pascal.mq.mi_mode.state,
             on_response_callback=None,
             on_state_callback=on_state_callback,
-            client_name="MI mode Monitor",
+            client_name=settings.pascal.mq.mi_mode.state_monitor_name,
             time_out=10,
         )
         await mi_mode_client.start_state()

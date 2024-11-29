@@ -16,8 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from aio_pika import Message, connect, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage, AbstractConnection, AbstractChannel, AbstractExchange
 
-from lumi.api.models import StorageRequest
-from lumi.api.communication import (
+from .models import StorageRequest
+from .communication import (
     BasicStreamClient,
     LiveVideoFragmentsMessageQueueClient,
     VideoFragmentsMessageQueueClient,
@@ -28,18 +28,17 @@ from lumi.api.communication import (
     StorageMessageQueueClient,
     STFTMessageQueueClient,
     IntegratorMessageQueueClient,
+    LiveCameraMessageQueueClient,
 )
 
 import traceback
 
-from lumi.rheed.communication import LiveCameraMessageQueueClient
-
 @dataclass
-class ConnectionState:
+class ConnectionManager:
     connection: Optional[AbstractConnection] = None
     channel: Optional[AbstractChannel] = None
     exchange_rheed: Optional[AbstractExchange] = None
-    exchange_chamber: Optional[AbstractExchange] = None
+    exchange_pascal: Optional[AbstractExchange] = None
     exchange_storage: Optional[AbstractExchange] = None
 
     image_client: Optional[CameraMessageQueueClient] = None

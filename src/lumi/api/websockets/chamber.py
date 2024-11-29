@@ -1,5 +1,5 @@
-from lumi.api.websockets.base import BaseClientMessageMapper, BaseStreamClientMessageMapper, BasePubSubClientMessageMapper
-from lumi.api.communication import MIModeMessageQueueClient
+from .base import BaseClientMessageMapper, BaseStreamClientMessageMapper, BasePubSubClientMessageMapper
+from ..communication import MIModeMessageQueueClient
 from typing import Union
 import logging
 from lumi.pascal.communication import LiveChamberLogMessageQueueClient
