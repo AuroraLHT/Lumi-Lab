@@ -11,9 +11,10 @@ from aio_pika.abc import (
 
 from collections.abc import Callable, Awaitable
 
-from ..base.message_queue import BasicStreamClient
-from ..rheed.communication import LiveVideoFragmentsMessageQueueClient, CameraMessageQueueClient, VideoFragmentsMessageQueueClient
-from ..detection.communication import LiveDetectionMessageQueueClient
-from ..pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogMessageQueueClient, MIModeMessageQueueClient
-from ..storage.communication import StorageMessageQueueClient
-from ..rheed.communication import LiveSTFTMessageQueueClient, STFTMessageQueueClient, LiveIntegratorMessageQueueClient, IntegratorMessageQueueClient
+from lumi.base.message_queue import BasicStreamClient
+from lumi.rheed.communication import LiveVideoFragmentsMessageQueueClient, CameraMessageQueueClient, VideoFragmentsMessageQueueClient
+from lumi.detection.communication import LiveDetectionMessageQueueClient
+from lumi.pascal.communication import LiveChamberLogMessageQueueClient, ChamberLogMessageQueueClient, MIModeMessageQueueClient
+from lumi.storage.communication import StorageMessageQueueClient
+from lumi.rheed.communication import LiveSTFTMessageQueueClient, STFTMessageQueueClient, LiveIntegratorMessageQueueClient, IntegratorMessageQueueClient
+from lumi.rheed.communication import LiveCameraMessageQueueClient

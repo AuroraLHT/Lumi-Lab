@@ -1,6 +1,6 @@
-from lumi.api.websockets.base import BaseClientMessageMapper, BaseStreamClientMessageMapper
-from lumi.api.communication import IntegratorMessageQueueClient, STFTMessageQueueClient, LiveDetectionMessageQueueClient
-from lumi.api.communication import VideoFragmentsMessageQueueClient
+from .base import BaseClientMessageMapper, BaseStreamClientMessageMapper
+from ..communication import IntegratorMessageQueueClient, STFTMessageQueueClient, LiveDetectionMessageQueueClient
+from ..communication import VideoFragmentsMessageQueueClient
 from typing import Union
 import logging
 from lumi.base.models import BaseResponseMessageHeader, BaseStreamMessageHeader

@@ -15,8 +15,8 @@ from fastapi.responses import StreamingResponse
 
 from aio_pika.abc import AbstractIncomingMessage
 
-from lumi.api.models import StorageRequest
-from lumi.api.communication import (
+from ..models import StorageRequest
+from ..communication import (
     LiveVideoFragmentsMessageQueueClient,
     LiveDetectionMessageQueueClient,
     LiveIntegratorMessageQueueClient,
@@ -26,13 +26,14 @@ from ..websockets.base import generic_websocket_handler, WebsocketMultiClientsHa
 from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper, LiveDetectionStreamClientMessageMapper, VideoFragmentsMessageMapper
 
 from ..utils import update_state, pack_payload
-from ..connection_state import ConnectionState
+from ..connection import ConnectionManager
+from lumi.config import settings
 
 router = APIRouter()
 
 @router.get("/RHEED/cam/live/state")
 async def get_rheed_cam_state(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    connection_state : ConnectionManager = request.app.state.connection_state
 
     async def state_generator():
         queue = asyncio.Queue()
@@ -44,12 +45,12 @@ async def get_rheed_cam_state(request: Request):
         live_video_client = LiveVideoFragmentsMessageQueueClient(
             channel=connection_state.channel,
             exchange=connection_state.exchange_rheed,
-            routing_key="live_video",
-            control_routing_key="live_video_ctrl",
-            state_routing_key="live_video_state",
+            routing_key=settings.rheed.mq.live_video.publish,
+            control_routing_key=settings.rheed.mq.live_video.ctrl,
+            state_routing_key=settings.rheed.mq.live_video.state,
             on_response_callback=None,
             on_state_callback=on_state_callback,
-            client_name="Live RHEED Cam Monitor",
+            client_name=settings.rheed.mq.live_video.state_monitor_name,
             time_out=10,
         )
         await live_video_client.start_state()
@@ -82,7 +83,7 @@ async def get_rheed_cam_state(request: Request):
 
 @router.get("/RHEED/image")
 async def read_root(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    connection_state : ConnectionManager = request.app.state.connection_state
     response = await connection_state.image_client.get_live_image()
     # logging.info(headers)
     return Response(
@@ -130,17 +131,17 @@ async def read_root(request: Request):
 
 @router.websocket("/RHEED/cam/live")
 async def rheed_analysis_live(websocket: WebSocket):
-    connection_state : ConnectionState = websocket.app.state.connection_state
+    connection_state : ConnectionManager = websocket.app.state.connection_state
 
     live_video_client = LiveVideoFragmentsMessageQueueClient(
         channel=connection_state.channel,
         exchange=connection_state.exchange_rheed,
-        routing_key="live_video",
-        control_routing_key="live_video_ctrl", 
-        state_routing_key="live_video_state",
+        routing_key=settings.rheed.mq.live_video.publish,
+        control_routing_key=settings.rheed.mq.live_video.ctrl, 
+        state_routing_key=settings.rheed.mq.live_video.state,
         on_response_callback=None,
         on_state_callback=None,
-        client_name="Live RHEED Camera",
+        client_name=settings.rheed.mq.live_video.name,
         time_out=10,
     )
     await live_video_client.start_control()
@@ -185,17 +186,17 @@ async def rheed_analysis_live(websocket: WebSocket):
 
 @router.websocket("/RHEED/analysis/live")
 async def rheed_analysis_live(websocket: WebSocket):
-    connection_state : ConnectionState = websocket.app.state.connection_state
+    connection_state : ConnectionManager = websocket.app.state.connection_state
 
     live_detection_client = LiveDetectionMessageQueueClient(
         channel=connection_state.channel,
         exchange=connection_state.exchange_rheed,
-        routing_key="live_detection",
-        control_routing_key="live_detection_ctrl",
-        state_routing_key="live_detection_state",
+        routing_key=settings.detection.mq.live_detection.publish,
+        control_routing_key=settings.detection.mq.live_detection.ctrl,
+        state_routing_key=settings.detection.mq.live_detection.state,
         on_response_callback=None,
         on_state_callback=None,
-        client_name="Live Detection",
+        client_name=settings.detection.mq.live_detection.name,
         time_out=10,
     )
     await live_detection_client.start_control()
@@ -203,12 +204,12 @@ async def rheed_analysis_live(websocket: WebSocket):
     live_integrator_client = LiveIntegratorMessageQueueClient(
         channel=connection_state.channel,
         exchange=connection_state.exchange_rheed,
-        routing_key="live_integrator",
-        control_routing_key="live_integrator_ctrl",
-        state_routing_key="live_integrator_state",
+        routing_key=settings.rheed.mq.live_integrator.publish,
+        control_routing_key=settings.rheed.mq.live_integrator.ctrl,
+        state_routing_key=settings.rheed.mq.live_integrator.state,
         on_response_callback=None,
         on_state_callback=None,
-        client_name="Live Integrator",
+        client_name=settings.rheed.mq.live_integrator.name,
         time_out=10,
     )
     await live_integrator_client.start_control()
@@ -216,12 +217,12 @@ async def rheed_analysis_live(websocket: WebSocket):
     live_stft_client = LiveSTFTMessageQueueClient(
         channel=connection_state.channel,
         exchange=connection_state.exchange_rheed,
-        routing_key="live_stft",
-        control_routing_key="live_stft_ctrl",
-        state_routing_key="live_stft_state",
+        routing_key=settings.rheed.mq.live_stft.publish,
+        control_routing_key=settings.rheed.mq.live_stft.ctrl,
+        state_routing_key=settings.rheed.mq.live_stft.state,
         on_response_callback=None,
         on_state_callback=None,
-        client_name="Live STFT",
+        client_name=settings.rheed.mq.live_stft.name,
         time_out=10,
     )
     await live_stft_client.start_control()
@@ -242,7 +243,7 @@ async def rheed_analysis_live(websocket: WebSocket):
 # TODO: maybe merge them into Websocket? 
 @router.get("/RHEED/detection/live/state")
 async def get_rheed_detection_state(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    connection_state : ConnectionManager = request.app.state.connection_state
 
     async def state_generator():
         queue = asyncio.Queue()
@@ -255,12 +256,12 @@ async def get_rheed_detection_state(request: Request):
         live_detection_client = LiveDetectionMessageQueueClient(
             channel=connection_state.channel,
             exchange=connection_state.exchange_rheed,
-            routing_key="live_detection",
-            control_routing_key="live_detection_ctrl",
-            state_routing_key="live_detection_state",
+            routing_key=settings.detection.mq.live_detection.publish,
+            control_routing_key=settings.detection.mq.live_detection.ctrl,
+            state_routing_key=settings.detection.mq.live_detection.state,
             on_response_callback=None,
             on_state_callback=on_state_callback,
-            client_name="Live Detection Monitor",
+            client_name=settings.detection.mq.live_detection.state_monitor_name,
             time_out=10,
         )
         await live_detection_client.start_state()
@@ -290,7 +291,7 @@ async def get_rheed_detection_state(request: Request):
 
 @router.get("/RHEED/stft/live/state")
 async def get_rheed_stft_state(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    connection_state : ConnectionManager = request.app.state.connection_state
 
     async def state_generator():
         queue = asyncio.Queue()
@@ -303,12 +304,12 @@ async def get_rheed_stft_state(request: Request):
         live_stft_client = LiveSTFTMessageQueueClient(
             channel=connection_state.channel,
             exchange=connection_state.exchange_rheed,
-            routing_key="live_stft",
-            control_routing_key="live_stft_ctrl",
-            state_routing_key="live_stft_state",
+            routing_key=settings.rheed.mq.live_stft.publish,
+            control_routing_key=settings.rheed.mq.live_stft.ctrl,
+            state_routing_key=settings.rheed.mq.live_stft.state,
             on_response_callback=None,
             on_state_callback=on_state_callback,
-            client_name="Live STFT Monitor",
+            client_name=settings.rheed.mq.live_stft.state_monitor_name,
             time_out=10,
         )
         await live_stft_client.start_state()
@@ -338,7 +339,7 @@ async def get_rheed_stft_state(request: Request):
 
 @router.get("/RHEED/integrator/live/state")
 async def get_rheed_stft_state(request: Request):
-    connection_state : ConnectionState = request.app.state.connection_state
+    connection_state : ConnectionManager = request.app.state.connection_state
 
     async def state_generator():
         queue = asyncio.Queue()
@@ -351,12 +352,12 @@ async def get_rheed_stft_state(request: Request):
         live_integrator_client = LiveIntegratorMessageQueueClient(
             channel=connection_state.channel,
             exchange=connection_state.exchange_rheed,
-            routing_key="live_integrator",
-            control_routing_key="live_integrator_ctrl",
-            state_routing_key="live_integrator_state",
+            routing_key=settings.rheed.mq.live_integrator.publish,
+            control_routing_key=settings.rheed.mq.live_integrator.ctrl,
+            state_routing_key=settings.rheed.mq.live_integrator.state,
             on_response_callback=None,
             on_state_callback=on_state_callback,
-            client_name="Live Integrator Monitor",
+            client_name=settings.rheed.mq.live_integrator.state_monitor_name,
             time_out=10,
         )
         await live_integrator_client.start_state()

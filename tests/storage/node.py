@@ -3,9 +3,9 @@ from aio_pika import Message, connect, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage, AbstractConnection, AbstractChannel, AbstractExchange
 from lumi.storage.communication import StorageMessageQueueClient
 
-from lumi.api.lifespan import ConnectionState
+from lumi.api.lifespan import ConnectionManager
 
-connection_state = ConnectionState()
+connection_state = ConnectionManager()
 
 async def start():
     connection = await connect("amqp://guest:guest@localhost/")

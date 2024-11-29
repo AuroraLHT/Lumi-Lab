@@ -1,0 +1,188 @@
+[rabbitmq]
+host = "localhost"
+
+[api]
+host = "0.0.0.0"
+port = 8000
+workers = 10
+
+[rheed]
+exchange = "RHEED"
+exchange_type = "direct"
+
+[rheed.pylon]
+height = 540
+width = 720
+fps = 30
+name = "Pylon Cam"
+[rheed.webcam]
+fps = 30
+height = 480
+width = 640
+name = "Web Cam"
+
+[rheed.testcam]
+fps = 30
+height = 540
+width = 720
+source = "src/lumi/rheed/assets/test_frame.npy"
+name = "Test Cam"
+
+[rheed.video_compressor]
+fps = 60
+frames_per_keyframe = 1
+fragment_queue_size = 60
+cached_startup_fragments = 5
+bit_rate = 12000000
+name = "Video Compressor"
+
+[rheed.video_recorder]
+fps = 60
+frames_per_keyframe = 10
+bit_rate = 12000000
+
+[rheed.stft_calculator]
+idle_time = 0.005
+output_queue_size = 50
+window_size = 60
+hop_size = 0.5
+time_resolution = 0.05
+
+[rheed.integrator]
+idle_time = 0.005
+output_queue_size = 50
+
+[rheed.mq.live_video]
+ctrl = "live_video_ctrl"
+publish = "live_video"
+state = "live_video_state"
+name = "Live RHEED Video"
+state_monitor_name = "Live RHEED Cam Monitor"
+
+[rheed.mq.video]
+ctrl = "video_ctrl"
+request = "video"
+state = "video_state"
+name = "RHEED Video"
+
+[rheed.mq.image]
+request = "image"
+ctrl = "image_ctrl"
+state = "image_state"
+name = "RHEED Image"
+
+[rheed.mq.live_image]
+ctrl = "live_image_ctrl"
+publish = "live_image"
+state = "live_image_state"
+name = "Live RHEED Image"
+state_monitor_name = "Live RHEED Image Monitor"
+
+[rheed.mq.live_integrator]
+ctrl = "live_integrator_ctrl"
+publish = "live_integrator"
+state = "live_integrator_state"
+name = "Live RHEED Integrator"
+state_monitor_name = "Live RHEED Integrator Monitor"
+
+[rheed.mq.integrator]
+request = "integrator"
+ctrl = "integrator_ctrl"
+state = "integrator_state"
+name = "RHEED Integrator"
+
+[rheed.mq.live_stft]
+ctrl = "live_stft_ctrl"
+publish = "live_stft"
+state = "live_stft_state"
+name = "Live RHEED STFT"
+state_monitor_name = "Live RHEED STFT Monitor"
+
+[rheed.mq.stft]
+request = "stft"
+ctrl = "stft_ctrl"
+state = "stft_state"
+name = "RHEED STFT"
+
+[detection]
+exchange = "RHEED"
+exchange_type = "direct"
+
+[detection.detector]
+input_queue_size = 10
+output_queue_size = 10
+model_device = "cuda:3"
+model_folder = "/home/hliang16/projects/LnFeO_TokyoU/nn/cascade_maskrcnn_exps"
+name = "Detector"
+
+[detection.mq.detection]
+request = "detection"
+ctrl = "detection_ctrl"
+state = "detection_state"
+name = "RHEED Detection"
+
+[detection.mq.live_detection]
+publish = "live_detection"
+ctrl = "live_detection_ctrl"
+state = "live_detection_state"
+name = "Live RHEED Detection"
+state_monitor_name = "Live RHEED Detection Monitor"
+
+[pascal]
+exchange = "CHAMBER"
+exchange_type = "direct"
+mi_mode_folder = "mi_mode"
+chamber_log_folder = "chamber_log"
+
+[pascal.log_reader]
+idle_time = 0.01
+queue_size = 10
+name = "log_reader"
+
+[pascal.log_reader.test]
+idle_time = 0.01
+queue_size = 10
+publish_interval = 1
+log_file = "chamber_log_test.csv"
+name = "test_log_reader"
+
+[pascal.mi_mode_server]
+queue_size = 1000
+idle_time = 0.01
+assist_file_name = "assist.txt"
+name = "mi_mode_server"
+
+[pascal.mq.chamber_log]
+request = "chamber_log"
+ctrl = "chamber_log_ctrl"
+state = "chamber_log_state"
+name = "Chamber Log"
+
+[pascal.mq.live_chamber_log]
+publish = "live_chamber_log"
+ctrl = "live_chamber_log_ctrl"
+state = "live_chamber_log_state"
+name = "Live Chamber Log"
+state_monitor_name = "Live Chamber Log Monitor"
+
+[pascal.mq.mi_mode]
+request = "mi_mode_request"
+response = "mi_mode_response"
+update = "mi_mode_update"
+ctrl = "mi_mode_ctrl"
+state = "mi_mode_state"
+name = "MI Mode"
+state_monitor_name = "MI Mode Monitor"
+[storage]
+exchange = "STORAGE"
+exchange_type = "direct"
+
+[storage.hdf5_recorder]
+database_path = "database"
+initial_size = 1000
+
+[storage.mq.storage]
+request = "storage"
+ctrl = "storage_ctrl"
+state = "storage_state"
+name = "Storage"
