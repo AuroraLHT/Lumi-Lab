@@ -51,10 +51,10 @@ async def main(args):
     camera_client = CameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key=settings.rheed.mq.image.request,
-        control_routing_key=settings.rheed.mq.image.ctrl,
-        state_routing_key=settings.rheed.mq.image.state,
-        client_name=settings.rheed.mq.image.name,
+        request_routing_key=settings.rheed.mq.camera.request_key,
+        control_routing_key=settings.rheed.mq.camera.ctrl_key,
+        state_routing_key=settings.rheed.mq.camera.state_key,
+        client_name=settings.rheed.mq.camera.name,
         time_out=10,
         on_state_callback=None,
     )
@@ -63,9 +63,9 @@ async def main(args):
     log_client = ChamberLogMessageQueueClient(
         channel=channel,
         exchange=exchange_pascal,
-        routing_key=settings.pascal.mq.chamber_log.request,
-        control_routing_key=settings.pascal.mq.chamber_log.ctrl,
-        state_routing_key=settings.pascal.mq.chamber_log.state,
+        request_routing_key=settings.pascal.mq.chamber_log.request_key,
+        control_routing_key=settings.pascal.mq.chamber_log.ctrl_key,
+        state_routing_key=settings.pascal.mq.chamber_log.state_key,
         client_name=settings.pascal.mq.chamber_log.name,
         time_out=10,
         on_state_callback=None,
@@ -75,9 +75,9 @@ async def main(args):
     detector_client = DetectionMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key=settings.detection.mq.detection.request,
-        control_routing_key=settings.detection.mq.detection.ctrl,
-        state_routing_key=settings.detection.mq.detection.state,
+        request_routing_key=settings.detection.mq.detection.request_key,
+        control_routing_key=settings.detection.mq.detection.ctrl_key,
+        state_routing_key=settings.detection.mq.detection.state_key,
         client_name=settings.detection.mq.detection.name,
         time_out=10,
         on_state_callback=None,
@@ -87,38 +87,44 @@ async def main(args):
     live_camera_client = LiveCameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key=settings.rheed.mq.live_image.publish,
-        control_routing_key=settings.rheed.mq.live_image.ctrl,
-        state_routing_key=settings.rheed.mq.live_image.state,
+        publish_routing_key=settings.rheed.mq.live_camera.publish_key,
+        control_routing_key=settings.rheed.mq.live_camera.ctrl_key,
+        state_routing_key=settings.rheed.mq.live_camera.state_key,
         on_response_callback=None,
-        client_name=settings.rheed.mq.live_image.name,
+        client_name=settings.rheed.mq.live_camera.name,
         time_out=10,
         on_state_callback=None,
     )
+    await live_camera_client.start_control()
+    await live_camera_client.start_state()
 
     live_detection_client = LiveDetectionMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key=settings.detection.mq.live_detection.publish,
-        control_routing_key=settings.detection.mq.live_detection.ctrl,
-        state_routing_key=settings.detection.mq.live_detection.state,
+        publish_routing_key=settings.detection.mq.live_detection.publish_key,
+        control_routing_key=settings.detection.mq.live_detection.ctrl_key,
+        state_routing_key=settings.detection.mq.live_detection.state_key,
         on_response_callback=None,
         client_name=settings.detection.mq.live_detection.name,
         time_out=10,
         on_state_callback=None,
     )
+    await live_detection_client.start_control()
+    await live_detection_client.start_state()
 
     live_log_client = LiveChamberLogMessageQueueClient(
         channel=channel,
         exchange=exchange_pascal,
-        routing_key=settings.pascal.mq.live_chamber_log.publish,
-        control_routing_key=settings.pascal.mq.live_chamber_log.ctrl,
-        state_routing_key=settings.pascal.mq.live_chamber_log.state,
+        publish_routing_key=settings.pascal.mq.live_chamber_log.publish_key,
+        control_routing_key=settings.pascal.mq.live_chamber_log.ctrl_key,
+        state_routing_key=settings.pascal.mq.live_chamber_log.state_key,
         on_response_callback=None,
         client_name=settings.pascal.mq.live_chamber_log.name,
         time_out=10,
         on_state_callback=None,
     )
+    await live_log_client.start_control()
+    await live_log_client.start_state()
 
     root_folder = (
         PROJECT_ROOT / settings.storage.hdf5_recorder.database_path
@@ -140,9 +146,9 @@ async def main(args):
         config=storage_config,
         channel=channel,
         exchange=exchange_storage,
-        control_routing_key=settings.storage.mq.storage.ctrl,
-        routing_key=settings.storage.mq.storage.request,
-        state_routing_key=settings.storage.mq.storage.state,
+        control_routing_key=settings.storage.mq.storage.ctrl_key,
+        request_routing_key=settings.storage.mq.storage.request_key,
+        state_routing_key=settings.storage.mq.storage.state_key,
         server_name=settings.storage.mq.storage.name,
     )
 

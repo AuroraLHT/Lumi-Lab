@@ -175,7 +175,7 @@ config =  RecorderConfig(
 recorder = Recorder(
     config = config
 )
-recorder.create_dataset()
+recorder.create_datasets()
 
 recorder_server_config = RecorderServerConfig(
     idle_time = 0.1

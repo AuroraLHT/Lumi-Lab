@@ -25,11 +25,11 @@ async def start():
     image_client = CameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key=settings.rheed.mq.image.request,
-        control_routing_key=settings.rheed.mq.image.ctrl,
-        state_routing_key=settings.rheed.mq.image.state,
+        request_routing_key=settings.rheed.mq.camera.request_key,
+        control_routing_key=settings.rheed.mq.camera.ctrl_key,
+        state_routing_key=settings.rheed.mq.camera.state_key,
         on_state_callback=None,
-        client_name=settings.rheed.mq.image.name,
+        client_name=settings.rheed.mq.camera.name,
         time_out=10,
     )
     await image_client.start()
@@ -39,11 +39,11 @@ async def start():
     live_camera_client = LiveCameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key=settings.rheed.mq.live_image.request,
-        control_routing_key=settings.rheed.mq.live_image.ctrl,
-        state_routing_key=settings.rheed.mq.live_image.state,
+        publish_routing_key=settings.rheed.mq.live_camera.publish_key,
+        control_routing_key=settings.rheed.mq.live_camera.ctrl_key,
+        state_routing_key=settings.rheed.mq.live_camera.state_key,
         on_response_callback=lambda x: print(x),
-        client_name=settings.rheed.mq.live_image.name,
+        client_name=settings.rheed.mq.live_camera.name,
         time_out=10,
         on_state_callback=lambda x: print(x),
     )

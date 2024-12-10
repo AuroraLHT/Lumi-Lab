@@ -6,7 +6,13 @@ from aio_pika.abc import (
     AbstractIncomingMessage,
     AbstractQueue,
 )
-from lumi.base.models import BaseRequestMessageHeader, RequestMessageQueueMessage, ResponseMessageQueueMessage, StreamMessageQueueMessage, UpdateMessageQueueMessage
+from lumi.base.models import (
+    BaseRequestMessageHeader,
+    RequestMessageQueueMessage,
+    ResponseMessageQueueMessage,
+    StreamMessageQueueMessage,
+    UpdateMessageQueueMessage,
+)
 import numpy as np
 import datetime
 import struct
@@ -37,16 +43,6 @@ from ..utils.common import decode_json, encode_json
 from typing import Callable, List, Dict, Any, Awaitable, Optional, TypedDict
 
 
-# class ChamberLogMessageHeader(LogContentHeader):
-#     """Interface for message queue headers that require type and success fields"""
-#     type: str
-#     success: bool
-
-# class MIModeMessageHeader(MIModeResponseHeader):
-#     """Interface for message queue headers that require type and success fields"""
-#     type: str
-#     success: bool
-
 class ChamberLogMessageQueueServer(BasicServer):
     log_reader: LogReader
 
@@ -55,7 +51,7 @@ class ChamberLogMessageQueueServer(BasicServer):
         log_reader,
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        request_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         server_name: str,
@@ -64,7 +60,7 @@ class ChamberLogMessageQueueServer(BasicServer):
             channel=channel,
             exchange=exchange,
             control_routing_key=control_routing_key,
-            routing_key=routing_key,
+            request_routing_key=request_routing_key,
             state_routing_key=state_routing_key,
             server_name=server_name,
         )
@@ -73,10 +69,18 @@ class ChamberLogMessageQueueServer(BasicServer):
 
     def update_state(self):
         # update the state at each read out
-        self.state.update({"entries": self.log_reader.entries, "file_path": self.log_reader._log_file_path})
+        self.state.update(
+            {
+                "entries": self.log_reader.entries,
+                "file_path": self.log_reader._log_file_path,
+            }
+        )
 
         # update the state at each read out
-    async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+
+    async def on_message(
+        self, message: AbstractIncomingMessage
+    ) -> ResponseMessageQueueMessage:
         # st = time.time()
         log, headers = (
             self.log_reader.get_log()
@@ -104,15 +108,15 @@ class ChamberLogMessageQueueServer(BasicServer):
                 error_message="Failed to access log file",
             )
         return response
-        
+
 
 class ChamberLogMessageQueueClient(BasicClient):
     async def get_log(self):
         logging.info(f"{self.log_prefix} get Log")
         request_message = self.create_request_message(
-            body="".encode(), headers={}, request_type="log")
+            body="".encode(), headers={}, request_type="log"
+        )
         return await self.request(request_message)
-
 
 
 class MIModeMessageQueueServer(PubSubServer):
@@ -145,21 +149,30 @@ class MIModeMessageQueueServer(PubSubServer):
 
     def update_state(self):
         # update the state at each read out
-        self.state.update({"latest_executed_commands_uuid": self.mi_mode_server.get_latest_execution().uuid, "num_executions": len(self.mi_mode_server.list_executions())})
+        self.state.update(
+            {
+                "latest_executed_commands_uuid": self.mi_mode_server.get_latest_execution().uuid,
+                "num_executions": len(self.mi_mode_server.list_executions()),
+            }
+        )
 
         # update the state at each read out
 
-    async def handle_register_commands_request(self, content, headers, message: AbstractIncomingMessage):
-        def register_commands_callback(future : asyncio.Future):
+    async def handle_register_commands_request(
+        self, content, headers, message: AbstractIncomingMessage
+    ):
+        def register_commands_callback(future: asyncio.Future):
             update_message = self.create_update_message(
                 body=future.result(),
                 headers={},
                 update_type="execution_commands",
             )
-            asyncio.create_task( self.publish_update(update_message) )
+            asyncio.create_task(self.publish_update(update_message))
 
         try:
-            command_future = self.mi_mode_server.register_commands(content["commands"], content["commands_uuid"])
+            command_future = self.mi_mode_server.register_commands(
+                content["commands"], content["commands_uuid"]
+            )
             command_future.add_done_callback(register_commands_callback)
 
             response = self.create_response_message(
@@ -183,7 +196,7 @@ class MIModeMessageQueueServer(PubSubServer):
             # raise e
 
         return response
-    
+
     async def handle_list_execution_request(self):
         body = encode_json(self.mi_mode_server.list_executions())
         response = self.create_response_message(
@@ -196,18 +209,21 @@ class MIModeMessageQueueServer(PubSubServer):
 
         return response
 
-
-    async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
-        headers : BaseRequestMessageHeader = message.headers
+    async def on_message(
+        self, message: AbstractIncomingMessage
+    ) -> ResponseMessageQueueMessage:
+        headers: BaseRequestMessageHeader = message.headers
 
         request_type = headers["request_type"]
         if request_type == "register_commands":
-            package = decode_json( message.body.decode() )
-            return await self.handle_register_commands_request(package, headers, message)
-        
+            package = decode_json(message.body.decode())
+            return await self.handle_register_commands_request(
+                package, headers, message
+            )
+
         elif request_type == "list_execution":
             return await self.handle_list_execution_request()
-        
+
         else:
             return self.create_response_message(
                 body="".encode(),
@@ -218,7 +234,7 @@ class MIModeMessageQueueServer(PubSubServer):
                 error_type="unknownRequestError",
                 error_message=f"Unknown request type: {request_type}",
             )
-        
+
     async def on_update(self) -> UpdateMessageQueueMessage | None:
         if self.mi_mode_server.update_queue.empty():
             return None
@@ -229,23 +245,25 @@ class MIModeMessageQueueServer(PubSubServer):
             update_type=headers["update_content"],
         )
 
+
 class MIModeMessageQueueClient(PubSubClient):
     async def register_commands(self, commands: str, commands_uuid: str = None):
 
         logging.info(f"{self.client_name} request execution of commands to MIMode")
         message = self.create_request_message(
-            body=encode_json({"commands": commands, "commands_uuid": commands_uuid}), 
-            headers={}, request_type="register_commands")
+            body=encode_json({"commands": commands, "commands_uuid": commands_uuid}),
+            headers={},
+            request_type="register_commands",
+        )
         return await self.request(message)
-    
+
     async def list_execution(self):
         logging.info(f"{self.client_name} request execution of commands to MIMode")
         message = self.create_request_message(
-            body="", 
-            headers={}, request_type="list_execution")
+            body="", headers={}, request_type="list_execution"
+        )
 
         return await self.request(message)
-
 
 
 class LiveChamberLogMessageQueueServer(BasicStreamServer):
@@ -276,7 +294,12 @@ class LiveChamberLogMessageQueueServer(BasicStreamServer):
         self.log_queue = log_queue
 
     def update_state(self):
-        self.state.update({"entries": self.log_reader.entries, "file_path": self.log_reader._log_file_path})
+        self.state.update(
+            {
+                "entries": self.log_reader.entries,
+                "file_path": self.log_reader._log_file_path,
+            }
+        )
 
     async def on_streaming(self) -> StreamMessageQueueMessage | None:
         if not self.log_queue.empty():
@@ -284,23 +307,23 @@ class LiveChamberLogMessageQueueServer(BasicStreamServer):
             body = json.dumps(log).encode()
 
             response = self.create_stream_message(
-                body=body, 
+                body=body,
                 headers=headers,
                 stream_type="live_log",
             )
-        
+
         else:
             response = None
 
         return response
-    
-    
+
+
 class LiveChamberLogMessageQueueClient(BasicStreamClient):
     def __init__(
         self,
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        publish_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
@@ -311,7 +334,7 @@ class LiveChamberLogMessageQueueClient(BasicStreamClient):
         super().__init__(
             channel,
             exchange,
-            routing_key,
+            publish_routing_key,
             control_routing_key,
             state_routing_key,
             on_response_callback,

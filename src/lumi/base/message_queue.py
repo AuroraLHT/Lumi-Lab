@@ -616,7 +616,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
 class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
     channel: Optional[AbstractChannel]
     exchange: Optional[AbstractExchange]
-    routing_key: str
+    request_routing_key: str
     control_routing_key: str
     state_routing_key: str
     callback_queue: Optional[AbstractQueue]
@@ -630,7 +630,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         self,
         channel: Optional[AbstractChannel],
         exchange: Optional[AbstractExchange],
-        routing_key: str,
+        request_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         client_name: str,
@@ -641,7 +641,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
     ) -> None:
         self.channel = channel
         self.exchange = exchange
-        self.routing_key = routing_key
+        self.request_routing_key = request_routing_key
         self.control_routing_key = control_routing_key
         self.state_routing_key = state_routing_key
         self.client_name = client_name
@@ -784,7 +784,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                     reply_to=self.callback_queue.name,
                     headers=message.headers,
                 ),
-                routing_key=self.routing_key,
+                routing_key=self.request_routing_key,
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to publish content: {e}")
@@ -878,7 +878,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
 class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
     channel: Optional[AbstractChannel]
     exchange: Optional[AbstractExchange]
-    routing_key: str
+    publish_routing_key: str
     control_routing_key: str
     state_routing_key: str
     queue: Optional[AbstractQueue]
@@ -894,7 +894,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
         self,
         channel: Optional[AbstractChannel],
         exchange: Optional[AbstractExchange],
-        routing_key: str,
+        publish_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         on_response_callback: Optional[
@@ -929,7 +929,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
         self.channel = channel
         self.exchange = exchange
-        self.routing_key = routing_key
+        self.publish_routing_key = publish_routing_key
         self.control_routing_key = control_routing_key
         self.state_routing_key = state_routing_key
         self.on_response_callback = on_response_callback
@@ -1004,7 +1004,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
     async def create_main_queue(self):
         # this queue is for listening to stream
         self.queue = await self.channel.declare_queue(exclusive=True)
-        await self.queue.bind(self.exchange, routing_key=self.routing_key)
+        await self.queue.bind(self.exchange, routing_key=self.publish_routing_key)
         logging.info(f"{self.log_prefix} creates queue: {self.queue.name}")
 
     async def create_control_queue(self):
@@ -1510,7 +1510,7 @@ class BasicServer(
     exchange: AbstractExchange
     callback_exchange: AbstractExchange
     control_routing_key: str
-    routing_key: str
+    request_routing_key: str
     state_routing_key: str
     queue: AbstractQueue
     server_name: str
@@ -1523,7 +1523,7 @@ class BasicServer(
         channel: AbstractChannel,
         exchange: AbstractExchange,
         control_routing_key: str,
-        routing_key: str,
+        request_routing_key: str,
         state_routing_key: str,
         server_name: str,
     ):
@@ -1531,7 +1531,7 @@ class BasicServer(
         self.channel = channel
         self.exchange = exchange
         self.callback_exchange = channel.default_exchange
-        self.routing_key = routing_key
+        self.request_routing_key = request_routing_key
         self.control_routing_key = control_routing_key
         self.state_routing_key = state_routing_key
 
@@ -1573,7 +1573,7 @@ class BasicServer(
     async def create_main_queue(self):
         logging.info(f"{self.log_prefix} creates main queue")
         self.queue = await self.channel.declare_queue(exclusive=True)
-        await self.queue.bind(self.exchange, routing_key=self.routing_key)
+        await self.queue.bind(self.exchange, routing_key=self.request_routing_key)
 
     async def create_queues(self):
         await self.create_main_queue()
