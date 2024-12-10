@@ -1,4 +1,5 @@
 import h5py
+from lumi.utils.error import get_error_info
 import numpy as np
 from dataclasses import dataclass
 from typing import Tuple, List, Dict
@@ -85,133 +86,164 @@ class Recorder:
         self.h5f.flush()
         self.h5f.close()
 
-    def create_dataset(self, ):
+    def create_frame_dataset(self):
+        img_h, img_w = self.config.frame_dim
+        frame_dataset = self.h5f.create_dataset(
+            self.NAME_FRAME_DS, 
+            (self.config.initial_size, img_h, img_w), 
+            maxshape=(None, img_h, img_w), 
+            chunks=True, 
+            dtype=np.uint16,
+            compression=self.config.compression,
+            compression_opts=self.config.compression_opts
+        )
+        frame_dataset.attrs['size'] = 0
+
+        self.frame_meta_columns = ["time_stamp", "time"]        
+        frame_meta_dataset = self.h5f.create_dataset(
+            self.NAME_FRAME_META_DS, 
+            (self.config.initial_size, len(self.frame_meta_columns) ), 
+            maxshape=(None, len(self.frame_meta_columns) ), 
+            chunks=True, 
+            dtype=h5py.string_dtype(encoding='utf-8', length=None)
+        )
+        frame_meta_dataset.attrs['columns'] = self.frame_meta_columns
+        frame_meta_dataset.attrs['size'] = 0
+
+    def create_log_dataset(self):
+        log_dataset = self.h5f.create_dataset(
+            self.NAME_LOG_DS, 
+            (self.config.initial_size, len(self.config.log_columns) ), 
+            maxshape=(None, len(self.config.log_columns) ), 
+            chunks=True, 
+            dtype=h5py.string_dtype(encoding='utf-8', length=None)
+        )
+
+        log_dataset.attrs['columns'] = self.config.log_columns
+        log_dataset.attrs['size'] = 0
+
+    def create_ai_dataset(self):
+        pattern_h, pattern_w = self.config.pattern_dim
+
+        pattern_dataset = self.h5f.create_dataset(
+            self.NAME_PATTERN_DS, 
+            (self.config.initial_size, pattern_h, pattern_w), 
+            maxshape=(None, pattern_h, pattern_w), 
+            chunks=True,
+            compression=self.config.compression,
+            compression_opts=self.config.compression_opts
+        )
+        pattern_dataset.attrs['size'] = 0
+
+        detection_meta_dataset = self.h5f.create_dataset(
+            self.NAME_DETECTION_META_DS, 
+            (self.config.initial_size, len(self.config.detection_meta_columns)), 
+            maxshape=(None, len(self.config.detection_meta_columns)), 
+            chunks=True, 
+            dtype=h5py.string_dtype(encoding='utf-8', length=None)
+        )
+        detection_meta_dataset.attrs['size'] = 0
+        detection_meta_dataset.attrs['columns'] = self.config.detection_meta_columns
+
+        classification_dataset = self.h5f.create_dataset(
+            self.NAME_CLASSIFICATION_DS, 
+            (self.config.initial_size, len(self.config.classifier_classes)), 
+            maxshape=(None, len(self.config.classifier_classes)), 
+            chunks=True
+        )
+        classification_dataset.attrs['size'] = 0
+        classification_dataset.attrs['class_name'] = self.config.classifier_classes
+
+        n_init_detection = 2
+        detection_dataset = self.h5f.create_dataset(
+            self.NAME_DETECTION_DS, 
+            (self.config.initial_size, n_init_detection, 6), 
+            maxshape=(None, None, 6), 
+            chunks=True
+        )
+        detection_dataset.attrs['size'] = 0
+        detection_dataset.attrs['columns'] = ['sx', 'sy', 'ex', 'ey', 'label', 'score']
+
+        instance_segmentation_dataset = self.h5f.create_dataset(
+            self.NAME_INSTANCE_SEGMENTATION_DS, 
+            (self.config.initial_size, n_init_detection, pattern_h, pattern_w), 
+            maxshape=(None, None, pattern_h, pattern_w), 
+            chunks=True, 
+            dtype=bool, # bool is 1 bytes in C
+            compression=self.config.compression,
+            compression_opts=self.config.compression_opts
+        )
+        instance_segmentation_dataset.attrs['size'] = 0
+
+        num_detection_dataset = self.h5f.create_dataset(
+            self.NAME_NUM_DETECTION_DS, 
+            (self.config.initial_size,), 
+            maxshape=(None,), 
+            chunks=True,
+            dtype=np.int32
+        )
+        num_detection_dataset.attrs['size'] = 0
+
+
+        num_tracking_dataset = self.h5f.create_dataset(
+            self.NAME_NUM_TRACK_DS, 
+            (self.config.initial_size,), 
+            maxshape=(None,), 
+            chunks=True,
+            dtype=np.int32
+        )
+        num_tracking_dataset.attrs['size'] = 0
+
+
+        n_init_tracking = 2
+        tracking_dataset = self.h5f.create_dataset(
+            self.NAME_TRACK_DS, 
+            (self.config.initial_size, n_init_tracking), 
+            maxshape=(None, None), 
+            chunks=True,
+            dtype=np.int32
+        )
+        tracking_dataset.attrs['size'] = 0
+
+
+    def create_datasets(self, ):
 
         # self.frame_meta_columns = frame_meta_columns
         # self.pattern_meta_columns = pattern_meta_columns
         # self.log_columns = log_columns
         # self.initial_size = initial_size
+        status = {
+            "succ": True,
+            "failed_datasets": [],
+            "error_message": ""
+        }
 
         if self.config.save_frame:
-
-            img_h, img_w = self.config.frame_dim
-            frame_dataset = self.h5f.create_dataset(
-                self.NAME_FRAME_DS, 
-                (self.config.initial_size, img_h, img_w), 
-                maxshape=(None, img_h, img_w), 
-                chunks=True, 
-                dtype=np.uint16,
-                compression=self.config.compression,
-                compression_opts=self.config.compression_opts
-            )
-            frame_dataset.attrs['size'] = 0
-
-            self.frame_meta_columns = ["time_stamp", "time"]        
-            frame_meta_dataset = self.h5f.create_dataset(
-                self.NAME_FRAME_META_DS, 
-                (self.config.initial_size, len(self.frame_meta_columns) ), 
-                maxshape=(None, len(self.frame_meta_columns) ), 
-                chunks=True, 
-                dtype=h5py.string_dtype(encoding='utf-8', length=None)
-            )
-            frame_meta_dataset.attrs['columns'] = self.frame_meta_columns
-            frame_meta_dataset.attrs['size'] = 0
+            try:
+                self.create_frame_dataset()
+            except Exception as e:                
+                print(get_error_info(e))
+                status["failed_datasets"].append("frame")
+                status["error_message"] += str(e) + "\n"
 
         if self.config.save_log:
-            log_dataset = self.h5f.create_dataset(
-                self.NAME_LOG_DS, 
-                (self.config.initial_size, len(self.config.log_columns) ), 
-                maxshape=(None, len(self.config.log_columns) ), 
-                chunks=True, 
-                dtype=h5py.string_dtype(encoding='utf-8', length=None)
-            )
-
-            log_dataset.attrs['columns'] = self.config.log_columns
-            log_dataset.attrs['size'] = 0
+            try:
+                self.create_log_dataset()
+            except Exception as e:
+                print(get_error_info(e))
+                status["failed_datasets"].append("log")
+                status["error_message"] += str(e) + "\n"
 
         if self.config.save_ai:
-            pattern_h, pattern_w = self.config.pattern_dim
+            try:
+                self.create_ai_dataset()
+            except Exception as e:
+                print(get_error_info(e))
+                status["failed_datasets"].append("ai")
+                status["error_message"] += str(e) + "\n"
 
-            pattern_dataset = self.h5f.create_dataset(
-                self.NAME_PATTERN_DS, 
-                (self.config.initial_size, pattern_h, pattern_w), 
-                maxshape=(None, pattern_h, pattern_w), 
-                chunks=True,
-                compression=self.config.compression,
-                compression_opts=self.config.compression_opts
-            )
-            pattern_dataset.attrs['size'] = 0
-
-            detection_meta_dataset = self.h5f.create_dataset(
-                self.NAME_DETECTION_META_DS, 
-                (self.config.initial_size, len(self.config.detection_meta_columns)), 
-                maxshape=(None, len(self.config.detection_meta_columns)), 
-                chunks=True, 
-                dtype=h5py.string_dtype(encoding='utf-8', length=None)
-            )
-            detection_meta_dataset.attrs['size'] = 0
-            detection_meta_dataset.attrs['columns'] = self.config.detection_meta_columns
-
-            classification_dataset = self.h5f.create_dataset(
-                self.NAME_CLASSIFICATION_DS, 
-                (self.config.initial_size, len(self.config.classifier_classes)), 
-                maxshape=(None, len(self.config.classifier_classes)), 
-                chunks=True
-            )
-            classification_dataset.attrs['size'] = 0
-            classification_dataset.attrs['class_name'] = self.config.classifier_classes
-
-            n_init_detection = 2
-            detection_dataset = self.h5f.create_dataset(
-                self.NAME_DETECTION_DS, 
-                (self.config.initial_size, n_init_detection, 6), 
-                maxshape=(None, None, 6), 
-                chunks=True
-            )
-            detection_dataset.attrs['size'] = 0
-            detection_dataset.attrs['columns'] = ['sx', 'sy', 'ex', 'ey', 'label', 'score']
-
-            instance_segmentation_dataset = self.h5f.create_dataset(
-                self.NAME_INSTANCE_SEGMENTATION_DS, 
-                (self.config.initial_size, n_init_detection, pattern_h, pattern_w), 
-                maxshape=(None, None, pattern_h, pattern_w), 
-                chunks=True, 
-                dtype=bool, # bool is 1 bytes in C
-                compression=self.config.compression,
-                compression_opts=self.config.compression_opts
-            )
-            instance_segmentation_dataset.attrs['size'] = 0
-
-            num_detection_dataset = self.h5f.create_dataset(
-                self.NAME_NUM_DETECTION_DS, 
-                (self.config.initial_size,), 
-                maxshape=(None,), 
-                chunks=True,
-                dtype=np.int32
-            )
-            num_detection_dataset.attrs['size'] = 0
-
-
-            num_tracking_dataset = self.h5f.create_dataset(
-                self.NAME_NUM_TRACK_DS, 
-                (self.config.initial_size,), 
-                maxshape=(None,), 
-                chunks=True,
-                dtype=np.int32
-            )
-            num_tracking_dataset.attrs['size'] = 0
-
-
-            n_init_tracking = 2
-            tracking_dataset = self.h5f.create_dataset(
-                self.NAME_TRACK_DS, 
-                (self.config.initial_size, n_init_tracking), 
-                maxshape=(None, None), 
-                chunks=True,
-                dtype=np.int32
-            )
-            tracking_dataset.attrs['size'] = 0
-
+        status['succ'] = len(status["failed_datasets"]) == 0
+        return status
 
     # this is the log part
     @property
@@ -397,8 +429,8 @@ class RecorderServer(threading.Thread):
         self.recorder = recorder
         self._stop_event = threading.Event()
 
-    def create_dataset(self):
-        self.recorder.create_dataset()
+    def create_datasets(self):
+        return self.recorder.create_datasets()
 
     def close_storages(self):
         self.recorder.close_h5()

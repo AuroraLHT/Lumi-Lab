@@ -8,7 +8,12 @@ from aio_pika.abc import (
     AbstractQueue,
 )
 import json
-from lumi.base.models import BaseResponseMessageHeader, RequestMessageQueueMessage, ResponseMessageQueueMessage
+from lumi.base.models import (
+    BaseResponseMessageHeader,
+    RequestMessageQueueMessage,
+    ResponseMessageQueueMessage,
+)
+from lumi.utils.error import get_error_info
 import numpy as np
 from dataclasses import dataclass
 
@@ -29,18 +34,28 @@ from ..utils.image import decode_img
 
 import logging
 from collections.abc import Callable, Awaitable
+from typing import Any, Dict, TypedDict
+
 # TODO : Move client to where the server is and we would import the client to here.
 # this reduce the redundancy in code.
+
+
+class OperationStatus(TypedDict):
+    succ: bool
+    msg: str
+    error_type: str
+    error_message: str
+
 
 class StorageMessageQueueClient(BasicClient):
     def __init__(
         self,
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        request_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
-        on_state_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],    
+        on_state_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
         client_name: str,
         time_out: float,
     ) -> None:
@@ -48,7 +63,7 @@ class StorageMessageQueueClient(BasicClient):
         super().__init__(
             channel=channel,
             exchange=exchange,
-            routing_key=routing_key,
+            request_routing_key=request_routing_key,
             control_routing_key=control_routing_key,
             state_routing_key=state_routing_key,
             client_name=client_name,
@@ -65,7 +80,6 @@ class StorageMessageQueueClient(BasicClient):
         force_rewrite: bool = False,
     ):
         request_message = self.create_request_message(
-
             body="".encode(),
             headers={
                 "save_frame": save_frame,
@@ -77,7 +91,7 @@ class StorageMessageQueueClient(BasicClient):
             request_type="start",
         )
         return await self.request(request_message)
-    
+
     async def end_storage(self):
         request_message = self.create_request_message(
             body="".encode(),
@@ -86,6 +100,7 @@ class StorageMessageQueueClient(BasicClient):
         )
         return await self.request(request_message)
 
+
 @dataclass
 class StorageMessageQueueServerConfig:
     root_folder: str
@@ -93,10 +108,10 @@ class StorageMessageQueueServerConfig:
 
 
 class StorageMessageQueueServer(BasicServer):
-    recorder : Recorder
-    recorder_config : RecorderConfig
-    recorder_server : RecorderServer
-    recorder_server_config : RecorderServerConfig
+    recorder: Recorder
+    recorder_config: RecorderConfig
+    recorder_server: RecorderServer
+    recorder_server_config: RecorderServerConfig
 
     def __init__(
         self,
@@ -110,7 +125,7 @@ class StorageMessageQueueServer(BasicServer):
         channel: AbstractChannel,
         exchange: AbstractExchange,
         control_routing_key: str,
-        routing_key: str,
+        request_routing_key: str,
         state_routing_key: str,
         server_name: str,
     ):
@@ -118,9 +133,9 @@ class StorageMessageQueueServer(BasicServer):
             channel=channel,
             exchange=exchange,
             control_routing_key=control_routing_key,
-            routing_key=routing_key,
+            request_routing_key=request_routing_key,
             state_routing_key=state_routing_key,
-            server_name=server_name
+            server_name=server_name,
         )
 
         self.camera_client = camera_client
@@ -140,83 +155,17 @@ class StorageMessageQueueServer(BasicServer):
         self.recorder_server = None
         self.recorder_server_config = None
 
-    async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+    async def on_message(
+        self, message: AbstractIncomingMessage
+    ) -> ResponseMessageQueueMessage:
         body, headers = message.body, message.headers
         request_type = headers["request_type"]
 
         if request_type == "start":
-            response = self.create_response_message(
-                body="",
-                headers={},
-                request_type="start",
-                response_type="start",
-                succ=True,
-                error_type="",
-                error_message="",
-            )
-
-            if not self.state["is_storing"]:
-                status = await self.create_storages(body, headers)
-                if status["succ"]:
-                    status =await self.start_storages(body, headers)
-                    logging.info(f"{self.log_prefix} starts storage")
-                    if not status["succ"]:
-                        response = self.create_response_message(
-                            body="",
-                            headers={},
-                            request_type="start",
-                            response_type="start",
-                            succ=False,
-                            error_type="ServerError",
-                            error_message= status["msg"],
-                        )
-                else:
-                    response = self.create_response_message(
-                        body="",
-                        headers={},
-                        request_type="start",
-                        response_type="start",
-                        succ=False,
-                        error_type="StorageInitError",
-                        error_message= status["msg"],
-                    )
-            else:
-                response = self.create_response_message(
-                    body="",
-                    headers={},
-                    request_type="start",
-                    response_type="start",
-                    succ=False,
-                    error_type="StorageInitError",
-                    error_message= f"cannot execute [{request_type}], the storage process have been initiated.",
-                )
-
+            response = await self.start_storages(body, headers)
 
         elif request_type == "end":
-            if self.state["is_storing"]:
-                await self.end_storages()
-                logging.info(f"{self.log_prefix} ends storage")
-                response = self.create_response_message(
-                    body="",
-                    headers={},
-                    request_type="end",
-                    response_type="end",
-                    succ=True,
-                    error_type="",
-                    error_message="",
-                )
-
-            else:
-                response = self.create_response_message(
-                    body="",
-                    headers={},
-                    request_type="end",
-                    response_type="end",
-                    succ=False,
-                    error_type="StorageTerminationError",
-                    error_message=f"cannot execute [{request_type}], the storage process have been termined.",
-                )                
-        
+            response = await self.end_storages(body, headers)
         else:
             response = self.create_response_message(
                 body="",
@@ -227,25 +176,169 @@ class StorageMessageQueueServer(BasicServer):
                 error_type="UnknownRequestError",
                 error_message=f"unknown request [{request_type}]",
             )
-
         return response
 
-    async def create_storages(self, body, headers):
+    async def _get_frame_metadata(
+        self,
+    ) -> OperationStatus:
+        status: OperationStatus = {
+            "succ": True,
+            "msg": "Get frame metadata success",
+            "error_type": "",
+            "error_message": "",
+        }
         try:
             camera_state = await self.camera_client.get_state()
+
             frame_dim = camera_state["frame_dims"]
             frame_metas_columns = camera_state["frame_metas"]
+        except Exception as e:
+            status["succ"] = False
+            status["error_type"] = "MetadataObtainError"
+            status["error_message"] = str(e)
+            return status
 
+        if len(frame_dim) < 2:
+            status["succ"] = False
+            status["msg"] = "Get frame metadata failed"
+            status["error_type"] = "InvalidFrameDimError"
+            status["error_message"] = "frame_dim is not valid"
+
+        if frame_metas_columns is None:
+            status["succ"] = False
+            status["msg"] = "Get frame metadata failed"
+            status["error_type"] = "InvalidFrameMetasColumnsError"
+            status["error_message"] = "frame_metas_columns is not valid"
+
+        return frame_dim, frame_metas_columns, status
+
+    async def _get_log_metadata(
+        self,
+    ) -> OperationStatus:
+        status: OperationStatus = {
+            "succ": True,
+            "msg": "Get log metadata success",
+            "error_type": "",
+            "error_message": "",
+        }
+        try:
             log_state = await self.log_client.get_state()
             log_columns = log_state["entries"]
+        except Exception as e:
+            status["succ"] = False
+            status["msg"] = "Get log metadata failed"
+            status["error_type"] = "MetadataObtainError"
+            status["error_message"] = str(e)
+            return status
 
+        if log_columns is None or len(log_columns) == 0:
+            status["succ"] = False
+            status["msg"] = "Get log metadata failed"
+            status["error_type"] = "InvalidLogColumnsError"
+            status["error_message"] = "log_columns is not valid"
+
+        return log_columns, status
+
+    async def _get_ai_metadata(
+        self,
+    ) -> OperationStatus:
+        status: OperationStatus = {
+            "succ": True,
+            "msg": "Get ai metadata success",
+            "error_type": "",
+            "error_message": "",
+        }
+        try:
             detection_state = await self.detector_client.get_state()
             pattern_dim = detection_state["pattern_dim"]
             detection_meta_columns = detection_state["detection_metas"]
             classifier_classes = detection_state["classifier_classes"]
         except Exception as e:
-            return {"succ": False, "msg": str("failed to obtain metadata")}
-        
+            status["succ"] = False
+            status["msg"] = "Get ai metadata failed"
+            status["error_type"] = "MetadataObtainError"
+            status["error_message"] = str(e)
+            return status
+
+        if pattern_dim is None or len(pattern_dim) < 2:
+            status["succ"] = False
+            status["msg"] = "Get ai metadata failed"
+            status["error_type"] = "InvalidPatternDimError"
+            status["error_message"] = "pattern_dim is not valid"
+
+        if detection_meta_columns is None or len(detection_meta_columns) == 0:
+            status["succ"] = False
+            status["msg"] = "Get ai metadata failed"
+            status["error_type"] = "InvalidDetectionMetaColumnsError"
+            status["error_message"] = "detection_meta_columns is not valid"
+
+        if classifier_classes is None or len(classifier_classes) == 0:
+            status["succ"] = False
+            status["msg"] = "Get ai metadata failed"
+            status["error_type"] = "InvalidClassifierClassesError"
+            status["error_message"] = "classifier_classes is not valid"
+
+        return pattern_dim, detection_meta_columns, classifier_classes, status
+
+    async def _check_live_clients(self, headers: Dict[str, Any]) -> OperationStatus:
+        status: OperationStatus = {
+            "succ": True,
+            "msg": "",
+            "error_type": "",
+            "error_message": "",
+        }
+        not_active_clients = []
+
+        if (
+            headers["save_frame"]
+            and not (await self.live_camera_client.get_state())["is_streaming"]
+        ):
+            # await self.live_camera_client.start_server_streaming()
+            status["succ"] = False
+            not_active_clients.append("live camera")
+
+        if (
+            headers["save_log"]
+            and not (await self.live_log_client.get_state())["is_streaming"]
+        ):
+            # await self.live_log_client.start_server_streaming()
+            status["succ"] = False
+            not_active_clients.append("live log")
+
+        if (
+            headers["save_ai"]
+            and not (await self.live_detection_client.get_state())["is_streaming"]
+        ):
+            # await self.live_detection_client.start_server_streaming()
+            status["succ"] = False
+            not_active_clients.append("live detection")
+
+        if status["succ"]:
+            status["msg"] = "All live clients are streaming"
+        else:
+            status["msg"] = (
+                f"One or more live clients are not streaming: {not_active_clients}"
+            )
+            status["error_type"] = "LiveClientNotStreamingError"
+            status["error_message"] = "One or more live clients are not streaming"
+
+        return status
+
+    async def _create_storages(self, body: bytes, headers: BaseResponseMessageHeader):
+        frame_dim, frame_metas_columns, frame_status = await self._get_frame_metadata()
+        if headers["save_frame"] and not frame_status["succ"]:
+            return frame_status
+
+        log_columns, log_status = await self._get_log_metadata()
+        if headers["save_log"] and not log_status["succ"]:
+            return log_status
+
+        pattern_dim, detection_meta_columns, classifier_classes, ai_status = (
+            await self._get_ai_metadata()
+        )
+        if headers["save_ai"] and not ai_status["succ"]:
+            return ai_status
+
         self.recorder_config = RecorderConfig(
             project_name=headers["project_name"],
             root_folder=self.config.root_folder,
@@ -271,48 +364,135 @@ class StorageMessageQueueServer(BasicServer):
             # print("-"*10)
             # print(e)
             # print("-"*10)
-            return {"succ": False, "msg": str(e)}
+            # print(e)
+            error_info = get_error_info(e)
+            print(error_info)
+            return {
+                "succ": False,
+                "msg": str(e),
+                "error_type": "FileExistsError",
+                "error_message": str(e),
+            }
 
         self.recorder_server_config = RecorderServerConfig(idle_time=0.01)
-        self.recorder_server = RecorderServer(self.recorder_server_config, self.recorder, name="recoder_server")
-        self.recorder_server.create_dataset()
+        self.recorder_server = RecorderServer(
+            self.recorder_server_config, self.recorder, name="recoder_server"
+        )
+        create_status = self.recorder_server.create_datasets()
+        if not create_status["succ"]:
+            return {
+                "succ": False,
+                "msg": f"Fail to create datasets {create_status['failed_datasets']}",
+                "error_type": "DatasetsCreationError",
+                "error_message": create_status["error_message"],
+            }
         self.recorder_server.start()
 
-        return {"succ": True, "msg": "success to create storages"}
+        return {
+            "succ": True,
+            "msg": "Create storages success",
+            "error_type": "",
+            "error_message": "",
+        }
 
-    async def close_storages(self):
+    async def _start_individual_storages(self, headers):
+        status = {
+            "succ": True,
+            "msg": "Start storages success",
+            "error_type": "",
+            "error_message": "",
+        }
+        failed_storages = []
+        try:
+            if headers["save_frame"]:
+                await self._start_frame_storage()
+                self.state["is_storing_frame"] = True
+                failed_storages.append("frame")
+
+            if headers["save_log"]:
+                await self._start_log_storage()
+                self.state["is_storing_log"] = True
+                failed_storages.append("log")
+
+            if headers["save_ai"]:
+                await self._start_ai_storage()
+                self.state["is_storing_ai"] = True
+                failed_storages.append("ai")
+
+            self.state["is_storing"] = True
+        except Exception as e:
+            status["succ"] = False
+            status["msg"] = f"fail to start storages {failed_storages}"
+            status["error_type"] = "StartStorageError"
+            status["error_message"] = str(e)
+
+        return status
+
+    async def _close_storages(self):
         if self.recorder_server is not None:
             self.recorder_server.close_storages()
             self.recorder_server.join()
 
-    async def start_storages(self, body, headers):
-        try:
-            if headers["save_frame"]:
-                await self.start_frame_storage()
-                self.state["is_storing_frame"] = True
+    async def start_storages(
+        self, body, headers: BaseResponseMessageHeader
+    ) -> ResponseMessageQueueMessage:
+        def create_response(
+            status: OperationStatus, headers: BaseResponseMessageHeader
+        ):
+            response = self.create_response_message(
+                body=status["msg"].encode(),
+                headers={},
+                request_type=headers["request_type"],
+                response_type=headers["request_type"],
+                succ=False,
+                error_type=status["error_type"],
+                error_message=status["error_message"],
+            )
+            return response
 
-            if headers["save_log"]:
-                await self.start_log_storage()
-                self.state["is_storing_log"] = True
+        if not self.state["is_storing"]:
+            live_status = await self._check_live_clients(headers)
+            if not live_status["succ"]:
+                response = create_response(live_status, headers)
+                return response
 
-            if headers["save_ai"]:
-                await self.start_ai_storage()
-                self.state["is_storing_ai"] = True
+            status = await self._create_storages(body, headers)
+            if not status["succ"]:
+                response = create_response(status, headers)
+                return response
 
-            self.state["is_storing"] = True
-        except Exception as e:
-            return {"succ": False, "msg": str(e)}
-        
-        return {"succ": True, "msg": "success to start storages"}
-    
-    async def start_frame_storage(self):
+            status = await self._start_individual_storages(headers)
+            if not status["succ"]:
+                response = create_response(status, headers)
+                return response
+
+            status = {
+                "succ": True,
+                "msg": "Start storage success",
+                "error_type": "",
+                "error_message": "",
+            }
+            response = create_response(status, headers)
+            return response
+
+        else:
+            status = {
+                "succ": False,
+                "msg": "Storage already running",
+                "error_type": "StorageAlreadyRunningError",
+                "error_message": "Storage already running",
+            }
+            response = create_response(status, headers)
+            return response
+
+    async def _start_frame_storage(self):
         async def on_response_callback(message: AbstractIncomingMessage):
             try:
                 body, headers = message.body, message.headers
                 frame, frame_headers = decode_img(body, headers)
                 self.recorder_server.save_frame(frame, frame_headers)
                 return False
-            
+
             except Exception as e:
                 logging.error(e)
                 return True
@@ -320,23 +500,23 @@ class StorageMessageQueueServer(BasicServer):
         self.live_camera_client.update_on_reponse_callback(
             on_response_callback=on_response_callback
         )
-        await self.live_camera_client.start(start_consume_loop=True)
+        await self.live_camera_client.start_main(start_consume_loop=True)
 
         # add a check to see if the live camera is streaming, if not, start the server streaming
         state = await self.live_camera_client.get_state()
         if not state["is_streaming"]:
             await self.live_camera_client.start_server_streaming()
-        
+
         logging.info(f"{self.log_prefix} starts frame storage.")
 
-    async def start_log_storage(self):
+    async def _start_log_storage(self):
         async def on_response_callback(message: AbstractIncomingMessage):
             try:
                 body, headers = message.body, message.headers
                 chamber_log = json.loads(body)
                 self.recorder_server.save_log(chamber_log=chamber_log)
                 return False
-            
+
             except Exception as e:
                 logging.error(e)
                 return True
@@ -344,10 +524,10 @@ class StorageMessageQueueServer(BasicServer):
         self.live_log_client.update_on_reponse_callback(
             on_response_callback=on_response_callback
         )
-        await self.live_log_client.start(start_consume_loop=True)
+        await self.live_log_client.start_main(start_consume_loop=True)
         logging.info(f"{self.log_prefix} starts log storage.")
 
-    async def start_ai_storage(self):
+    async def _start_ai_storage(self):
         async def on_response_callback(message: AbstractIncomingMessage):
             try:
                 body, headers = message.body, message.headers
@@ -356,7 +536,10 @@ class StorageMessageQueueServer(BasicServer):
                 pattern = result["pattern"]["pattern"]
                 n_detections = len(result["bboxes"].keys())
                 masks = np.stack(
-                    [result["bboxes"][f"{i}"]["mask"]["mask"] for i in range(n_detections)]
+                    [
+                        result["bboxes"][f"{i}"]["mask"]["mask"]
+                        for i in range(n_detections)
+                    ]
                 )
                 bboxes = np.stack(
                     [result["bboxes"][f"{i}"]["bbox"] for i in range(n_detections)]
@@ -388,28 +571,53 @@ class StorageMessageQueueServer(BasicServer):
         self.live_detection_client.update_on_reponse_callback(
             on_response_callback=on_response_callback
         )
-        await self.live_detection_client.start(start_consume_loop=True)
+        await self.live_detection_client.start_main(start_consume_loop=True)
         logging.info(f"{self.log_prefix} starts ai storage.")
 
-    async def end_log_storage(self):
-        await self.live_log_client.stop()
+    async def _end_log_storage(self):
+        await self.live_log_client.stop_main()
         self.state["is_storing_log"] = False
         logging.info(f"{self.log_prefix} ends log storage.")
 
-    async def end_ai_storage(self):
-        await self.live_detection_client.stop()
+    async def _end_ai_storage(self):
+        await self.live_detection_client.stop_main()
         self.state["is_storing_ai"] = False
         logging.info(f"{self.log_prefix} ends ai storage.")
 
-    async def end_frame_storage(self):
-        await self.live_camera_client.stop()
+    async def _end_frame_storage(self):
+        await self.live_camera_client.stop_main()
         self.state["is_storing_frame"] = False
         logging.info(f"{self.log_prefix} ends frame storage.")
 
-    async def end_storages(self):
-        await self.end_frame_storage()
-        await self.end_log_storage()
-        await self.end_ai_storage()
-        self.state["is_storing"] = False
+    async def end_storages(
+        self, body: bytes, headers: BaseResponseMessageHeader
+    ) -> ResponseMessageQueueMessage:
+        if self.state["is_storing"]:
+            await self._end_frame_storage()
+            await self._end_log_storage()
+            await self._end_ai_storage()
+            self.state["is_storing"] = False
 
-        await self.close_storages()
+            await self._close_storages()
+            logging.info(f"{self.log_prefix} ends storage")
+            response = self.create_response_message(
+                body="End storage success".encode(),
+                headers={},
+                request_type=headers["request_type"],
+                response_type=headers["request_type"],
+                succ=True,
+                error_type="",
+                error_message="",
+            )
+
+        else:
+            response = self.create_response_message(
+                body=f"Cannot end storage, the storage process have been termined.",
+                headers={},
+                request_type=headers["request_type"],
+                response_type=headers["request_type"],
+                succ=False,
+                error_type="StorageTerminationError",
+                error_message=f"Cannot end storage, the storage process have been termined.",
+            )
+        return response

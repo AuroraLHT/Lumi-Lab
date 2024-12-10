@@ -45,10 +45,10 @@ async def main(args):
     camera_client = CameraMessageQueueClient(
         channel=channel, 
         exchange=rheed_exchange, 
-        routing_key=settings.rheed.mq.image.request,
-        control_routing_key=settings.rheed.mq.image.ctrl,
-        state_routing_key=settings.rheed.mq.image.state,
-        client_name=settings.rheed.mq.image.name,
+        request_routing_key=settings.rheed.mq.camera.request_key,
+        control_routing_key=settings.rheed.mq.camera.ctrl_key,
+        state_routing_key=settings.rheed.mq.camera.state_key,
+        client_name=settings.rheed.mq.camera.name,
         time_out=10,
         on_state_callback=None,
     )
@@ -60,9 +60,9 @@ async def main(args):
         camera_client= camera_client,
         channel=channel,
         exchange=rheed_exchange,
-        routing_key=settings.detection.mq.detection.request,
-        control_routing_key=settings.detection.mq.detection.ctrl,
-        state_routing_key=settings.detection.mq.detection.state,
+        request_routing_key=settings.detection.mq.detection.request_key,
+        control_routing_key=settings.detection.mq.detection.ctrl_key,
+        state_routing_key=settings.detection.mq.detection.state_key,
         server_name=settings.detection.mq.detection.name,
     )
     live_detection_mq = LiveDetectionMessageQueueServer(
@@ -70,9 +70,9 @@ async def main(args):
         camera_client=camera_client,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key=settings.detection.mq.live_detection.ctrl,
-        publish_routing_key=settings.detection.mq.live_detection.publish,
-        state_routing_key=settings.detection.mq.live_detection.state,
+        control_routing_key=settings.detection.mq.live_detection.ctrl_key,
+        publish_routing_key=settings.detection.mq.live_detection.publish_key,
+        state_routing_key=settings.detection.mq.live_detection.state_key,
         server_name=settings.detection.mq.live_detection.name,
     )
     await detection_mq.start()

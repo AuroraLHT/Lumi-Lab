@@ -21,7 +21,7 @@ async def start():
     storage_client = StorageMessageQueueClient(
         channel=channel,
         exchange=exchange_storage,
-        routing_key="storage",
+        request_routing_key="storage",
         control_routing_key="storage_ctrl",
         state_routing_key="storage_state",
         on_state_callback=None,

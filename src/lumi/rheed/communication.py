@@ -55,7 +55,7 @@ class CameraMessageQueueServer(BasicServer):
         camera,
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        request_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         server_name: str,
@@ -64,7 +64,7 @@ class CameraMessageQueueServer(BasicServer):
             channel=channel,
             exchange=exchange,
             control_routing_key=control_routing_key,
-            routing_key=routing_key,
+            request_routing_key=request_routing_key,
             state_routing_key=state_routing_key,
             server_name=server_name,
         )
@@ -179,7 +179,7 @@ class LiveCameraMessageQueueClient(BasicStreamClient):
         self,
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        publish_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
@@ -191,7 +191,7 @@ class LiveCameraMessageQueueClient(BasicStreamClient):
         super().__init__(
             channel=channel,
             exchange=exchange,
-            routing_key=routing_key,
+            publish_routing_key=publish_routing_key,
             control_routing_key=control_routing_key,
             state_routing_key=state_routing_key,
             on_response_callback=on_response_callback,
@@ -210,7 +210,7 @@ class VideoFragmentsMessageQueueServer(BasicServer):
         channel: AbstractChannel,
         exchange: AbstractExchange,
         control_routing_key: str,
-        routing_key: str,
+        request_routing_key: str,
         state_routing_key: str,
         server_name: str,
     ):
@@ -218,7 +218,7 @@ class VideoFragmentsMessageQueueServer(BasicServer):
             channel=channel,
             exchange=exchange,
             control_routing_key=control_routing_key,
-            routing_key=routing_key,
+            request_routing_key=request_routing_key,
             state_routing_key=state_routing_key,
             server_name=server_name,
         )
@@ -405,7 +405,7 @@ class LiveVideoFragmentsMessageQueueClient(BasicStreamClient):
         self,
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        publish_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
@@ -417,7 +417,7 @@ class LiveVideoFragmentsMessageQueueClient(BasicStreamClient):
         super().__init__(
             channel=channel,
             exchange=exchange,
-            routing_key=routing_key,
+            publish_routing_key=publish_routing_key,
             control_routing_key=control_routing_key,
             state_routing_key=state_routing_key,
             on_response_callback=on_response_callback,
@@ -437,7 +437,7 @@ class IntegratorMessageQueueServer(BasicServer):
         integrator: "lumi.rheed.integrator.MultiBoxIntegrator",
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        request_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         server_name: str,
@@ -446,7 +446,7 @@ class IntegratorMessageQueueServer(BasicServer):
             channel=channel,
             exchange=exchange,
             control_routing_key=control_routing_key,
-            routing_key=routing_key,
+            request_routing_key=request_routing_key,
             state_routing_key=state_routing_key,
             server_name=server_name,
         )
@@ -640,7 +640,7 @@ class LiveIntegratorMessageQueueClient(BasicStreamClient):
         self,
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        publish_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
@@ -652,7 +652,7 @@ class LiveIntegratorMessageQueueClient(BasicStreamClient):
         super().__init__(
             channel=channel,
             exchange=exchange,
-            routing_key=routing_key,
+            publish_routing_key=publish_routing_key,
             control_routing_key=control_routing_key,
             state_routing_key=state_routing_key,
             on_response_callback=on_response_callback,
@@ -671,7 +671,7 @@ class STFTMessageQueueServer(BasicServer):
         stft_calculator: "lumi.rheed.livefft.STFTCalculator",
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        request_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         server_name: str,
@@ -680,7 +680,7 @@ class STFTMessageQueueServer(BasicServer):
             channel=channel,
             exchange=exchange,
             control_routing_key=control_routing_key,
-            routing_key=routing_key,
+            request_routing_key=request_routing_key,
             state_routing_key=state_routing_key,
             server_name=server_name,
         )
@@ -704,7 +704,7 @@ class STFTMessageQueueServer(BasicServer):
             contents = self.stft_calculator.get_cache(bbox_id)
             body = encode_json(contents)
             headers = {}
-            
+
             logging.info(f"{self.log_prefix} get cache for bbox_id {message_body['bbox_id']}")
             response = self.create_response_message(
                 body=body,
@@ -860,7 +860,7 @@ class LiveSTFTMessageQueueClient(BasicStreamClient):
         self,
         channel: AbstractChannel,
         exchange: AbstractExchange,
-        routing_key: str,
+        publish_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
         on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
@@ -872,7 +872,7 @@ class LiveSTFTMessageQueueClient(BasicStreamClient):
         super().__init__(
             channel=channel,
             exchange=exchange,
-            routing_key=routing_key,
+            publish_routing_key=publish_routing_key,
             control_routing_key=control_routing_key,
             state_routing_key=state_routing_key,
             on_response_callback=on_response_callback,

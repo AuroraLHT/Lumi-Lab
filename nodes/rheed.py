@@ -126,7 +126,7 @@ async def _main(args):
 
     # record_camera_queue = camera.register_queue("record")
     live_video_camera_queue = camera.register_queue(settings.rheed.video_compressor.name)
-    live_image_camera_queue = camera.register_queue(settings.rheed.mq.live_image.name)
+    live_image_camera_queue = camera.register_queue(settings.rheed.mq.live_camera.name)
     live_integration_camera_queue = camera.register_queue(settings.rheed.mq.live_integrator.name)
 
     # Perform connection
@@ -197,9 +197,9 @@ async def _main(args):
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key=settings.rheed.mq.live_video.ctrl,
-        publish_routing_key=settings.rheed.mq.live_video.publish,
-        state_routing_key=settings.rheed.mq.live_video.state,
+        control_routing_key=settings.rheed.mq.live_video.ctrl_key,
+        publish_routing_key=settings.rheed.mq.live_video.publish_key,
+        state_routing_key=settings.rheed.mq.live_video.state_key,
         server_name=settings.rheed.mq.live_video.name
     )
     # publish to callback queue, not need publish routing key
@@ -207,9 +207,9 @@ async def _main(args):
         video_compressor=live_video_compressor,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key=settings.rheed.mq.video.ctrl,
-        routing_key=settings.rheed.mq.video.request,
-        state_routing_key=settings.rheed.mq.video.state,
+        control_routing_key=settings.rheed.mq.video.ctrl_key,
+        request_routing_key=settings.rheed.mq.video.request_key,
+        state_routing_key=settings.rheed.mq.video.state_key,
         server_name=settings.rheed.mq.video.name
     )
     # publish to callback queue, not need publish routing key
@@ -217,10 +217,10 @@ async def _main(args):
         camera=camera, 
         channel=channel, 
         exchange=rheed_exchange, 
-        routing_key=settings.rheed.mq.image.request,
-        control_routing_key=settings.rheed.mq.image.ctrl,
-        state_routing_key=settings.rheed.mq.image.state,
-        server_name=settings.rheed.mq.image.name
+        request_routing_key=settings.rheed.mq.camera.request_key,
+        control_routing_key=settings.rheed.mq.camera.ctrl_key,
+        state_routing_key=settings.rheed.mq.camera.state_key,
+        server_name=settings.rheed.mq.camera.name
     )
 
     live_image_mq = LiveCameraMessageQueueServer(
@@ -228,10 +228,10 @@ async def _main(args):
         camera_queue=live_image_camera_queue,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key=settings.rheed.mq.live_image.ctrl,
-        publish_routing_key=settings.rheed.mq.live_image.publish,
-        state_routing_key=settings.rheed.mq.live_image.state,
-        server_name=settings.rheed.mq.live_image.name
+        control_routing_key=settings.rheed.mq.live_camera.ctrl_key,
+        publish_routing_key=settings.rheed.mq.live_camera.publish_key,
+        state_routing_key=settings.rheed.mq.live_camera.state_key,
+        server_name=settings.rheed.mq.live_camera.name
     )
 
     live_integrator_mq = LiveIntegratorMessageQueueServer(
@@ -239,9 +239,9 @@ async def _main(args):
         integrator_queue=integrator.output_queue,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key=settings.rheed.mq.live_integrator.ctrl,
-        publish_routing_key=settings.rheed.mq.live_integrator.publish,
-        state_routing_key=settings.rheed.mq.live_integrator.state,
+        control_routing_key=settings.rheed.mq.live_integrator.ctrl_key,
+        publish_routing_key=settings.rheed.mq.live_integrator.publish_key,
+        state_routing_key=settings.rheed.mq.live_integrator.state_key,
         server_name=settings.rheed.mq.live_integrator.name
     )
 
@@ -249,9 +249,9 @@ async def _main(args):
         integrator=integrator,
         channel=channel,
         exchange=rheed_exchange,
-        routing_key=settings.rheed.mq.integrator.request,
-        control_routing_key=settings.rheed.mq.integrator.ctrl,
-        state_routing_key=settings.rheed.mq.integrator.state,
+        request_routing_key=settings.rheed.mq.integrator.request_key,
+        control_routing_key=settings.rheed.mq.integrator.ctrl_key,
+        state_routing_key=settings.rheed.mq.integrator.state_key,
         server_name=settings.rheed.mq.integrator.name
     )
 
@@ -260,9 +260,9 @@ async def _main(args):
         stft_calculator_queue=stft_calculator.output_queue,
         channel=channel,
         exchange=rheed_exchange,
-        control_routing_key=settings.rheed.mq.live_stft.ctrl,
-        publish_routing_key=settings.rheed.mq.live_stft.publish,
-        state_routing_key=settings.rheed.mq.live_stft.state,
+        control_routing_key=settings.rheed.mq.live_stft.ctrl_key,
+        publish_routing_key=settings.rheed.mq.live_stft.publish_key,
+        state_routing_key=settings.rheed.mq.live_stft.state_key,
         server_name=settings.rheed.mq.live_stft.name
     )
 
@@ -270,9 +270,9 @@ async def _main(args):
         stft_calculator=stft_calculator,
         channel=channel,
         exchange=rheed_exchange,
-        routing_key=settings.rheed.mq.stft.request,
-        control_routing_key=settings.rheed.mq.stft.ctrl,
-        state_routing_key=settings.rheed.mq.stft.state,
+        request_routing_key=settings.rheed.mq.stft.request_key,
+        control_routing_key=settings.rheed.mq.stft.ctrl_key,
+        state_routing_key=settings.rheed.mq.stft.state_key,
         server_name=settings.rheed.mq.stft.name
     )
 

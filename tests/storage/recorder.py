@@ -187,7 +187,7 @@ recorder = Recorder(
 def to_np(t):
     return np.array( t.detach().cpu() )
 
-recorder.create_dataset()
+recorder.create_datasets()
 for i in range(100):
     result, cls_result = aux_detector.predict(rd, )
     rdinst = RheedInstanceSegmentation.from_mmdet(rd, result, aux_detector.model, auto_compute_regions=True)

@@ -74,7 +74,7 @@ async def main():
     image_client = CameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key="image",
+        request_routing_key="image",
         control_routing_key="image_ctrl",
         state_routing_key="image_state",
         on_state_callback=None,
@@ -87,7 +87,7 @@ async def main():
     video_fragment_client = VideoFragmentsMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
-        routing_key="live_video_history",
+        request_routing_key="live_video_history",
         control_routing_key="live_video_history_ctrl",
         state_routing_key="live_video_history_state",
         on_state_callback=None,
@@ -100,7 +100,7 @@ async def main():
     log_client = ChamberLogMessageQueueClient(
         channel=channel,
         exchange=exchange_chamber,
-        routing_key="log",
+        request_routing_key="log",
         control_routing_key="log_ctrl",
         state_routing_key="log_state",
         on_state_callback=None,
@@ -113,7 +113,7 @@ async def main():
     storage_client = StorageMessageQueueClient(
         channel=channel,
         exchange=exchange_storage,
-        routing_key="storage",
+        request_routing_key="storage",
         control_routing_key="storage_ctrl",
         state_routing_key="storage_state",
         on_state_callback=None,
@@ -127,7 +127,7 @@ async def main():
     live_video_client = LiveVideoFragmentsMessageQueueClient(
         channel=connection_state.channel,
         exchange=connection_state.exchange_rheed,
-        routing_key="live_video",
+        publish_routing_key="live_video",
         control_routing_key="live_video_ctrl",
         state_routing_key="live_video_state",
         on_response_callback=None,
@@ -143,7 +143,7 @@ async def main():
     live_log_client = LiveChamberLogMessageQueueClient(
         channel=connection_state.channel,
         exchange=connection_state.exchange_chamber,
-        routing_key="live_log",
+        publish_routing_key="live_log",
         control_routing_key="live_log_ctrl",
         state_routing_key="live_log_state",
         on_response_callback=None,
@@ -184,7 +184,7 @@ async def main():
     live_client = LiveVideoFragmentsMessageQueueClient(
         channel=connection_state.channel,
         exchange=connection_state.exchange_rheed,
-        routing_key="live_video",
+        publish_routing_key="live_video",
         control_routing_key="live_video_ctrl",
         state_routing_key="live_video_state",
         on_response_callback=on_live_message_callback,

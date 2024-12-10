@@ -53,55 +53,55 @@ idle_time = 0.005
 output_queue_size = 50
 
 [rheed.mq.live_video]
-ctrl = "live_video_ctrl"
-publish = "live_video"
-state = "live_video_state"
+ctrl_key = "live_video_ctrl"
+publish_key = "live_video"
+state_key = "live_video_state"
 name = "Live RHEED Video"
 state_monitor_name = "Live RHEED Cam Monitor"
 
 [rheed.mq.video]
-ctrl = "video_ctrl"
-request = "video"
-state = "video_state"
+ctrl_key = "video_ctrl"
+request_key = "video"
+state_key = "video_state"
 name = "RHEED Video"
 
-[rheed.mq.image]
-request = "image"
-ctrl = "image_ctrl"
-state = "image_state"
-name = "RHEED Image"
+[rheed.mq.camera]
+request_key = "camera"
+ctrl_key = "camera_ctrl"
+state_key = "camera_state"
+name = "RHEED camera"
 
-[rheed.mq.live_image]
-ctrl = "live_image_ctrl"
-publish = "live_image"
-state = "live_image_state"
-name = "Live RHEED Image"
-state_monitor_name = "Live RHEED Image Monitor"
+[rheed.mq.live_camera]
+ctrl_key = "live_camera_ctrl"
+publish_key = "live_camera"
+state_key = "live_camera_state"
+name = "Live RHEED camera"
+state_monitor_name = "Live RHEED camera Monitor"
 
 [rheed.mq.live_integrator]
-ctrl = "live_integrator_ctrl"
-publish = "live_integrator"
-state = "live_integrator_state"
+ctrl_key = "live_integrator_ctrl"
+publish_key = "live_integrator"
+state_key = "live_integrator_state"
 name = "Live RHEED Integrator"
 state_monitor_name = "Live RHEED Integrator Monitor"
 
 [rheed.mq.integrator]
-request = "integrator"
-ctrl = "integrator_ctrl"
-state = "integrator_state"
+request_key = "integrator"
+ctrl_key = "integrator_ctrl"
+state_key = "integrator_state"
 name = "RHEED Integrator"
 
 [rheed.mq.live_stft]
-ctrl = "live_stft_ctrl"
-publish = "live_stft"
-state = "live_stft_state"
+ctrl_key = "live_stft_ctrl"
+publish_key = "live_stft"
+state_key = "live_stft_state"
 name = "Live RHEED STFT"
 state_monitor_name = "Live RHEED STFT Monitor"
 
 [rheed.mq.stft]
-request = "stft"
-ctrl = "stft_ctrl"
-state = "stft_state"
+request_key = "stft"
+ctrl_key = "stft_ctrl"
+state_key = "stft_state"
 name = "RHEED STFT"
 
 [detection]
@@ -116,15 +116,15 @@ model_folder = "/home/hliang16/projects/LnFeO_TokyoU/nn/cascade_maskrcnn_exps"
 name = "Detector"
 
 [detection.mq.detection]
-request = "detection"
-ctrl = "detection_ctrl"
-state = "detection_state"
+request_key = "detection"
+ctrl_key = "detection_ctrl"
+state_key = "detection_state"
 name = "RHEED Detection"
 
 [detection.mq.live_detection]
-publish = "live_detection"
-ctrl = "live_detection_ctrl"
-state = "live_detection_state"
+publish_key = "live_detection"
+ctrl_key = "live_detection_ctrl"
+state_key = "live_detection_state"
 name = "Live RHEED Detection"
 state_monitor_name = "Live RHEED Detection Monitor"
 
@@ -153,26 +153,27 @@ assist_file_name = "assist.txt"
 name = "mi_mode_server"
 
 [pascal.mq.chamber_log]
-request = "chamber_log"
-ctrl = "chamber_log_ctrl"
-state = "chamber_log_state"
+request_key = "chamber_log"
+ctrl_key = "chamber_log_ctrl"
+state_key = "chamber_log_state"
 name = "Chamber Log"
 
 [pascal.mq.live_chamber_log]
-publish = "live_chamber_log"
-ctrl = "live_chamber_log_ctrl"
-state = "live_chamber_log_state"
+publish_key = "live_chamber_log"
+ctrl_key = "live_chamber_log_ctrl"
+state_key = "live_chamber_log_state"
 name = "Live Chamber Log"
 state_monitor_name = "Live Chamber Log Monitor"
 
 [pascal.mq.mi_mode]
-request = "mi_mode_request"
-response = "mi_mode_response"
-update = "mi_mode_update"
-ctrl = "mi_mode_ctrl"
-state = "mi_mode_state"
+request_key = "mi_mode_request"
+response_key = "mi_mode_response"
+update_key = "mi_mode_update"
+ctrl_key = "mi_mode_ctrl"
+state_key = "mi_mode_state"
 name = "MI Mode"
 state_monitor_name = "MI Mode Monitor"
+
 [storage]
 exchange = "STORAGE"
 exchange_type = "direct"
@@ -182,7 +183,7 @@ database_path = "database"
 initial_size = 1000
 
 [storage.mq.storage]
-request = "storage"
-ctrl = "storage_ctrl"
-state = "storage_state"
+request_key = "storage"
+ctrl_key = "storage_ctrl"
+state_key = "storage_state"
 name = "Storage"

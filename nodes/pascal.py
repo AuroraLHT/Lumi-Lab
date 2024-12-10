@@ -97,9 +97,9 @@ async def main(args):
         log_reader=log_reader,
         channel=channel,
         exchange=exchange_pascal,
-        routing_key=settings.pascal.mq.chamber_log.request,
-        control_routing_key=settings.pascal.mq.chamber_log.ctrl,
-        state_routing_key=settings.pascal.mq.chamber_log.state,
+        request_routing_key=settings.pascal.mq.chamber_log.request_key,
+        control_routing_key=settings.pascal.mq.chamber_log.ctrl_key,
+        state_routing_key=settings.pascal.mq.chamber_log.state_key,
         server_name=settings.pascal.mq.chamber_log.name,
     )
 
@@ -108,9 +108,9 @@ async def main(args):
         log_queue=log_reader.queue,
         channel=channel,
         exchange=exchange_pascal,
-        control_routing_key=settings.pascal.mq.live_chamber_log.ctrl,
-        publish_routing_key=settings.pascal.mq.live_chamber_log.publish,
-        state_routing_key=settings.pascal.mq.live_chamber_log.state,
+        control_routing_key=settings.pascal.mq.live_chamber_log.ctrl_key,
+        publish_routing_key=settings.pascal.mq.live_chamber_log.publish_key,
+        state_routing_key=settings.pascal.mq.live_chamber_log.state_key,
         server_name=settings.pascal.mq.live_chamber_log.name,
     )
 
@@ -118,11 +118,11 @@ async def main(args):
         mi_mode_server=mi_mode_server,
         channel=channel,
         exchange=exchange_pascal,
-        request_routing_key=settings.pascal.mq.mi_mode.request,
-        response_routing_key=settings.pascal.mq.mi_mode.response,
-        update_routing_key=settings.pascal.mq.mi_mode.update,
-        control_routing_key=settings.pascal.mq.mi_mode.ctrl,
-        state_routing_key=settings.pascal.mq.mi_mode.state,
+        request_routing_key=settings.pascal.mq.mi_mode.request_key,
+        response_routing_key=settings.pascal.mq.mi_mode.response_key,
+        update_routing_key=settings.pascal.mq.mi_mode.update_key,
+        control_routing_key=settings.pascal.mq.mi_mode.ctrl_key,
+        state_routing_key=settings.pascal.mq.mi_mode.state_key,
         server_name=settings.pascal.mq.mi_mode.name,
     )
 
