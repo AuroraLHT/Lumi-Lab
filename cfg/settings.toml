@@ -1,5 +1,5 @@
 [rabbitmq]
-host = "localhost"
+host = "10.229.54.16"
 
 [api]
 host = "0.0.0.0"
