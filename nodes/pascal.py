@@ -19,10 +19,13 @@ from pathlib import Path
 from lumi.config import settings
 
 FORMAT = "%(asctime)s %(levelname)s:%(message)s"
-logging.basicConfig(level=logging.INFO, format=FORMAT)
 
 
 async def main(args):
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format=FORMAT)
+    else:
+        logging.basicConfig(level=logging.INFO, format=FORMAT)
 
     # Perform connection
     connection = await connect(f"amqp://guest:guest@{args.host}/")
@@ -171,6 +174,15 @@ if __name__ == "__main__":
         default=settings.pascal.chamber_log_folder,
         help="chamber log path",
     )
+
+    parser.add_argument(
+        "-d",
+        "--debug",
+        type=bool,
+        default=False,
+        help="Enter debug mode",
+    )
+
 
     args = parser.parse_args()
 
