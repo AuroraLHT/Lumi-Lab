@@ -20,7 +20,8 @@ from ..communication import (
     LiveVideoFragmentsMessageQueueClient,
     LiveDetectionMessageQueueClient,
     LiveIntegratorMessageQueueClient,
-    LiveSTFTMessageQueueClient
+    LiveSTFTMessageQueueClient,
+    LiveCameraMessageQueueClient
 )
 from ..websockets.base import generic_websocket_handler, WebsocketMultiClientsHandler, BaseClientMessageMapper, BaseStreamClientMessageMapper
 from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper, LiveDetectionStreamClientMessageMapper, VideoFragmentsMessageMapper
@@ -31,8 +32,8 @@ from lumi.config import settings
 
 router = APIRouter()
 
-@router.get("/RHEED/cam/live/state")
-async def get_rheed_cam_state(request: Request):
+@router.get("/RHEED/video/live/state")
+async def get_rheed_video_state(request: Request):
     connection_state : ConnectionManager = request.app.state.connection_state
 
     async def state_generator():
@@ -71,7 +72,7 @@ async def get_rheed_cam_state(request: Request):
                 body : bytes = await queue.get()
                 state = update_state(body, {"is_available": True})
 
-                logging.debug(f"RHEED cam state yield {state}")
+                logging.debug(f"RHEED video state yield {state}")
                 yield f"data: {state}\n\n"
         finally:
             await live_video_client.stop()
@@ -79,6 +80,52 @@ async def get_rheed_cam_state(request: Request):
     return StreamingResponse(state_generator(), media_type="text/event-stream")
 
 
+@router.get("/RHEED/camera/live/state")
+async def get_rheed_camera_state(request: Request):
+    connection_state : ConnectionManager = request.app.state.connection_state
+
+    async def state_generator():
+        queue = asyncio.Queue()
+
+        async def on_state_callback(message: AbstractIncomingMessage):
+            # logging.info(f"RHEED cam state put {message.body.decode()}")
+            await queue.put(message.body)
+
+        live_camera_client = LiveCameraMessageQueueClient(
+            channel=connection_state.channel,
+            exchange=connection_state.exchange_rheed,
+            publish_routing_key=settings.rheed.mq.live_camera.publish_key,
+            control_routing_key=settings.rheed.mq.live_camera.ctrl_key,
+            state_routing_key=settings.rheed.mq.live_camera.state_key,
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
+            client_name=settings.rheed.mq.live_camera.state_monitor_name,
+            time_out=10,
+        )
+        await live_camera_client.start_state()
+        await live_camera_client.start_control()
+
+        try:
+            state = await asyncio.wait_for(live_camera_client.get_state(return_bytes=True), timeout=5.0)
+            state = update_state(state, {"is_available": True})
+        except asyncio.TimeoutError:
+            state = json.dumps({"is_available": False})
+
+        # print(state)
+
+        yield f"data: {state}\n\n"
+
+        try:
+            while True:
+                body : bytes = await queue.get()
+                state = update_state(body, {"is_available": True})
+
+                logging.debug(f"RHEED cam state yield {state}")
+                yield f"data: {state}\n\n"
+        finally:
+            await live_camera_client.stop()
+
+    return StreamingResponse(state_generator(), media_type="text/event-stream")
 
 
 @router.get("/RHEED/image")
@@ -129,7 +176,7 @@ async def read_root(request: Request):
 #         connection_state.video_fragment_client.get_initial,
 #     )
 
-@router.websocket("/RHEED/cam/live")
+@router.websocket("/RHEED/data/live")
 async def rheed_analysis_live(websocket: WebSocket):
     connection_state : ConnectionManager = websocket.app.state.connection_state
 
@@ -144,10 +191,24 @@ async def rheed_analysis_live(websocket: WebSocket):
         client_name=settings.rheed.mq.live_video.name,
         time_out=10,
     )
+
+    live_camera_client = LiveCameraMessageQueueClient(
+        channel=connection_state.channel,
+        exchange=connection_state.exchange_rheed,
+        publish_routing_key=settings.rheed.mq.live_camera.publish_key,
+        control_routing_key=settings.rheed.mq.live_camera.ctrl_key, 
+        state_routing_key=settings.rheed.mq.live_camera.state_key,
+        on_response_callback=None,
+        on_state_callback=None,
+        client_name=settings.rheed.mq.live_camera.name,
+        time_out=10,
+    )
+
     await live_video_client.start_control()
 
     websocket_handler = WebsocketMultiClientsHandler(websocket, "RHEED")
     websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_video_client), )
+    websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_camera_client), )
     websocket_handler.register_client( VideoFragmentsMessageMapper(connection_state.video_fragment_client), )
 
     await websocket_handler.start()
