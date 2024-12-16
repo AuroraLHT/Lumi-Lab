@@ -1369,7 +1369,7 @@ class BasicStreamServer(
                     logging.debug(f"{self.log_prefix} content prepared")
                 except Exception as e:
                     logging.error(f"{self.log_prefix} content preparation failed: {e}")
-                    await asyncio.sleep(0.01)
+                    await asyncio.sleep(0.1)
 
                 try:
                     # print(f"{self.log_prefix} try to publish content")
@@ -1383,7 +1383,9 @@ class BasicStreamServer(
                         )
                         logging.debug(f"{self.log_prefix} send content")
                     else:
-                        await asyncio.sleep(0.01)
+                        # 0.01 too fast for some computer 
+                        # TODO: need to optimize the server in some way
+                        await asyncio.sleep(0.05)
 
                 except Exception as e:
                     logging.error(f"{self.log_prefix} fail to publish content: {e}")
