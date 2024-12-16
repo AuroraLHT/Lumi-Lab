@@ -127,9 +127,9 @@ async def main(args):
     await live_log_client.start_state()
 
     root_folder = (
-        PROJECT_ROOT / settings.storage.hdf5_recorder.database_path
+        settings.storage.hdf5_recorder.database_path
         if Path(settings.storage.hdf5_recorder.database_path).is_absolute()
-        else settings.storage.hdf5_recorder.database_path
+        else PROJECT_ROOT / settings.storage.hdf5_recorder.database_path
     )
     storage_config = StorageMessageQueueServerConfig(
         root_folder=root_folder,
