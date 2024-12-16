@@ -205,7 +205,8 @@ async def rheed_analysis_live(websocket: WebSocket):
     )
 
     await live_video_client.start_control()
-
+    await live_camera_client.start_control()
+    
     websocket_handler = WebsocketMultiClientsHandler(websocket, "RHEED")
     websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_video_client), )
     websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_camera_client), )

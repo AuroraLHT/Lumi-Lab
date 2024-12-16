@@ -579,7 +579,7 @@ class IntegratorMessageQueueClient(BasicClient):
 
 class LiveIntegratorMessageQueueServer(BasicStreamServer):
     integrator: Union[
-        "lumi.rheed.pylon_camera.PylonCamera", "lumi.rheed.pylon_camera.WebCamera"
+        "lumi.rheed.livefft.STFTCalculator"
     ]
     integrator_queue: queue.Queue
 

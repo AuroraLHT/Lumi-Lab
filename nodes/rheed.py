@@ -115,7 +115,7 @@ async def _main(args):
         frame_processing = frame_processing_testcam
         height = settings.rheed.testcam.height
         width = settings.rheed.testcam.width
-        source = PROJECT_ROOT / settings.rheed.testcam.source if Path(settings.rheed.testcam.source).is_absolute() else settings.rheed.testcam.source
+        source = settings.rheed.testcam.source if Path(settings.rheed.testcam.source).is_absolute() else PROJECT_ROOT / settings.rheed.testcam.source
         test_camera_config = TestCameraConfig(
             frame_dims=(height, width),
             source= source,
