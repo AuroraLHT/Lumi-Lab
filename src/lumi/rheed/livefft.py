@@ -18,7 +18,7 @@ import json
 
 @dataclass
 class STFTCalculatorConfig:
-    idle_time: float = field(default=None, metadata={"unit": "s", "description": "Time to wait when no data is available"})
+    idle_time: float = field(default=0.005, metadata={"unit": "s", "description": "Time to wait when no data is available"})
     output_queue_size: int = field(default=50, metadata={"description": "Maximum size of the output queue"})
     window_size: float = field(default=50, metadata={"unit": "s", "description": "Size of the sliding window for FFT calculation"})
     hop_size: float = field(default=1, metadata={"unit": "s", "description": "Step size between consecutive FFT calculations"})
@@ -77,7 +77,8 @@ class STFTCalculator(threading.Thread):
         mask = signal_time > signal_time[-1] - self.config.window_size
 
         _time = signal_time[mask]
-        _time = _time - _time[0]
+        start_time = _time[0]
+        _time = _time - start_time
         _signal = signal[mask]
 
         # padding the signal using the first value to the window size
@@ -92,11 +93,14 @@ class STFTCalculator(threading.Thread):
         # print(start_window, end_window)
         resampled_time = np.arange(start_window, end_window, self.config.time_resolution)
 
+        # this clip the signal timestamp such that the padding timestamp would be the same as the actual starting timestamp
+        resampled_time = resampled_time.clip(0, None)
+
         # print(resampled_time)
         # print(len(resampled_time))
         # this is to avoid the out of range error
         resampled_signal = np.interp(resampled_time, _time, _signal, left=_signal[0], right=_signal[-1])
-        resampled_time += _time[0] # add back the start time
+        resampled_time += start_time # add back the start time
         # compute the fft
         fft = np.fft.rfft(resampled_signal)
         fft_freq = np.fft.rfftfreq(len(resampled_signal), self.config.time_resolution)
@@ -106,10 +110,13 @@ class STFTCalculator(threading.Thread):
         fft = fft[mask]
         # fft_freq = fft_freq[fft_freq>=0]
         
+        # print(resampled_time[0])
+        # print(resampled_time[-1])
         return fft_freq, fft, resampled_time, resampled_signal
 
 
     def package_fft_result(self, fft_freq, fft, resampled_time, resampled_signal):
+
         result = {
             "fft_freq": fft_freq.tolist(),
             "fft_mag": np.abs(fft).tolist(),
