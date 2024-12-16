@@ -36,7 +36,6 @@ class STFTCalculatorConfig:
 class STFTCalculator(threading.Thread):
     def __init__(self, integrator, config:STFTCalculatorConfig, name:Union[int|str]=""):
         super().__init__(name=name)
-        self.io_lock = threading.Lock()
         self.config = config
         self.output_queue = queue.Queue(maxsize=self.config.output_queue_size)
         self.integrator = integrator
@@ -46,16 +45,19 @@ class STFTCalculator(threading.Thread):
         self.live_stft_cache : Dict[Union[int, str], Deque] = {}
 
         self.current_time = time.time()
+        self._registered_integrations_lock = threading.Lock()
 
     def register_integration(self, bbox_id):
-        self.registered_integrations[bbox_id] = self.integrator.bboxes[bbox_id]
-        self.live_stft_cache[bbox_id] = deque([], maxlen=1000)
+        with self._registered_integrations_lock:
+            self.registered_integrations[bbox_id] = self.integrator.bboxes[bbox_id]
+            self.live_stft_cache[bbox_id] = deque([], maxlen=1000)
 
     def remove_integration(self, bbox_id):
-        if bbox_id in self.registered_integrations:
-            self.registered_integrations.pop(bbox_id)
-        if bbox_id in self.live_stft_cache:
-            self.live_stft_cache.pop(bbox_id)
+        with self._registered_integrations_lock:
+            if bbox_id in self.registered_integrations:
+                self.registered_integrations.pop(bbox_id)
+            if bbox_id in self.live_stft_cache:
+                self.live_stft_cache.pop(bbox_id)
 
     def is_next_integration_ready(self):
         prev_time = self.current_time
@@ -146,22 +148,40 @@ class STFTCalculator(threading.Thread):
 
                 stfts = {} # Not sure if this is the best way to do it
                 # Need to know the different between sending each individual bbox data or sending them all at once
-                for bbox_id, bbox in self.registered_integrations.items():
-                    if bbox_id not in self.integrator.bboxes:
-                        bbox_to_remove.put(bbox_id)
-                        continue
-                    integration_time, intergration, latest_header = self.integrator.get_integration_history(bbox_id)
-                    fft_freq, fft, resampled_time, resampled_signal = self.compute_fft(signal=intergration, signal_time=integration_time)
-                    
-                    self.live_stft_cache[bbox_id].append( (fft_freq, fft)  )
-                    content = self.package_fft_result( fft_freq, fft, resampled_time, resampled_signal )
-                    stfts[bbox_id] = content
+                with self._registered_integrations_lock:
+                    # print("registered stft box", self.registered_integrations)
+                    for bbox_id, bbox in self.registered_integrations.items():
+                        if bbox_id not in self.integrator.bboxes:
+                            bbox_to_remove.put(bbox_id)
+                            continue
 
-                content = self.prepare_content(stfts, {"stft_uuid": str(uuid.uuid4())})
-                yield content
+                        # t_before = time.time()
+                        integration_time, intergration, latest_header = self.integrator.get_integration_history(bbox_id)
+                        # t_after = time.time()
+                        # print("get_history_time: ", t_after - t_before)
+
+                        # t_before_computed = time.time()
+                        fft_freq, fft, resampled_time, resampled_signal = self.compute_fft(signal=intergration, signal_time=integration_time)
+                        # t_after_computed = time.time()
+                        # print(f"fft computed within the time of {t_after_computed - t_before_computed}")
                         
+                        self.live_stft_cache[bbox_id].append( (fft_freq, fft)  )
+
+                        # t_b = time.time()
+                        content = self.package_fft_result( fft_freq, fft, resampled_time, resampled_signal )
+                        # t_a = time.time()
+                        # print("package result time", t_b - t_a)
+
+                        stfts[bbox_id] = content
+
+                    if stfts:
+                        content = self.prepare_content(stfts, {"stft_uuid": str(uuid.uuid4())})
+                        # print("content", content)
+                        yield content
+                            
                 while not bbox_to_remove.empty():
                     bbox_id = bbox_to_remove.get()
+                    # the remove function use lock too, donnot put it in a lock env
                     self.remove_integration(bbox_id)
 
             stop_flag = self._stop_event.wait(self.config.idle_time)
@@ -173,8 +193,16 @@ class STFTCalculator(threading.Thread):
         logging.info(f"Thread[{self.name}] close live fft yield")
 
     def run(self):
+        # prev_yield_time = time.time()
         for content in self.yield_content():
+            # yield_time = time.time()
+            # print(f"yield content with interval: {yield_time - prev_yield_time}")
+
+            # before_put_time = time.time()
             self.output_queue.put(content)
+            # after_put_time = time.time()
+            # print(f"sample put to the queue with waittime of {after_put_time - before_put_time}")
+            # prev_yield_time = time.time()
 
     def clear(self):
         while not self.output_queue.empty():
