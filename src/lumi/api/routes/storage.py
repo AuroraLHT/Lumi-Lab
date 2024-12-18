@@ -17,7 +17,7 @@ from aio_pika.abc import AbstractIncomingMessage
 from ..models import StorageRequest
 
 from ..websockets.base import generic_websocket_handler
-from ..utils import update_state, pack_payload
+from ..utils import update_state, pack_payload, decode_json
 from ..connection import ConnectionManager
 
 from lumi.config import settings
@@ -26,9 +26,6 @@ router = APIRouter()
 
 @router.post("/storage/start")
 async def start_storage(request: StorageRequest, resquest_obj: Request):
-    # async def start_storage(request: Request):
-    # print(await request.body())
-
     connection_state : ConnectionManager = resquest_obj.app.state.connection_state
     # logging.debug(request)
 
@@ -62,38 +59,15 @@ async def start_storage(request: StorageRequest, resquest_obj: Request):
         save_log=request.save_log,
     )
 
-    # dirty patch
-    # headers field need all str
+    content = {
+        "body": response.body.decode(),
+        "headers": response.headers
+    }
 
-    if response.body is None:
-        # return Response(
-        #     content=None,
-        #     status_code=500,
-        #     media_type="application/octet-stream",
-        #     headers={"msg":"fail to start the storage process. visit server log for more details"},
-        # )
-        return JSONResponse(
-            content={
-                "msg": "fail to start the storage process. visit server log for more details"
-            },
-            status_code=500,
-            headers={},
-        )
-
-    else:
-        return JSONResponse(
-            content={"msg": response.body.decode()},
-            status_code=200,
-            headers={str(k): str(v) for k, v in response.headers.items()},
-        )
-
-        # return Response(
-        #     # content=response.body,
-        #     content="succ",
-        #     status_code=200,
-        #     media_type="application/octet-stream",
-        #     headers= {str(k):str(v) for k, v in response.headers.items()},
-        # )
+    return JSONResponse(
+        content=content,
+        status_code=200,
+    )        
 
 
 @router.post("/storage/end")
@@ -101,32 +75,7 @@ async def end_storage(request: Request):
     connection_state : ConnectionManager = request.app.state.connection_state
     response = await connection_state.storage_client.end_storage()
     # print(response.body, type(response.body))
-    if response.body is not None:
-        return JSONResponse(
-            content={"msg": response.body.decode()},
-            status_code=200,
-            headers={},
-        )
-
-        # return Response(
-        #     content=None,
-        #     status_code=500,
-        #     media_type="application/octet-stream",
-        #     headers={"msg":"fail to acquire log"},
-        # )
-
-    else:
-        return JSONResponse(
-            content={
-                "msg": "fail to end the storage process. visit server log for more details"
-            },
-            status_code=500,
-            headers={},
-        )
-
-        # return Response(
-        #     content=response.body,
-        #     status_code=200,
-        #     media_type="application/octet-stream",
-        #     headers= {str(k):str(v) for k, v in response.headers.items()},
-        # )
+    return JSONResponse(
+        content={"body": response.body.decode(), "headers": response.headers},
+        status_code=200,
+    )
