@@ -161,14 +161,15 @@ async def lifespan(app: FastAPI):
     # live_log_client = LiveChamberLogMessageQueueClient(
     #     channel=connection_state.channel,
     #     exchange=connection_state.exchange_pascal,
-    #     routing_key="live_log",
-    #     control_routing_key="live_log_ctrl",
-    #     state_routing_key="live_log_state",
+    #     publish_routing_key=settings.pascal.mq.live_chamber_log.publish_key,
+    #     control_routing_key=settings.pascal.mq.live_chamber_log.ctrl_key,
+    #     state_routing_key=settings.pascal.mq.live_chamber_log.state_key,
     #     on_response_callback=None,
     #     on_state_callback=None,
-    #     client_name="Live Log Monitor",
+    #     client_name=settings.pascal.mq.live_chamber_log.state_monitor_name,
     #     time_out=10,
     # )
+    # await live_log_client.start_state()
     # await live_log_client.start_control()
     # connection_state.live_log_client = live_log_client
 

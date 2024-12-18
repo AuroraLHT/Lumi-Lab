@@ -31,6 +31,8 @@ from .communication import (
     LiveCameraMessageQueueClient,
 )
 
+from lumi.config import settings
+
 import traceback
 
 @dataclass
@@ -52,3 +54,49 @@ class ConnectionManager:
     live_log_client: Optional[LiveChamberLogMessageQueueClient] = None
     live_detection_client: Optional[LiveDetectionMessageQueueClient] = None
     live_camera_client: Optional[LiveCameraMessageQueueClient] = None
+
+    # async def create_live_log_client(
+    #         self, 
+    #         on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[None]]] = None, 
+    #         on_response_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[None]]] = None,
+    #         start_main: bool = True,
+    #         start_control: bool = True,
+    #         start_state: bool = True,
+    #         name_suffix: str = "",
+    # ):
+    #     live_log_client = LiveChamberLogMessageQueueClient.from_config(
+    #         config=settings.pascal.mq.live_chamber_log,
+    #         channel=self.channel,
+    #         exchange=self.exchange_pascal,
+    #         time_out=10,
+    #         on_response_callback=on_response_callback,
+    #         on_state_callback=on_state_callback,
+    #         name_suffix=name_suffix,
+    #     )
+    #     if start_main:
+    #         await live_log_client.start_main()
+    #     if start_state:
+    #         await live_log_client.start_state()
+    #     if start_control:
+    #         await live_log_client.start_control()
+    #     return live_log_client
+    
+    # async def create_live_video_client(
+    #         self, 
+    #         on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[None]]] = None, 
+    #         on_response_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[None]]] = None,
+    #         start_main: bool = True,
+    #         start_control: bool = True,
+    #         start_state: bool = True,
+    # ):
+    #     live_video_client = LiveVideoFragmentsMessageQueueClient(
+    #         channel=self.channel,
+    #         exchange=self.exchange_rheed,
+    #         publish_routing_key=settings.rheed.mq.live_video_fragments.publish_key,
+    #         control_routing_key=settings.rheed.mq.live_video_fragments.ctrl_key,
+    #         state_routing_key=settings.rheed.mq.live_video_fragments.state_key,
+    #         on_response_callback=on_response_callback,
+    #         on_state_callback=on_state_callback,
+    #         client_name=settings.rheed.mq.live_video_fragments.state_monitor_name,
+    #         time_out=10,
+    #     )
