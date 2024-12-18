@@ -79,7 +79,7 @@ class Recorder:
             logging.info(f"h5py database file {h5_path} already exists, set force_rewrite to True to rewrite")
             raise FileExistsError(f"h5py database file {h5_path} already exists, set force_rewrite to True to rewrite")
 
-        open_mode = "w" 
+        open_mode = "w"
         self.h5f = h5py.File( h5_path, open_mode)
 
     def close_h5(self):
@@ -424,6 +424,7 @@ class RecorderServer(threading.Thread):
     ):
         super().__init__(name=name)
         self.config =  config
+        self._futures_lock = threading.Lock()
         self.futures = {}
         self.executor = None
         self.recorder = recorder
@@ -438,18 +439,22 @@ class RecorderServer(threading.Thread):
 
     def save_prediction(self, *args, **kargs):
         future = self.executor.submit( self.recorder.save_prediction, *args, **kargs )
-        self.futures[uuid.uuid4()] = future
+        with self._futures_lock:
+            self.futures[uuid.uuid4()] = future
 
     def save_frame(self, *args, **kargs):
         future = self.executor.submit( self.recorder.save_frame, *args, **kargs )
-        self.futures[uuid.uuid4()] = future
+        with self._futures_lock:
+            self.futures[uuid.uuid4()] = future
 
     def save_log(self, *args, **kargs):
         future = self.executor.submit( self.recorder.save_log, *args, **kargs )
-        self.futures[uuid.uuid4()] = future
+        with self._futures_lock:
+            self.futures[uuid.uuid4()] = future
 
     def clear_futures(self):
-        self.futures = { idx : future for idx, future in self.futures.items() if not future.done() }
+        with self._futures_lock:
+            self.futures = { idx : future for idx, future in self.futures.items() if not future.done() }
 
     def run(self):
         logging.info(f"Recorder server ({self.ident}) started")
