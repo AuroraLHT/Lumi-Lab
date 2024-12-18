@@ -6,6 +6,9 @@ host = "0.0.0.0"
 port = 8000
 workers = 10
 
+[suffix]
+state_monitior = "State Monitor"
+
 [rheed]
 exchange = "RHEED"
 exchange_type = "direct"
@@ -75,8 +78,8 @@ name = "RHEED camera"
 ctrl_key = "live_camera_ctrl"
 publish_key = "live_camera"
 state_key = "live_camera_state"
-name = "Live RHEED camera"
-state_monitor_name = "Live RHEED camera Monitor"
+name = "Live RHEED Camera"
+state_monitor_name = "Live RHEED Camera Monitor"
 
 [rheed.mq.live_integrator]
 ctrl_key = "live_integrator_ctrl"
