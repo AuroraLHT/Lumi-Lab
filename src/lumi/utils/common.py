@@ -18,8 +18,12 @@ def convert_np_to_py(obj):
         raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
     return obj
 
-def encode_json(data: Union[Dict, List]):
-    return json.dumps(data, default=convert_np_to_py).encode("utf-8")
+def encode_json(data: Union[Dict, List], encode=True):
+    json_data = json.dumps(data, default=convert_np_to_py)
+    if encode:
+        return json_data.encode("utf-8")
+    else:
+        return json_data
 
 def decode_json(data: Union[bytes, str]):
     # return json.loads(data.decode("utf-8"))
