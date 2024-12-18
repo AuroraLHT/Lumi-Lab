@@ -47,7 +47,7 @@ from .models import (
     StreamMessageQueueMessage,
     UpdateMessageQueueMessage,
 )
-from ..utils.common import get_current_timestamp
+from ..utils.common import decode_json, get_current_timestamp
 
 
 class BaseMessageHeaderMixin:
@@ -124,10 +124,13 @@ class BaseRequestMessageMixin(BaseMessageHeaderMixin):
                 message_type=UpdateMessageQueueMessage.message_type,
             ),
         }
-        return UpdateMessageQueueMessage(body, {
-            **headers,
-            **update_headers,
-        })
+        return UpdateMessageQueueMessage(
+            body,
+            {
+                **headers,
+                **update_headers,
+            },
+        )
 
     def create_request_message(
         self, body: bytes | str | dict, headers: dict, request_type: str
@@ -239,12 +242,14 @@ class BaseControlMixin:
         async with message.process():
 
             if "control_request_type" not in message.headers:
-                logging.error(f"{self.log_prefix} received a bad control message without control_request_type in its headers:{message.headers}")
+                logging.error(
+                    f"{self.log_prefix} received a bad control message without control_request_type in its headers:{message.headers}"
+                )
                 return
-            
+
             else:
                 body = message.body
-                headers : BaseControlRequestMessageHeader = message.headers
+                headers: BaseControlRequestMessageHeader = message.headers
 
             ctrl = headers["control_request_type"]
             logging.info(f"{self.log_prefix} on control message '{ctrl}'.")
@@ -292,7 +297,6 @@ TODO:
     The base client and server should only have state and control queue
 """
 
-
 class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
     channel: Optional[AbstractChannel]
     exchange: Optional[AbstractExchange]
@@ -325,9 +329,6 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         on_state_callback: Optional[
             Callable[[AbstractIncomingMessage], Awaitable[bool]]
         ],
-        # on_response_callback: Optional[
-        #     Callable[[AbstractIncomingMessage], Awaitable[bool]]
-        # ],
         on_update_callback: Optional[
             Callable[[AbstractIncomingMessage], Awaitable[bool]]
         ],
@@ -344,9 +345,46 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         self.client_name = client_name
         self.time_out = time_out
         self.on_state_callback = on_state_callback
-        # self.on_response_callback = on_response_callback
         self.on_update_callback = on_update_callback
-        self.reset_queues()
+        self._reset_queues()
+
+    @classmethod
+    def from_config(
+        cls,
+        config: dict,
+        channel: Optional[AbstractChannel],
+        exchange: Optional[AbstractExchange],
+        time_out: float,
+        on_state_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ],
+        on_update_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ],
+        name_suffix: str = "",
+    ):
+        """
+        Create a PubSubClient from a config dictionary, the config dictionary should contain the following fields:
+        - request_key: the routing key to request from
+        - response_key: the routing key to response to
+        - ctrl_key: the routing key to control the client
+        - update_key: the routing key to update the client
+        - state_key: the routing key to state the client
+        - name: the name of the client
+        """
+        return cls(
+            channel=channel,
+            exchange=exchange,
+            request_routing_key=config["request_key"],
+            response_routing_key=config["response_key"],
+            control_routing_key=config["ctrl_key"],
+            update_routing_key=config["update_key"],
+            state_routing_key=config["state_key"],
+            client_name=config["name"] + name_suffix,
+            time_out=time_out,
+            on_state_callback=on_state_callback,
+            on_update_callback=on_update_callback,
+        )
 
     def update_on_update_callback(
         self, on_update_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]]
@@ -363,24 +401,37 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         """
         self.on_update_callback = on_update_callback
 
-
-    def reset_queues(self):
+    def _reset_response_queues(self):
         self.response_queue = None
         self._response_queue_consume_tag = None
+        self.response_futures = {}
 
+    def _reset_control_queues(self):
         self.control_callback_queue = None
         self._control_callback_queue_consume_tag = None
+        self.control_futures = {}
 
+    def _reset_update_queues(self):
+        self.update_queue = None
+        self._update_queue_consume_tag = None
+
+    def _reset_state_queues(self):
         self.state_queue = None
         self._state_consume_tag = None
 
+    def _reset_queues(self):
+        self._reset_response_queues()
+        self._reset_control_queues()
+        self._reset_state_queues()
+        self._reset_update_queues()
 
-    async def create_state_queue(self):
+
+    async def _create_state_queue(self):
         self.state_queue = await self.channel.declare_queue(exclusive=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
         logging.info(f"{self.log_prefix} creates state queue: {self.state_queue.name}")
 
-    async def create_response_queues(self):
+    async def _create_response_queues(self):
         self.response_futures = {}
         self.response_queue = await self.channel.declare_queue(exclusive=True)
         await self.response_queue.bind(self.exchange, self.response_routing_key)
@@ -388,34 +439,34 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             f"{self.log_prefix} creates response queue: {self.response_queue.name}"
         )
 
-    async def create_update_queue(self):
+    async def _create_update_queue(self):
         self.update_queue = await self.channel.declare_queue(exclusive=True)
         await self.update_queue.bind(self.exchange, self.update_routing_key)
         logging.info(
             f"{self.log_prefix} creates update queue: {self.update_queue.name}"
-        )        
+        )
 
-    async def create_control_callback_queue(self):
+    async def _create_control_callback_queue(self):
         self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
         self.control_futures = {}
         logging.info(
             f"{self.log_prefix} creates control callback queue: {self.control_callback_queue.name}"
         )
 
-    async def create_queues(self):
-        await self.create_control_callback_queue()
-        await self.create_response_queues()
-        await self.create_state_queue()
-        await self.create_update_queue()
-        
+    async def _create_queues(self):
+        await self._create_control_callback_queue()
+        await self._create_response_queues()
+        await self._create_state_queue()
+        await self._create_update_queue()
+
     async def start_state(self):
-        await self.create_state_queue()
+        await self._create_state_queue()
         self._state_consume_tag = await self.state_queue.consume(
             self.on_state_response, no_ack=True
         )
 
     async def start_control(self):
-        await self.create_control_callback_queue()
+        await self._create_control_callback_queue()
         self._control_callback_queue_consume_tag = (
             await self.control_callback_queue.consume(
                 self.on_control_response, no_ack=True
@@ -423,46 +474,67 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         )
 
     async def start_response(self):
-        await self.create_response_queues()
+        await self._create_response_queues()
         # the consume here is not blocking
         self._response_queue_consume_tag = await self.response_queue.consume(
             self.on_response, no_ack=True
         )
 
     async def start_update(self):
-        await self.create_update_queue()
+        await self._create_update_queue()
         self._update_queue_consume_tag = await self.update_queue.consume(
             self.on_update, no_ack=True
         )
 
-    async def start(self):
-        await self.start_response()
-        await self.start_control()
-        await self.start_state()
-        await self.start_update()
+    async def start(self, start_response: bool = True, start_control: bool = True, start_state: bool = True, start_update: bool = True):
+        if start_response:
+            await self.start_response()
+        if start_control:
+            await self.start_control()
+        if start_state:
+            await self.start_state()
+        if start_update:
+            await self.start_update()
 
         logging.info(f"{self.log_prefix} starts up")
 
         return self
 
-    async def stop(self):
-        if (
-            self.response_queue is not None
-            and self._response_queue_consume_tag is not None
-        ):
-            await self.response_queue.cancel(self._response_queue_consume_tag)
-            await self.response_queue.delete()
-
-        if (
-            self.control_callback_queue is not None
-            and self._control_callback_queue_consume_tag is not None
-        ):
-            await self.control_callback_queue.cancel(
-                self._control_callback_queue_consume_tag
-            )
-            await self.control_callback_queue.delete()
-
-        self.reset_queues()
+    async def stop(self, stop_response: bool = True, stop_control: bool = True, stop_state: bool = True, stop_update: bool = True):
+        if stop_response:
+            if (
+                self.response_queue is not None
+                and self._response_queue_consume_tag is not None
+            ):
+                await self.response_queue.cancel(self._response_queue_consume_tag)
+                await self.response_queue.delete()
+                self._reset_response_queues()
+        if stop_control:
+            if (
+                self.control_callback_queue is not None
+                and self._control_callback_queue_consume_tag is not None
+            ):
+                await self.control_callback_queue.cancel(
+                    self._control_callback_queue_consume_tag
+                )
+                await self.control_callback_queue.delete()
+                self._reset_control_queues()
+        if stop_update:
+            if (
+                self.update_queue is not None
+                and self._update_queue_consume_tag is not None
+            ):
+                await self.update_queue.cancel(self._update_queue_consume_tag)
+                await self.update_queue.delete()
+                self._reset_update_queues()
+        if stop_state:
+            if (
+                self.state_queue is not None
+                and self._state_consume_tag is not None
+            ):
+                await self.state_queue.cancel(self._state_consume_tag)
+                await self.state_queue.delete()
+                self._reset_state_queues()
 
     async def on_update(self, message: AbstractIncomingMessage) -> None:
         logging.info(f"{self.log_prefix} on update response")
@@ -511,7 +583,9 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         else:
             pass
 
-    async def request(self, message: RequestMessageQueueMessage) -> ResponseMessageQueueMessage:
+    async def request(
+        self, message: RequestMessageQueueMessage
+    ) -> ResponseMessageQueueMessage:
 
         # logging.info(f"{self.log_prefix} requests an item ({correlation_id})")
         logging.info(f"{self.log_prefix} requests an item")
@@ -535,7 +609,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to publish content: {e}")
             raise e
-        
+
         return await future
 
     async def request_control(
@@ -546,7 +620,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         future = loop.create_future()
 
         logging.info(
-            f"{self.client_type} {self.client_name} requests an control item ({correlation_id})"
+            f"{self.log_prefix} requests an control item ({correlation_id})"
         )
 
         self.control_futures[correlation_id] = future
@@ -573,8 +647,12 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             return self.create_control_response_message(
                 b"",
                 headers={},
-                control_request_type=control_request_message.headers["control_request_type"],
-                control_response_type=control_request_message.headers["control_response_type"],
+                control_request_type=control_request_message.headers[
+                    "control_request_type"
+                ],
+                control_response_type=control_request_message.headers[
+                    "control_request_type"
+                ],
                 succ=False,
                 error_type="timeout",
                 error_message="request control times out",
@@ -606,7 +684,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         if return_bytes:
             return response.body
         else:
-            return json.loads(response.body)
+            return decode_json(response.body)
 
     @property
     def log_prefix(self):
@@ -647,24 +725,44 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         self.client_name = client_name
         self.time_out = time_out
         self.on_state_callback = on_state_callback
-        self.reset_queues()
+        self._reset_queues()
 
-    def reset_queues(self):
+    @classmethod
+    def from_config(cls, config: dict, channel: Optional[AbstractChannel], exchange: Optional[AbstractExchange], time_out: float, on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]], name_suffix: str = ""):
+        return cls(
+            channel=channel,
+            exchange=exchange,
+            request_routing_key=config["request_key"],
+            control_routing_key=config["ctrl_key"],
+            state_routing_key=config["state_key"],
+            client_name=config["name"] + name_suffix,
+            time_out=time_out,
+            on_state_callback=on_state_callback,
+        )
+
+    def _reset_response_queues(self):
         self.callback_queue = None
         self._callback_queue_consume_tag = None
 
+    def _reset_control_queues(self):
         self.control_callback_queue = None
         self._control_callback_queue_consume_tag = None
 
+    def _reset_state_queues(self):
         self.state_queue = None
         self._state_consume_tag = None
 
-    async def create_state_queue(self):
+    def _reset_queues(self):
+        self._reset_response_queues()
+        self._reset_control_queues()
+        self._reset_state_queues()
+
+    async def _create_state_queue(self):
         logging.info(f"{self.log_prefix} creates state queue")
         self.state_queue = await self.channel.declare_queue(exclusive=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
 
-    async def create_queues(self):
+    async def _create_response_queue(self):
         self.callback_queue = await self.channel.declare_queue(exclusive=True)
 
         self.futures = {}
@@ -672,6 +770,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             f"{self.log_prefix} creates callback queue: {self.callback_queue.name}"
         )
 
+    async def _create_control_callback_queue(self):
         self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
 
         self.control_futures = {}
@@ -679,47 +778,70 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             f"{self.log_prefix} creates control callback queue: {self.control_callback_queue.name}"
         )
 
-        await self.create_state_queue()
+    async def create_queues(self):
+        await self._create_control_callback_queue()
+        await self._create_response_queue()
+        await self._create_state_queue()
 
-    async def start(self):
-        await self.create_queues()
-        # the consume here is not blocking
+    async def start_response(self):
+        await self._create_response_queue()
         self._callback_queue_consume_tag = await self.callback_queue.consume(
             self.on_response, no_ack=True
         )
 
+    async def start_control(self):
+        await self._create_control_callback_queue()
         self._control_callback_queue_consume_tag = (
             await self.control_callback_queue.consume(
                 self.on_control_response, no_ack=True
             )
         )
 
+    async def start_state(self):
+        await self._create_state_queue()
         self._state_consume_tag = await self.state_queue.consume(
             self.on_state_response, no_ack=True
         )
+
+    async def start(self, start_response: bool = True, start_control: bool = True, start_state: bool = True):
+
+        if start_response:
+            await self.start_response()
+        if start_control:
+            await self.start_control()
+        if start_state:
+            await self.start_state()
 
         logging.info(f"{self.log_prefix} starts up")
 
         return self
 
-    async def stop(self):
-        if (
-            self.callback_queue is not None
-            and self._callback_queue_consume_tag is not None
-        ):
-            await self.callback_queue.cancel(self._callback_queue_consume_tag)
-            await self.callback_queue.delete()
+    async def stop(self, stop_response: bool = True, stop_control: bool = True, stop_state: bool = True):
+        if stop_response:
+            if (
+                self.callback_queue is not None
+                and self._callback_queue_consume_tag is not None
+            ):
+                await self.callback_queue.cancel(self._callback_queue_consume_tag)
+                await self.callback_queue.delete()
+                self._reset_response_queues()
 
-        if (
-            self.control_callback_queue is not None
-            and self._control_callback_queue_consume_tag is not None
-        ):
-            await self.control_callback_queue.cancel(
-                self._control_callback_queue_consume_tag
-            )
-            await self.control_callback_queue.delete()
+        if stop_control:
+            if (
+                self.control_callback_queue is not None
+                and self._control_callback_queue_consume_tag is not None
+            ):
+                await self.control_callback_queue.cancel(
+                    self._control_callback_queue_consume_tag
+                )
+                await self.control_callback_queue.delete()
+                self._reset_control_queues()
 
-        self.reset_queues()
+        if stop_state:
+            if self.state_queue is not None and self._state_consume_tag is not None:
+                await self.state_queue.cancel(self._state_consume_tag)
+                await self.state_queue.delete()
+                self._reset_state_queues()
 
     async def on_response(self, message: AbstractIncomingMessage) -> None:
         if message.correlation_id is None:
@@ -818,7 +940,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         future = loop.create_future()
 
         logging.info(
-            f"{self.client_type} {self.client_name} requests an control item ({correlation_id})"
+            f"{self.log_prefix} requests an control item ({correlation_id})"
         )
 
         self.control_futures[correlation_id] = future
@@ -868,7 +990,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         if return_bytes:
             return response.body
         else:
-            return json.loads(response.body)
+            return decode_json(response.body)
 
     @property
     def log_prefix(self):
@@ -939,6 +1061,22 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
         self.reset_queues()
 
+    @classmethod
+    def from_config(cls, config: dict, channel: Optional[AbstractChannel], exchange: Optional[AbstractExchange], time_out: float, 
+                    on_response_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]],
+                    on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]], name_suffix: str = ""):
+        return cls(
+            channel=channel,
+            exchange=exchange,
+            publish_routing_key=config["publish_key"],
+            control_routing_key=config["ctrl_key"],
+            state_routing_key=config["state_key"],
+            on_response_callback=on_response_callback,
+            on_state_callback=on_state_callback,
+            client_name=config["name"] + name_suffix,
+            time_out=time_out,
+        )
+
     @property
     def empty_response(self):
         return BaseMessageQueueMessage(None, None)
@@ -984,22 +1122,22 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
         else:
             return True
 
-    def reset_main_queue(self):
+    def _reset_main_queue(self):
         self._consumer_tag = None
         self.queue = None
 
-    def reset_control_queue(self):
+    def _reset_control_queue(self):
         self.control_callback_queue = None
         self._control_callback_consumer_tag = None
 
-    def reset_state_queue(self):
+    def _reset_state_queue(self):
         self._state_consumer_tag = None
         self.state_queue = None
 
     def reset_queues(self):
-        self.reset_control_queue()
-        self.reset_main_queue()
-        self.reset_state_queue()
+        self._reset_control_queue()
+        self._reset_main_queue()
+        self._reset_state_queue()
 
     async def create_main_queue(self):
         # this queue is for listening to stream
@@ -1058,10 +1196,13 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
             except Exception as e:
                 print(e)
 
-    async def start(self, start_consume_loop=True):
-        await self.start_main(start_consume_loop=start_consume_loop)
-        await self.start_control(start_consume_loop=start_consume_loop)
-        await self.start_state(start_consume_loop=start_consume_loop)
+    async def start(self, start_main: bool = True, start_control: bool = True, start_state: bool = True, start_consume_loop: bool = True):
+        if start_main:
+            await self.start_main(start_consume_loop=start_consume_loop)
+        if start_control:
+            await self.start_control(start_consume_loop=start_consume_loop)
+        if start_state:
+            await self.start_state(start_consume_loop=start_consume_loop)
 
         logging.info(f"{self.log_prefix} starts live streaming")
 
@@ -1071,7 +1212,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 self._consumer_tag,
             )
             await self.queue.delete()
-            self.reset_main_queue()
+            self._reset_main_queue()
 
     async def stop_control(self):
         if self.is_control_running():
@@ -1079,7 +1220,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 self._control_callback_consumer_tag,
             )
             await self.control_callback_queue.delete()
-            self.reset_control_queue()
+            self._reset_control_queue()
 
     async def stop_state(self):
         if self.is_state_running():
@@ -1087,13 +1228,16 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 self._state_consumer_tag,
             )
             await self.state_queue.delete()
-            self.reset_state_queue()
+            self._reset_state_queue()
 
-    async def stop(self):
+    async def stop(self, stop_main: bool = True, stop_control: bool = True, stop_state: bool = True):
         logging.info(f"{self.log_prefix} terminate consume")
-        await self.stop_main()
-        await self.stop_control()
-        await self.stop_state()
+        if stop_main:
+            await self.stop_main()
+        if stop_control:
+            await self.stop_control()
+        if stop_state:
+            await self.stop_state()
 
     async def on_response(self, message: AbstractIncomingMessage) -> None:
         logging.debug(f"{self.log_prefix} on live response")
@@ -1180,13 +1324,13 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
         message = self.create_control_request_message(
             "", headers={}, control_request_type="start"
         )
-        response = await self.request_control(message)
+        return await self.request_control(message)
 
     async def stop_server_streaming(self):
         message = self.create_control_request_message(
             "", headers={}, control_request_type="stop"
         )
-        response = await self.request_control(message)
+        return await self.request_control(message)
 
     async def shutdown_server(self):
         message = self.create_control_request_message(
@@ -1198,7 +1342,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
         message = self.create_control_request_message(
             "", headers={}, control_request_type="config"
         )
-        response = await self.request_control(message)
+        return await self.request_control(message)
 
     async def get_state(self, return_bytes=False):
         message = self.create_control_request_message(
@@ -1208,7 +1352,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
         if return_bytes:
             return response.body
         else:
-            return json.loads(response.body)
+            return decode_json(response.body)
 
     @property
     def log_prefix(self):
@@ -1383,7 +1527,7 @@ class BasicStreamServer(
                         )
                         logging.debug(f"{self.log_prefix} send content")
                     else:
-                        # 0.01 too fast for some computer 
+                        # 0.01 too fast for some computer
                         # TODO: need to optimize the server in some way
                         await asyncio.sleep(0.05)
 
@@ -1482,7 +1626,7 @@ class BasicStreamServer(
     async def cancel(self):
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
-        
+
         # this is to stop the streaming task
         self.set_stream_flag(False)
 
@@ -1749,7 +1893,7 @@ class PubSubServer(
         super().__init__()
         self.channel = channel
         self.exchange = exchange
-        self.callback_exchange = exchange
+        self.callback_exchange = channel.default_exchange
         self.request_routing_key = request_routing_key
         self.response_routing_key = response_routing_key
         self.control_routing_key = control_routing_key
@@ -1814,7 +1958,6 @@ class PubSubServer(
         except Exception as e:
             logging.error(f"{self.log_prefix} experience an error: {e}")
 
-
     async def create_queues(self):
         await self.create_main_queue()
         await self.create_control_queue()
@@ -1849,7 +1992,7 @@ class PubSubServer(
             Exception: If publishing fails
         """
         try:
-            await self.callback_exchange.publish(
+            await self.exchange.publish(
                 Message(
                     body=response_message.body,
                     headers=response_message.headers,
@@ -1857,7 +2000,9 @@ class PubSubServer(
                 ),
                 routing_key=self.response_routing_key,
             )
-            logging.debug(f"{self.log_prefix} content delivered to {self.response_routing_key}")
+            logging.debug(
+                f"{self.log_prefix} content delivered to {self.response_routing_key}"
+            )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to deliver content: {e}")
             raise e
@@ -1920,14 +2065,16 @@ class PubSubServer(
             Exception: If publishing fails
         """
         try:
-            await self.callback_exchange.publish(
+            await self.exchange.publish(
                 Message(
                     body=update_message.body,
                     headers=update_message.headers,
                 ),
                 routing_key=self.update_routing_key,
             )
-            logging.debug(f"{self.log_prefix} content delivered to {self.update_routing_key}")
+            logging.debug(
+                f"{self.log_prefix} content delivered to {self.update_routing_key}"
+            )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to deliver content: {e}")
             raise e
