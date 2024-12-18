@@ -17,7 +17,7 @@ from aio_pika import Message, connect, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage, AbstractConnection, AbstractChannel, AbstractExchange
 
 from .lifespan import lifespan
-from .routes import rheed, chamber, storage
+from .routes import rheed, chamber, storage, nodes
 
 """
 TODO: refactor into this structure
@@ -35,23 +35,21 @@ import sys
 sys.setrecursionlimit(10000) 
 
 # Allow all origins, or specify a list of allowed origins
-origins = [
-    "*" # this should allow all origins
-    
-    # "http://127.0.0.1:8000",
-    # "http://localhost:8000",
-    # "http://[::1]:8000",  # IPv6 localhost
+origins = [    
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+    "http://[::1]:8000",  # IPv6 localhost
 
-    # "http://127.0.0.1:5173",
-    # "http://localhost:5173",
-    # "http://[::1]:5173",  # IPv6 localhost
-    # "http://0.0.0.0:5173",  # Any IPv4 address
-    # # Add other origins if needed
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+    "http://[::1]:5173",  # IPv6 localhost
+    "http://0.0.0.0:5173",  # Any IPv4 address
+    # Add other origins if needed
 
-    # "http://127.0.0.1:5174",
-    # "http://localhost:5174",
-    # "http://[::1]:5174",  # IPv6 localhost
-    # "http://0.0.0.0:5174",  # Any IPv4 address
+    "http://127.0.0.1:5174",
+    "http://localhost:5174",
+    "http://[::1]:5174",  # IPv6 localhost
+    "http://0.0.0.0:5174",  # Any IPv4 address
 ]
 
 FORMAT = "%(asctime)s %(levelname)s:%(message)s"
@@ -61,10 +59,15 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # You can also set to ["*"] to allow all origins
+    # this is the default
+    # allow_origins=origins,
     # allow_credentials=True,
-    allow_credentials = False, # TODO: change to True after testing
+
+    allow_origins=["*"],
+    allow_credentials=True,
+
     allow_methods=["*"],  # Or specify allowed methods like ["GET", "POST"]
+    # allow_methods=["GET", "POST"],
     allow_headers=["*"],  # Or specify allowed headers
 )
 
@@ -72,6 +75,7 @@ app.add_middleware(
 app.include_router(rheed.router)
 app.include_router(chamber.router)
 app.include_router(storage.router)
+app.include_router(nodes.router)
 
 
 @app.get("/")
@@ -81,3 +85,12 @@ async def read_root():
 
     return HTMLResponse(content=html_content, status_code=200)
 
+@app.post("/test_post")
+async def test_post(request: Request):
+    print(request)
+    return JSONResponse(content={"message": "Hello, World!"}, status_code=200)
+
+@app.get("/test_get")
+async def test_get(request: Request):
+    print(request)
+    return JSONResponse(content={"message": "Hello, World!"}, status_code=200)
