@@ -444,7 +444,7 @@ class StorageMessageQueueServer(BasicServer):
                 headers={},
                 request_type=headers["request_type"],
                 response_type=headers["request_type"],
-                succ=False,
+                succ=status["succ"],
                 error_type=status["error_type"],
                 error_message=status["error_message"],
             )
