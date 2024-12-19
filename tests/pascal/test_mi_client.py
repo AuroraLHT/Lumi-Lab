@@ -1,4 +1,4 @@
-from lumi.pascal.communication import MIModeMessageQueueClient
+from lumi.client.pascal import MIModeClient
 
 import aio_pika
 from aio_pika import ExchangeType, connect, Message
@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 from lumi.config import settings
 import lumi.pascal.command as pcmd
-
+import numpy as np
 import logging
 
 
@@ -27,17 +27,18 @@ async def test_mi_client():
         ExchangeType(settings.pascal.exchange_type),
     )
 
-    client = MIModeMessageQueueClient.from_config(
+    client = MIModeClient.from_config(
         config=settings.pascal.mq.mi_mode,
         channel=channel,
         exchange=exchange_pascal,
         time_out=10.0,
-        on_state_callback=lambda x: print(x),
-        on_update_callback=None,
-        name_suffix="State Monitor",
+        name_suffix="",
     )
-    await client.start_control()
-    await client.start_state()
+    logging.info(type(client))
+
+    # await client.start_control()
+    # await client.start_state()
+    await client.start()
 
     logging.info("Getting state")
     state = await client.get_state()
@@ -47,12 +48,25 @@ async def test_mi_client():
 
     scope = pcmd.PascalScope()
     with scope:
-        scope.add_child( pcmd.Beep() )
+        with pcmd.ForLoop(int(np.random.randint(1, 5))) as loop:
+            loop.add_child( pcmd.Beep() )
+            loop.add_child( pcmd.Wait(int(np.random.randint(1, 5))) )
+        scope.add_child(loop)
 
-    logging.info(f"Scope: {scope}")
+    logging.info(f"Scope: \n{scope}")
     exec_future= client.execute_command(scope)
     exec_result = await exec_future
     logging.info(f"Execution result: {exec_result}")
+
+    scope = pcmd.PascalScope()
+    with scope:
+        scope.add_child( pcmd.Beep() )
+
+    logging.info(f"Scope: \n{scope}")
+    exec_result= await client.execute_command(scope)
+    logging.info(f"Execution result: {exec_result}")
+
+
     logging.info("Stopping client")
     await client.stop()
 
