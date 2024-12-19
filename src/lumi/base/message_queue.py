@@ -297,6 +297,7 @@ TODO:
     The base client and server should only have state and control queue
 """
 
+
 class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
     channel: Optional[AbstractChannel]
     exchange: Optional[AbstractExchange]
@@ -425,7 +426,6 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         self._reset_state_queues()
         self._reset_update_queues()
 
-
     async def _create_state_queue(self):
         self.state_queue = await self.channel.declare_queue(exclusive=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
@@ -486,7 +486,13 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             self.on_update, no_ack=True
         )
 
-    async def start(self, start_response: bool = True, start_control: bool = True, start_state: bool = True, start_update: bool = True):
+    async def start(
+        self,
+        start_response: bool = True,
+        start_control: bool = True,
+        start_state: bool = True,
+        start_update: bool = True,
+    ):
         if start_response:
             await self.start_response()
         if start_control:
@@ -500,7 +506,13 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
 
         return self
 
-    async def stop(self, stop_response: bool = True, stop_control: bool = True, stop_state: bool = True, stop_update: bool = True):
+    async def stop(
+        self,
+        stop_response: bool = True,
+        stop_control: bool = True,
+        stop_state: bool = True,
+        stop_update: bool = True,
+    ):
         if stop_response:
             if (
                 self.response_queue is not None
@@ -528,10 +540,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 await self.update_queue.delete()
                 self._reset_update_queues()
         if stop_state:
-            if (
-                self.state_queue is not None
-                and self._state_consume_tag is not None
-            ):
+            if self.state_queue is not None and self._state_consume_tag is not None:
                 await self.state_queue.cancel(self._state_consume_tag)
                 await self.state_queue.delete()
                 self._reset_state_queues()
@@ -619,9 +628,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         loop = asyncio.get_running_loop()
         future = loop.create_future()
 
-        logging.info(
-            f"{self.log_prefix} requests an control item ({correlation_id})"
-        )
+        logging.info(f"{self.log_prefix} requests an control item ({correlation_id})")
 
         self.control_futures[correlation_id] = future
 
@@ -728,7 +735,17 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         self._reset_queues()
 
     @classmethod
-    def from_config(cls, config: dict, channel: Optional[AbstractChannel], exchange: Optional[AbstractExchange], time_out: float, on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]], name_suffix: str = ""):
+    def from_config(
+        cls,
+        config: dict,
+        channel: Optional[AbstractChannel],
+        exchange: Optional[AbstractExchange],
+        time_out: float,
+        on_state_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ] = None,
+        name_suffix: str = "",
+    ):
         return cls(
             channel=channel,
             exchange=exchange,
@@ -803,7 +820,12 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             self.on_state_response, no_ack=True
         )
 
-    async def start(self, start_response: bool = True, start_control: bool = True, start_state: bool = True):
+    async def start(
+        self,
+        start_response: bool = True,
+        start_control: bool = True,
+        start_state: bool = True,
+    ):
 
         if start_response:
             await self.start_response()
@@ -816,7 +838,12 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
 
         return self
 
-    async def stop(self, stop_response: bool = True, stop_control: bool = True, stop_state: bool = True):
+    async def stop(
+        self,
+        stop_response: bool = True,
+        stop_control: bool = True,
+        stop_state: bool = True,
+    ):
         if stop_response:
             if (
                 self.callback_queue is not None
@@ -939,9 +966,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         loop = asyncio.get_running_loop()
         future = loop.create_future()
 
-        logging.info(
-            f"{self.log_prefix} requests an control item ({correlation_id})"
-        )
+        logging.info(f"{self.log_prefix} requests an control item ({correlation_id})")
 
         self.control_futures[correlation_id] = future
 
@@ -1062,9 +1087,20 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
         self.reset_queues()
 
     @classmethod
-    def from_config(cls, config: dict, channel: Optional[AbstractChannel], exchange: Optional[AbstractExchange], time_out: float, 
-                    on_response_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]],
-                    on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]], name_suffix: str = ""):
+    def from_config(
+        cls,
+        config: dict,
+        channel: Optional[AbstractChannel],
+        exchange: Optional[AbstractExchange],
+        time_out: float,
+        on_response_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ] = None,
+        on_state_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ] = None,
+        name_suffix: str = "",
+    ):
         return cls(
             channel=channel,
             exchange=exchange,
@@ -1196,7 +1232,13 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
             except Exception as e:
                 print(e)
 
-    async def start(self, start_main: bool = True, start_control: bool = True, start_state: bool = True, start_consume_loop: bool = True):
+    async def start(
+        self,
+        start_main: bool = True,
+        start_control: bool = True,
+        start_state: bool = True,
+        start_consume_loop: bool = True,
+    ):
         if start_main:
             await self.start_main(start_consume_loop=start_consume_loop)
         if start_control:
@@ -1230,7 +1272,9 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
             await self.state_queue.delete()
             self._reset_state_queue()
 
-    async def stop(self, stop_main: bool = True, stop_control: bool = True, stop_state: bool = True):
+    async def stop(
+        self, stop_main: bool = True, stop_control: bool = True, stop_state: bool = True
+    ):
         logging.info(f"{self.log_prefix} terminate consume")
         if stop_main:
             await self.stop_main()
