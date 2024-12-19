@@ -104,9 +104,9 @@ async def main(args):
         publish_routing_key=settings.detection.mq.live_detection.publish_key,
         control_routing_key=settings.detection.mq.live_detection.ctrl_key,
         state_routing_key=settings.detection.mq.live_detection.state_key,
-        on_response_callback=None,
         client_name=settings.detection.mq.live_detection.name,
         time_out=10,
+        on_response_callback=None,
         on_state_callback=None,
     )
     await live_detection_client.start_control()
@@ -118,9 +118,9 @@ async def main(args):
         publish_routing_key=settings.pascal.mq.live_chamber_log.publish_key,
         control_routing_key=settings.pascal.mq.live_chamber_log.ctrl_key,
         state_routing_key=settings.pascal.mq.live_chamber_log.state_key,
-        on_response_callback=None,
         client_name=settings.pascal.mq.live_chamber_log.name,
         time_out=10,
+        on_response_callback=None,
         on_state_callback=None,
     )
     await live_log_client.start_control()

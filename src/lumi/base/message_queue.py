@@ -328,10 +328,10 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         time_out: float,
         on_state_callback: Optional[
             Callable[[AbstractIncomingMessage], Awaitable[bool]]
-        ],
+        ] = None,
         on_update_callback: Optional[
             Callable[[AbstractIncomingMessage], Awaitable[bool]]
-        ],
+        ] = None,
     ) -> None:
         self.channel = channel
         self.exchange = exchange
@@ -357,10 +357,10 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         time_out: float,
         on_state_callback: Optional[
             Callable[[AbstractIncomingMessage], Awaitable[bool]]
-        ],
+        ] = None,
         on_update_callback: Optional[
             Callable[[AbstractIncomingMessage], Awaitable[bool]]
-        ],
+        ] = None,
         name_suffix: str = "",
     ):
         """
@@ -715,7 +715,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         time_out: float,
         on_state_callback: Optional[
             Callable[[AbstractIncomingMessage], Awaitable[bool]]
-        ],
+        ] = None,
     ) -> None:
         self.channel = channel
         self.exchange = exchange
@@ -1003,13 +1003,13 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
     publish_routing_key: str
     control_routing_key: str
     state_routing_key: str
-    queue: Optional[AbstractQueue]
-    control_callback_queue: Optional[AbstractQueue]
-    on_response_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
-    on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
     client_name: str
     time_out: float
+    on_response_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
+    on_state_callback: Optional[Callable[[AbstractIncomingMessage], Awaitable[bool]]]
 
+    queue: Optional[AbstractQueue]
+    control_callback_queue: Optional[AbstractQueue]
     client_type: str = "MQ stream client"
 
     def __init__(
@@ -1019,14 +1019,14 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
         publish_routing_key: str,
         control_routing_key: str,
         state_routing_key: str,
-        on_response_callback: Optional[
-            Callable[[AbstractIncomingMessage], Awaitable[bool]]
-        ],
-        on_state_callback: Optional[
-            Callable[[AbstractIncomingMessage], Awaitable[bool]]
-        ],
         client_name: str,
         time_out: float,
+        on_response_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ] = None,
+        on_state_callback: Optional[
+            Callable[[AbstractIncomingMessage], Awaitable[bool]]
+        ] = None,
     ) -> None:
         """
         Initialize a BasicStreamClient.
@@ -1071,10 +1071,10 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
             publish_routing_key=config["publish_key"],
             control_routing_key=config["ctrl_key"],
             state_routing_key=config["state_key"],
-            on_response_callback=on_response_callback,
-            on_state_callback=on_state_callback,
             client_name=config["name"] + name_suffix,
             time_out=time_out,
+            on_response_callback=on_response_callback,
+            on_state_callback=on_state_callback,
         )
 
     @property
