@@ -182,29 +182,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
         return response
 
 class LiveDetectionMessageQueueClient(BasicStreamClient):
-    def __init__(
-        self,
-        channel: AbstractChannel,
-        exchange: AbstractExchange,
-        publish_routing_key: str,
-        control_routing_key: str,
-        state_routing_key: str,
-        on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
-        on_state_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]],
-        client_name: str,
-        time_out: float,
-    ) -> None:
-        super().__init__(
-            channel=channel,
-            exchange=exchange,
-            publish_routing_key=publish_routing_key,
-            control_routing_key=control_routing_key,
-            state_routing_key=state_routing_key,
-            on_response_callback=on_response_callback,
-            on_state_callback=on_state_callback,
-            client_name=client_name,
-            time_out=time_out,
-        )
+    pass
 
 
 class DetectionMessageQueueServer(BasicServer):

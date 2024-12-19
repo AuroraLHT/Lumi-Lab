@@ -49,10 +49,10 @@ async def get_rheed_video_state(request: Request):
             publish_routing_key=settings.rheed.mq.live_video.publish_key,
             control_routing_key=settings.rheed.mq.live_video.ctrl_key,
             state_routing_key=settings.rheed.mq.live_video.state_key,
-            on_response_callback=None,
-            on_state_callback=on_state_callback,
             client_name=settings.rheed.mq.live_video.state_monitor_name,
             time_out=10,
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
         )
         await live_video_client.start_state()
         await live_video_client.start_control()
@@ -97,10 +97,10 @@ async def get_rheed_camera_state(request: Request):
             publish_routing_key=settings.rheed.mq.live_camera.publish_key,
             control_routing_key=settings.rheed.mq.live_camera.ctrl_key,
             state_routing_key=settings.rheed.mq.live_camera.state_key,
-            on_response_callback=None,
-            on_state_callback=on_state_callback,
             client_name=settings.rheed.mq.live_camera.state_monitor_name,
             time_out=10,
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
         )
         await live_camera_client.start_state()
         await live_camera_client.start_control()
@@ -186,10 +186,10 @@ async def rheed_analysis_live(websocket: WebSocket):
         publish_routing_key=settings.rheed.mq.live_video.publish_key,
         control_routing_key=settings.rheed.mq.live_video.ctrl_key, 
         state_routing_key=settings.rheed.mq.live_video.state_key,
-        on_response_callback=None,
-        on_state_callback=None,
         client_name=settings.rheed.mq.live_video.name,
         time_out=10,
+        on_response_callback=None,
+        on_state_callback=None,
     )
 
     live_camera_client = LiveCameraMessageQueueClient(
@@ -198,10 +198,10 @@ async def rheed_analysis_live(websocket: WebSocket):
         publish_routing_key=settings.rheed.mq.live_camera.publish_key,
         control_routing_key=settings.rheed.mq.live_camera.ctrl_key, 
         state_routing_key=settings.rheed.mq.live_camera.state_key,
-        on_response_callback=None,
-        on_state_callback=None,
         client_name=settings.rheed.mq.live_camera.name,
         time_out=10,
+        on_response_callback=None,
+        on_state_callback=None,
     )
 
     await live_video_client.start_control()
@@ -256,10 +256,10 @@ async def rheed_analysis_live(websocket: WebSocket):
         publish_routing_key=settings.detection.mq.live_detection.publish_key,
         control_routing_key=settings.detection.mq.live_detection.ctrl_key,
         state_routing_key=settings.detection.mq.live_detection.state_key,
-        on_response_callback=None,
-        on_state_callback=None,
         client_name=settings.detection.mq.live_detection.name,
         time_out=10,
+        on_response_callback=None,
+        on_state_callback=None,
     )
     await live_detection_client.start_control()
 
@@ -269,10 +269,10 @@ async def rheed_analysis_live(websocket: WebSocket):
         publish_routing_key=settings.rheed.mq.live_integrator.publish_key,
         control_routing_key=settings.rheed.mq.live_integrator.ctrl_key,
         state_routing_key=settings.rheed.mq.live_integrator.state_key,
-        on_response_callback=None,
-        on_state_callback=None,
         client_name=settings.rheed.mq.live_integrator.name,
         time_out=10,
+        on_response_callback=None,
+        on_state_callback=None,
     )
     await live_integrator_client.start_control()
 
@@ -282,10 +282,10 @@ async def rheed_analysis_live(websocket: WebSocket):
         publish_routing_key=settings.rheed.mq.live_stft.publish_key,
         control_routing_key=settings.rheed.mq.live_stft.ctrl_key,
         state_routing_key=settings.rheed.mq.live_stft.state_key,
-        on_response_callback=None,
-        on_state_callback=None,
         client_name=settings.rheed.mq.live_stft.name,
         time_out=10,
+        on_response_callback=None,
+        on_state_callback=None,
     )
     await live_stft_client.start_control()
 
@@ -321,10 +321,10 @@ async def get_rheed_detection_state(request: Request):
             publish_routing_key=settings.detection.mq.live_detection.publish_key,
             control_routing_key=settings.detection.mq.live_detection.ctrl_key,
             state_routing_key=settings.detection.mq.live_detection.state_key,
-            on_response_callback=None,
-            on_state_callback=on_state_callback,
             client_name=settings.detection.mq.live_detection.state_monitor_name,
             time_out=10,
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
         )
         await live_detection_client.start_state()
         await live_detection_client.start_control()
@@ -417,10 +417,10 @@ async def get_rheed_stft_state(request: Request):
             publish_routing_key=settings.rheed.mq.live_integrator.publish_key,
             control_routing_key=settings.rheed.mq.live_integrator.ctrl_key,
             state_routing_key=settings.rheed.mq.live_integrator.state_key,
-            on_response_callback=None,
-            on_state_callback=on_state_callback,
             client_name=settings.rheed.mq.live_integrator.state_monitor_name,
             time_out=10,
+            on_response_callback=None,
+            on_state_callback=on_state_callback,
         )
         await live_integrator_client.start_state()
         await live_integrator_client.start_control()

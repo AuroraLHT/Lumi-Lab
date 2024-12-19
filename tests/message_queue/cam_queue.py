@@ -130,10 +130,10 @@ async def main():
         publish_routing_key="live_video",
         control_routing_key="live_video_ctrl",
         state_routing_key="live_video_state",
-        on_response_callback=None,
-        on_state_callback=None,
         client_name="Live Fragment Monitor",
         time_out=10,
+        on_response_callback=None,
+        on_state_callback=None,
     )
     await live_video_client.start_control()
     connection_state.live_video_client = live_video_client
@@ -146,10 +146,10 @@ async def main():
         publish_routing_key="live_log",
         control_routing_key="live_log_ctrl",
         state_routing_key="live_log_state",
-        on_response_callback=None,
-        on_state_callback=None,
         client_name="Live Log Monitor",
         time_out=10,
+        on_response_callback=None,
+        on_state_callback=None,
     )
     await live_log_client.start_control()
     connection_state.live_log_client = live_log_client
@@ -187,10 +187,10 @@ async def main():
         publish_routing_key="live_video",
         control_routing_key="live_video_ctrl",
         state_routing_key="live_video_state",
-        on_response_callback=on_live_message_callback,
-        on_state_callback=None, 
         client_name="Live Fragment",
         time_out=10,
+        on_response_callback=on_live_message_callback,
+        on_state_callback=None, 
     )
 
     initial_fragments = await connection_state.video_fragment_client.get_initial()
