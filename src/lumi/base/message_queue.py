@@ -436,14 +436,14 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         self.response_queue = await self.channel.declare_queue(exclusive=True)
         await self.response_queue.bind(self.exchange, self.response_routing_key)
         logging.info(
-            f"{self.log_prefix} creates response queue: {self.response_queue.name}"
+            f"{self.log_prefix} creates response queue: {self.response_queue.name} -> binded to {self.response_routing_key} ex:{self.exchange}"
         )
 
     async def _create_update_queue(self):
         self.update_queue = await self.channel.declare_queue(exclusive=True)
         await self.update_queue.bind(self.exchange, self.update_routing_key)
         logging.info(
-            f"{self.log_prefix} creates update queue: {self.update_queue.name}"
+            f"{self.log_prefix} creates update queue: {self.update_queue.name} -> binded to {self.update_routing_key} ex:{self.exchange}"
         )
 
     async def _create_control_callback_queue(self):
@@ -2000,8 +2000,8 @@ class PubSubServer(
                 ),
                 routing_key=self.response_routing_key,
             )
-            logging.debug(
-                f"{self.log_prefix} content delivered to {self.response_routing_key}"
+            logging.info(
+                f"{self.log_prefix} content delivered to {self.response_routing_key} ex:{self.exchange}"
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to deliver content: {e}")
@@ -2072,8 +2072,8 @@ class PubSubServer(
                 ),
                 routing_key=self.update_routing_key,
             )
-            logging.debug(
-                f"{self.log_prefix} content delivered to {self.update_routing_key}"
+            logging.info(
+                f"{self.log_prefix} content delivered to {self.update_routing_key} ex:{self.exchange}"
             )
         except Exception as e:
             logging.error(f"{self.log_prefix} fail to deliver content: {e}")
