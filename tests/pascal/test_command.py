@@ -5,52 +5,52 @@ class TestSingleCommand(unittest.TestCase):
 
     def test_wait(self):
         self.assertEqual(
-            Wait(10).to_text(), 'Wait 10 sec (0)'
+            Wait(10).to_text(), 'Wait 10 sec (0)\n'
         )
 
     def test_wait_for_continue(self):
         self.assertEqual(
-            WaitForContinue().to_text(), 'Wait for Continue'
+            WaitForContinue().to_text(), 'Wait for Continue\n'
         )
 
     def test_beep(self):
         self.assertEqual(
-            Beep().to_text(), 'Beep'
+            Beep().to_text(), 'Beep\n'
         )
 
     def test_select_target(self):
         self.assertEqual(
             SelectTarget(Targets.C, False).to_text(), 
-            'Select Target C'
+            'Select Target C\n'
         )
 
     def test_target_rotation_mode(self):
         self.assertEqual(
             TargetRotationMode(TargetRotationModeType.OFF).to_text(), 
-            'Target Rotation Mode OFF'
+            'Target Rotation Mode OFF\n'
         )
 
     def test_target_twist_mode(self):
         self.assertEqual(
             TargetTwistMode(TargetTwistModeType.OFF).to_text(), 
-            'Target Twist Mode OFF'
+            'Target Twist Mode OFF\n'
         )
 
     def test_seek_target_home(self):
         self.assertEqual(
             SeekTargetHome(nowait=False).to_text(),
-            "Seek Targets Home"
+            "Seek Targets Home\n"
         )
 
     def test_mask_speed(self):
         self.assertEqual(
             MaskSpeed(MaskID.M1, low=1, high=100, acceleration=500).to_text(), 
-            'Mask Speed M1 Low=1 High=100 Accel=500'
+            'Mask Speed M1 Low=1 High=100 Accel=500\n'
         )
 
         self.assertEqual(
             MaskSpeed(MaskID.M2, low=2, high=400, acceleration=500).to_text(), 
-            'Mask Speed M2 Low=2 High=400 Accel=500'
+            'Mask Speed M2 Low=2 High=400 Accel=500\n'
         )
 
     def test_set_mask_position(self):
@@ -59,7 +59,7 @@ class TestSingleCommand(unittest.TestCase):
                 mask_id=MaskID.M1, 
                 distance=0.00, 
                 sync=False, nowait=False).to_text(),
-            "Set Mask Position M1=0.00"
+            "Set Mask Position M1=0.00\n"
         )
     
 
@@ -67,56 +67,56 @@ class TestSingleCommand(unittest.TestCase):
     def test_move_mask(self):
         self.assertEqual(
             MoveMask(1, 1.00, False, True).to_text(), 
-            "Move Mask M1=1.00 (Nowait)"
+            "Move Mask M1=1.00 (Nowait)\n"
         )
 
         self.assertEqual(
             MoveMask(1, 1.00, False, False).to_text(), 
-            "Move Mask M1=1.00"
+            "Move Mask M1=1.00\n"
         )
 
     def test_sample_position(self):
         self.assertEqual(
             SetSamplePosition(0.00, sync=False, nowait=False).to_text(),
-            "Set Sample Position 0.00"
+            "Set Sample Position 0.00\n"
         )
 
     def test_rotate_sample(self):
         self.assertEqual(
             RotateSample(0.00, sync=False, nowait=False).to_text(),
-            "Rotate Sample 0.00"
+            "Rotate Sample 0.00\n"
         )
 
     def test_sample_rotation_mode(self):
         self.assertEqual(
             SampleRotationMode(mode=SampleRotationModeType.OFF).to_text(),
-            "Sample Rotation Mode OFF"
+            "Sample Rotation Mode OFF\n"
         )
 
     def test_heating_laser_pointer(self):
         self.assertEqual(
             HeatingLaserPointer(state=PascalState(False)).to_text(),
-            "Heating Laser Pointer OFF"
+            "Heating Laser Pointer OFF\n"
         )
 
         self.assertEqual(
             HeatingLaserPointer(state=False).to_text(),
-            "Heating Laser Pointer OFF"
+            "Heating Laser Pointer OFF\n"
         )
 
         self.assertEqual(
             HeatingLaserPointer(state=PascalState('OFF')).to_text(),
-            "Heating Laser Pointer OFF"
+            "Heating Laser Pointer OFF\n"
         )
 
         self.assertEqual(
             HeatingLaserPointer(state='ON').to_text(),
-            "Heating Laser Pointer ON"
+            "Heating Laser Pointer ON\n"
         )
 
         self.assertEqual(
             HeatingLaserPointer(state=True).to_text(),
-            "Heating Laser Pointer ON"
+            "Heating Laser Pointer ON\n"
         )
 
     def test_heating_laser_lock(self):
@@ -125,7 +125,7 @@ class TestSingleCommand(unittest.TestCase):
                 locked=PascalLock(True),
                 nowait=False
             ).to_text(),
-            "Heating Laser Lock LOCKED"
+            "Heating Laser Lock LOCKED\n"
         )
     
     def test_heating_laser(self):
@@ -134,7 +134,7 @@ class TestSingleCommand(unittest.TestCase):
                 state = False,
                 nowait=True
             ).to_text(),
-            "Heating Laser OFF"
+            "Heating Laser OFF\n"
         )
 
     def test_heating_laser(self):
@@ -142,7 +142,7 @@ class TestSingleCommand(unittest.TestCase):
             HeatingLaserThreshold(
                 state = False,
             ).to_text(),
-            "Heating Laser Threshold OFF"
+            "Heating Laser Threshold OFF\n"
         )
 
     def test_set_heating_current(self):
@@ -150,7 +150,7 @@ class TestSingleCommand(unittest.TestCase):
             SetHeatingCurrent(
                 current = 0.00,
             ).to_text(),
-            "Set Heating Current 0.00"
+            "Set Heating Current 0.00\n"
         )
 
     def test_set_minimum_current(self):
@@ -158,7 +158,7 @@ class TestSingleCommand(unittest.TestCase):
             SetMinimumCurrent(
                 min_current = 9.80,
             ).to_text(),
-            "Set Minimum Current 9.80"
+            "Set Minimum Current 9.80\n"
         )
 
     def test_set_maximum_current(self):
@@ -166,7 +166,7 @@ class TestSingleCommand(unittest.TestCase):
             SetMaximumCurrent(
                 max_current = 30.00,
             ).to_text(),
-            "Set Maximum Current 30.00"
+            "Set Maximum Current 30.00\n"
         )
 
     def test_temperature_tolerance(self):
@@ -174,7 +174,7 @@ class TestSingleCommand(unittest.TestCase):
             TemperatureTolerance(
                 tolerance=2.0,
             ).to_text(),
-            "Temperature Tolerance 2.0"
+            "Temperature Tolerance 2.0\n"
         )
 
     def test_temperature_ramp(self):
@@ -183,7 +183,7 @@ class TestSingleCommand(unittest.TestCase):
                 ramp_rate=50.0,
                 state="ON",
             ).to_text(),
-            "Temperature Ramp 50.0"
+            "Temperature Ramp 50.0\n"
         )
 
     def test_temperature_set(self):
@@ -192,7 +192,7 @@ class TestSingleCommand(unittest.TestCase):
                 temperature=200.0,
                 nowait=False,
             ).to_text(),
-            "Temperature Set 200.0"
+            "Temperature Set 200.0\n"
         )
 
     def test_temperature_control(self):
@@ -200,7 +200,7 @@ class TestSingleCommand(unittest.TestCase):
             TemperatureControl(
                 mode=TemperatureControlModeType.MANUAL,
             ).to_text(),
-            "Temperature Control Manual"
+            "Temperature Control Manual\n"
         )
 
     def test_depo_laser_gate(self):
@@ -209,7 +209,7 @@ class TestSingleCommand(unittest.TestCase):
                 state="OFF",
                 nowait=False,
             ).to_text(),
-            "Depo Laser Gate OFF"
+            "Depo Laser Gate OFF\n"
         )
 
     def test_trigger_laser(self):
@@ -220,7 +220,7 @@ class TestSingleCommand(unittest.TestCase):
                 sync=True,
                 nowait=False
             ).to_text(),
-            "Trigger Laser N=10 (0) F=10.0 (Sync)"
+            "Trigger Laser N=10 (0) F=10.0 (Sync)\n"
         )
 
     def test_combi_laser(self):
@@ -233,7 +233,7 @@ class TestSingleCommand(unittest.TestCase):
                 sync=True,
                 nowait=False
             ).to_text(),
-            "Combi N=10(0) F=10.0 M1=0.00 M2=0.00 (Sync)"
+            "Combi N=10(0) F=10.0 M1=0.00 M2=0.00 (Sync)\n"
         )
 
     def test_MFC_control(self):
@@ -241,7 +241,7 @@ class TestSingleCommand(unittest.TestCase):
             SetMFCControl(
                 enable=True
             ).to_text(),
-            "MFC Control Enable"
+            "MFC Control Enable\n"
         )
 
     def test_MFCCV(self):
@@ -250,7 +250,7 @@ class TestSingleCommand(unittest.TestCase):
                 valve=MFCCVs.CV301,
                 state=True,
             ).to_text(),
-            "Valve ON CV301"
+            "Valve ON CV301\n"
         )
 
     def test_set_MFC1Flow(self):
@@ -258,7 +258,7 @@ class TestSingleCommand(unittest.TestCase):
             SetMFC1Flow(
                 MFC_flow=1.00,
             ).to_text(),
-            "MFC1 Flow Set= 1.00"
+            "MFC1 Flow Set= 1.00\n"
         )
 
     def test_set_MFC2Flow(self):
@@ -266,7 +266,7 @@ class TestSingleCommand(unittest.TestCase):
             SetMFC2Flow(
                 MFC_flow=1.00,
             ).to_text(),
-            "MFC2 Flow Set= 1.00"
+            "MFC2 Flow Set= 1.00\n"
         )
 
     def test_select_control_MFC(self):
@@ -274,7 +274,7 @@ class TestSingleCommand(unittest.TestCase):
             SelectControlMFC(
                 MFC=MFCs.MFC1
             ).to_text(),
-            "Press Control MFC1"
+            "Press Control MFC1\n"
         )
 
     def test_select_pressure_gauge(self):
@@ -282,7 +282,7 @@ class TestSingleCommand(unittest.TestCase):
             SelectPressureGauge(
                 gauge=PressureGauges.CDG10,
             ).to_text(),
-            "Pressure Gauge CDG10"
+            "Pressure Gauge CDG10\n"
         )
 
 
@@ -291,7 +291,7 @@ class TestSingleCommand(unittest.TestCase):
             SetPressure(
                 pressure=1e-1
             ).to_text(),
-            "Set Pressure= 1.00E-1"
+            "Set Pressure= 1.00E-1\n"
         )
 
     def test_pressure_control(self):
@@ -299,7 +299,7 @@ class TestSingleCommand(unittest.TestCase):
             PressureControl(
                 state=False
             ).to_text(),
-            "Pressure Control OFF"
+            "Pressure Control OFF\n"
         )
 
     def test_select_coil_position(self):
@@ -307,7 +307,7 @@ class TestSingleCommand(unittest.TestCase):
             SelectCoilPosition(
                 position=CoilPositions.A,
             ).to_text(),
-            "Select Coil Position A"
+            "Select Coil Position A\n"
         )
     
     def test_rheed_gun_x_axis(self):
@@ -315,7 +315,7 @@ class TestSingleCommand(unittest.TestCase):
             SelectRHEEDGunX(
                 axis= RHEEDGunXAxes.P1
             ).to_text(),
-            "Select RHEED Gun-X axis 1"
+            "Select RHEED Gun-X axis 1\n"
         )
 
     def test_log_interval(self):
@@ -323,7 +323,7 @@ class TestSingleCommand(unittest.TestCase):
             SetLogInterval(
                 time=10
             ).to_text(),
-            "Log Interval 10"
+            "Log Interval 10\n"
         )
 
     def test_data_logging(self):
@@ -332,7 +332,7 @@ class TestSingleCommand(unittest.TestCase):
                 file_name=None,
                 state=False,
             ).to_text(),
-            "Data Logging OFF"
+            "Data Logging OFF\n"
         )
 
 
@@ -341,7 +341,7 @@ class TestSingleCommand(unittest.TestCase):
             Comment(
                 "something"
             ).to_text(),
-            "/ something"
+            "/ something\n"
         )
 
 

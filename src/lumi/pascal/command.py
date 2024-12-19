@@ -183,7 +183,7 @@ class PascalScope:
         cmd = ""
         for c in self.children:
             if isinstance(c, PascalCommand):
-                cmd += (self.prefix * level) +c.to_text()+"\n"
+                cmd += (self.prefix * level) +c.to_text()
             elif isinstance(c, PascalScope):
                 cmd += c.to_text(level+1)
         return cmd
@@ -204,7 +204,7 @@ class ForLoopStart(PascalCommand):
         self.iteration = iteration
 
     def to_text(self):
-        return f"Loop {self.iteration:d} (0)"
+        return f"Loop {self.iteration:d} (0)\n"
 
 
 class ForLoopEnd(PascalCommand):
@@ -212,7 +212,7 @@ class ForLoopEnd(PascalCommand):
         super().__init__()
 
     def to_text(self):
-        return f"Loop End"
+        return f"Loop End\n"
 
 
 class ForLoop(PascalScope):
@@ -223,9 +223,9 @@ class ForLoop(PascalScope):
     def to_text(self, level=0):
         level = max(level-1, 0)
         cmd = ""
-        cmd += (self.prefix * level) + ForLoopStart(self.iteration).to_text() + "\n"
+        cmd += (self.prefix * level) + ForLoopStart(self.iteration).to_text()
         cmd += super().to_text(level+1)
-        cmd += (self.prefix * level) + ForLoopEnd().to_text() + "\n"
+        cmd += (self.prefix * level) + ForLoopEnd().to_text()
         return cmd
 
     def __repr__(self):
@@ -244,7 +244,7 @@ class Wait(PascalCommand):
         self.time = time
 
     def to_text(self):
-        return f"Wait {self.time:d} sec (0)"
+        return f"Wait {self.time:d} sec (0)\n"
 
 
 class WaitForContinue(PascalCommand):
@@ -252,7 +252,7 @@ class WaitForContinue(PascalCommand):
         super().__init__()
 
     def to_text(self):
-        return "Wait for Continue"
+        return "Wait for Continue\n"
 
 
 class MoveMask(PascalCommand, PascalNowaitMixin):
@@ -266,7 +266,7 @@ class MoveMask(PascalCommand, PascalNowaitMixin):
     def to_text(self):
         cmd = f"Move Mask M{self.mask_id:d}={self.distance:.2f}"
         cmd = self.apply_nowait(cmd)
-        return cmd
+        return cmd + "\n"
 
 
 class Beep(PascalCommand):
@@ -274,7 +274,7 @@ class Beep(PascalCommand):
         super().__init__()
 
     def to_text(self):
-        return "Beep"
+        return "Beep\n"
 
 
 class SelectTarget(PascalCommand, PascalNowaitMixin):
@@ -286,7 +286,7 @@ class SelectTarget(PascalCommand, PascalNowaitMixin):
 
 
     def to_text(self):
-        return self.apply_nowait(f"Select Target {self.target}")
+        return self.apply_nowait(f"Select Target {self.target}") + "\n"
 
 
 class TargetRotationMode(PascalCommand):
@@ -296,7 +296,7 @@ class TargetRotationMode(PascalCommand):
         self.mode = mode
 
     def to_text(self):
-        return f"Target Rotation Mode {self.mode}"
+        return f"Target Rotation Mode {self.mode}\n"
 
 
 class TargetTwistMode(PascalCommand):
@@ -306,7 +306,7 @@ class TargetTwistMode(PascalCommand):
         self.mode = mode
 
     def to_text(self):
-        return f"Target Twist Mode {self.mode}"
+        return f"Target Twist Mode {self.mode}\n"
 
 
 class SeekTargetHome(PascalCommand, PascalNowaitMixin):
@@ -315,7 +315,7 @@ class SeekTargetHome(PascalCommand, PascalNowaitMixin):
         self.nowait = nowait
 
     def to_text(self):
-        return self.apply_nowait(f"Seek Targets Home")
+        return self.apply_nowait(f"Seek Targets Home") + "\n"
 
 
 class MaskSpeed(PascalCommand):
@@ -329,7 +329,7 @@ class MaskSpeed(PascalCommand):
 
     def to_text(self):
         cmd = f"Mask Speed M{self.mask_id:d} Low={self.low:d} High={self.high:d} Accel={self.acceleration:d}"
-        return cmd
+        return cmd + "\n"
 
 class SeekMasktHome(PascalCommand, PascalNowaitMixin):
     def __init__(self, mask_id:Union[int, MaskID], nowait:bool) -> None:
@@ -339,7 +339,7 @@ class SeekMasktHome(PascalCommand, PascalNowaitMixin):
         self.nowait = nowait
 
     def to_text(self):
-        return self.apply_nowait(f"Seek Mask Home M{self.mask_id}")
+        return self.apply_nowait(f"Seek Mask Home M{self.mask_id}") + "\n"
 
 
 class SetMaskPosition(PascalCommand, PascalNowaitMixin, PascalSyncMixin):
@@ -355,7 +355,7 @@ class SetMaskPosition(PascalCommand, PascalNowaitMixin, PascalSyncMixin):
         cmd = f"Set Mask Position M{self.mask_id:d}={self.distance:.2f}"
         cmd = self.apply_sync(cmd)
         cmd = self.apply_nowait(cmd)
-        return cmd
+        return cmd + "\n"
 
 
 class MoveMask(PascalCommand, PascalSyncMixin, PascalNowaitMixin):
@@ -371,7 +371,7 @@ class MoveMask(PascalCommand, PascalSyncMixin, PascalNowaitMixin):
         cmd = f"Move Mask M{self.mask_id:d}={self.distance:.2f}"
         cmd = self.apply_sync(cmd)
         cmd = self.apply_nowait(cmd)
-        return cmd
+        return cmd + "\n"
 
 
 class SetSamplePosition(PascalCommand, PascalSyncMixin, PascalNowaitMixin):
@@ -385,7 +385,7 @@ class SetSamplePosition(PascalCommand, PascalSyncMixin, PascalNowaitMixin):
         cmd = f"Set Sample Position {self.position:.2f}"
         cmd = self.apply_sync(cmd)
         cmd = self.apply_nowait(cmd)
-        return cmd
+        return cmd + "\n"
 
 
 class RotateSample(PascalCommand, PascalSyncMixin, PascalNowaitMixin):
@@ -399,7 +399,7 @@ class RotateSample(PascalCommand, PascalSyncMixin, PascalNowaitMixin):
         cmd = f"Rotate Sample {self.angle:.2f}"
         cmd = self.apply_sync(cmd)
         cmd = self.apply_nowait(cmd)
-        return cmd
+        return cmd + "\n"
 
 class SampleRotationMode(PascalCommand):
     def __init__(self, mode:Union[str, SampleRotationModeType]) -> None:
@@ -408,7 +408,7 @@ class SampleRotationMode(PascalCommand):
         self.mode = mode
 
     def to_text(self):
-        return f"Sample Rotation Mode {self.mode}"
+        return f"Sample Rotation Mode {self.mode}\n"
 
 
 class HeatingLaserPointer(PascalCommand):
@@ -417,7 +417,7 @@ class HeatingLaserPointer(PascalCommand):
         self.state = PascalState(state) if not isinstance(state, PascalState) else state
 
     def to_text(self):
-        return f"Heating Laser Pointer {self.state}"
+        return f"Heating Laser Pointer {self.state}\n"
 
 
 class HeatingLaserLock(PascalCommand, PascalNowaitMixin):
@@ -427,7 +427,7 @@ class HeatingLaserLock(PascalCommand, PascalNowaitMixin):
         self.nowait = nowait
 
     def to_text(self):
-        return self.apply_nowait(f"Heating Laser Lock {self.locked}")
+        return self.apply_nowait(f"Heating Laser Lock {self.locked}") + "\n"
 
 
 class HeatingLaser(PascalCommand, PascalNowaitMixin):
@@ -438,7 +438,7 @@ class HeatingLaser(PascalCommand, PascalNowaitMixin):
 
     def to_text(self):
         cmd = f"Heating Laser {self.state}"
-        return self.apply_nowait(cmd)
+        return self.apply_nowait(cmd) + "\n"
 
 
 class HeatingLaserThreshold(PascalCommand):
@@ -447,7 +447,7 @@ class HeatingLaserThreshold(PascalCommand):
         self.state = PascalState(state) if not isinstance(state, PascalState) else state
 
     def to_text(self):
-        return f"Heating Laser Threshold {self.state}"
+        return f"Heating Laser Threshold {self.state}\n"
 
 
 class SetHeatingCurrent(PascalCommand):
@@ -456,7 +456,7 @@ class SetHeatingCurrent(PascalCommand):
         self.current = current
 
     def to_text(self):
-        return f"Set Heating Current {self.current:.2f}"
+        return f"Set Heating Current {self.current:.2f}\n"
 
 
 class SetMinimumCurrent(PascalCommand):
@@ -465,7 +465,7 @@ class SetMinimumCurrent(PascalCommand):
         self.min_current = min_current
 
     def to_text(self):
-        return f"Set Minimum Current {self.min_current:.2f}"
+        return f"Set Minimum Current {self.min_current:.2f}\n"
 
 
 class SetMaximumCurrent(PascalCommand):
@@ -474,7 +474,7 @@ class SetMaximumCurrent(PascalCommand):
         self.max_current = max_current
 
     def to_text(self):
-        return f"Set Maximum Current {self.max_current:.2f}"
+        return f"Set Maximum Current {self.max_current:.2f}\n"
 
 
 class TemperatureTolerance(PascalCommand):
@@ -483,7 +483,7 @@ class TemperatureTolerance(PascalCommand):
         self.tolerance = tolerance
 
     def to_text(self):
-        return f"Temperature Tolerance {self.tolerance:.1f}"
+        return f"Temperature Tolerance {self.tolerance:.1f}\n"
 
 class TemperatureRamp(PascalCommand):
     def __init__(self, ramp_rate:float, state:Union[bool, str, PascalState]) -> None:
@@ -493,9 +493,9 @@ class TemperatureRamp(PascalCommand):
 
     def to_text(self):
         if self.state:
-            return f"Temperature Ramp {self.ramp_rate:.1f}"
+            return f"Temperature Ramp {self.ramp_rate:.1f}\n"
         else:
-            return f"Temperature Ramp {self.state}"
+            return f"Temperature Ramp {self.state}\n"
         
 
 class TemperatureSet(PascalCommand, PascalNowaitMixin):
@@ -506,7 +506,7 @@ class TemperatureSet(PascalCommand, PascalNowaitMixin):
 
     def to_text(self):
         cmd = f"Temperature Set {self.temperature:.1f}"
-        return self.apply_nowait(cmd)
+        return self.apply_nowait(cmd) + "\n"
 
 class TemperatureControl(PascalCommand):
     def __init__(self, mode:Union[str, TemperatureControlModeType]) -> None:
@@ -515,7 +515,7 @@ class TemperatureControl(PascalCommand):
         self.mode = mode
 
     def to_text(self):
-        return f"Temperature Control {self.mode}"
+        return f"Temperature Control {self.mode}\n"
 
 class SampleShutter(PascalCommand):
     def __init__(self, state:Union[bool, str, PascalState]) -> None:
@@ -523,7 +523,7 @@ class SampleShutter(PascalCommand):
         self.state = PascalState(state) if not isinstance(state, PascalState) else state
 
     def to_text(self):
-        return f"Sample Shutter {self.state}"
+        return f"Sample Shutter {self.state}\n"
 
 class DepoLaserGate(PascalCommand, PascalNowaitMixin):
     def __init__(self, state:Union[bool, str, PascalState], nowait:bool) -> None:
@@ -532,7 +532,7 @@ class DepoLaserGate(PascalCommand, PascalNowaitMixin):
         self.nowait = nowait
 
     def to_text(self):
-        return self.apply_nowait(f"Depo Laser Gate {self.state}")
+        return self.apply_nowait(f"Depo Laser Gate {self.state}") + "\n"
 
 class TriggerLaser(PascalCommand, PascalNowaitMixin, PascalSyncMixin):
     def __init__(self, num_pulse:int, frequency:int, sync:bool, nowait:bool) -> None:
@@ -546,7 +546,7 @@ class TriggerLaser(PascalCommand, PascalNowaitMixin, PascalSyncMixin):
         cmd = f"Trigger Laser N={self.num_pulse:d} (0) F={self.frequency:.1f}"
         cmd = self.apply_sync(cmd)
         cmd = self.apply_nowait(cmd)
-        return cmd
+        return cmd + "\n"
 
 class CombiLaser(PascalCommand, PascalNowaitMixin, PascalSyncMixin):
     def __init__(self, num_pulse:int, frequency:int, mask1_distance:float, mask2_distance:float, sync:bool, nowait:bool) -> None:
@@ -562,7 +562,7 @@ class CombiLaser(PascalCommand, PascalNowaitMixin, PascalSyncMixin):
         cmd = f"Combi N={self.num_pulse:d}(0) F={self.frequency:.1f} M1={self.mask1_distance:.2f} M2={self.mask2_distance:.2f}"
         cmd = self.apply_sync(cmd)
         cmd = self.apply_nowait(cmd)
-        return cmd
+        return cmd + "\n"
 
 class SetMFCControl(PascalCommand):
     def __init__(self, enable:Union[bool, str, PascalEnable]) -> None:
@@ -570,7 +570,7 @@ class SetMFCControl(PascalCommand):
         self.enable = PascalEnable(enable) if not isinstance(enable, PascalEnable) else enable
 
     def to_text(self):
-        return f"MFC Control {self.enable}"
+        return f"MFC Control {self.enable}\n"
 
 class SetMFCCV(PascalCommand):
     def __init__(self, valve:Union[str, MFCCVs], state:Union[bool, str, PascalState]) -> None:
@@ -580,7 +580,7 @@ class SetMFCCV(PascalCommand):
         self.state = PascalState(state) if not isinstance(state, PascalState) else state
 
     def to_text(self):
-        return f"Valve {self.state} {self.valve}"
+        return f"Valve {self.state} {self.valve}\n"
 
 class SetMFC1Flow(PascalCommand):
     def __init__(self, MFC_flow:float) -> None:
@@ -588,7 +588,7 @@ class SetMFC1Flow(PascalCommand):
         self.MFC_flow = MFC_flow
 
     def to_text(self):
-        return f"MFC1 Flow Set= {self.MFC_flow:.2f}"
+        return f"MFC1 Flow Set= {self.MFC_flow:.2f}\n"
 
 class SetMFC2Flow(PascalCommand):
     def __init__(self, MFC_flow) -> None:
@@ -596,7 +596,7 @@ class SetMFC2Flow(PascalCommand):
         self.MFC_flow = MFC_flow
 
     def to_text(self):
-        return f"MFC2 Flow Set= {self.MFC_flow:.2f}"
+        return f"MFC2 Flow Set= {self.MFC_flow:.2f}\n"
 
 
 class SelectControlMFC(PascalCommand):
@@ -606,7 +606,7 @@ class SelectControlMFC(PascalCommand):
         self.MFC = MFC
 
     def to_text(self):
-        return f"Press Control {self.MFC}"
+        return f"Press Control {self.MFC}\n"
 
 class SelectPressureGauge(PascalCommand):
     def __init__(self, gauge:Union[str, PressureGauges]) -> None:
@@ -614,7 +614,7 @@ class SelectPressureGauge(PascalCommand):
         self.gauge = gauge.value if isinstance(gauge, PressureGauges) else gauge
 
     def to_text(self):
-        return f"Pressure Gauge {self.gauge}"
+        return f"Pressure Gauge {self.gauge}\n"
 
 class SetPressure(PascalCommand):
     def __init__(self, pressure:float) -> None:
@@ -623,7 +623,7 @@ class SetPressure(PascalCommand):
 
     def to_text(self):
         log_text = _drop_tailling_zero(f"{self.pressure:.2E}")
-        return f"Set Pressure= {log_text}"
+        return f"Set Pressure= {log_text}\n"
 
 class PressureControl(PascalCommand):
     def __init__(self, state:Union[bool, str, PascalState]) -> None:
@@ -631,7 +631,7 @@ class PressureControl(PascalCommand):
         self.state = PascalState(state) if not isinstance(state, PascalState) else state
 
     def to_text(self):
-        return f"Pressure Control {self.state}"
+        return f"Pressure Control {self.state}\n"
 
 
 class SelectCoilPosition(PascalCommand):
@@ -641,7 +641,7 @@ class SelectCoilPosition(PascalCommand):
         self.position= position
 
     def to_text(self):
-        return f"Select Coil Position {self.position}"
+        return f"Select Coil Position {self.position}\n"
 
 
 class SelectRHEEDGunX(PascalCommand):
@@ -651,7 +651,7 @@ class SelectRHEEDGunX(PascalCommand):
         self.axis = axis
 
     def to_text(self):
-        return f"Select RHEED Gun-X axis {self.axis}"
+        return f"Select RHEED Gun-X axis {self.axis}\n"
 
 class SetLogInterval(PascalCommand):
     def __init__(self, time:int) -> None:
@@ -659,7 +659,7 @@ class SetLogInterval(PascalCommand):
         self.time = time
 
     def to_text(self):
-        return f"Log Interval {self.time}"
+        return f"Log Interval {self.time}\n"
 
 class DataLogging(PascalCommand):
     def __init__(self, file_name, state:Union[bool, str, PascalState]) -> None:
@@ -668,9 +668,9 @@ class DataLogging(PascalCommand):
         self.state = PascalState(state) if not isinstance(state, PascalState) else state
     def to_text(self):
         if self.state:
-            return f"Data Logging File={self.file_name}"
+            return f"Data Logging File={self.file_name}\n"
         else:
-            return f"Data Logging OFF"
+            return f"Data Logging OFF\n"
         
 class Comment(PascalCommand):
     def __init__(self, comment) -> None:
@@ -678,4 +678,4 @@ class Comment(PascalCommand):
         self.comment = comment
 
     def to_text(self):
-        return f"/ {self.comment}"
+        return f"/ {self.comment}\n"
