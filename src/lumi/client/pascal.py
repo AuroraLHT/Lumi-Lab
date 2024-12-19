@@ -35,6 +35,8 @@ class MIModeClient(MIModeMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
+        on_update_callback=None,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -44,15 +46,27 @@ class MIModeClient(MIModeMessageQueueClient, StateCallbakcMixin):
             update_routing_key=update_routing_key,
             control_routing_key=control_routing_key,
             state_routing_key=state_routing_key,
-            on_update_callback=self._on_update_callback,
-            on_state_callback=self._on_state_callback,
             client_name=client_name,
             time_out=time_out,
+            on_update_callback=self._on_update_callback if on_update_callback is None else on_update_callback,
+            on_state_callback=self._on_state_callback if on_state_callback is None else on_state_callback,
         )
         self.all_executions = []
         self.current_execution = {}
         self._commands_exectuion_futures = {}
         self.server_state = {}
+
+    @classmethod
+    def from_config(cls, config, channel, exchange, time_out, on_state_callback=None, on_update_callback=None, name_suffix = ""):
+        return super().from_config(
+            config=config, 
+            channel=channel, 
+            exchange=exchange, 
+            time_out=time_out, 
+            on_state_callback=on_state_callback, 
+            on_update_callback=on_update_callback, 
+            name_suffix=name_suffix
+        )
 
     async def _on_update_callback(self, message: AbstractIncomingMessage):
         body = message.body
@@ -87,6 +101,7 @@ class MIModeClient(MIModeMessageQueueClient, StateCallbakcMixin):
         if register_response.headers["succ"]:
             command_future = asyncio.Future()
             self._commands_exectuion_futures[commands_uuid] = command_future
+            # print("waiting for the response")
             return await command_future
         else:
             raise Exception(f"command register failed {register_response.headers}")
@@ -102,7 +117,8 @@ class LiveChamberLogClient(LiveChamberLogMessageQueueClient, StateCallbakcMixin)
         state_routing_key,
         client_name,
         time_out,
-        on_response_callback,
+        on_response_callback = None,
+        on_state_callback = None
     ):
         super().__init__(
             channel=channel,
@@ -113,7 +129,7 @@ class LiveChamberLogClient(LiveChamberLogMessageQueueClient, StateCallbakcMixin)
             client_name=client_name,
             time_out=time_out,
             on_response_callback=on_response_callback,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=self._on_state_callback if on_state_callback is None else on_state_callback,
         )
         self.server_state = {}
 
@@ -131,6 +147,7 @@ class ChamberLogClient(ChamberLogMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
+        on_state_callback = None
     ):
         super().__init__(
             channel=channel,
@@ -140,7 +157,7 @@ class ChamberLogClient(ChamberLogMessageQueueClient, StateCallbakcMixin):
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=self._on_state_callback if on_state_callback is None else on_state_callback,
         )
         self.server_state = {}
 
