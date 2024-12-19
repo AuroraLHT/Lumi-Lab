@@ -2137,6 +2137,7 @@ class PubSubServer(
         await self.start_control()
         await self.start_main()
         self._updating_task = asyncio.create_task(self.updating())
+        self.state["is_running"] = True
 
         logging.info(f"{self.log_prefix} starts up")
 
