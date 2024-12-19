@@ -61,9 +61,15 @@ async def test_mi_client():
     scope = pcmd.PascalScope()
     with scope:
         scope.add_child( pcmd.Beep() )
+        scope.add_child( pcmd.Wait(1) )
 
     logging.info(f"Scope: \n{scope}")
     exec_result= await client.execute_command(scope)
+    logging.info(f"Execution result: {exec_result}")
+
+    c = pcmd.Beep()
+    logging.info(f"Command: \n{c}")
+    exec_result= await client.execute_command(c)
     logging.info(f"Execution result: {exec_result}")
 
 
