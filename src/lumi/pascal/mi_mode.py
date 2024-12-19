@@ -83,9 +83,21 @@ class MIModeExecution:
         self.uuid = uuid
         self.commands = commands
 
-        self.mi_scripts_name = f"{SCRIPT_PREFIX}_{uuid}"
+        self.mi_scripts_name = f"{SCRIPT_PREFIX}"
+        # _uuid_value = self._modify_uuid(self.uuid)
+        # self.mi_scripts_name = f"{SCRIPT_PREFIX}_{_uuid_value}"
         self.assist_filename = assist_filename
         self.mi_folder = Path(mi_folder)
+
+    def _modify_uuid(self, uuid_value:str):
+        """
+        The MI mode does not support '-' symbol
+        need to replace it with '_'
+        """
+        return uuid_value.replace("-", "_")
+
+    def _unmodify_uuid(self, uuid_value:str):
+        return uuid_value.replace("_", "-")
 
     def change_state(self, state: MIState):
         self.state = state
