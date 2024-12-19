@@ -6,6 +6,7 @@ import asyncio
 import logging
 from pathlib import Path
 from lumi.config import settings
+import lumi.pascal.command as pcmd
 
 import logging
 
@@ -44,6 +45,14 @@ async def test_mi_client():
     await asyncio.sleep(1)
     logging.info("Getting state done")
 
+    scope = pcmd.PascalScope()
+    with scope:
+        scope.add_child( pcmd.Beep() )
+
+    logging.info(f"Scope: {scope}")
+    exec_future= client.execute_command(scope)
+    exec_result = await exec_future
+    logging.info(f"Execution result: {exec_result}")
     logging.info("Stopping client")
     await client.stop()
 
