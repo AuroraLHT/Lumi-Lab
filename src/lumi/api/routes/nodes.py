@@ -221,7 +221,7 @@ async def get_nodes_state(request: Request):
             logging.info(f"Starting {client.client_name} control")
             await client.start_control()
 
-        periodic_task = asyncio.create_task(periodic_update(1))
+        periodic_task = asyncio.create_task(periodic_update(30))
         
         try:
             while not shutdown_event.is_set():
