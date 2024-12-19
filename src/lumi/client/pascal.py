@@ -56,18 +56,6 @@ class MIModeClient(MIModeMessageQueueClient, StateCallbakcMixin):
         self._commands_exectuion_futures = {}
         self.server_state = {}
 
-    @classmethod
-    def from_config(cls, config, channel, exchange, time_out, on_state_callback=None, on_update_callback=None, name_suffix = ""):
-        return super().from_config(
-            config=config, 
-            channel=channel, 
-            exchange=exchange, 
-            time_out=time_out, 
-            on_state_callback=on_state_callback, 
-            on_update_callback=on_update_callback, 
-            name_suffix=name_suffix
-        )
-
     async def _on_update_callback(self, message: AbstractIncomingMessage):
         body = message.body
         headers = message.headers
@@ -160,6 +148,17 @@ class ChamberLogClient(ChamberLogMessageQueueClient, StateCallbakcMixin):
             on_state_callback=self._on_state_callback if on_state_callback is None else on_state_callback,
         )
         self.server_state = {}
+
+    @classmethod
+    def from_config(cls, config, channel, exchange, time_out, on_state_callback=None, name_suffix = ""):
+        return super().from_config(
+            config=config, 
+            channel=channel, 
+            exchange=exchange, 
+            time_out=time_out, 
+            on_state_callback=on_state_callback, 
+            name_suffix=name_suffix
+        )
 
     async def get_log(self):
         response = await super().get_log()
