@@ -72,7 +72,7 @@ def get_mi_state(filename: str, base_filename: str) -> str:
 
 class MIModeExecution:
     def __init__(
-        self, uuid: str, commands: str, assist_filename: str, mi_folder: str, on_state_change_callbacks: Dict[str, Callable]
+        self, uuid: str, commands: str, assist_filename: str, mi_folder: Union[str, Path], on_state_change_callbacks: Dict[str, Callable]
     ) -> None:
         self.state = MIState.IDLE
         self.is_execution_finished = False
@@ -85,7 +85,7 @@ class MIModeExecution:
 
         self.mi_scripts_name = f"{SCRIPT_PREFIX}_{uuid}"
         self.assist_filename = assist_filename
-        self.mi_folder = mi_folder
+        self.mi_folder = Path(mi_folder)
 
     def change_state(self, state: MIState):
         self.state = state
@@ -99,19 +99,19 @@ class MIModeExecution:
 
     @property
     def script_file(self):
-        return Path(self.mi_folder / self.mi_scripts_name)
+        return Path(self.mi_folder) / self.mi_scripts_name
 
     @property
     def assist_file(self):
-        return Path(self.mi_folder / self.assist_filename)
-    
+        return Path(self.mi_folder) / self.assist_filename
+ 
     @property
     def completed_assist_file(self):
-        return Path(self.mi_folder / f"{MIState.COMPLETED.value}_{self.assist_filename}")
+        return Path(self.mi_folder) / f"{MIState.COMPLETED.value}_{self.assist_filename}"
 
     @property
     def aborted_assist_file(self):
-        return Path(self.mi_folder / f"{MIState.ABORTED.value}_{self.assist_filename}")
+        return Path(self.mi_folder) / f"{MIState.ABORTED.value}_{self.assist_filename}"
 
 
     def generate_scripts(self):
