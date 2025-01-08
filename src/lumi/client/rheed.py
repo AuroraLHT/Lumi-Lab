@@ -40,6 +40,7 @@ class CameraClient(CameraMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -49,7 +50,11 @@ class CameraClient(CameraMessageQueueClient, StateCallbakcMixin):
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
         )
         self.server_state = {}
 
@@ -68,7 +73,8 @@ class LiveCameraClient(LiveCameraMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
-        on_response_callback,
+        on_response_callback=None,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -79,9 +85,14 @@ class LiveCameraClient(LiveCameraMessageQueueClient, StateCallbakcMixin):
             client_name=client_name,
             time_out=time_out,
             on_response_callback=on_response_callback,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
         )
         self.server_state = {}
+
 
 class STFTClient(STFTMessageQueueClient, StateCallbakcMixin):
     def __init__(
@@ -93,6 +104,7 @@ class STFTClient(STFTMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -102,9 +114,14 @@ class STFTClient(STFTMessageQueueClient, StateCallbakcMixin):
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
         )
         self.server_state = {}
+
 
 class LiveSTFTClient(LiveSTFTMessageQueueClient, StateCallbakcMixin):
     def __init__(
@@ -116,7 +133,8 @@ class LiveSTFTClient(LiveSTFTMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
-        on_response_callback,
+        on_response_callback=None,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -126,7 +144,11 @@ class LiveSTFTClient(LiveSTFTMessageQueueClient, StateCallbakcMixin):
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
             on_response_callback=on_response_callback,
         )
         self.server_state = {}
@@ -142,6 +164,7 @@ class IntegratorClient(IntegratorMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -151,7 +174,11 @@ class IntegratorClient(IntegratorMessageQueueClient, StateCallbakcMixin):
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
         )
         self.server_state = {}
 
@@ -166,7 +193,8 @@ class LiveIntegratorClient(LiveIntegratorMessageQueueClient, StateCallbakcMixin)
         state_routing_key,
         client_name,
         time_out,
-        on_response_callback,
+        on_response_callback=None,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -176,7 +204,11 @@ class LiveIntegratorClient(LiveIntegratorMessageQueueClient, StateCallbakcMixin)
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
             on_response_callback=on_response_callback,
         )
         self.server_state = {}
@@ -192,6 +224,7 @@ class VideoFragmentsClient(VideoFragmentsMessageQueueClient, StateCallbakcMixin)
         state_routing_key,
         client_name,
         time_out,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -201,7 +234,11 @@ class VideoFragmentsClient(VideoFragmentsMessageQueueClient, StateCallbakcMixin)
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
         )
         self.server_state = {}
 
@@ -218,7 +255,8 @@ class LiveVideoFragmentsClient(
         state_routing_key,
         client_name,
         time_out,
-        on_response_callback,
+        on_response_callback=None,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -228,7 +266,11 @@ class LiveVideoFragmentsClient(
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
             on_response_callback=on_response_callback,
         )
         self.server_state = {}

@@ -27,6 +27,7 @@ class DetectionClient(DetectionMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -36,7 +37,11 @@ class DetectionClient(DetectionMessageQueueClient, StateCallbakcMixin):
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
         )
         self.server_state = {}
 
@@ -60,7 +65,8 @@ class LiveDetectionClient(LiveDetectionMessageQueueClient, StateCallbakcMixin):
         state_routing_key,
         client_name,
         time_out,
-        on_response_callback,
+        on_response_callback=None,
+        on_state_callback=None,
     ):
         super().__init__(
             channel=channel,
@@ -70,7 +76,11 @@ class LiveDetectionClient(LiveDetectionMessageQueueClient, StateCallbakcMixin):
             state_routing_key=state_routing_key,
             client_name=client_name,
             time_out=time_out,
-            on_state_callback=self._on_state_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
             on_response_callback=on_response_callback,
         )
         self.server_state = {}
