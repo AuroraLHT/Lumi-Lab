@@ -154,20 +154,20 @@ class PascalLock:
         if isinstance(locked, str):
             if locked.upper() == "LOCKED":
                 self.locked = True
-            elif locked.upper() == "UNLOCKED": #TODO check the word
+            elif locked.upper() == "ACTIVE":
                 self.locked = False
             else:
                 raise ValueError(locked)
         elif isinstance(locked, bool):
             self.locked = locked
         else:
-            raise ValueError(locked)
+            raise ValueError("Unknown value for PascalLock: " + str(locked))
     
     def __bool__(self):
         return self.locked
 
     def __str__(self):
-        return "LOCKED" if self.locked else "UNLOCKED"
+        return "LOCKED" if self.locked else "ACTIVE"
 
 
 class PascalScope:
@@ -644,14 +644,22 @@ class SelectCoilPosition(PascalCommand):
         return f"Select Coil Position {self.position}\n"
 
 
-class SelectRHEEDGunX(PascalCommand):
-    def __init__(self, axis:RHEEDGunXAxes) -> None:
+# class SelectRHEEDGunX(PascalCommand):
+#     def __init__(self, axis:RHEEDGunXAxes) -> None:
+#         super().__init__()
+#         axis = axis.value if isinstance(axis, RHEEDGunXAxes) else axis
+#         self.axis = axis
+
+#     def to_text(self):
+#         return f"Select RHEED Gun-X axis {self.axis}\n"
+
+class SetRHEEDGunX(PascalCommand):
+    def __init__(self, position:float) -> None:
         super().__init__()
-        axis = axis.value if isinstance(axis, RHEEDGunXAxes) else axis
-        self.axis = axis
+        self.position = position
 
     def to_text(self):
-        return f"Select RHEED Gun-X axis {self.axis}\n"
+        return f"Set RHEED Gun-X axis ={self.position:.2f}\n"
 
 class SetLogInterval(PascalCommand):
     def __init__(self, time:int) -> None:
