@@ -127,6 +127,21 @@ class TestSingleCommand(unittest.TestCase):
             ).to_text(),
             "Heating Laser Lock LOCKED\n"
         )
+        self.assertEqual(
+            HeatingLaserLock(
+                locked=PascalLock(False),
+                nowait=False
+            ).to_text(),
+            "Heating Laser Lock ACTIVE\n"
+        )
+        self.assertEqual(
+            HeatingLaserLock(
+                locked=PascalLock(False),
+                nowait=True
+            ).to_text(),
+            "Heating Laser Lock ACTIVE (Nowait)\n"
+        )
+
     
     def test_heating_laser(self):
         self.assertEqual(
@@ -137,6 +152,15 @@ class TestSingleCommand(unittest.TestCase):
             "Heating Laser OFF\n"
         )
 
+        self.assertEqual(
+            HeatingLaser(
+                state = True,
+                nowait=True
+            ).to_text(),
+            "Heating Laser ON\n"
+        )
+
+
     def test_heating_laser(self):
         self.assertEqual(
             HeatingLaserThreshold(
@@ -144,6 +168,14 @@ class TestSingleCommand(unittest.TestCase):
             ).to_text(),
             "Heating Laser Threshold OFF\n"
         )
+
+        self.assertEqual(
+            HeatingLaserThreshold(
+                state = True,
+            ).to_text(),
+            "Heating Laser Threshold ON\n"
+        )
+
 
     def test_set_heating_current(self):
         self.assertEqual(
@@ -312,10 +344,10 @@ class TestSingleCommand(unittest.TestCase):
     
     def test_rheed_gun_x_axis(self):
         self.assertEqual(
-            SelectRHEEDGunX(
-                axis= RHEEDGunXAxes.P1
+            SetRHEEDGunX(
+                position=0.00,
             ).to_text(),
-            "Select RHEED Gun-X axis 1\n"
+            "Set RHEED Gun-X axis =0.00\n"
         )
 
     def test_log_interval(self):
