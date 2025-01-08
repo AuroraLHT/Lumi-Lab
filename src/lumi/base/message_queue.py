@@ -911,7 +911,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
 
     @property
     def empty_response(self):
-        return BaseMessageQueueMessage(None, None)
+        return BaseMessageQueueMessage(b"", headers={})
 
     async def request(
         self, message: RequestMessageQueueMessage
@@ -1253,6 +1253,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
             await self.queue.cancel(
                 self._consumer_tag,
             )
+            await self.queue.purge()
             await self.queue.delete()
             self._reset_main_queue()
 
