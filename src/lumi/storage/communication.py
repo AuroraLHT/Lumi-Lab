@@ -361,12 +361,8 @@ class StorageMessageQueueServer(BasicServer):
         try:
             self.recorder = Recorder(config=self.recorder_config)
         except FileExistsError as e:
-            # print("-"*10)
-            # print(e)
-            # print("-"*10)
-            # print(e)
             error_info = get_error_info(e)
-            print(error_info)
+            logging.error(f"{self.log_prefix} {error_info}")
             return {
                 "succ": False,
                 "msg": str(e),
@@ -514,7 +510,7 @@ class StorageMessageQueueServer(BasicServer):
             try:
                 body, headers = message.body, message.headers
                 chamber_log = json.loads(body)
-                print("chamber log", chamber_log)
+                # print("chamber log", chamber_log)
                 self.recorder_server.save_log(chamber_log=chamber_log)
                 return False
 
