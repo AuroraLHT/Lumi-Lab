@@ -181,6 +181,24 @@ state_monitor_name = "MI Mode Monitor"
 exchange = "STORAGE"
 exchange_type = "direct"
 
+[storage.databases]
+log = "log"
+
+frame = "frame"
+frame_meta = "frame_meta"
+
+pattern = "pattern"
+classification = "classification"
+detection = "detection"
+instance_segmentation = "instance_segmentation"
+num_detection = "num_detection"
+
+tracking = "tracking"
+num_tracking = "num_tracking"
+
+detection_meta = "detection_meta"
+
+
 [storage.hdf5_recorder]
 database_path = "database"
 initial_size = 1000

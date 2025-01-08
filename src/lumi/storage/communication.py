@@ -196,7 +196,7 @@ class StorageMessageQueueServer(BasicServer):
             status["succ"] = False
             status["error_type"] = "MetadataObtainError"
             status["error_message"] = str(e)
-            return status
+            return None, None, status
 
         if len(frame_dim) < 2:
             status["succ"] = False
@@ -229,7 +229,7 @@ class StorageMessageQueueServer(BasicServer):
             status["msg"] = "Get log metadata failed"
             status["error_type"] = "MetadataObtainError"
             status["error_message"] = str(e)
-            return status
+            return None, status
 
         if log_columns is None or len(log_columns) == 0:
             status["succ"] = False
@@ -258,7 +258,7 @@ class StorageMessageQueueServer(BasicServer):
             status["msg"] = "Get ai metadata failed"
             status["error_type"] = "MetadataObtainError"
             status["error_message"] = str(e)
-            return status
+            return None, None, None, status
 
         if pattern_dim is None or len(pattern_dim) < 2:
             status["succ"] = False
@@ -514,6 +514,7 @@ class StorageMessageQueueServer(BasicServer):
             try:
                 body, headers = message.body, message.headers
                 chamber_log = json.loads(body)
+                print("chamber log", chamber_log)
                 self.recorder_server.save_log(chamber_log=chamber_log)
                 return False
 

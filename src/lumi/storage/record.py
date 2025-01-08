@@ -1,6 +1,10 @@
 import h5py
+from lumi.pascal.chamber_log import TYPE_CONVERSIONS
 from lumi.utils.error import get_error_info
+
 import numpy as np
+import pandas as pd
+
 from dataclasses import dataclass
 from typing import Tuple, List, Dict
 from pathlib import Path
@@ -10,7 +14,9 @@ from concurrent.futures import ThreadPoolExecutor
 import uuid
 import time
 import asyncio
+import logging
 
+from lumi.config import settings
 from typing import Union, List, Optional, Dict, Tuple, Awaitable
 
 def resize_if_over(idx, dataset, resize_step=1000, resize_absolute=None, axis=0):
@@ -46,21 +52,21 @@ class RecorderConfig:
     compression_opts : Optional[int | None] = None  # 0-9, default value is 4
 
 class Recorder:
-    NAME_LOG_DS = "log"
+    # NAME_LOG_DS = "log"
    
-    NAME_FRAME_DS = "frame"
-    NAME_FRAME_META_DS = "frame_meta"
+    # NAME_FRAME_DS = "frame"
+    # NAME_FRAME_META_DS = "frame_meta"
 
-    NAME_PATTERN_DS = "pattern"
-    NAME_CLASSIFICATION_DS = "classification"
-    NAME_DETECTION_DS = "detection"
-    NAME_INSTANCE_SEGMENTATION_DS = "instance_segmentation"
-    NAME_NUM_DETECTION_DS = "num_detection"
+    # NAME_PATTERN_DS = "pattern"
+    # NAME_CLASSIFICATION_DS = "classification"
+    # NAME_DETECTION_DS = "detection"
+    # NAME_INSTANCE_SEGMENTATION_DS = "instance_segmentation"
+    # NAME_NUM_DETECTION_DS = "num_detection"
 
-    NAME_TRACK_DS = "tracking"
-    NAME_NUM_TRACK_DS = "num_tracking"
+    # NAME_TRACK_DS = "tracking"
+    # NAME_NUM_TRACK_DS = "num_tracking"
 
-    NAME_DETECTION_META_DS = "detection_meta"
+    # NAME_DETECTION_META_DS = "detection_meta"
 
     RESIZE_STEP = 1000
     
@@ -89,7 +95,8 @@ class Recorder:
     def create_frame_dataset(self):
         img_h, img_w = self.config.frame_dim
         frame_dataset = self.h5f.create_dataset(
-            self.NAME_FRAME_DS, 
+            # self.NAME_FRAME_DS, 
+            settings.storage.databases.frame,
             (self.config.initial_size, img_h, img_w), 
             maxshape=(None, img_h, img_w), 
             chunks=True, 
@@ -101,7 +108,8 @@ class Recorder:
 
         self.frame_meta_columns = ["time_stamp", "time"]        
         frame_meta_dataset = self.h5f.create_dataset(
-            self.NAME_FRAME_META_DS, 
+            # self.NAME_FRAME_META_DS, 
+            settings.storage.databases.frame_meta,
             (self.config.initial_size, len(self.frame_meta_columns) ), 
             maxshape=(None, len(self.frame_meta_columns) ), 
             chunks=True, 
@@ -112,9 +120,10 @@ class Recorder:
 
     def create_log_dataset(self):
         log_dataset = self.h5f.create_dataset(
-            self.NAME_LOG_DS, 
-            (self.config.initial_size, len(self.config.log_columns) ), 
-            maxshape=(None, len(self.config.log_columns) ), 
+            # self.NAME_LOG_DS, 
+            settings.storage.databases.log,
+            (self.config.initial_size, len(self.config.log_columns)), 
+            maxshape=(None, len(self.config.log_columns)), 
             chunks=True, 
             dtype=h5py.string_dtype(encoding='utf-8', length=None)
         )
@@ -126,7 +135,8 @@ class Recorder:
         pattern_h, pattern_w = self.config.pattern_dim
 
         pattern_dataset = self.h5f.create_dataset(
-            self.NAME_PATTERN_DS, 
+            # self.NAME_PATTERN_DS, 
+            settings.storage.databases.pattern,
             (self.config.initial_size, pattern_h, pattern_w), 
             maxshape=(None, pattern_h, pattern_w), 
             chunks=True,
@@ -136,7 +146,8 @@ class Recorder:
         pattern_dataset.attrs['size'] = 0
 
         detection_meta_dataset = self.h5f.create_dataset(
-            self.NAME_DETECTION_META_DS, 
+            # self.NAME_DETECTION_META_DS, 
+            settings.storage.databases.detection_meta,
             (self.config.initial_size, len(self.config.detection_meta_columns)), 
             maxshape=(None, len(self.config.detection_meta_columns)), 
             chunks=True, 
@@ -146,7 +157,8 @@ class Recorder:
         detection_meta_dataset.attrs['columns'] = self.config.detection_meta_columns
 
         classification_dataset = self.h5f.create_dataset(
-            self.NAME_CLASSIFICATION_DS, 
+            # self.NAME_CLASSIFICATION_DS, 
+            settings.storage.databases.classification,
             (self.config.initial_size, len(self.config.classifier_classes)), 
             maxshape=(None, len(self.config.classifier_classes)), 
             chunks=True
@@ -156,7 +168,8 @@ class Recorder:
 
         n_init_detection = 2
         detection_dataset = self.h5f.create_dataset(
-            self.NAME_DETECTION_DS, 
+            # self.NAME_DETECTION_DS, 
+            settings.storage.databases.detection,
             (self.config.initial_size, n_init_detection, 6), 
             maxshape=(None, None, 6), 
             chunks=True
@@ -165,7 +178,8 @@ class Recorder:
         detection_dataset.attrs['columns'] = ['sx', 'sy', 'ex', 'ey', 'label', 'score']
 
         instance_segmentation_dataset = self.h5f.create_dataset(
-            self.NAME_INSTANCE_SEGMENTATION_DS, 
+            # self.NAME_INSTANCE_SEGMENTATION_DS, 
+            settings.storage.databases.instance_segmentation,
             (self.config.initial_size, n_init_detection, pattern_h, pattern_w), 
             maxshape=(None, None, pattern_h, pattern_w), 
             chunks=True, 
@@ -176,7 +190,8 @@ class Recorder:
         instance_segmentation_dataset.attrs['size'] = 0
 
         num_detection_dataset = self.h5f.create_dataset(
-            self.NAME_NUM_DETECTION_DS, 
+            # self.NAME_NUM_DETECTION_DS, 
+            settings.storage.databases.num_detection,
             (self.config.initial_size,), 
             maxshape=(None,), 
             chunks=True,
@@ -184,9 +199,9 @@ class Recorder:
         )
         num_detection_dataset.attrs['size'] = 0
 
-
         num_tracking_dataset = self.h5f.create_dataset(
-            self.NAME_NUM_TRACK_DS, 
+            # self.NAME_NUM_TRACK_DS, 
+            settings.storage.databases.num_tracking,
             (self.config.initial_size,), 
             maxshape=(None,), 
             chunks=True,
@@ -194,10 +209,10 @@ class Recorder:
         )
         num_tracking_dataset.attrs['size'] = 0
 
-
         n_init_tracking = 2
         tracking_dataset = self.h5f.create_dataset(
-            self.NAME_TRACK_DS, 
+            # self.NAME_TRACK_DS, 
+            settings.storage.databases.tracking,
             (self.config.initial_size, n_init_tracking), 
             maxshape=(None, None), 
             chunks=True,
@@ -205,13 +220,8 @@ class Recorder:
         )
         tracking_dataset.attrs['size'] = 0
 
-
     def create_datasets(self, ):
 
-        # self.frame_meta_columns = frame_meta_columns
-        # self.pattern_meta_columns = pattern_meta_columns
-        # self.log_columns = log_columns
-        # self.initial_size = initial_size
         status = {
             "succ": True,
             "failed_datasets": [],
@@ -222,7 +232,7 @@ class Recorder:
             try:
                 self.create_frame_dataset()
             except Exception as e:                
-                print(get_error_info(e))
+                logging.error(get_error_info(e))
                 status["failed_datasets"].append("frame")
                 status["error_message"] += str(e) + "\n"
 
@@ -230,7 +240,7 @@ class Recorder:
             try:
                 self.create_log_dataset()
             except Exception as e:
-                print(get_error_info(e))
+                logging.error(get_error_info(e))
                 status["failed_datasets"].append("log")
                 status["error_message"] += str(e) + "\n"
 
@@ -238,7 +248,7 @@ class Recorder:
             try:
                 self.create_ai_dataset()
             except Exception as e:
-                print(get_error_info(e))
+                logging.error(get_error_info(e))
                 status["failed_datasets"].append("ai")
                 status["error_message"] += str(e) + "\n"
 
@@ -248,49 +258,60 @@ class Recorder:
     # this is the log part
     @property
     def ds_log(self):
-        return self.h5f[self.NAME_LOG_DS]
+        # return self.h5f[self.NAME_LOG_DS]
+        return self.h5f[settings.storage.databases.log]
 
     # this is the camera part
     @property
     def ds_frame(self):
-        return self.h5f[self.NAME_FRAME_DS]
+        # return self.h5f[self.NAME_FRAME_DS]
+        return self.h5f[settings.storage.databases.frame]
 
     @property
     def ds_frame_meta(self):
-        return self.h5f[self.NAME_FRAME_META_DS]
+        # return self.h5f[self.NAME_FRAME_META_DS]
+        return self.h5f[settings.storage.databases.frame_meta]
 
     # this is the detection part
     @property
     def ds_pattern(self):
-        return self.h5f[self.NAME_PATTERN_DS]
+        # return self.h5f[self.NAME_PATTERN_DS]
+        return self.h5f[settings.storage.databases.pattern]
 
     @property
     def ds_detection_meta(self):
-        return self.h5f[self.NAME_DETECTION_META_DS]
+        # return self.h5f[self.NAME_DETECTION_META_DS]
+        return self.h5f[settings.storage.databases.detection_meta]
 
     @property
     def ds_classification(self):
-        return self.h5f[self.NAME_CLASSIFICATION_DS]
+        # return self.h5f[self.NAME_CLASSIFICATION_DS]
+        return self.h5f[settings.storage.databases.classification]
 
     @property
     def ds_detection(self):
-        return self.h5f[self.NAME_DETECTION_DS]
+        # return self.h5f[self.NAME_DETECTION_DS]
+        return self.h5f[settings.storage.databases.detection]
 
     @property
     def ds_instance_segmentation(self):
-        return self.h5f[self.NAME_INSTANCE_SEGMENTATION_DS]
+        # return self.h5f[self.NAME_INSTANCE_SEGMENTATION_DS]
+        return self.h5f[settings.storage.databases.instance_segmentation]
 
     @property
     def ds_num_detection(self):
-        return self.h5f[self.NAME_NUM_DETECTION_DS]
+        # return self.h5f[self.NAME_NUM_DETECTION_DS]
+        return self.h5f[settings.storage.databases.num_detection]
 
     @property
     def ds_num_tracking(self):
-        return self.h5f[self.NAME_NUM_TRACK_DS]
+        # return self.h5f[self.NAME_NUM_TRACK_DS]
+        return self.h5f[settings.storage.databases.num_tracking]
 
     @property
     def ds_tracking(self):
-        return self.h5f[self.NAME_TRACK_DS]
+        # return self.h5f[self.NAME_TRACK_DS]
+        return self.h5f[settings.storage.databases.tracking]
 
 
     def save_log(
@@ -307,8 +328,7 @@ class Recorder:
         resize_if_over(_idx, self.ds_log, resize_step=self.RESIZE_STEP)
         self.ds_log[_idx] = [ str(chamber_log[k]) for k in self.ds_log.attrs['columns'] ]
 
-        if _idx is None: self.ds_log.attrs['size'] += 1
-
+        if idx is None: self.ds_log.attrs['size'] += 1
 
     def save_frame(
             self, 
@@ -328,8 +348,8 @@ class Recorder:
         resize_if_over(_idx, self.ds_frame_meta, resize_step=resize_step)
         self.ds_frame_meta[_idx] = [ str(frame_headers[k]) for k in self.ds_frame_meta.attrs['columns'] ]
 
-        if _idx is None: self.ds_frame.attrs['size'] += 1
-        if _idx is None: self.ds_frame_meta.attrs['size'] += 1
+        if idx is None: self.ds_frame.attrs['size'] += 1
+        if idx is None: self.ds_frame_meta.attrs['size'] += 1
 
 
     def save_prediction(
@@ -407,9 +427,11 @@ class Recorder:
         if idx is None: self.ds_tracking.attrs['size'] += 1
         if idx is None: self.ds_num_tracking.attrs['size'] += 1
 
+
 @dataclass
 class RecorderServerConfig:
     idle_time : 0.1
+
 
 class RecorderServer(threading.Thread):
     recorder : Recorder
@@ -477,24 +499,90 @@ class RecorderServer(threading.Thread):
         self._stop_event.set()
 
 
+class RecordReader:
 
-class RecordAnalyzer:
-    def __init__(self, recorder):
-        self.recorder = recorder
+    def __init__(self, record_path:Path):
+        self.record_path = record_path
+        self.h5f = h5py.File(record_path, 'r')
 
+    # this is the log part
+    @property
+    def ds_log(self):
+        # return self.h5f[self.NAME_LOG_DS]
+        return self.h5f[settings.storage.databases.log]
+
+    # this is the camera part
+    @property
+    def ds_frame(self):
+        # return self.h5f[self.NAME_FRAME_DS]
+        return self.h5f[settings.storage.databases.frame]
+
+    @property
+    def ds_frame_meta(self):
+        # return self.h5f[self.NAME_FRAME_META_DS]
+        return self.h5f[settings.storage.databases.frame_meta]
+
+    # this is the detection part
+    @property
+    def ds_pattern(self):
+        # return self.h5f[self.NAME_PATTERN_DS]
+        return self.h5f[settings.storage.databases.pattern]
+
+    @property
+    def ds_detection_meta(self):
+        # return self.h5f[self.NAME_DETECTION_META_DS]
+        return self.h5f[settings.storage.databases.detection_meta]
+
+    @property
+    def ds_classification(self):
+        # return self.h5f[self.NAME_CLASSIFICATION_DS]
+        return self.h5f[settings.storage.databases.classification]
+
+    @property
+    def ds_detection(self):
+        # return self.h5f[self.NAME_DETECTION_DS]
+        return self.h5f[settings.storage.databases.detection]
+
+    @property
+    def ds_instance_segmentation(self):
+        # return self.h5f[self.NAME_INSTANCE_SEGMENTATION_DS]
+        return self.h5f[settings.storage.databases.instance_segmentation]
+
+    @property
+    def ds_num_detection(self):
+        # return self.h5f[self.NAME_NUM_DETECTION_DS]
+        return self.h5f[settings.storage.databases.num_detection]
+
+    @property
+    def ds_num_tracking(self):
+        # return self.h5f[self.NAME_NUM_TRACK_DS]
+        return self.h5f[settings.storage.databases.num_tracking]
+
+    @property
+    def ds_tracking(self):
+        # return self.h5f[self.NAME_TRACK_DS]
+        return self.h5f[settings.storage.databases.tracking]
 
     def get_log_columns(self):
-        return self.recorder.ds_log.attrs['columns']
+        return self.ds_log.attrs['columns']
 
-    def get_log_time(self):
-        log_time = self.get_log("Time", np.datetime64)
-        return log_time
+    def get_log_item(self, idx):
+        log_columns = self.get_log_columns()
+        log_item = self.ds_log[idx]
 
-    def get_log(self, column, column_transform=np.float64, idx=None):
-        log_dataset = self.recorder.ds_log
-        log_columns = self.get_log_columns
-        dataset_size = self.recorder.ds_log.attrs['size']
+        return { k : TYPE_CONVERSIONS[k](v.decode('utf-8')) if k in TYPE_CONVERSIONS else v for k,v in zip(log_columns, log_item) }
+
+    def get_logs_by_column(self, column, column_transform=None, idx=None):
+        log_dataset = self.ds_log
+        log_columns = self.get_log_columns()
+        dataset_size = self.ds_log.attrs['size']
         if idx is None: idx = slice(None, dataset_size)
+
+        if column_transform is None: 
+            if column in TYPE_CONVERSIONS:
+                column_transform = TYPE_CONVERSIONS[column]
+            else:
+                raise ValueError(f"Column {column} is not in TYPE_CONVERSIONS, please provide a column_transform function")
 
         data = np.array(
             list(
@@ -505,23 +593,73 @@ class RecordAnalyzer:
             )
         )
         return data
+    
+    def get_full_logs(self):
+        log_dataset = self.ds_log
+        log_columns = self.get_log_columns()
+        dataset_size = self.ds_log.attrs['size']
+        data = np.array( log_dataset[ :dataset_size ] )
+
+        df = pd.DataFrame(data, columns=log_columns)
+
+        # Apply type conversions
+        for column, dtype in TYPE_CONVERSIONS.items():
+            if column in df.columns:
+                try:
+                    df[column] = df[column].str.decode('utf-8').apply(dtype)
+                except Exception as e:
+                    logging.warning(f"Failed to convert column {column} to {dtype}: {str(e)}")
+
+        return df
+    
+    def iter_log_dataset(self):
+        for idx in range(self.ds_log.attrs['size']):
+            yield self.get_log_item(idx)
 
 
-    def find_deposition_window(self):
-        """
-            return start and end point of the deposition based on the log dataset record
-        """
-        laser_pulses = self.get_log("LaserPuls", int)
-        deposition_windows = np.where(laser_pulses>0)[0]
-        log_time = self.get_log_time()
+    # def find_deposition_window(self):
+    #     """
+    #         return start and end point of the deposition based on the log dataset record
+    #     """
+    #     laser_pulses = self.get_logs_by_column("Laser moni")
+    #     laser_pulses_setpoint = self.get_logs_by_column("Laser set")
+    #     deposition_start = np.where(laser_pulses>0)[0]
+    #     deposition_end = np.where(laser_pulses==laser_pulses_setpoint)[0]
+    #     log_time = self.get_logs_by_column("time_stamp")
 
-        return log_time[deposition_windows]
+    #     return log_time[deposition_start], log_time[deposition_end]
     
     def get_log_idx_between(self, start_time, end_time):
-        log_time = self.get_log_time()
+        log_time = self.get_logs_by_column("time_stamp")
         start_time = np.datetime64(start_time)
         end_time = np.datetime64(end_time)
 
-        mask = np.logcial_and( log_time > start_time, log_time < end_time )
+        mask = np.logical_and( log_time > start_time, log_time < end_time )
         return np.where(mask)[0]
+    
+    def get_detection_item(self, idx):
+        pattern = self.ds_pattern[idx]
+        detection_meta = self.ds_detection_meta[idx]
+        masks = self.ds_instance_segmentation[idx]
+        bboxes = self.ds_detection[idx]
+        labels = self.ds_classification[idx]
+        scores = self.ds_detection[idx]
+        # tracking = self.ds_tracking[idx]
+        return pattern, masks, bboxes, labels, scores, detection_meta
+    
+    def get_frame(self, idx):
+        frame = self.ds_frame[idx]
+        frame_meta = self.ds_frame_meta[idx]
+        return frame, frame_meta
+
+    def iter_detection_dataset(self):
+        for idx in range(self.ds_pattern.attrs['size']):
+            pattern, masks, bboxes, labels, scores, detection_meta = self.get_detection_item(idx)
+            yield pattern, masks, bboxes, labels, scores, detection_meta
+
+    def iter_frame_dataset(self):
+        for idx in range(self.ds_frame.attrs['size']):
+            frame, frame_meta = self.get_frame(idx)
+            yield frame, frame_meta
+
 
