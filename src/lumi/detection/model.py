@@ -259,16 +259,19 @@ class DetectorServer(threading.Thread):
             frame, frame_headers = self.input_queue.get()
             logging.debug("Detection Input Acquired")
 
-            result, result_headers = self.pipeline(frame, frame_headers)
-            logging.debug("Detection")
+            try:
+                result, result_headers = self.pipeline(frame, frame_headers)
+                logging.debug("Detection Finished")
 
-            # self.output_queue.put({"input": (frame, headers), **result })
-            self.output_queue.put( (result, result_headers) )
-            logging.debug("Detection Output Inserted")
+                self.output_queue.put( (result, result_headers) )
+                logging.debug("Detection Output Inserted")
 
-            self.increase_counter()
-            tmp_counter += 1
-            if tmp_counter % 1000 == 0: self.reset_tracker()
+                self.increase_counter()
+                tmp_counter += 1
+                if tmp_counter % 1000 == 0: self.reset_tracker()
+            except Exception as e:
+                logging.error(f"Detection Error: {e}")
+                self.reset_tracker()
 
         self.on_stop()
 

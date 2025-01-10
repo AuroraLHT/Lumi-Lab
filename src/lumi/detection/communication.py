@@ -139,6 +139,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
                 "pattern_dim": self.detector.pattern_dims,
                 "detection_metas": self.detector.metas,
                 "classifier_classes": self.detector.aux_detector.classifier_classes,
+                "detector_classes": self.detector.aux_detector.detector_classes,
             }
         )
 
@@ -173,6 +174,7 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
                     headers=headers,
                     stream_type="live_detection",
                 )
+                
                 logging.info(f"{self.log_prefix} detection encoded")
             except Exception as e:
                 logging.error(f"{self.log_prefix} Failed to encode detection: {e}")
@@ -217,6 +219,7 @@ class DetectionMessageQueueServer(BasicServer):
             {
                 "pattern_dim": self.detector.pattern_dims,
                 "detection_metas": self.detector.metas,
+                "detector_classes": self.detector.aux_detector.detector_classes,
                 "classifier_classes": self.detector.aux_detector.classifier_classes,
             }
         )
@@ -244,11 +247,11 @@ class DetectionMessageQueueServer(BasicServer):
             )
             body, headers = encode_detections(
                 detector_output=detector_output,
-            detector_output_headers=detector_output_headers,
+                detector_output_headers=detector_output_headers,
             )
             response = self.create_response_message(
                 body=body, 
-                headers={},
+                headers=headers,
                 request_type="detection",
                 response_type="detection",
                 succ=True,
