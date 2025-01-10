@@ -103,7 +103,7 @@ class VideoCompressor(threading.Thread):
         # extract camera frame
         filler_frames = []
         cv_frame, cv_frame_header = self.camera_queue.get()
-        current_time = cv_frame_header['time']
+        current_time = float(cv_frame_header['time'])
         # cv_frame, current_time = self.camera.get_frame()
         # the camera we have is monocolor version
         # convert to rgb from gray signal

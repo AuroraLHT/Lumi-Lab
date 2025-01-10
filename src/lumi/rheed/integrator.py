@@ -137,7 +137,7 @@ class MultiBoxIntegrator(threading.Thread):
     def get_integration_history(self, bbox_id):
         cache = self.get_integration_cache(bbox_id)
         if cache is not None:
-            integration_time = np.array([x[1]["time"] for x in cache])
+            integration_time = np.array([float(x[1]["time"]) for x in cache])
             integration = np.array([x[0]["mean"] for x in cache])
             latest_header = cache[-1][1]
             return integration_time, integration, latest_header
