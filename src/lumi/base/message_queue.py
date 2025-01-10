@@ -518,6 +518,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 self.response_queue is not None
                 and self._response_queue_consume_tag is not None
             ):
+                # await self.response_queue.unbind(self.exchange, self.response_routing_key)
                 await self.response_queue.cancel(self._response_queue_consume_tag)
                 await self.response_queue.delete()
                 self._reset_response_queues()
@@ -529,6 +530,8 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 await self.control_callback_queue.cancel(
                     self._control_callback_queue_consume_tag
                 )
+                await self.control_callback_queue.purge()
+                # await asyncio.sleep(0.05)
                 await self.control_callback_queue.delete()
                 self._reset_control_queues()
         if stop_update:
@@ -536,12 +539,18 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 self.update_queue is not None
                 and self._update_queue_consume_tag is not None
             ):
+                # await self.update_queue.unbind(self.exchange, self.update_routing_key)
                 await self.update_queue.cancel(self._update_queue_consume_tag)
+                await self.update_queue.purge()
+                # await asyncio.sleep(0.05)
                 await self.update_queue.delete()
                 self._reset_update_queues()
         if stop_state:
             if self.state_queue is not None and self._state_consume_tag is not None:
+                # await self.state_queue.unbind(self.exchange, self.state_routing_key)
                 await self.state_queue.cancel(self._state_consume_tag)
+                await self.state_queue.purge()
+                # await asyncio.sleep(0.05)
                 await self.state_queue.delete()
                 self._reset_state_queues()
 
@@ -850,6 +859,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 and self._callback_queue_consume_tag is not None
             ):
                 await self.callback_queue.cancel(self._callback_queue_consume_tag)
+                await self.callback_queue.purge()
                 await self.callback_queue.delete()
                 self._reset_response_queues()
 
@@ -861,12 +871,15 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 await self.control_callback_queue.cancel(
                     self._control_callback_queue_consume_tag
                 )
+                await self.control_callback_queue.purge()
                 await self.control_callback_queue.delete()
                 self._reset_control_queues()
 
         if stop_state:
             if self.state_queue is not None and self._state_consume_tag is not None:
+                # await self.state_queue.unbind(self.exchange, self.state_routing_key)
                 await self.state_queue.cancel(self._state_consume_tag)
+                await self.state_queue.purge()
                 await self.state_queue.delete()
                 self._reset_state_queues()
 
@@ -1250,10 +1263,12 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
     async def stop_main(self):
         if self.is_main_running():
+            # await self.queue.unbind(exchange=self.exchange, routing_key=self.publish_routing_key)
             await self.queue.cancel(
                 self._consumer_tag,
             )
             await self.queue.purge()
+            # await asyncio.sleep(0.05)
             await self.queue.delete()
             self._reset_main_queue()
 
@@ -1262,14 +1277,20 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
             await self.control_callback_queue.cancel(
                 self._control_callback_consumer_tag,
             )
+            await self.control_callback_queue.purge()
+            # await asyncio.sleep(0.05)
             await self.control_callback_queue.delete()
             self._reset_control_queue()
 
     async def stop_state(self):
         if self.is_state_running():
+            # await self.state_queue.unbind(exchange=self.exchange, routing_key=self.state_routing_key)
+
             await self.state_queue.cancel(
                 self._state_consumer_tag,
             )
+            await self.state_queue.purge()
+            # await asyncio.sleep(0.05)
             await self.state_queue.delete()
             self._reset_state_queue()
 
@@ -1671,6 +1692,9 @@ class BasicStreamServer(
     async def cancel(self):
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
+            await self.control_queue.purge()
+            # await asyncio.sleep(0.05)
+            await self.control_queue.delete()
 
         # this is to stop the streaming task
         self.set_stream_flag(False)
@@ -1880,10 +1904,14 @@ class BasicServer(
     async def cancel(self):
         if self.queue is not None and self._consume_tag is not None:
             await self.queue.cancel(self._consume_tag)
+            await self.queue.purge()
+            # await asyncio.sleep(0.05)
             await self.queue.delete()
 
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
+            await self.control_queue.purge()
+            # await asyncio.sleep(0.05)
             await self.control_queue.delete()
 
         self.reset_queues()
@@ -2188,12 +2216,17 @@ class PubSubServer(
 
     async def cancel(self):
         if self.queue is not None and self._consume_tag is not None:
+            # await self.queue.unbind(self.exchange, self.request_routing_key)
             await self.queue.cancel(self._consume_tag)
+            await self.queue.purge()
+            # await asyncio.sleep(0.05)
             await self.queue.delete()
             self.state["is_main_running"] = False
 
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
+            await self.control_queue.purge()
+            # await asyncio.sleep(0.05)
             await self.control_queue.delete()
             self.state["is_control_running"] = False
 
