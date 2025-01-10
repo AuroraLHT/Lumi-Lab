@@ -35,6 +35,7 @@ from ..utils.image import decode_img
 import logging
 from collections.abc import Callable, Awaitable
 from typing import Any, Dict, TypedDict
+import time
 
 # TODO : Move client to where the server is and we would import the client to here.
 # this reduce the redundancy in code.
@@ -105,7 +106,6 @@ class StorageMessageQueueClient(BasicClient):
 class StorageMessageQueueServerConfig:
     root_folder: str
     initial_size: int = 1000
-
 
 class StorageMessageQueueServer(BasicServer):
     recorder: Recorder
@@ -253,6 +253,7 @@ class StorageMessageQueueServer(BasicServer):
             pattern_dim = detection_state["pattern_dim"]
             detection_meta_columns = detection_state["detection_metas"]
             classifier_classes = detection_state["classifier_classes"]
+            detector_classes = detection_state["detector_classes"]
         except Exception as e:
             status["succ"] = False
             status["msg"] = "Get ai metadata failed"
@@ -278,7 +279,7 @@ class StorageMessageQueueServer(BasicServer):
             status["error_type"] = "InvalidClassifierClassesError"
             status["error_message"] = "classifier_classes is not valid"
 
-        return pattern_dim, detection_meta_columns, classifier_classes, status
+        return pattern_dim, detection_meta_columns, classifier_classes, detector_classes, status
 
     async def _check_live_clients(self, headers: Dict[str, Any]) -> OperationStatus:
         status: OperationStatus = {
@@ -333,7 +334,7 @@ class StorageMessageQueueServer(BasicServer):
         if headers["save_log"] and not log_status["succ"]:
             return log_status
 
-        pattern_dim, detection_meta_columns, classifier_classes, ai_status = (
+        pattern_dim, detection_meta_columns, classifier_classes, detector_classes, ai_status = (
             await self._get_ai_metadata()
         )
         if headers["save_ai"] and not ai_status["succ"]:
@@ -348,13 +349,19 @@ class StorageMessageQueueServer(BasicServer):
             pattern_dim=pattern_dim,
             detection_meta_columns=detection_meta_columns,
             classifier_classes=classifier_classes,
+            detector_classes=detector_classes,
             initial_size=self.config.initial_size,
             save_frame=headers["save_frame"],
             save_log=headers["save_log"],
             save_ai=headers["save_ai"],
+            frame_speed_limit=5, # TODO: make this configurable
+            detection_speed_limit=5, # TODO: make this configurable
             force_rewrite=headers["force_rewrite"],
-            compression="gzip",
-            compression_opts=4,
+            # compression="gzip",
+            # compression_opts=4,
+            compression="lzf",
+            compression_opts=None,
+            scaleoffset=0,
         )
 
         # TODO: make custom exception for recorder
@@ -532,21 +539,28 @@ class StorageMessageQueueServer(BasicServer):
                 result, result_headers = decode_detections(body, headers)
                 pattern = result["pattern"]["pattern"]
                 n_detections = len(result["bboxes"].keys())
-                masks = np.stack(
-                    [
-                        result["bboxes"][f"{i}"]["mask"]["mask"]
-                        for i in range(n_detections)
-                    ]
-                )
-                bboxes = np.stack(
-                    [result["bboxes"][f"{i}"]["bbox"] for i in range(n_detections)]
-                )
-                labels = np.stack(
-                    [result["bboxes"][f"{i}"]["label"] for i in range(n_detections)]
-                )
-                scores = np.stack(
-                    [result["bboxes"][f"{i}"]["score"] for i in range(n_detections)]
-                )
+                if n_detections > 0:
+                    masks = np.stack(
+                        [
+                            result["bboxes"][f"{i}"]["mask"]["mask"]
+                            for i in range(n_detections)
+                        ]
+                    )
+                    bboxes = np.stack(
+                        [result["bboxes"][f"{i}"]["bbox"] for i in range(n_detections)]
+                    )
+                    labels = np.stack(
+                        [result["bboxes"][f"{i}"]["label"] for i in range(n_detections)]
+                    )
+                    scores = np.stack(
+                        [result["bboxes"][f"{i}"]["score"] for i in range(n_detections)]
+                    )
+                else:
+                    masks = np.array([])
+                    bboxes = np.array([])
+                    labels = np.array([])
+                    scores = np.array([])
+
                 cls_result = result["classification"]
                 tracking = result["region2tracks"]
 
