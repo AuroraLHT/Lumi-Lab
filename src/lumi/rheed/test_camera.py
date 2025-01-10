@@ -97,10 +97,8 @@ class TestCamera(threading.Thread):
 
             if frame.ndim < 2 or frame.size == 0: continue # frame might be empty
 
-            frame_header = {"time": frame_time,"uuid":frame_uuid, "time_stamp":str(datetime.datetime.fromtimestamp(frame_time))}
+            frame_header = {"time": str(frame_time),"uuid":frame_uuid, "time_stamp":str(datetime.datetime.fromtimestamp(frame_time))}
             content = (frame, frame_header)
-
-            # print(content[0].dtype, content[0].shape)
 
             for name, queue in self.queues.items():
                 if not queue.full():

@@ -151,7 +151,7 @@ class WebCamera(GenericCamera):
         # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         frame_time = time.time()
         frame_time_stamp = str(datetime.datetime.fromtimestamp(frame_time))
-        content = (frame, {'time':frame_time, 'time_stamp':frame_time_stamp, 'uuid':str(uuid.uuid4())})
+        content = (frame, {'time':str(frame_time), 'time_stamp':frame_time_stamp, 'uuid':str(uuid.uuid4())})
         
         return content
         
