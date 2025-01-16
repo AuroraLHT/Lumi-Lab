@@ -1,6 +1,6 @@
 from abc import ABC
 from enum import Enum
-from typing import Optional, Union, Dict, List
+from typing import Optional, Union, Dict, List, Literal
 
 def _drop_tailling_zero(log_text):
     decimal, exponent = log_text.split('E')
@@ -108,7 +108,7 @@ class RHEEDGunXAxes(Enum):
 
 
 class PascalState:
-    def __init__(self, state:Union[bool, str]) -> None:
+    def __init__(self, state:Union[bool, Literal["ON", "OFF"]]) -> None:
         if isinstance(state, str):
             if state.upper() == "ON":
                 self.state = True
@@ -129,7 +129,7 @@ class PascalState:
     
 
 class PascalEnable:
-    def __init__(self, enable:Union[bool, str]) -> None:
+    def __init__(self, enable:Union[bool, Literal["ENABLE", "DISABLE"]]) -> None:
         if isinstance(enable, str):
             if enable.upper() == "ENABLE":
                 self.enable = True
@@ -150,7 +150,7 @@ class PascalEnable:
 
 
 class PascalLock:
-    def __init__(self, locked:Union[bool, str]) -> None:
+    def __init__(self, locked:Union[bool, Literal["LOCKED", "ACTIVE"]]) -> None:
         if isinstance(locked, str):
             if locked.upper() == "LOCKED":
                 self.locked = True
