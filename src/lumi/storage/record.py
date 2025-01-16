@@ -674,6 +674,8 @@ class RecordReader:
         return self.ds_log.attrs['columns']
 
     def get_log_item(self, idx):
+        if idx < 0: idx = self.ds_log.attrs['size'] + idx
+
         log_columns = self.get_log_columns()
         log_item = self.ds_log[idx]
 
@@ -757,6 +759,7 @@ class RecordReader:
         return detection_meta
     
     def get_detection_item(self, idx):
+        if idx < 0: idx = self.ds_pattern.attrs['size'] + idx
         pattern = self.ds_pattern[idx]
         num_detection = self.ds_num_detection[idx]
         detection_meta = self.ds_detection_meta[idx]
@@ -770,6 +773,7 @@ class RecordReader:
         return pattern, masks, detections, classification, detection_meta
     
     def get_frame(self, idx):
+        if idx < 0: idx = self.ds_frame.attrs['size'] + idx
         frame = self.ds_frame[idx]
         frame_meta = self.ds_frame_meta[idx]
         return frame, frame_meta
