@@ -14,15 +14,18 @@ exchange = "RHEED"
 exchange_type = "direct"
 
 [rheed.pylon]
+fps = 30
 height = 540
 width = 720
-fps = 30
 name = "Pylon Cam"
+idle_time = 0.0033
+
 [rheed.webcam]
 fps = 30
 height = 480
 width = 640
 name = "Web Cam"
+idle_time = 0.0033
 
 [rheed.testcam]
 fps = 30
@@ -30,6 +33,7 @@ height = 540
 width = 720
 source = "src/lumi/rheed/assets/test_frame.npy"
 name = "Test Cam"
+idle_time = 0.0033
 
 [rheed.video_compressor]
 fps = 60
