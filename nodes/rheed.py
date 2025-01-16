@@ -1,13 +1,13 @@
 from lumi.path import PROJECT_ROOT
-from lumi.rheed.video_stream import (
+from lumi.base.camera.video_stream import (
     VideoCompressorConfig,
     VideoCompressor,
     VideoRecorderConfig,
     VideoRecorder,
 )
-from lumi.rheed.pylon_camera import PylonCamera, PylonCameraConfig, list_devices
-from lumi.rheed.web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
-from lumi.rheed.test_camera import TestCameraConfig, TestCamera
+from lumi.base.camera.pylon_camera import PylonCamera, PylonCameraConfig, list_devices
+from lumi.base.camera.web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
+from lumi.base.camera.test_camera import TestCameraConfig, TestCamera
 
 from lumi.rheed.integrator import MultiBoxIntegratorConfig, MultiBoxIntegrator
 from lumi.rheed.livefft import STFTCalculator, STFTCalculatorConfig
@@ -98,6 +98,7 @@ async def _main(args):
             device=devices[0],
             fps=settings.rheed.pylon.fps,
             frame_dims=(height, width),
+            idle_time = settings.rheed.pylon.idle_time,
         )
         camera = PylonCamera(config=pylon_camera_config, name=settings.rheed.pylon.name)
 
@@ -105,9 +106,12 @@ async def _main(args):
         frame_processing = frame_processing_webcam
         height = settings.rheed.webcam.height
         width = settings.rheed.webcam.width
-        web_camera_config = WebCameraConfig(
+        web_camera_config = WebCameraConfig(            
             fps=settings.rheed.webcam.fps,  # the maximum is 30 for this webcam
             queue_size=60,
+            idle_time = settings.rheed.webcam.idle_time,
+            height = settings.rheed.webcam.height,
+            width = settings.rheed.webcam.width,
         )
         camera = WebCamera(config=web_camera_config, name=settings.rheed.webcam.name)
 
@@ -117,10 +121,11 @@ async def _main(args):
         width = settings.rheed.testcam.width
         source = settings.rheed.testcam.source if Path(settings.rheed.testcam.source).is_absolute() else PROJECT_ROOT / settings.rheed.testcam.source
         test_camera_config = TestCameraConfig(
-            frame_dims=(height, width),
-            source= source,
+            frame_dims = (height, width),
+            source = source,
             fps = settings.rheed.testcam.fps,
-            queue_size=2,
+            queue_size = 2,
+            idle_time = settings.rheed.testcam.idle_time,
         )
         camera = TestCamera(config=test_camera_config, name=settings.rheed.testcam.name)
 
