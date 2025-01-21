@@ -19,6 +19,8 @@ height = 540
 width = 720
 name = "Pylon Cam"
 idle_time = 0.0033
+queue_size = 2
+camera_max_num_buffer = 15
 
 [rheed.webcam]
 fps = 30
@@ -26,6 +28,7 @@ height = 480
 width = 640
 name = "Web Cam"
 idle_time = 0.0033
+queue_size = 2
 
 [rheed.testcam]
 fps = 30
@@ -34,6 +37,7 @@ width = 720
 source = "src/lumi/rheed/assets/test_frame.npy"
 name = "Test Cam"
 idle_time = 0.0033
+queue_size = 2
 
 [rheed.video_compressor]
 fps = 60

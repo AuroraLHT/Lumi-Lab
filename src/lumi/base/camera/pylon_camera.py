@@ -74,6 +74,8 @@ class PylonCamera(GenericCamera):
             self.camera = get_camera(device=config.device)
             # config setting TODO
             self.camera.MaxNumBuffer.Value = config.camera_max_num_buffer
+            self.camera.Open()
+            logging.info(f"[PylonCamera] open camera object: {self.camera}")
         except Exception as e:
             logging.error(f"Failed to open camera: {e}")
             self.camera = None
