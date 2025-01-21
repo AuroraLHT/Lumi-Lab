@@ -95,10 +95,12 @@ async def _main(args):
             raise ValueError("No pylon camera found, check network or physical connection")
         
         pylon_camera_config = PylonCameraConfig(
-            device=devices[0],
             fps=settings.rheed.pylon.fps,
-            frame_dims=(height, width),
             idle_time = settings.rheed.pylon.idle_time,
+            queue_size=settings.rheed.pylon.queue_size,
+            frame_dims=(height, width),
+            device=devices[0],
+            camera_max_num_buffer=settings.rheed.pylon.camera_max_num_buffer
         )
         camera = PylonCamera(config=pylon_camera_config, name=settings.rheed.pylon.name)
 
@@ -107,8 +109,8 @@ async def _main(args):
         height = settings.rheed.webcam.height
         width = settings.rheed.webcam.width
         web_camera_config = WebCameraConfig(            
-            fps=settings.rheed.webcam.fps,  # the maximum is 30 for this webcam
-            queue_size=60,
+            fps = settings.rheed.webcam.fps,  # the maximum is 30 for this webcam
+            queue_size = settings.rheed.webcam.queue_size,
             idle_time = settings.rheed.webcam.idle_time,
             height = settings.rheed.webcam.height,
             width = settings.rheed.webcam.width,
@@ -124,7 +126,7 @@ async def _main(args):
             frame_dims = (height, width),
             source = source,
             fps = settings.rheed.testcam.fps,
-            queue_size = 2,
+            queue_size = settings.rheed.testcam.queue_size,
             idle_time = settings.rheed.testcam.idle_time,
         )
         camera = TestCamera(config=test_camera_config, name=settings.rheed.testcam.name)
