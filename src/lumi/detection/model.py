@@ -154,12 +154,16 @@ class DetectorServer(threading.Thread):
         rdinst.clean_collapse()
         rdinst.fit_collapse_peaks(height=0.001, threshold=0.000, prominence=0.001)
 
-        periodicity = rdinst.analyze_peaks_periodicity(
-            center=self.state.horizontal_center, 
-            method='track', 
-            tracker=self.periodicity_tracker, 
-            track_frame_num=self._frame_idx, 
-        )
+        try:
+            periodicity = rdinst.analyze_peaks_periodicity(
+                center=self.state.horizontal_center, 
+                method='track', 
+                tracker=self.periodicity_tracker, 
+                    track_frame_num=self._frame_idx, 
+                )
+        except Exception as e:
+            logging.error(f"Periodicity analysis failed: {e}, setting periodicity to None")
+            periodicity = None
 
         classification = { self.aux_detector.classifier_classes[i] : float(cls_result[0][i]) for i in range(len(cls_result[0]))}
         instances = result.pred_instances
