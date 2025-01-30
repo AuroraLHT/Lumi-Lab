@@ -2,3 +2,5 @@ fastapi
 requests
 av
 opencv-python
+aiosqlite
+pypylon
