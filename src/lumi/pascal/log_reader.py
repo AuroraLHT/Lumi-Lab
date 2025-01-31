@@ -129,7 +129,7 @@ class LogReader(threading.Thread):
                     # st = time.time()
                     for row in self._csv_reader:
                         row = process_row(row)
-                        self._entries = row.keys()
+                        self._entries = list(row.keys())
                         headers : LogContentHeader = {}
 
                         content = (row, headers)
