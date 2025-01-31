@@ -1128,7 +1128,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
     @property
     def empty_response(self):
-        return BaseMessageQueueMessage(None, None)
+        return BaseMessageQueueMessage(b"", {})
 
     def update_on_reponse_callback(
         self, on_response_callback: Callable[[AbstractIncomingMessage], Awaitable[bool]]
