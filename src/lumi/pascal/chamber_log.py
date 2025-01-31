@@ -39,6 +39,7 @@ PARSE_DICT["Valve Stat1"] = {
     7: "RV3 (L/L)",
 }
 
+# Valve Stat2 is not used in the current version
 
 PARSE_DICT["Shut Stat"] = {0: "Sample Shutter"}
 
@@ -235,9 +236,16 @@ def find_deposition_window(log_df):
         return start and end point of the deposition based on the log dataset record
     """
     laser_pulses = log_df["Laser moni"]
-    laser_pulses_setpoint = log_df["Laser set"]
-    deposition_start = np.where(laser_pulses>0)[0]
-    deposition_end = np.where(laser_pulses==laser_pulses_setpoint)[0]
-    log_time = log_df["time_stamp"]
+    # laser_pulses_setpoint = log_df["Laser set"]
+    # deposition_window = np.where(laser_pulses>0)[0]
+    # deposition_start = deposition_window[0]
+    diff_laser_pulses = np.diff(laser_pulses)
+    deposition_start = np.where(diff_laser_pulses>0)[0][0]
+    deposition_end = np.where(diff_laser_pulses<0)[0][0]
+
+    if "time_stamp" in log_df.columns:
+        log_time = log_df["time_stamp"]
+    else:
+        log_time = log_df["Time"]
 
     return log_time[deposition_start], log_time[deposition_end]
