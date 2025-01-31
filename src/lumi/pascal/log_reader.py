@@ -47,6 +47,7 @@ class LogReader(threading.Thread):
         self._csv_reader = None
         self._csv_header = None
         self._observer = None
+        self._entries = None
 
         self.config =  config
         self.queue = queue.Queue(maxsize=config.queue_size)
@@ -128,6 +129,7 @@ class LogReader(threading.Thread):
                     # st = time.time()
                     for row in self._csv_reader:
                         row = process_row(row)
+                        self._entries = row.keys()
                         headers : LogContentHeader = {}
 
                         content = (row, headers)
@@ -176,7 +178,8 @@ class LogReader(threading.Thread):
     @property
     def entries(self):
         if self._csv_header is not None:
-            return self._csv_header
+            # return self._csv_header
+            return self._entries
         else:
             return []
         # row, headers = self.get_log()
