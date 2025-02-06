@@ -209,6 +209,7 @@ class TestLogReader(LogReader):
         """
         self.open_reader(self.config.log_path, 10, jump_to_end=False)
         simulation_rows = self.get_content()
+        self._entries = list(simulation_rows[0].keys())
 
         logging.info("Test source started")
 
