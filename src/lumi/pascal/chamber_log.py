@@ -240,8 +240,15 @@ def find_deposition_window(log_df):
     # deposition_window = np.where(laser_pulses>0)[0]
     # deposition_start = deposition_window[0]
     diff_laser_pulses = np.diff(laser_pulses)
-    deposition_start = np.where(diff_laser_pulses>0)[0][0]
-    deposition_end = np.where(diff_laser_pulses<0)[0][0]
+
+    deposition_start = np.where(diff_laser_pulses>0)
+    deposition_end = np.where(diff_laser_pulses<0)
+
+    if len(deposition_start[0]) == 0 or len(deposition_end[0]) == 0:
+       return None, None
+    else:
+        deposition_start = deposition_start[0][0]
+        deposition_end = deposition_end[0][0]
 
     if "time_stamp" in log_df.columns:
         log_time = log_df["time_stamp"]
