@@ -94,7 +94,8 @@ class DetectorServer(threading.Thread):
         super().__init__(name=name, daemon=daemon)
         self.config = config
         # TODO: may we initialize it with some config or some cache
-        self.state = DetectorState(None, None, {"sx":60, "sy":0, "ex":500, "ey":720}, None)
+        # self.state = DetectorState(None, None, {"sx":60, "sy":50, "ex":300, "ey":720-50}, None)
+        self.state = DetectorState(None, None, {"sx":0, "sy":0, "ex":540, "ey":720}, None)
 
         self.input_queue = Queue(maxsize=config.input_queue_size)
         self.output_queue = Queue(maxsize=config.output_queue_size)
