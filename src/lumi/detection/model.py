@@ -52,7 +52,7 @@ from queue import Queue
 from typing import Union, Optional, List, Dict, Tuple
 import logging
 
-MODEL_FOLDER = Path("/home/hliang16/projects/LnFeO_TokyoU/nn/cascade_maskrcnn_exps")
+MODEL_FOLDER = Path("/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps")
 MODEL_DEVICE = "cuda:3"
 
 @dataclass
@@ -90,12 +90,15 @@ def get_model(model_folder, device):
 class DetectorServer(threading.Thread):
     DETECTION_METAS = ["time_stamp", "uuid", "time", "crop_setup_sx", "crop_setup_sy", "crop_setup_ex", "crop_setup_ey"]
 
-    def __init__(self, config:DetectorConfig, name:Union[int, str], daemon:bool=True ) -> None:        
+    def __init__(self, config:DetectorConfig, name:Union[int, str], daemon:bool=True, detector_state:Optional[DetectorState]=None ) -> None:        
         super().__init__(name=name, daemon=daemon)
         self.config = config
         # TODO: may we initialize it with some config or some cache
         # self.state = DetectorState(None, None, {"sx":60, "sy":50, "ex":300, "ey":720-50}, None)
-        self.state = DetectorState(None, None, {"sx":0, "sy":0, "ex":540, "ey":720}, None)
+        if detector_state is None:
+            self.state = DetectorState(None, None, {"sx":0, "sy":0, "ex":540, "ey":720}, None)
+        else:
+            self.state = detector_state
 
         self.input_queue = Queue(maxsize=config.input_queue_size)
         self.output_queue = Queue(maxsize=config.output_queue_size)

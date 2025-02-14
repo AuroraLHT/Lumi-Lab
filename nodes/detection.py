@@ -3,7 +3,7 @@ from lumi.detection.communication import (
     LiveDetectionMessageQueueServer,
     CameraMessageQueueClient,
 )
-from lumi.detection.model import DetectorServer, DetectorConfig
+from lumi.detection.model import DetectorServer, DetectorConfig, DetectorState
 
 import time
 import datetime
@@ -39,7 +39,19 @@ async def main(args):
         model_folder=settings.detection.detector.model_folder,
     )
 
-    detector = DetectorServer(config=config, name=settings.detection.detector.name, daemon=True)
+    detector_state = DetectorState(
+        horizontal_center=None,
+        pattern_dims=None,
+        crop_setup={
+            "sx":settings.detection.detector.crop_setup.sx,
+            "sy":settings.detection.detector.crop_setup.sy,
+            "ex":settings.detection.detector.crop_setup.ex,
+            "ey":settings.detection.detector.crop_setup.ey,
+        },
+        db_track=None,
+    )
+
+    detector = DetectorServer(config=config, name=settings.detection.detector.name, daemon=True, detector_state=detector_state)
     detector.start()
 
     camera_client = CameraMessageQueueClient(
