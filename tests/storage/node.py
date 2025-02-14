@@ -44,7 +44,7 @@ async def start_storage(remove_existing_file: bool = True):
     datasets_folder = Path(__file__).parent.parent.parent / "database"
     
     # Define the path to the test_node_0001 folder
-    test_node_file = datasets_folder / "test_node_0001.h5py"
+    test_node_file = datasets_folder / "test_node_0001.hdf5"
     
     # Check if the folder exists
     if test_node_file.exists():
