@@ -126,7 +126,7 @@ class Recorder:
         if not save_flag: raise Exception(f"save flag {flag_name} is not enabled")
 
     def open_h5(self, root_folder, project_name):
-        h5_path = Path(root_folder) / f"{project_name}.h5py"
+        h5_path = Path(root_folder) / f"{project_name}.hdf5"
         logging.info("Try to open h5py database file at {}".format( h5_path.absolute() ) )
 
         if h5_path.exists() and not self.config.force_rewrite:
