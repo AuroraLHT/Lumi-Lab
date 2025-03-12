@@ -107,6 +107,13 @@ class DetectorServer(threading.Thread):
 
         self.on_initiate()
 
+    def set_crop(self, sx, sy, ex, ey):
+        self.state.crop_setup = {
+            "sx": sx,
+            "sy": sy,
+            "ex": ex,
+            "ey": ey,
+        }
 
     def predict(self, frame, frame_headers={}):
         self.input_queue.put( (frame, frame_headers) )
@@ -278,7 +285,7 @@ class DetectorServer(threading.Thread):
                 tmp_counter += 1
                 if tmp_counter % 1000 == 0: self.reset_tracker()
             except Exception as e:
-                logging.error(f"Detection Error: {e}")
+                logging.error(f"Detection Error: {e}", exc_info=True)
                 self.reset_tracker()
 
         self.on_stop()

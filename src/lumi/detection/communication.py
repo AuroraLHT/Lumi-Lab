@@ -23,6 +23,7 @@ import numpy as np
 
 # from misc import decode_img
 from ..utils.image import decode_img, encode_img, encode_mask, decode_mask
+from ..utils.common import decode_json, encode_json
 
 # import lumi
 # from .model import DetectorServer
@@ -186,7 +187,6 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
 class LiveDetectionMessageQueueClient(BasicStreamClient):
     pass
 
-
 class DetectionMessageQueueServer(BasicServer):
     # detector : DetectorServer
     detector: "lumi.detection.model.DetectorServer"
@@ -224,8 +224,40 @@ class DetectionMessageQueueServer(BasicServer):
             }
         )
 
-
     async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+        body, headers = message.body, message.headers
+        if headers["request_type"] == "detection":
+            return await self.request_detection(message)
+        elif headers["request_type"] == "set_detection_crop":
+            return await self.set_detection_crop(message)
+        
+    async def set_detection_crop(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+        body, headers = message.body, message.headers
+        crop_setup = decode_json(body)
+        try:
+            self.detector.set_crop(**crop_setup)
+            return self.create_response_message(
+                body=b"",
+                headers={},
+                request_type="set_detection_crop",
+                response_type="set_detection_crop",
+                succ=True,
+                error_type="",
+                error_message="",
+            )
+        except Exception as e:
+            logging.error(f"{self.log_prefix} Failed to set detection crop: {e}", exc_info=True)
+            return self.create_response_message(
+                body=b"",
+                headers={},
+                request_type="set_detection_crop",
+                response_type="set_detection_crop",
+                succ=False,
+                error_type="SetCropFailed",
+                error_message=f"Failed to set detection crop. Error message: {e}",
+            )
+
+    async def request_detection(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
         body, headers = message.body, message.headers
         if len(message.body):
             body, headers = await self.camera_client.get_live_image()
@@ -283,6 +315,18 @@ class DetectionMessageQueueClient(BasicClient):
             client_name=client_name,
             time_out=time_out,
         )
+
+    async def set_detection_crop(self, sx, sy, ex, ey):
+        body = encode_json({
+            "sx": sx,
+            "sy": sy,
+            "ex": ex,
+            "ey": ey,
+        })
+        request_message = self.create_request_message(
+            body=body, headers={}, request_type="set_detection_crop")
+
+        return await self.request(request_message)
 
     async def get_detection(self, image=None, image_headers=None):
         logging.info(f"{self.client_name} get detection")
