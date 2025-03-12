@@ -3,7 +3,7 @@ import queue
 import collections
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Union, Optional, Tuple
 
@@ -23,9 +23,9 @@ class GenericCameraConfig:
             self.idle_time = self.spf / 50
 
 
-
 class GenericCamera(threading.Thread):
     FRAME_HEADER_KEYS = ["time", "uuid", "time_stamp"]
+    config : GenericCameraConfig
     """
         This is a generic camera class that can be used to create a camera object
         The camera object should be implement the following methods:
@@ -33,6 +33,7 @@ class GenericCamera(threading.Thread):
             on_run(self)
             on_grab(self)
             on_stop(self)
+            Optionally, apply_camera_config(self)
             Optionally, __del__(self)
     """
 
@@ -48,17 +49,34 @@ class GenericCamera(threading.Thread):
         self._hold_event = threading.Event()
 
         self.on_initiate(self.config)
+        self.apply_camera_config()
 
     def on_initiate(self, config:GenericCameraConfig):
+        """
+            This function is called when the camera is initiated.
+            It is used to initialize the camera.
+        """
         raise NotImplementedError
 
     def on_run(self):
+        """
+            This function is called when the camera is running.
+            It is used to run the camera.
+        """
         raise NotImplementedError
     
     def on_grab(self):
+        """
+            This function is called when the camera is grabbing a frame.
+            It is used to grab a frame from the camera.
+        """
         raise NotImplementedError
 
     def on_stop(self):
+        """
+            This function is called when the camera is stopped.
+            It is used to stop the camera.
+        """
         raise NotImplementedError
 
     def is_camera_open(self):
@@ -141,6 +159,25 @@ class GenericCamera(threading.Thread):
     def stop(self):
         logging.info(f"{self.name} thread ({self.ident}) receives a stop signal")
         self._stop_event.set()
+
+    def get_camera_config(self):
+        return asdict(self.config)
+
+    def update_camera_config(self, **kargs):
+        for key, value in kargs.items():
+            if hasattr(self.config, key):
+                setattr(self.config, key, value)
+
+        self.apply_camera_config()
+
+    def apply_camera_config(self):
+        """
+            apply the camera config to the camera
+            Base class does nothing.
+            Would be overwritten by the camera class.
+            Called when the camera config is updated and on_initiate.
+        """
+        pass
 
     @property
     def frame_dims(self):
