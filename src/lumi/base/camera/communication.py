@@ -79,22 +79,41 @@ class CameraMessageQueueServer(BasicServer):
         )
 
     async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
-        img, img_header = (
-            self.camera.get_frame()
-        )  # this get the latest frame from the peek queue
+        if headers["request_type"] == "image":
+            img, img_header = (
+                self.camera.get_frame()
+            )  # this get the latest frame from the peek queue
 
-        if img is not None:
-            body, headers = encode_img(img, img_header)
-            # update the state at each read out
+            if img is not None:
+                body, headers = encode_img(img, img_header)
+                # update the state at each read out
 
-            response= self.create_response_message(
-                body=body,
-                headers=headers,
-                request_type="image",
-                response_type="image",
-                succ=True,
-                error_type="",
-                error_message="",
+                response= self.create_response_message(
+                    body=body,
+                    headers=headers,
+                    request_type="image",
+                    response_type="image",
+                    succ=True,
+                    error_type="",
+                    error_message="",
+                )
+        elif headers["request_type"] == "get_config":
+            response = self.create_response_message(
+                body=encode_json(self.camera.get_camera_config()),
+                headers={},
+                request_type="get_config",
+                response_type="get_config",
+            )
+
+        elif headers["request_type"] == "update_config":
+            config = decode_json(body)
+            self.camera.update_camera_config(**config)
+            logging.info(f"Camera config updated to {config}")
+            response = self.create_response_message(
+                body=encode_json(self.camera.get_camera_config()),
+                headers={},
+                request_type="update_config",
+                response_type="update_config",
             )
         else:
             response = self.create_response_message(
@@ -115,6 +134,20 @@ class CameraMessageQueueClient(BasicClient):
 
         request_message = self.create_request_message(
             body="".encode(), headers={}, request_type="image")
+        return await self.request(request_message)
+    
+    async def get_camera_config(self):
+        logging.info(f"{self.client_name} get camera config")
+
+        request_message = self.create_request_message(
+            body="".encode(), headers={}, request_type="get_config")
+        return await self.request(request_message)
+    
+    async def update_camera_config(self, config: dict):
+        logging.info(f"{self.client_name} update camera config")
+
+        request_message = self.create_request_message(
+            body=encode_json(config), headers={}, request_type="update_config")
         return await self.request(request_message)
 
 

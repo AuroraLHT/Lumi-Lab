@@ -48,10 +48,17 @@ class PylonCameraConfig(GenericCameraConfig):
     device : pylon.DeviceInfo
     # camera option
     camera_max_num_buffer : int
-
-
+    exposure_time : float
+    gain : float
+    gamma : float
+    black_level : float
+    auto_exposure : bool
+    auto_gain : bool
+    auto_aoi_intensity : bool
+    auto_aoi_whitebalance : int
 
 class PylonCamera(GenericCamera):
+    config : PylonCameraConfig
     camera : Optional[pylon.InstantCamera] = None
     # FRAME_HEADER_KEYS = ["time", "uuid", "time_stamp"]
 
@@ -68,12 +75,26 @@ class PylonCamera(GenericCamera):
         # self.camera.Open()
         # self._stop_event = threading.Event()
         # self._hold_event = threading.Event()
+    
+    def apply_camera_config(self):
+        self.camera.MaxNumBuffer.Value = self.config.camera_max_num_buffer
+        self.camera.ExposureTimeAbs.Value = self.config.exposure_time
+        self.camera.GainRaw.Value = self.config.gain
+        self.camera.GammaEnable.Value = True
+        self.camera.Gamma.Value = self.config.gamma
+        self.camera.BlackLevelRaw.Value = self.config.black_level
+        self.camera.ExposureAuto.Value = "Continuous" if self.config.auto_exposure else "Off"
+        self.camera.GainAuto.Value = "Continuous" if self.config.auto_gain else "Off"
+        
+        for aoi in self.camera.AutoFunctionAOISelector.GetSymbolics():
+            self.camera.AutoFunctionAOISelector.SetValue(aoi)
+            self.camera.AutoFunctionAOIUsageIntensity.SetValue(self.config.auto_aoi_intensity)
+            self.camera.AutoFunctionAOIUsageWhiteBalance.SetValue(self.config.auto_aoi_whitebalance)
+
 
     def on_initiate(self, config:PylonCameraConfig):
         try:
             self.camera = get_camera(device=config.device)
-            # config setting TODO
-            self.camera.MaxNumBuffer.Value = config.camera_max_num_buffer
             self.camera.Open()
             logging.info(f"[PylonCamera] open camera object: {self.camera}")
         except Exception as e:

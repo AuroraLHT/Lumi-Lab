@@ -21,6 +21,14 @@ name = "Pylon Cam"
 idle_time = 0.0033
 queue_size = 2
 camera_max_num_buffer = 15
+exposure_time = 15000 # in the unit of us
+gain = 200 # range from 0 to 240
+gamma = 1.0 # range from 0 to 3.99
+black_level = 0 # range from 0 to 511
+auto_exposure = false
+auto_gain = false
+auto_aoi_intensity = false
+auto_aoi_whitebalance = false
 
 [rheed.webcam]
 fps = 30
