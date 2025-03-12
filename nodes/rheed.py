@@ -96,11 +96,19 @@ async def _main(args):
         
         pylon_camera_config = PylonCameraConfig(
             fps=settings.rheed.pylon.fps,
-            idle_time = settings.rheed.pylon.idle_time,
+            idle_time=settings.rheed.pylon.idle_time,
             queue_size=settings.rheed.pylon.queue_size,
             frame_dims=(height, width),
             device=devices[0],
-            camera_max_num_buffer=settings.rheed.pylon.camera_max_num_buffer
+            camera_max_num_buffer=settings.rheed.pylon.camera_max_num_buffer,
+            exposure_time=settings.rheed.pylon.exposure_time,
+            gain=settings.rheed.pylon.gain,
+            gamma=settings.rheed.pylon.gamma,
+            black_level=settings.rheed.pylon.black_level,
+            auto_exposure=settings.rheed.pylon.auto_exposure,
+            auto_gain=settings.rheed.pylon.auto_gain,
+            auto_aoi_intensity=settings.rheed.pylon.auto_aoi_intensity,
+            auto_aoi_whitebalance=settings.rheed.pylon.auto_aoi_whitebalance
         )
         camera = PylonCamera(config=pylon_camera_config, name=settings.rheed.pylon.name)
 

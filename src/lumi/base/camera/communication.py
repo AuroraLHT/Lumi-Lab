@@ -79,6 +79,8 @@ class CameraMessageQueueServer(BasicServer):
         )
 
     async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+        body, headers = message.body, message.headers
+        
         if headers["request_type"] == "image":
             img, img_header = (
                 self.camera.get_frame()
