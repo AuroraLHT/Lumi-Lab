@@ -51,6 +51,7 @@ class RecorderConfig:
         default=None,
         metadata={"help": "Maximum frame rate to save in fps"}
     )
+    
     detection_speed_limit : Optional[float] = field(
         default=None,
         metadata={"help": "Maximum detection rate to save in fps"}
