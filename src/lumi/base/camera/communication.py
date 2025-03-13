@@ -109,13 +109,16 @@ class CameraMessageQueueServer(BasicServer):
 
         elif headers["request_type"] == "update_config":
             config = decode_json(body)
-            self.camera.update_camera_config(**config)
+            succ, err_msg = self.camera.update_camera_config(**config)
             logging.info(f"Camera config updated to {config}")
             response = self.create_response_message(
                 body=encode_json(self.camera.get_camera_config()),
                 headers={},
                 request_type="update_config",
                 response_type="update_config",
+                error_type="UpdateError" if not succ else "",
+                error_message=err_msg,
+                succ=succ
             )
         else:
             response = self.create_response_message(
