@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 from typing import Union, Optional, Tuple
+import copy
 
 @dataclass
 class GenericCameraConfig:
@@ -22,7 +23,8 @@ class GenericCameraConfig:
         if self.idle_time is None:
             self.idle_time = self.spf / 50
 
-    def _json_mapper(self, name, value):
+    @staticmethod
+    def _json_mapper(name, value):
         """
             This function is used to map the value to the correct type
             default is to return the value as is
@@ -30,7 +32,8 @@ class GenericCameraConfig:
         """
         return value
     
-    def _reverse_json_mapper(self, name, value):
+    @staticmethod
+    def _reverse_json_mapper(name, value):
         """
             This function is used to reverse the mapping of the value
             default is to return the value as is
@@ -190,6 +193,7 @@ class GenericCamera(threading.Thread):
 
         self.on_stop()
 
+
     def hold(self):
         logging.info(f"{self.name} thread ({self.ident}) receives a hold signal")
         self._hold_event.set()
@@ -206,8 +210,18 @@ class GenericCamera(threading.Thread):
         return self.config.to_json_dict()
 
     def update_camera_config(self, **kargs):
+        prev_config = copy.copy(self.config)
         self.config.from_json_dict(kargs)
-        self.apply_camera_config()
+        succ, error = self.apply_camera_config()
+        if not succ:
+            logging.error(error, exc_info=True)
+            self.config = prev_config
+            logging.info(prev_config)
+            _succ, _error = self.apply_camera_config()
+            if not _succ: logging.error(_error, exc_info=True)
+
+        return succ, str(error) if error is not None else ''
+        
 
     def apply_camera_config(self):
         """

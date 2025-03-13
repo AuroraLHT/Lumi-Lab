@@ -82,7 +82,9 @@ class PylonCamera(GenericCamera):
     # FRAME_HEADER_KEYS = ["time", "uuid", "time_stamp"]
 
     def __init__(self, config:PylonCameraConfig, name:Union[int, str]) -> None:
+        self._is_running = False
         super().__init__(config=config, name=name)
+
         # self.camera_io_lock = threading.Lock()
 
         # self.config = config
@@ -95,32 +97,27 @@ class PylonCamera(GenericCamera):
         # self._stop_event = threading.Event()
         # self._hold_event = threading.Event()
     
-    def apply_camera_config(self):
-        self._hold_event.set()
-        self._on_hold_event.wait(5)
-
-        was_grabbing = self._is_grabbing()
-        if was_grabbing:
-            self._stop_grabbing()
-
-        self.camera.MaxNumBuffer.Value = self.config.camera_max_num_buffer
-        self.camera.ExposureTimeAbs.Value = self.config.exposure_time
-        self.camera.GainRaw.Value = self.config.gain
-        self.camera.GammaEnable.Value = True
-        self.camera.Gamma.Value = self.config.gamma
-        self.camera.BlackLevelRaw.Value = self.config.black_level
-        self.camera.ExposureAuto.Value = "Continuous" if self.config.auto_exposure else "Off"
-        self.camera.GainAuto.Value = "Continuous" if self.config.auto_gain else "Off"
-        
-        for aoi in self.camera.AutoFunctionAOISelector.GetSymbolics():
-            self.camera.AutoFunctionAOISelector.SetValue(aoi)
-            self.camera.AutoFunctionAOIUsageIntensity.SetValue(self.config.auto_aoi_intensity)
-            self.camera.AutoFunctionAOIUsageWhiteBalance.SetValue(self.config.auto_aoi_whitebalance)
-
-        if was_grabbing:
-            self._start_grabbing()
-
-        self._hold_event.clear()
+    def apply_camera_config(self, force_restart_grabbing=False):
+        self._pause_grabbing()
+        try:
+            self.camera.MaxNumBuffer.Value = self.config.camera_max_num_buffer
+            self.camera.ExposureTimeAbs.Value = self.config.exposure_time
+            self.camera.GainRaw.Value = self.config.gain
+            self.camera.GammaEnable.Value = True
+            self.camera.Gamma.Value = self.config.gamma
+            self.camera.BlackLevelRaw.Value = self.config.black_level
+            self.camera.ExposureAuto.Value = "Continuous" if self.config.auto_exposure else "Off"
+            self.camera.GainAuto.Value = "Continuous" if self.config.auto_gain else "Off"
+            
+            for aoi in self.camera.AutoFunctionAOISelector.GetSymbolics():
+                self.camera.AutoFunctionAOISelector.SetValue(aoi)
+                self.camera.AutoFunctionAOIUsageIntensity.SetValue(self.config.auto_aoi_intensity)
+                self.camera.AutoFunctionAOIUsageWhiteBalance.SetValue(self.config.auto_aoi_whitebalance)
+            
+            self._resume_grabbing()
+            return True, None
+        except Exception as e:
+            return False, e
 
 
     def on_initiate(self, config:PylonCameraConfig):
@@ -150,8 +147,21 @@ class PylonCamera(GenericCamera):
         self.camera.StopGrabbing()
         logging.info("[PylonCamera] stop grabbing")
 
+    def _pause_grabbing(self):
+        self.hold()
+        self._on_hold_event.wait(5)
+
+        if self._is_running:
+            self._stop_grabbing()
+
+    def _resume_grabbing(self):
+        if self._is_running:
+            self._start_grabbing()
+            self.resume()
+
     def on_run(self):
         self._start_grabbing()
+        self._is_running = True
 
     def on_grab(self):
         grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_Return)
@@ -161,7 +171,8 @@ class PylonCamera(GenericCamera):
         try:
             frame = grabResult.Array
         except Exception as e:
-            logging.error(e, exc_info=e)
+            # logging.error(e, exc_info=e)
+            logging.error(e)
             return None
         
         if frame.ndim < 2 or frame.size == 0: return None # frame might be empty
@@ -175,6 +186,7 @@ class PylonCamera(GenericCamera):
 
     def on_stop(self):
         self._stop_grabbing()
+        self._is_running = False
     # def register_queue(self, name):
     #     self.queues[name] = queue.Queue(maxsize=self.config.queue_size)
     #     return self.queues[name]
