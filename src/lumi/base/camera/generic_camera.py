@@ -80,6 +80,7 @@ class GenericCamera(threading.Thread):
 
         self._stop_event = threading.Event()
         self._hold_event = threading.Event()
+        self._on_hold_event = threading.Event()
 
         self.on_initiate(self.config)
         self.apply_camera_config()
@@ -158,8 +159,12 @@ class GenericCamera(threading.Thread):
 
             hold_flag = self._hold_event.wait(self.config.idle_time)
             if hold_flag : 
+                if not self._on_hold_event.is_set():
+                    self._on_hold_event.set()
                 time.sleep(self.config.idle_time * 10)
-                continue
+            else:
+                if self._on_hold_event.is_set():
+                    self._on_hold_event.clear()
 
             if self.config.spf < time.time() - prev_grab_time:
                 content = self.on_grab()

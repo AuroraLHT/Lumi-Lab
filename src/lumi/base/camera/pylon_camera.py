@@ -84,6 +84,7 @@ class PylonCamera(GenericCamera):
     
     def apply_camera_config(self):
         self._hold_event.set()
+        self._on_hold_event.wait(5)
 
         was_grabbing = self._is_grabbing()
         if was_grabbing:
@@ -105,7 +106,7 @@ class PylonCamera(GenericCamera):
 
         if was_grabbing:
             self._start_grabbing()
-            
+
         self._hold_event.clear()
 
 
