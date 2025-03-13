@@ -83,6 +83,12 @@ class PylonCamera(GenericCamera):
         # self._hold_event = threading.Event()
     
     def apply_camera_config(self):
+        self._hold_event.set()
+
+        was_grabbing = self._is_grabbing()
+        if was_grabbing:
+            self._stop_grabbing()
+
         self.camera.MaxNumBuffer.Value = self.config.camera_max_num_buffer
         self.camera.ExposureTimeAbs.Value = self.config.exposure_time
         self.camera.GainRaw.Value = self.config.gain
@@ -97,6 +103,11 @@ class PylonCamera(GenericCamera):
             self.camera.AutoFunctionAOIUsageIntensity.SetValue(self.config.auto_aoi_intensity)
             self.camera.AutoFunctionAOIUsageWhiteBalance.SetValue(self.config.auto_aoi_whitebalance)
 
+        if was_grabbing:
+            self._start_grabbing()
+            
+        self._hold_event.clear()
+
 
     def on_initiate(self, config:PylonCameraConfig):
         try:
@@ -107,8 +118,8 @@ class PylonCamera(GenericCamera):
             logging.error(f"Failed to open camera: {e}")
             self.camera = None
             raise e
-
-    def on_run(self):
+        
+    def _start_grabbing(self):
         pylon.AcquireContinuousConfiguration().OnOpened(self.camera)
         self.camera.StartGrabbing(pylon.GrabStrategy_UpcomingImage)
 
@@ -116,6 +127,15 @@ class PylonCamera(GenericCamera):
         if self.camera.WaitForFrameTriggerReady(200, pylon.TimeoutHandling_ThrowException):
             self.camera.ExecuteSoftwareTrigger()
 
+    def _is_grabbing(self):
+        return self.camera.IsGrabbing()
+
+    def _stop_grabbing(self):
+        # Stop the grabbing.
+        self.camera.StopGrabbing()
+
+    def on_run(self):
+        self._start_grabbing()
     def on_grab(self):
         grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_Return)
         frame_time = time.time()
@@ -132,9 +152,7 @@ class PylonCamera(GenericCamera):
         return self.camera is not None
 
     def on_stop(self):
-        # Stop the grabbing.
-        self.camera.StopGrabbing()
-
+        self._stop_grabbing()
     # def register_queue(self, name):
     #     self.queues[name] = queue.Queue(maxsize=self.config.queue_size)
     #     return self.queues[name]
