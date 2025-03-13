@@ -3,7 +3,7 @@ import queue
 import collections
 import logging
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 from pathlib import Path
 from typing import Union, Optional, Tuple
 
@@ -22,6 +22,39 @@ class GenericCameraConfig:
         if self.idle_time is None:
             self.idle_time = self.spf / 50
 
+    def _json_mapper(self, name, value):
+        """
+            This function is used to map the value to the correct type
+            default is to return the value as is
+            return value if not mapping is happend        
+        """
+        return value
+    
+    def _reverse_json_mapper(self, name, value):
+        """
+            This function is used to reverse the mapping of the value
+            default is to return the value as is
+            return value if not reverse mapping is happend
+        """
+        return value
+
+    def to_json_dict(self):
+        result = {}
+        for field in fields(self):
+            value = getattr(self, field.name)
+            value = self._json_mapper(field.name, value)
+            if not isinstance(value, (int, float, bool, str, list, tuple, dict, type(None))):
+                value = str(value)
+            result[field.name] = value
+        return result
+
+    def from_json_dict(self, json_dict):
+        for field in fields(self):
+            if field.name not in json_dict:
+                continue
+            value = json_dict[field.name]
+            value = self._reverse_json_mapper(field.name, value)
+            setattr(self, field.name, value)
 
 class GenericCamera(threading.Thread):
     FRAME_HEADER_KEYS = ["time", "uuid", "time_stamp"]
@@ -161,13 +194,10 @@ class GenericCamera(threading.Thread):
         self._stop_event.set()
 
     def get_camera_config(self):
-        return asdict(self.config)
+        return self.config.to_json_dict()
 
     def update_camera_config(self, **kargs):
-        for key, value in kargs.items():
-            if hasattr(self.config, key):
-                setattr(self.config, key, value)
-
+        self.config.from_json_dict(kargs)
         self.apply_camera_config()
 
     def apply_camera_config(self):
