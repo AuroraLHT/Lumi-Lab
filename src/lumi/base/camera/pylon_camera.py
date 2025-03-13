@@ -57,6 +57,12 @@ class PylonCameraConfig(GenericCameraConfig):
     auto_aoi_intensity : bool
     auto_aoi_whitebalance : int
 
+    def _json_mapper(self, name, value):
+        if name == "device":
+            value = value.GetFullName()
+            
+        return value
+
 class PylonCamera(GenericCamera):
     config : PylonCameraConfig
     camera : Optional[pylon.InstantCamera] = None
