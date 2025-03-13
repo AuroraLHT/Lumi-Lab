@@ -53,8 +53,10 @@ class GenericCameraConfig:
             if field.name not in json_dict:
                 continue
             value = json_dict[field.name]
-            value = self._reverse_json_mapper(field.name, value)
-            setattr(self, field.name, value)
+            prev_value = self._json_mapper(field.name, getattr(self, field.name))
+            if value != prev_value:
+                value = self._reverse_json_mapper(field.name, value)
+                setattr(self, field.name, value)
 
 class GenericCamera(threading.Thread):
     FRAME_HEADER_KEYS = ["time", "uuid", "time_stamp"]
@@ -161,7 +163,9 @@ class GenericCamera(threading.Thread):
             if hold_flag : 
                 if not self._on_hold_event.is_set():
                     self._on_hold_event.set()
+                    logging.info("Camera is on hold")
                 time.sleep(self.config.idle_time * 10)
+                continue
             else:
                 if self._on_hold_event.is_set():
                     self._on_hold_event.clear()

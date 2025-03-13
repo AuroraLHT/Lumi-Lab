@@ -39,6 +39,14 @@ def list_devices(verbose=True):
 
     return devices
 
+def get_device(fullname):
+    tl_factory = pylon.TlFactory.GetInstance()
+    for i, device in enumerate( tl_factory.EnumerateDevices() ):
+        if device.GetFullname() == fullname:
+            return device
+    return None
+
+
 @dataclass
 class PylonCameraConfig(GenericCameraConfig):
     # idle_time : float = 1 / 300
@@ -61,6 +69,11 @@ class PylonCameraConfig(GenericCameraConfig):
         if name == "device":
             value = value.GetFullName()
             
+        return value
+    
+    def _reverse_json_mapper(self, name, value):
+        if name == "device":
+            value = get_device(value)
         return value
 
 class PylonCamera(GenericCamera):
@@ -127,6 +140,7 @@ class PylonCamera(GenericCamera):
         # this would set the camera to run
         if self.camera.WaitForFrameTriggerReady(200, pylon.TimeoutHandling_ThrowException):
             self.camera.ExecuteSoftwareTrigger()
+        logging.info("[PylonCamera] start grabbing")
 
     def _is_grabbing(self):
         return self.camera.IsGrabbing()
@@ -134,15 +148,22 @@ class PylonCamera(GenericCamera):
     def _stop_grabbing(self):
         # Stop the grabbing.
         self.camera.StopGrabbing()
+        logging.info("[PylonCamera] stop grabbing")
 
     def on_run(self):
         self._start_grabbing()
+
     def on_grab(self):
         grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_Return)
         frame_time = time.time()
         frame_uuid = str(uuid.uuid4())
         
-        frame = grabResult.Array
+        try:
+            frame = grabResult.Array
+        except Exception as e:
+            logging.error(e, exc_info=e)
+            return None
+        
         if frame.ndim < 2 or frame.size == 0: return None # frame might be empty
 
         frame_header = {"time": str(frame_time),"uuid":frame_uuid, "time_stamp":str(datetime.datetime.fromtimestamp(frame_time))}
@@ -250,4 +271,5 @@ class PylonCamera(GenericCamera):
     #     return self.FRAME_HEADER_KEYS
 
     def __del__(self):
-        self.camera.Close()
+        if self.camera:
+            self.camera.Close()
