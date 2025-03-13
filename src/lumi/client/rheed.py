@@ -61,7 +61,14 @@ class CameraClient(CameraMessageQueueClient, StateCallbakcMixin):
     async def get_image(self):
         response = await super().get_live_image()
         return decode_img(response.body, response.headers)
-
+    
+    async def get_camera_config(self):
+        response = await super().get_camera_config()
+        return decode_json(response.body), response.headers
+    
+    async def update_camera_config(self, config: dict):
+        response = await super().update_camera_config(config)
+        return decode_json(response.body), response.headers
 
 class LiveCameraClient(LiveCameraMessageQueueClient, StateCallbakcMixin):
     def __init__(
