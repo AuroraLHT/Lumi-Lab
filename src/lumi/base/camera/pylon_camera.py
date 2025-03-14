@@ -98,6 +98,7 @@ class PylonCamera(GenericCamera):
         # self._hold_event = threading.Event()
     
     def apply_camera_config(self, force_restart_grabbing=False):
+        logging.info("Applying camera config")
         self._pause_grabbing()
         try:
             self.camera.MaxNumBuffer.Value = self.config.camera_max_num_buffer
@@ -115,8 +116,12 @@ class PylonCamera(GenericCamera):
                 self.camera.AutoFunctionAOIUsageWhiteBalance.SetValue(self.config.auto_aoi_whitebalance)
             
             self._resume_grabbing()
+            logging.info("Apply camera config succ")
+
             return True, None
         except Exception as e:
+            logging.warning(f"Apply camera config fail: {e}")
+
             return False, e
 
 
@@ -157,11 +162,11 @@ class PylonCamera(GenericCamera):
     def _resume_grabbing(self):
         if self._is_running:
             self._start_grabbing()
-            self.resume()
+        self.resume()
 
     def on_run(self):
-        self._start_grabbing()
         self._is_running = True
+        self._start_grabbing()
 
     def on_grab(self):
         grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_Return)

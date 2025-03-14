@@ -171,6 +171,7 @@ class GenericCamera(threading.Thread):
                 continue
             else:
                 if self._on_hold_event.is_set():
+                    logging.info("Camera caputre is resumed")
                     self._on_hold_event.clear()
 
             if self.config.spf < time.time() - prev_grab_time:

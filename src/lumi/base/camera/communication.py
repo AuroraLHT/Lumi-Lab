@@ -99,6 +99,16 @@ class CameraMessageQueueServer(BasicServer):
                     error_type="",
                     error_message="",
                 )
+            else:
+                response = self.create_response_message(
+                    body="",
+                    headers={},
+                    request_type="image",
+                    response_type="image",
+                    succ=False,
+                    error_type="ImageCaptureFailed",
+                    error_message="Fail to acquire image the camera server",
+                )
         elif headers["request_type"] == "get_config":
             response = self.create_response_message(
                 body=encode_json(self.camera.get_camera_config()),
