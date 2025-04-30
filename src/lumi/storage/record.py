@@ -773,10 +773,18 @@ class RecordReader:
 
         return pattern, masks, detections, classification, detection_meta
     
+    def _parse_frame_meta(self, frame_meta):
+        frame_meta = { k : v.decode("utf-8") for k, v in zip( self.ds_frame_meta.attrs['columns'], frame_meta )}
+        frame_meta['time_stamp'] = np.datetime64(frame_meta['time_stamp']) if frame_meta['time_stamp'] else frame_meta['time_stamp']
+        frame_meta['time'] = float(frame_meta['time']) if frame_meta['time'] else frame_meta['time']
+        return frame_meta
+    
     def get_frame(self, idx):
         if idx < 0: idx = self.ds_frame.attrs['size'] + idx
         frame = self.ds_frame[idx]
         frame_meta = self.ds_frame_meta[idx]
+        frame_meta = self._parse_frame_meta(frame_meta)
+        
         return frame, frame_meta
 
     def iter_detection_dataset(self, start=0, end=None, step=1):
@@ -791,4 +799,11 @@ class RecordReader:
             frame, frame_meta = self.get_frame(idx)
             yield frame, frame_meta
 
+    def close(self):
+        self.h5f.close()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close() 
