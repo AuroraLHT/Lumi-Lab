@@ -101,14 +101,22 @@ class PylonCamera(GenericCamera):
         logging.info("Applying camera config")
         self._pause_grabbing()
         try:
+            if self.config.auto_exposure:
+                self.camera.ExposureAuto.Value = "Continuous" 
+            else:
+                self.camera.ExposureAuto.Value = "Off"
+                self.camera.ExposureTimeAbs.Value = self.config.exposure_time
+
+            if self.config.auto_gain:
+                self.camera.GainAuto.Value = "Continuous" 
+            else:
+                self.camera.GainAuto.Value = "Off"
+                self.camera.GainRaw.Value = self.config.gain
+
             self.camera.MaxNumBuffer.Value = self.config.camera_max_num_buffer
-            self.camera.ExposureTimeAbs.Value = self.config.exposure_time
-            self.camera.GainRaw.Value = self.config.gain
             self.camera.GammaEnable.Value = True
             self.camera.Gamma.Value = self.config.gamma
             self.camera.BlackLevelRaw.Value = self.config.black_level
-            self.camera.ExposureAuto.Value = "Continuous" if self.config.auto_exposure else "Off"
-            self.camera.GainAuto.Value = "Continuous" if self.config.auto_gain else "Off"
             
             for aoi in self.camera.AutoFunctionAOISelector.GetSymbolics():
                 self.camera.AutoFunctionAOISelector.SetValue(aoi)
