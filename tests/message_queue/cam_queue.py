@@ -41,7 +41,7 @@ class ConnectionStateManager:
     exchange_chamber: Optional[AbstractExchange] = None
     exchange_storage: Optional[AbstractExchange] = None
 
-    image_client: Optional[CameraMessageQueueClient] = None
+    camera_client: Optional[CameraMessageQueueClient] = None
     video_fragment_client: Optional[VideoFragmentsMessageQueueClient] = None
     log_client: Optional[ChamberLogMessageQueueClient] = None
     storage_client: Optional[StorageMessageQueueClient] = None
@@ -71,7 +71,7 @@ async def main():
     connection_state.exchange_storage = exchange_storage
 
     # image client is for all user that connect to this api node
-    image_client = CameraMessageQueueClient(
+    camera_client = CameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
         request_routing_key="image",
@@ -81,8 +81,8 @@ async def main():
         client_name="Camera",
         time_out=10,
     )
-    await image_client.start()
-    connection_state.image_client = image_client
+    await camera_client.start()
+    connection_state.camera_client = camera_client
 
     video_fragment_client = VideoFragmentsMessageQueueClient(
         channel=channel,

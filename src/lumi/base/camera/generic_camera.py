@@ -15,6 +15,8 @@ class GenericCameraConfig:
     queue_size : int
     frame_dims : Tuple[int, int]
 
+    
+
     @property
     def spf(self):
         return 1 / self.fps
@@ -42,6 +44,12 @@ class GenericCameraConfig:
         return value
 
     def to_json_dict(self):
+        """
+            This function is used to convert the camera config to a json dictionary
+            The json dictionary will be used to store the camera config
+            The json dictionary will be used to update the camera config
+            The json dictionary will be used to load the camera config
+        """
         result = {}
         for field in fields(self):
             value = getattr(self, field.name)
@@ -52,6 +60,12 @@ class GenericCameraConfig:
         return result
 
     def from_json_dict(self, json_dict):
+        """
+            This function is used to update the camera config from a json dictionary
+            The json dictionary should be a dictionary of the camera config
+            The function will update the camera config with the json dictionary
+            The function will return the updated camera config
+        """
         for field in fields(self):
             if field.name not in json_dict:
                 continue

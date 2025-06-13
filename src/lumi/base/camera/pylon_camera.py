@@ -97,7 +97,7 @@ class PylonCamera(GenericCamera):
         # self._stop_event = threading.Event()
         # self._hold_event = threading.Event()
     
-    def apply_camera_config(self, force_restart_grabbing=False):
+    def apply_camera_config(self):
         logging.info("Applying camera config")
         self._pause_grabbing()
         try:

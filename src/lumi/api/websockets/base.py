@@ -175,6 +175,7 @@ class BaseStreamClientMessageMapper:
         headers: dict,
         parsed_payload: Union[dict, str, bytes],
     ):
+            
         response = None
         try:
             if operation == "control_request":
@@ -186,9 +187,17 @@ class BaseStreamClientMessageMapper:
                     if self.client is not None:
                         response = await self.client.stop_server_streaming()
                 else:
-                    logging.error(f"{self.client.client_name} stream_map: control_request_type not recognized: {headers['control_request_type']}")
-                    raise ValueError(f"{self.client.client_name} stream_map: control_request_type not recognized: {headers['control_request_type']}")
-
+                    logging.error(f"{self.client.client_name} stream_map: control_request_type not recognized: {headers['control_request_type']}", exc_info=True)
+                    # raise ValueError(f"{self.client.client_name} stream_map: control_request_type not recognized: {headers['control_request_type']}")
+                    response = self.client.create_response_message(
+                        body="",
+                        headers={},
+                        request_type=headers["control_request_type"],
+                        response_type="bytes",
+                        succ=False,
+                        error_type="UnknownRequest",
+                        error_message=f"Invalid control_request_type in BaseStreamClientMessageMapper: {operation}. Payload: {parsed_payload}, headers: {headers}",
+                    )
             elif operation == "command":
                 if headers["command_type"] == "start_streaming":
                     if not self.client.is_main_running():
@@ -203,16 +212,42 @@ class BaseStreamClientMessageMapper:
                     await self.client.stop_main()
                     response = None
                 else:
-                    logging.error(f"{self.client.client_name} stream_map: command_type not recognized: {headers['command_type']}")
-                    raise ValueError(f"{self.client.client_name} stream_map: command_type not recognized: {headers['command_type']}")
+                    logging.error(f"{self.client.client_name} stream_map: command_type not recognized: {headers['command_type']}", exc_info=True)
+                    # raise ValueError(f"{self.client.client_name} stream_map: command_type not recognized: {headers['command_type']}")
+                    response = self.client.create_response_message(
+                        body="",
+                        headers={},
+                        request_type=headers["command_type"],
+                        response_type="bytes",
+                        succ=False,
+                        error_type="UnknownRequest",
+                        error_message=f"Invalid command_type in BaseStreamClientMessageMapper: {operation}. Payload: {parsed_payload}, headers: {headers}",
+                    )
             else:
-                logging.error(f"{self.client.client_name} stream_map: operation not recognized: {operation}")
-                raise ValueError(f"{self.client.client_name} stream_map: operation not recognized: {operation}")
+                logging.error(f"{self.client.client_name} stream_map: operation not recognized: {operation}", exc_info=True)
+                # raise ValueError(f"{self.client.client_name} stream_map: operation not recognized: {operation}")
+                response = self.client.create_response_message(
+                    body="",
+                    headers={},
+                    request_type=operation,
+                    response_type="bytes",
+                    succ=False,
+                    error_type="UnknownRequest",
+                    error_message=f"Invalid operation in BaseStreamClientMessageMapper: {operation}. Payload: {parsed_payload}, headers: {headers}",
+                )
         except Exception as e:
             logging.error(
-                f"{self.client.client_name} map error: {e}. \n\n headers: {headers} \n\n parsed_payload: {parsed_payload}"
+                f"{self.client.client_name} map error: {e}. \n\n headers: {headers} \n\n parsed_payload: {parsed_payload}", exc_info=True
             )
-            raise e
+            response = self.client.create_response_message(
+                body="",
+                headers={},
+                request_type=headers["request_type"],
+                response_type=headers["request_type"],
+                succ=False,
+                error_type="RequestExecutionError",
+                error_message=f"Error in BaseStreamClientMessageMapper: {operation}. Payload: {parsed_payload}, headers: {headers}. Error: {e}",
+            )
 
         return response
 
@@ -273,10 +308,21 @@ class WebsocketMultiClientsHandler:
         """
 
         async def on_response_callback(message: AbstractIncomingMessage):
+            """
+            This function is called when the client sends a response to the server.
+            The response is then sent to the websocket.
+
+            return False if the message is sent successfully, otherwise return True
+            """
             target, headers, body = await mapper.stream_map(
                 mapper.client.client_name, message.headers, message.body
             )
-            await self.send_data(target, "stream", headers, body)
+            try:
+                await self.send_data(target, "stream", headers, body)
+            except Exception as e:
+                logging.error(f"{self.endpoint_name} send_data error: {e}")
+                return True
+            return False
 
         mapper.client.update_on_reponse_callback(on_response_callback)
         self.stream_clients[mapper.client.client_name] = mapper

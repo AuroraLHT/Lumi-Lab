@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     connection_state.exchange_storage = exchange_storage
 
     # image client is for all user that connect to this api node
-    image_client = CameraMessageQueueClient(
+    camera_client = CameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
         request_routing_key=settings.rheed.mq.camera.request_key,
@@ -75,8 +75,8 @@ async def lifespan(app: FastAPI):
         client_name=settings.rheed.mq.camera.name,
         time_out=10,
     )
-    await image_client.start()
-    connection_state.image_client = image_client
+    await camera_client.start()
+    connection_state.camera_client = camera_client
 
     video_fragment_client = VideoFragmentsMessageQueueClient(
         channel=channel,

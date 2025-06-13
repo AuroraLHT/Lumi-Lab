@@ -7,7 +7,7 @@ from lumi.base.camera.video_stream import (
 )
 from lumi.base.camera.pylon_camera import PylonCamera, PylonCameraConfig, list_devices
 from lumi.base.camera.web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
-from lumi.base.camera.test_camera import TestCameraConfig, TestCamera
+from lumi.base.camera.sim_camera import SimCamera, SimCameraConfig
 
 from lumi.rheed.integrator import MultiBoxIntegratorConfig, MultiBoxIntegrator
 from lumi.rheed.livefft import STFTCalculator, STFTCalculatorConfig
@@ -127,17 +127,28 @@ async def _main(args):
 
     else:
         frame_processing = frame_processing_testcam
-        height = settings.rheed.testcam.height
-        width = settings.rheed.testcam.width
-        source = settings.rheed.testcam.source if Path(settings.rheed.testcam.source).is_absolute() else PROJECT_ROOT / settings.rheed.testcam.source
-        test_camera_config = TestCameraConfig(
+        height = settings.rheed.simcam.height
+        width = settings.rheed.simcam.width
+        source = settings.rheed.simcam.source if Path(settings.rheed.simcam.source).is_absolute() else PROJECT_ROOT / settings.rheed.simcam.source
+        sim_camera_config = SimCameraConfig(
             frame_dims = (height, width),
             source = source,
-            fps = settings.rheed.testcam.fps,
-            queue_size = settings.rheed.testcam.queue_size,
-            idle_time = settings.rheed.testcam.idle_time,
+            fps = settings.rheed.simcam.fps,
+            queue_size = settings.rheed.simcam.queue_size,
+            idle_time = settings.rheed.simcam.idle_time,
+            is_base_oscillation = settings.rheed.simcam.is_base_oscillation,
+            base_oscillation_frequency = settings.rheed.simcam.base_oscillation_frequency,
+            base_oscillation_amplitude = settings.rheed.simcam.base_oscillation_amplitude,
+            is_feature_oscillation = settings.rheed.simcam.is_feature_oscillation,
+            feature_bbox = settings.rheed.simcam.feature_bbox,
+            feature_oscillation_frequency = settings.rheed.simcam.feature_oscillation_frequency,
+            feature_oscillation_amplitude = settings.rheed.simcam.feature_oscillation_amplitude,
+            exposure_time = settings.rheed.simcam.exposure_time,
+            gain = settings.rheed.simcam.gain,
+            gamma = settings.rheed.simcam.gamma,
+            max_intensity = settings.rheed.simcam.max_intensity
         )
-        camera = TestCamera(config=test_camera_config, name=settings.rheed.testcam.name)
+        camera = SimCamera(config=sim_camera_config, name=settings.rheed.simcam.name)
 
     # record_camera_queue = camera.register_queue("record")
     live_video_camera_queue = camera.register_queue(settings.rheed.video_compressor.name)

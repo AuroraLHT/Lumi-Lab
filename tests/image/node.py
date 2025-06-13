@@ -22,7 +22,7 @@ async def start():
     exchange_rheed = await channel.declare_exchange("RHEED", type=ExchangeType.DIRECT)
 
     # image client is for all user that connect to this api node
-    image_client = CameraMessageQueueClient(
+    camera_client = CameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
         request_routing_key=settings.rheed.mq.camera.request_key,
@@ -32,8 +32,8 @@ async def start():
         client_name=settings.rheed.mq.camera.name,
         time_out=10,
     )
-    await image_client.start()
-    connection_state.image_client = image_client
+    await camera_client.start()
+    connection_state.camera_client = camera_client
 
 
     live_camera_client = LiveCameraMessageQueueClient(

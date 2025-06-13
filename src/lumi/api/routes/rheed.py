@@ -21,10 +21,11 @@ from ..communication import (
     LiveDetectionMessageQueueClient,
     LiveIntegratorMessageQueueClient,
     LiveSTFTMessageQueueClient,
-    LiveCameraMessageQueueClient
+    LiveCameraMessageQueueClient,
+    CameraMessageQueueClient
 )
 from ..websockets.base import generic_websocket_handler, WebsocketMultiClientsHandler, BaseClientMessageMapper, BaseStreamClientMessageMapper
-from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper, LiveDetectionStreamClientMessageMapper, VideoFragmentsMessageMapper
+from ..websockets.rheed import IntegratorClientMessageMapper, STFTClientMessageMapper, LiveDetectionStreamClientMessageMapper, VideoFragmentsMessageMapper, CameraClientMessageMapper
 
 from ..utils import update_state, pack_payload
 from ..connection import ConnectionManager
@@ -131,7 +132,7 @@ async def get_rheed_camera_state(request: Request):
 @router.get("/RHEED/image")
 async def read_root(request: Request):
     connection_state : ConnectionManager = request.app.state.connection_state
-    response = await connection_state.image_client.get_live_image()
+    response = await connection_state.camera_client.get_live_image()
     # logging.info(headers)
     return Response(
         content=response.body,
@@ -140,6 +141,26 @@ async def read_root(request: Request):
         headers={str(k): str(v) for k, v in response.headers.items()},
     )
 
+@router.get("/RHEED/camera/config")
+async def get_rheed_camera_config(request: Request):
+    connection_state : ConnectionManager = request.app.state.connection_state
+    try:
+        response = await connection_state.camera_client.get_camera_config()
+        return JSONResponse(content=response.to_dict(), status_code=200)
+    except Exception as e:
+        logging.error(f"Error in get_rheed_camera_config: {e}")
+        return JSONResponse(content={"message": "Error in get_rheed_camera_config"}, status_code=500)
+
+@router.post("/RHEED/camera/config")
+async def update_rheed_camera_config(request: Request):
+    connection_state : ConnectionManager = request.app.state.connection_state
+    try:
+        config = await request.json()
+        response = await connection_state.camera_client.update_camera_config(**config)
+        return JSONResponse(content=response.to_dict(), status_code=200)
+    except Exception as e:
+        logging.error(f"Error in update_rheed_camera_config: {e}")
+        return JSONResponse(content={"message": "Error in update_rheed_camera_config"}, status_code=500)
 
 
 # @router.websocket("/RHEED/cam/live")
@@ -207,10 +228,11 @@ async def rheed_analysis_live(websocket: WebSocket):
     await live_video_client.start_control()
     await live_camera_client.start_control()
     
-    websocket_handler = WebsocketMultiClientsHandler(websocket, "RHEED")
+    websocket_handler = WebsocketMultiClientsHandler( websocket, "RHEED" )
     websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_video_client), )
     websocket_handler.register_stream_client( BaseStreamClientMessageMapper(live_camera_client), )
     websocket_handler.register_client( VideoFragmentsMessageMapper(connection_state.video_fragment_client), )
+    websocket_handler.register_client( CameraClientMessageMapper(connection_state.camera_client), )
 
     await websocket_handler.start()
 
