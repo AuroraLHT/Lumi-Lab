@@ -37,17 +37,24 @@ from ..message_queue import (
 from .video_stream import VideoCompressor, VideoRecorder
 from .pylon_camera import PylonCamera
 from .web_camera import WebCamera
-from .test_camera import TestCamera
+from .sim_camera import SimCamera
 
 import queue
-from ..models import BaseMessageHeader, BaseControlRequestMessageHeader, BaseRequestMessageHeader, RequestMessageQueueMessage, ResponseMessageQueueMessage, StreamMessageQueueMessage
+from ..models import (
+    BaseMessageHeader, 
+    BaseControlRequestMessageHeader, 
+    BaseRequestMessageHeader, 
+    RequestMessageQueueMessage, 
+    ResponseMessageQueueMessage, 
+    StreamMessageQueueMessage
+)
 
 from typing import Tuple, Union, List, Dict, Any, Callable, Awaitable
 
 
 class CameraMessageQueueServer(BasicServer):
     camera: Union[
-        "PylonCamera", "TestCamera"
+        "PylonCamera", "SimCamera"
     ]
 
     def __init__(
@@ -99,6 +106,7 @@ class CameraMessageQueueServer(BasicServer):
                     error_type="",
                     error_message="",
                 )
+
             else:
                 response = self.create_response_message(
                     body="",
@@ -109,27 +117,29 @@ class CameraMessageQueueServer(BasicServer):
                     error_type="ImageCaptureFailed",
                     error_message="Fail to acquire image the camera server",
                 )
-        elif headers["request_type"] == "get_config":
+
+        elif headers["request_type"] == "get_camera_config":
             response = self.create_response_message(
                 body=encode_json(self.camera.get_camera_config()),
                 headers={},
-                request_type="get_config",
-                response_type="get_config",
+                request_type="get_camera_config",
+                response_type="get_camera_config",
             )
 
-        elif headers["request_type"] == "update_config":
+        elif headers["request_type"] == "update_camera_config":
             config = decode_json(body)
             succ, err_msg = self.camera.update_camera_config(**config)
             logging.info(f"Camera config updated to {config}")
             response = self.create_response_message(
                 body=encode_json(self.camera.get_camera_config()),
                 headers={},
-                request_type="update_config",
-                response_type="update_config",
+                request_type="update_camera_config",
+                response_type="update_camera_config",
                 error_type="UpdateError" if not succ else "",
                 error_message=err_msg,
                 succ=succ
             )
+
         else:
             response = self.create_response_message(
                 body="".encode(),
@@ -140,29 +150,30 @@ class CameraMessageQueueServer(BasicServer):
                 error_type="CameraError",
                 error_message="No frame available",
             )
+            
         return response
 
 
 class CameraMessageQueueClient(BasicClient):
-    async def get_live_image(self):
+    async def get_live_image(self) -> ResponseMessageQueueMessage:
         logging.info(f"{self.client_name} get live image")
 
         request_message = self.create_request_message(
             body="".encode(), headers={}, request_type="image")
         return await self.request(request_message)
     
-    async def get_camera_config(self):
+    async def get_camera_config(self) -> ResponseMessageQueueMessage:
         logging.info(f"{self.client_name} get camera config")
 
         request_message = self.create_request_message(
-            body="".encode(), headers={}, request_type="get_config")
+            body="".encode(), headers={}, request_type="get_camera_config")
         return await self.request(request_message)
     
-    async def update_camera_config(self, config: dict):
+    async def update_camera_config(self, config: dict) -> ResponseMessageQueueMessage:
         logging.info(f"{self.client_name} update camera config")
 
         request_message = self.create_request_message(
-            body=encode_json(config), headers={}, request_type="update_config")
+            body=encode_json(config), headers={}, request_type="update_camera_config")
         return await self.request(request_message)
 
 

@@ -10,11 +10,11 @@ import uuid
 import numpy as np
 
 from dataclasses import dataclass, field
-
-from typing import Union, List, Optional, Dict, Deque
+from typing import Union, List, Optional, Dict, Deque, Any
 from collections.abc import Callable, Awaitable
 
 import json
+from .integrator import MultiBoxIntegrator
 
 @dataclass
 class STFTCalculatorConfig:
@@ -23,6 +23,8 @@ class STFTCalculatorConfig:
     window_size: float = field(default=50, metadata={"unit": "s", "description": "Size of the sliding window for FFT calculation"})
     hop_size: float = field(default=1, metadata={"unit": "s", "description": "Step size between consecutive FFT calculations"})
     time_resolution: float = field(default=0.1, metadata={"unit": "s", "description": "Time resolution for resampling the signal before FFT"})
+    frequency_min: float = field(default=0, metadata={"unit": "Hz", "description": "Minimum frequency for FFT calculation"})
+    frequency_max: float = field(default=1, metadata={"unit": "Hz", "description": "Maximum frequency for FFT calculation"})
     
     def __post_init__(self):
 
@@ -34,14 +36,14 @@ class STFTCalculatorConfig:
 
 
 class STFTCalculator(threading.Thread):
-    def __init__(self, integrator, config:STFTCalculatorConfig, name:Union[int|str]=""):
+    def __init__(self, integrator: "MultiBoxIntegrator", config:STFTCalculatorConfig, name:Union[int|str]=""):
         super().__init__(name=name)
         self.config = config
         self.output_queue = queue.Queue(maxsize=self.config.output_queue_size)
         self.integrator = integrator
         self._stop_event = threading.Event()
 
-        self.registered_integrations = {}
+        self.registered_integrations : Dict[Union[int, str], Dict[str, Any]] = {}
         self.live_stft_cache : Dict[Union[int, str], Deque] = {}
 
         self.current_time = time.time()
@@ -74,7 +76,6 @@ class STFTCalculator(threading.Thread):
     def compute_fft(self, signal, signal_time):
         """
         """
-
         assert len(signal) > 0
         mask = signal_time > signal_time[-1] - self.config.window_size
 
@@ -82,6 +83,7 @@ class STFTCalculator(threading.Thread):
         start_time = _time[0]
         _time = _time - start_time
         _signal = signal[mask]
+        # _signal -= np.mean(_signal)
 
         # padding the signal using the first value to the window size
         # _signal = np.pad(_signal, (self.config.get_window_length() - len(_signal), 0), mode='edge')
@@ -89,14 +91,16 @@ class STFTCalculator(threading.Thread):
 
         # resample the signal to match the time resolution
         # resampled_time = np.arange(0, self.config.window_size, self.config.time_resolution)
-        end_window = min(self.config.window_size, _time[-1])
-        start_window = end_window - self.config.window_size
+        # end_window = min(self.config.window_size, _time[-1])
+        # start_window = end_window - self.config.window_size
+
+        start_window, end_window = _time[0], _time[-1]
         # print(_time)
-        # print(start_window, end_window)
+        # print(start_window, end_window, "len", len(_time))
         resampled_time = np.arange(start_window, end_window, self.config.time_resolution)
 
         # this clip the signal timestamp such that the padding timestamp would be the same as the actual starting timestamp
-        resampled_time = resampled_time.clip(0, None)
+        # resampled_time = resampled_time.clip(0, None)
 
         # print(resampled_time)
         # print(len(resampled_time))
@@ -104,8 +108,18 @@ class STFTCalculator(threading.Thread):
         resampled_signal = np.interp(resampled_time, _time, _signal, left=_signal[0], right=_signal[-1])
         resampled_time += start_time # add back the start time
         # compute the fft
-        fft = np.fft.rfft(resampled_signal)
-        fft_freq = np.fft.rfftfreq(len(resampled_signal), self.config.time_resolution)
+        signal_size = int(self.config.window_size / self.config.time_resolution)
+        if len(resampled_signal) < signal_size:
+            # resampled_signal = np.pad(resampled_signal, (0, signal_size - len(resampled_signal)), mode='constant', constant_values=0)
+            _resampled_signal = np.pad(resampled_signal, (0, signal_size - len(resampled_signal)), mode='wrap')
+
+        # print("resampled_signal", len(resampled_signal), "signal_size", signal_size)
+
+
+        fft = np.fft.rfft(_resampled_signal)
+        fft_freq = np.fft.rfftfreq(len(_resampled_signal), self.config.time_resolution)
+
+        # print("fft_freq", len(fft_freq), "fft", len(fft))
 
         mask = fft_freq > 0
         fft_freq = fft_freq[mask]
@@ -116,6 +130,11 @@ class STFTCalculator(threading.Thread):
         # print(resampled_time[-1])
         return fft_freq, fft, resampled_time, resampled_signal
 
+    def truncate_fft(self,fft_freq, fft):
+        mask = (fft_freq >= self.config.frequency_min) & (fft_freq <= self.config.frequency_max)
+        fft = fft[mask]
+        fft_freq = fft_freq[mask]
+        return fft_freq, fft
 
     def package_fft_result(self, fft_freq, fft, resampled_time, resampled_signal):
 
@@ -157,23 +176,33 @@ class STFTCalculator(threading.Thread):
 
                         # t_before = time.time()
                         integration_time, intergration, latest_header = self.integrator.get_integration_history(bbox_id)
+                        if integration_time is None or intergration is None or latest_header is None:
+                            logging.warning(f"No integration history found for bbox {bbox_id}")
+                            continue
                         # t_after = time.time()
                         # print("get_history_time: ", t_after - t_before)
 
                         # t_before_computed = time.time()
-                        fft_freq, fft, resampled_time, resampled_signal = self.compute_fft(signal=intergration, signal_time=integration_time)
-                        # t_after_computed = time.time()
-                        # print(f"fft computed within the time of {t_after_computed - t_before_computed}")
-                        
-                        self.live_stft_cache[bbox_id].append( (fft_freq, fft)  )
+                        try:
+                            fft_freq, fft, resampled_time, resampled_signal = self.compute_fft(signal=intergration, signal_time=integration_time)
+                            fft_freq, fft = self.truncate_fft(fft_freq, fft)
 
-                        # t_b = time.time()
-                        content = self.package_fft_result( fft_freq, fft, resampled_time, resampled_signal )
-                        # t_a = time.time()
-                        # print("package result time", t_b - t_a)
+                            # t_after_computed = time.time()
+                            # print(f"fft computed within the time of {t_after_computed - t_before_computed}")
+                            
+                            self.live_stft_cache[bbox_id].append( (fft_freq, fft)  )
 
-                        stfts[bbox_id] = content
+                            # t_b = time.time()
+                            content = self.package_fft_result( fft_freq, fft, resampled_time, resampled_signal )
+                            # t_a = time.time()
+                            # print("package result time", t_b - t_a)
 
+                            stfts[bbox_id] = content
+
+
+                        except Exception as e:
+                            logging.error(f"Error computing FFT for bbox {bbox_id}: {e}", exc_info=True)
+                            continue
                     if stfts:
                         content = self.prepare_content(stfts, {"stft_uuid": str(uuid.uuid4())})
                         # print("content", content)

@@ -43,7 +43,7 @@ class ConnectionManager:
     exchange_pascal: Optional[AbstractExchange] = None
     exchange_storage: Optional[AbstractExchange] = None
 
-    image_client: Optional[CameraMessageQueueClient] = None
+    camera_client: Optional[CameraMessageQueueClient] = None
     video_fragment_client: Optional[VideoFragmentsMessageQueueClient] = None
     log_client: Optional[ChamberLogMessageQueueClient] = None
     storage_client: Optional[StorageMessageQueueClient] = None
