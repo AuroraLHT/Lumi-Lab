@@ -26,7 +26,7 @@ import asyncio
 
 import queue
 from .log_reader import LogReader, LogContentHeader
-
+from .config_reader import ConfigReader, ConfigReaderConfig
 from .mi_mode import MIModeServer, MIModeExecution, MIModeResponseHeader
 from ..base.message_queue import (
     BasicServer,
@@ -41,6 +41,147 @@ from ..base.message_queue import (
 from ..utils.common import decode_json, encode_json
 
 from typing import Callable, List, Dict, Any, Awaitable, Optional, TypedDict
+
+
+class ChamberConfigMessageQueueServer(BasicServer):
+    config_reader: ConfigReader
+
+    def __init__(
+        self,
+        config_reader: ConfigReader,
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        request_routing_key: str,
+        control_routing_key: str,
+        state_routing_key: str,
+        server_name: str,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            control_routing_key=control_routing_key,
+            request_routing_key=request_routing_key,
+            state_routing_key=state_routing_key,
+            server_name=server_name,
+        )
+        self.config_reader = config_reader
+        
+    def update_state(self):
+        # update the state at each read out
+        self.state.update(
+            {
+                "file_path": self.config_reader._config_file_path,
+            }
+        )
+        
+    async def handle_get_all_configs_request(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+        config = self.config_reader.get_all_configs()
+        return self.create_response_message(
+            body=config,
+            headers={},
+            request_type="get_all_config",
+            response_type="get_all_config",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
+    
+    async def handle_get_config_request(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+        body = decode_json(message.body.decode())
+
+        config = self.config_reader.get_config(body["section"], body["key"])
+        return self.create_response_message(
+            body=config,
+            headers={},
+            request_type="get_config",
+            response_type="get_config",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
+    
+    async def handle_get_sections_request(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+        sections = self.config_reader.get_sections()
+        return self.create_response_message(
+            body=sections,
+            headers={},
+            request_type="get_sections",
+            response_type="get_sections",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
+    
+    async def handle_get_configs_by_section_request(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+        body = decode_json(message.body.decode())
+        configs = self.config_reader.get_configs_by_section(body["section"])
+        return self.create_response_message(
+            body=configs,
+            headers={},
+            request_type="get_configs_by_section",
+            response_type="get_configs_by_section",
+            succ=True,
+            error_type="",
+            error_message="",
+        )
+
+    async def on_message(self, message: AbstractIncomingMessage) -> ResponseMessageQueueMessage:
+        headers: BaseRequestMessageHeader = message.headers
+        request_type = headers["request_type"]
+        if request_type == "get_all_config":
+            return await self.handle_get_all_configs_request(message)
+        elif request_type == "get_config":
+            return await self.handle_get_config_request(message)
+        elif request_type == "get_sections":
+            return await self.handle_get_sections_request(message)
+        elif request_type == "get_configs_by_section":
+            return await self.handle_get_configs_by_section_request(message)
+        else:
+            logging.warning(f"{self.log_prefix} Unknown request type: {request_type}")
+            return self.create_response_message(
+                body="".encode(),
+                headers={},
+                request_type=request_type,
+                response_type=request_type,
+                succ=False,
+                error_type="unknownRequestError",
+                error_message=f"Unknown request type: {request_type}",
+            )
+
+class ChamberConfigMessageQueueClient(BasicClient):
+    async def get_all_configs(self):
+        """Get all configuration sections and their key-value pairs."""
+        logging.info(f"{self.log_prefix} Requesting all configs")
+        request_message = self.create_request_message(
+            body="".encode(), headers={}, request_type="get_all_config"
+        )
+        return await self.request(request_message)
+    
+    async def get_config(self, section: str, key: str):
+        """Get a specific configuration value by section and key."""
+        logging.info(f"{self.log_prefix} Requesting config: {section}.{key}")
+        body = encode_json({"section": section, "key": key})
+        request_message = self.create_request_message(
+            body=body, headers={}, request_type="get_config"
+        )
+        return await self.request(request_message)
+    
+    async def get_sections(self):
+        """Get all available configuration sections."""
+        logging.info(f"{self.log_prefix} Requesting all sections")
+        request_message = self.create_request_message(
+            body="".encode(), headers={}, request_type="get_sections"
+        )
+        return await self.request(request_message)
+    
+    async def get_configs_by_section(self, section: str):
+        """Get all configuration key-value pairs for a specific section."""
+        logging.info(f"{self.log_prefix} Requesting configs for section: {section}")
+        body = encode_json({"section": section})
+        request_message = self.create_request_message(
+            body=body, headers={}, request_type="get_configs_by_section"
+        )
+        return await self.request(request_message)
 
 
 class ChamberLogMessageQueueServer(BasicServer):

@@ -61,6 +61,7 @@ class Targets(Enum):
     E="E"
     F="F"
     Clear="Clear"
+    Monitor="Monitor" # TODO: check the name
 
 
 class MaskID(Enum):

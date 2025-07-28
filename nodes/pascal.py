@@ -3,6 +3,7 @@ from lumi.pascal.communication import (
     LiveChamberLogMessageQueueServer,
 )
 from lumi.pascal.communication import MIModeMessageQueueServer
+from lumi.pascal.communication import ChamberConfigMessageQueueServer
 from lumi.pascal.log_reader import (
     LogReader,
     LogReaderConfig,
@@ -10,6 +11,7 @@ from lumi.pascal.log_reader import (
     TestLogReaderConfig,
 )
 from lumi.pascal.mi_mode import MIModeServer, MIModeServerConfig, MIModeBackendSimulator
+from lumi.pascal.config_reader import ConfigReader, ConfigReaderConfig
 
 import aio_pika
 from aio_pika import ExchangeType, connect, Message
@@ -65,7 +67,26 @@ async def main(args):
             config=log_config, name="test_log_reader", daemon=True
         )
 
+    if args.src == "test":
+        config_reader_config = ConfigReaderConfig(
+            idle_time=settings.pascal.config_reader.test.idle_time,
+            config_path=settings.pascal.config_reader.test.config_path,
+        )
+        config_reader = ConfigReader(
+            config=config_reader_config, name=settings.pascal.config_reader.test.name, daemon=True
+        )
+    else:
+        config_reader_config = ConfigReaderConfig(
+            idle_time=settings.pascal.config_reader.idle_time,
+            config_path=settings.pascal.config_reader.config_path,
+        )
+        config_reader = ConfigReader(
+            config=config_reader_config, name=settings.pascal.config_reader.name, daemon=True
+        )
+
+
     log_reader.start()
+    config_reader.start()
 
     if args.src == "path":
         mi_config = MIModeServerConfig(
@@ -106,6 +127,16 @@ async def main(args):
         server_name=settings.pascal.mq.chamber_log.name,
     )
 
+    chamber_config_mq = ChamberConfigMessageQueueServer(
+        config_reader=config_reader,
+        channel=channel,
+        exchange=exchange_pascal,
+        request_routing_key=settings.pascal.mq.chamber_config.request_key,
+        control_routing_key=settings.pascal.mq.chamber_config.ctrl_key,
+        state_routing_key=settings.pascal.mq.chamber_config.state_key,
+        server_name=settings.pascal.mq.chamber_config.name,
+    )
+
     live_chamber_mq = LiveChamberLogMessageQueueServer(
         log_reader=log_reader,
         log_queue=log_reader.queue,
@@ -130,12 +161,14 @@ async def main(args):
     )
 
     await chamber_mq.start()
+    await chamber_config_mq.start()
     await live_chamber_mq.start()
     await mi_mode_mq.start()
 
     await asyncio.Future()
 
     await chamber_mq.cancel()
+    await chamber_config_mq.cancel()
     await live_chamber_mq.cancel()
     await mi_mode_mq.cancel()
 
@@ -150,7 +183,8 @@ async def main(args):
 
     log_reader.stop()
     log_reader.join()
-
+    config_reader.stop()
+    config_reader.join()
 
 if __name__ == "__main__":
     import argparse

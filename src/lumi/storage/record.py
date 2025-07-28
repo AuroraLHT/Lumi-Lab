@@ -680,7 +680,15 @@ class RecordReader:
         log_columns = self.get_log_columns()
         log_item = self.ds_log[idx]
 
-        return { k : TYPE_CONVERSIONS[k](v.decode('utf-8')) if k in TYPE_CONVERSIONS else v for k,v in zip(log_columns, log_item) }
+        if len(log_item):
+            try:
+                return { k : TYPE_CONVERSIONS[k](v.decode('utf-8')) if k in TYPE_CONVERSIONS else v for k,v in zip(log_columns, log_item) }
+            except Exception as e:
+                logging.error(f"Failed to convert log item {idx} to {log_columns}: {str(e)}")
+                return { }
+        else:
+            logging.warning(f"Log item {idx} is empty")
+            return { }
 
     def get_logs_by_column(self, column, column_transform=None, idx=None):
         log_dataset = self.ds_log

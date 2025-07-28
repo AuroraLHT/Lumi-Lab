@@ -16,7 +16,7 @@ from .chamber_log import process_row
 from typing import TypedDict
 
 class FileModifyHandler(FileSystemEventHandler):
-    def __init__(self, log_reader) -> None:
+    def __init__(self, log_reader:"LogReader") -> None:
         super().__init__()
         self.log_reader = log_reader
 
@@ -70,7 +70,7 @@ class LogReader(threading.Thread):
         observer.schedule(event_handler, path=self.config.log_path, recursive=True)
         observer.daemon = self.daemon
         self._observer = observer
-        logging.info("observer created")
+        logging.info("Log csv file watch dog observer created")
 
 
     def close_reader(self):
@@ -82,7 +82,7 @@ class LogReader(threading.Thread):
                 self._csv_header=None
 
     def open_reader(self, file_name, timeout, jump_to_end=True):
-        logging.info(f"Open file {file_name}")
+        logging.info(f"Open a log csv file {file_name}")
         filename = Path(file_name)
         start = time.time()
 
@@ -98,7 +98,7 @@ class LogReader(threading.Thread):
                     break
         
             if time.time() - start < timeout:
-                logging.info(f"file {filename} does not exist")
+                logging.info(f"log csv file {filename} does not exist")
                 time.sleep(0.1)
             else:
                 raise TimeoutError(f"Cannot read the log csv file {file_name}")
@@ -110,7 +110,7 @@ class LogReader(threading.Thread):
         """
         self.create_directory_watcher()
         self._observer.start()
-        logging.info("watch dog started")
+        logging.info("Log csv file watch dog started")
 
         while True:
             # a= time.time()
@@ -148,7 +148,7 @@ class LogReader(threading.Thread):
 
             else:
                 # await asyncio.sleep(1)
-                logging.info("empty csv_reader")
+                logging.info("empty log csv reader")
                 time.sleep(1)
                 continue
             # c = time.time()

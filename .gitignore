@@ -1,5 +1,7 @@
 # project-wise generated files
 database/
+database_archive
+database_archive/
 pascal/storage
 pascal/data
 old/pascal/data
