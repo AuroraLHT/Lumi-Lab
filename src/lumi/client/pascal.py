@@ -4,6 +4,7 @@ import uuid
 from lumi.pascal.communication import (
     MIModeMessageQueueClient,
     ChamberLogMessageQueueClient,
+    ChamberConfigMessageQueueClient,
     LiveChamberLogMessageQueueClient,
 )
 from lumi.utils.common import decode_json
@@ -132,6 +133,76 @@ class LiveChamberLogClient(LiveChamberLogMessageQueueClient, StateCallbakcMixin)
             ),
         )
         self.server_state = {}
+
+
+class ChamberConfigClient(ChamberConfigMessageQueueClient, StateCallbakcMixin):
+    def __init__(
+        self,
+        channel,
+        exchange,
+        request_routing_key,
+        control_routing_key,
+        state_routing_key,
+        client_name,
+        time_out,
+        on_state_callback=None,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            request_routing_key=request_routing_key,
+            control_routing_key=control_routing_key,
+            state_routing_key=state_routing_key,
+            client_name=client_name,
+            time_out=time_out,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
+        )
+        self.server_state = {}
+    
+    @classmethod
+    def from_config(
+        cls, config, channel, exchange, time_out, on_state_callback=None, name_suffix=""
+    ):
+        return super().from_config(
+            config=config,
+            channel=channel,
+            exchange=exchange,
+            time_out=time_out,
+            on_state_callback=on_state_callback,
+            name_suffix=name_suffix,
+        )
+    
+    async def get_all_configs(self):
+        response = await super().get_all_configs()
+        if response.headers["succ"]:
+            return decode_json(response.body)
+        else:
+            raise Exception(f"get all configs failed {response.headers}")
+    
+    async def get_config(self, section: str, key: str):
+        response = await super().get_config(section, key)
+        if response.headers["succ"]:
+            return decode_json(response.body)
+        else:
+            raise Exception(f"get config failed {response.headers}")
+    
+    async def get_sections(self):
+        response = await super().get_sections()
+        if response.headers["succ"]:
+            return decode_json(response.body)
+        else:
+            raise Exception(f"get sections failed {response.headers}")
+    
+    async def get_configs_by_section(self, section: str):
+        response = await super().get_configs_by_section(section)
+        if response.headers["succ"]:
+            return decode_json(response.body)
+        else:
+            raise Exception(f"get configs by section failed {response.headers}")
 
 
 class ChamberLogClient(ChamberLogMessageQueueClient, StateCallbakcMixin):

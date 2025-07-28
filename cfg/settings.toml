@@ -174,6 +174,16 @@ exchange_type = "direct"
 mi_mode_folder = "mi_mode"
 chamber_log_folder = "chamber_log"
 
+[pascal.config_reader.test]
+idle_time = 0.1
+config_path = "src/lumi/pascal/assets/PLDconfig_07102025.ini"
+name = "test_config_reader"
+
+[pascal.config_reader]
+idle_time = 0.1
+config_path = "C:/Program Files (x86)/PLD Controller/PLDconfig.ini"
+name = "config_reader"
+
 [pascal.log_reader]
 idle_time = 0.01
 queue_size = 10
@@ -197,6 +207,12 @@ request_key = "chamber_log"
 ctrl_key = "chamber_log_ctrl"
 state_key = "chamber_log_state"
 name = "Chamber Log"
+
+[pascal.mq.chamber_config]
+request_key = "chamber_config"
+ctrl_key = "chamber_config_ctrl"
+state_key = "chamber_config_state"
+name = "Chamber Config"
 
 [pascal.mq.live_chamber_log]
 publish_key = "live_chamber_log"
