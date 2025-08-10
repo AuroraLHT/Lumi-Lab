@@ -24,10 +24,17 @@ class ConfigFileModifyHandler(FileSystemEventHandler):
     def on_modified(self, event):
         # Event is modified, you can process it now
         if not event.is_directory:
-            print("Watchdog received modified event - % s." % event.src_path)
-            # print(event)
-            # self.log_reader._log_file_path = event.src_path
-            self.config_reader.update_config_file(event.src_path)
+            if Path(event.src_path).name == "PLDconfig.ini":
+                print("Watchdog received modified event - % s." % event.src_path)
+                # print(event)
+                # self.log_reader._log_file_path = event.src_path
+                self.config_reader.update_config_file(event.src_path)
+            # else:
+            #     print(Path(event.src_path).name)
+            #     print(Path(event.src_path))
+
+    # def on_any_event(self, event):
+    #     print(f"Watchdog received event {event}")
 
 class ConfigContentHeader(TypedDict):
     pass
@@ -95,10 +102,12 @@ class ConfigReader(threading.Thread):
     def create_file_watcher(self):
         event_handler = ConfigFileModifyHandler(self)
         observer = Observer()
-        observer.schedule(event_handler, path=self.config.config_path, recursive=True)
+        path = str(Path(self.config.config_path).parent)
+        # path = str(self.config.config_path)
+        observer.schedule(event_handler, path=path, recursive=True)
         observer.daemon = self.daemon
         self._observer = observer
-        logging.info("observer created")
+        logging.info("Observer created to monitor the config at {self.config.config_path}")
 
     def close_reader(self):
         with self._reader_lock:
