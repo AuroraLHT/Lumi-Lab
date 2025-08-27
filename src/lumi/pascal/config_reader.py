@@ -107,7 +107,7 @@ class ConfigReader(threading.Thread):
         observer.schedule(event_handler, path=path, recursive=True)
         observer.daemon = self.daemon
         self._observer = observer
-        logging.info("Observer created to monitor the config at {self.config.config_path}")
+        logging.info(f"Observer created to monitor the config at {self.config.config_path}")
 
     def close_reader(self):
         with self._reader_lock:

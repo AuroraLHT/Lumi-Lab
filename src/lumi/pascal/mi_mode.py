@@ -50,6 +50,18 @@ def clean_mi_files(
         if verbose:
             logging.info(script_file, " removed")
 
+def create_empty_mi_files( mi_folder: Union[str, Path], assit_filename: str, verbose: bool = False):
+    mi_folder = Path(mi_folder)
+    assit_file = mi_folder / (f"{assit_filename}")
+    with open(assit_file, "w") as f:
+        if verbose:
+            logging.info(f"create a empty assist file at {assit_file}")
+    
+    script_file = mi_folder / f"{SCRIPT_PREFIX}"
+    with open(script_file, "w") as f:
+        if verbose:
+            logging.info(f"create a empty script file at {script_file}")
+    
 
 def is_mi_file_trigger(filename: str, base_filename: str) -> bool:
     return filename.endswith(base_filename)
@@ -407,6 +419,7 @@ class MIModeServer(threading.Thread):
 
         # clean up the mi folder and remove all the previous mi files
         clean_mi_files(self.config.mi_folder, self.config.assist_file_name)
+        create_empty_mi_files(self.config.mi_folder, self.config.assist_file_name)
 
         # create the mi watcher to monitor the mi mode backend state
         self.create_mi_watcher()
