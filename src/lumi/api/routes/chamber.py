@@ -11,7 +11,6 @@ from fastapi.responses import HTMLResponse, Response, JSONResponse, StreamingRes
 
 from aio_pika.abc import AbstractIncomingMessage
 
-from ..models import StorageRequest
 from ..communication import (
     LiveChamberLogMessageQueueClient,
     MIModeMessageQueueClient

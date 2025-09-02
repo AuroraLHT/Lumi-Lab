@@ -52,11 +52,13 @@ async def start_storage(request: StorageRequest, resquest_obj: Request):
     #     save_log= request.save_log
     #     )
     # )
+
     response = await connection_state.storage_client.start_storage(
         project_name=request.project_name,
         save_ai=request.save_ai,
         save_frame=request.save_frame,
         save_log=request.save_log,
+        save_integration=request.save_integration,
     )
 
     content = {

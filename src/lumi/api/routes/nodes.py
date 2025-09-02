@@ -21,7 +21,6 @@ from lumi.rheed.communication import (
 )
 from lumi.utils.common import decode_json, encode_json
 
-from ..models import StorageRequest
 from ..communication import LiveChamberLogMessageQueueClient, MIModeMessageQueueClient
 
 import traceback

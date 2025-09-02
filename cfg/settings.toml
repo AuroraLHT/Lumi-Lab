@@ -240,6 +240,10 @@ log = "log"
 frame = "frame"
 frame_meta = "frame_meta"
 
+integration = "integration"
+integration_root = "integration_root"
+integration_meta = "integration_meta"
+
 pattern = "pattern"
 classification = "classification"
 detection = "detection"
@@ -253,8 +257,13 @@ detection_meta = "detection_meta"
 
 
 [storage.hdf5_recorder]
+idle_time = 0.01
+max_workers = 8
 database_path = "database"
 initial_size = 1000
+
+[storage.hdf5_recorder.buffer]
+intergration_buffer_size = 10
 
 [storage.mq.storage]
 request_key = "storage"

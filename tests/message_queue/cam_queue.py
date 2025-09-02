@@ -15,7 +15,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from aio_pika import Message, connect, ExchangeType
 from aio_pika.abc import AbstractIncomingMessage, AbstractConnection, AbstractChannel, AbstractExchange
 
-from lumi.api.models import StorageRequest
 from lumi.api.communication import (
     LiveVideoFragmentsMessageQueueClient,
     VideoFragmentsMessageQueueClient,

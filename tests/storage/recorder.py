@@ -177,6 +177,7 @@ config =  RecorderConfig(
     save_frame = True,
     save_log = True,
     save_ai = True,
+    save_integration = True,
     force_rewrite= True,
 )
 
