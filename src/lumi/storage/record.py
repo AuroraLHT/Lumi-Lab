@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from dataclasses import dataclass, field
-from typing import Tuple, List, Dict
+from typing import Any, Generator, Tuple, List, Dict
 from pathlib import Path
 import logging
 import threading
@@ -17,13 +17,36 @@ import asyncio
 import logging
 
 from lumi.config import settings
+from lumi.rheed.types import IntegrationCollection, IntegrationResult
 from typing import Union, List, Optional, Dict, Tuple, Awaitable
+
 
 def resize_if_over(idx, dataset, resize_step=1000, resize_absolute=None, axis=0):
     if idx >= dataset.shape[axis]:
         if resize_absolute is None:
-            resize_absolute = dataset.shape[axis]+resize_step
-        dataset.resize(resize_absolute, axis=axis)        
+            # resize_absolute = dataset.shape[axis]+resize_step
+            resize_absolute = idx+resize_step
+        dataset.resize(resize_absolute, axis=axis)
+
+
+def register_dataset(registry: List[str], dataset_type: str):
+    """
+    Decorator to register dataset creation methods into a class registry.
+    
+    Args:
+        dataset_type: The type of dataset (e.g., "frame", "log", "ai")
+    """
+    def decorator(func):
+        # Register the method into the class's dataset_creators list
+        
+        registry.append({
+            'type': dataset_type,
+            'method': func,
+            'config_flag': f'save_{dataset_type}'
+        })
+        return func
+    return decorator
+
 
 @dataclass
 class RecorderConfig:
@@ -46,6 +69,7 @@ class RecorderConfig:
     save_frame : bool
     save_log : bool
     save_ai : bool
+    save_integration : bool
 
     frame_speed_limit : Optional[float] = field(
         default=None,
@@ -74,6 +98,7 @@ class RecorderConfig:
         metadata={"help": "Integer value for lossless-lossy integer or float compression. Use 0 for integer lossless compression"}
     )
 
+
 class SpeedLimiter:
     def __init__(self, max_speed: float):
         self.max_speed = max_speed
@@ -92,39 +117,105 @@ class SpeedLimiter:
             return True
 
 
-class Recorder:
-    # NAME_LOG_DS = "log"
-   
-    # NAME_FRAME_DS = "frame"
-    # NAME_FRAME_META_DS = "frame_meta"
+class RecordDataset:
+    """
+    Based RecordDataset structure.
+    """
+    h5f : h5py.File
 
-    # NAME_PATTERN_DS = "pattern"
-    # NAME_CLASSIFICATION_DS = "classification"
-    # NAME_DETECTION_DS = "detection"
-    # NAME_INSTANCE_SEGMENTATION_DS = "instance_segmentation"
-    # NAME_NUM_DETECTION_DS = "num_detection"
+    # this is the log part
+    @property
+    def ds_log(self):
+        # return self.h5f[self.NAME_LOG_DS]
+        return self.h5f[settings.storage.databases.log]
+    
+    # this is the camera part
+    @property
+    def ds_frame(self):
+        # return self.h5f[self.NAME_FRAME_DS]
+        return self.h5f[settings.storage.databases.frame]
+        
+    @property
+    def ds_frame_meta(self):
+        # return self.h5f[self.NAME_FRAME_META_DS]
+        return self.h5f[settings.storage.databases.frame_meta]
 
-    # NAME_TRACK_DS = "tracking"
-    # NAME_NUM_TRACK_DS = "num_tracking"
+    # this is the detection part
+    @property
+    def ds_pattern(self):
+        # return self.h5f[self.NAME_PATTERN_DS]
+        return self.h5f[settings.storage.databases.pattern]
+    
+    @property
+    def ds_detection_meta(self):
+        # return self.h5f[self.NAME_DETECTION_META_DS]
+        return self.h5f[settings.storage.databases.detection_meta]
 
-    # NAME_DETECTION_META_DS = "detection_meta"
+    @property
+    def ds_classification(self):
+        # return self.h5f[self.NAME_CLASSIFICATION_DS]
+        return self.h5f[settings.storage.databases.classification]
+
+    @property
+    def ds_detection(self):
+        # return self.h5f[self.NAME_DETECTION_DS]
+        return self.h5f[settings.storage.databases.detection]
+
+    @property
+    def ds_instance_segmentation(self):
+        # return self.h5f[self.NAME_INSTANCE_SEGMENTATION_DS]
+        return self.h5f[settings.storage.databases.instance_segmentation]
+
+    @property
+    def ds_num_detection(self):
+        # return self.h5f[self.NAME_NUM_DETECTION_DS]
+        return self.h5f[settings.storage.databases.num_detection]
+
+    @property
+    def ds_num_tracking(self):
+        # return self.h5f[self.NAME_NUM_TRACK_DS]
+        return self.h5f[settings.storage.databases.num_tracking]
+
+    @property
+    def ds_tracking(self):
+        # return self.h5f[self.NAME_TRACK_DS]
+        return self.h5f[settings.storage.databases.tracking]
+
+    # this is the integration part
+    @property
+    def ds_integration(self):
+        return self.h5f[settings.storage.databases.integration]
+    
+    @property
+    def ds_integration_root(self):
+        return self.h5f[settings.storage.databases.integration_root]
+    
+    @property
+    def ds_integration_meta(self):
+        return self.h5f[settings.storage.databases.integration_meta]
+
+
+class Recorder(RecordDataset):
 
     RESIZE_STEP = 1000
     frame_speed_limiter : Optional[SpeedLimiter] = None
     detection_speed_limiter : Optional[SpeedLimiter] = None
+    dataset_registry : List[Dict[str, Any]] = []
     
     def __init__(self, config:RecorderConfig):
         self.config = config
         self.open_h5(self.config.root_folder, self.config.project_name)
-
-        self._idx_log = 0
-        self._idx_frame = 0
-        self._idx_detection = 0
+        self._init_idx()
         self.frame_speed_limiter = SpeedLimiter(self.config.frame_speed_limit) if self.config.frame_speed_limit else None
         self.detection_speed_limiter = SpeedLimiter(self.config.detection_speed_limit) if self.config.detection_speed_limit else None
 
+        self._buffer_integrations = {"content": [], "meta": [], "bbox_idx_start": [], "bbox_idx_end": [], "integration_idx": []}
+        self._lock_buffer_integrations = threading.Lock()
+
     def check_save(self, save_flag, flag_name):
-        if not save_flag: raise Exception(f"save flag {flag_name} is not enabled")
+        if not save_flag: 
+            logging.warning(f"save flag {flag_name} is not enabled")
+            raise Exception(f"save flag {flag_name} is not enabled")
 
     def open_h5(self, root_folder, project_name):
         h5_path = Path(root_folder) / f"{project_name}.hdf5"
@@ -141,6 +232,7 @@ class Recorder:
         self.h5f.flush()
         self.h5f.close()
 
+    @register_dataset(dataset_registry, 'frame')
     def create_frame_dataset(self):
         img_h, img_w = self.config.frame_dim
         frame_dataset = self.h5f.create_dataset(
@@ -170,6 +262,7 @@ class Recorder:
         frame_meta_dataset.attrs['columns'] = self.frame_meta_columns
         frame_meta_dataset.attrs['size'] = 0
 
+    @register_dataset(dataset_registry, 'log')
     def create_log_dataset(self):
         log_dataset = self.h5f.create_dataset(
             # self.NAME_LOG_DS, 
@@ -183,6 +276,7 @@ class Recorder:
         log_dataset.attrs['columns'] = self.config.log_columns
         log_dataset.attrs['size'] = 0
 
+    @register_dataset(dataset_registry, 'ai')
     def create_ai_dataset(self):
         pattern_h, pattern_w = self.config.pattern_dim
 
@@ -279,41 +373,74 @@ class Recorder:
         )
         tracking_dataset.attrs['size'] = 0
 
-    def create_datasets(self, ):
+    @register_dataset(dataset_registry, 'integration')
+    def create_integration_dataset(self):
+        # img_h, img_w = self.config.frame_dim
+        self._integration_columns = ["bbox_id"] + list(IntegrationResult.__annotations__.keys())
+        self._integration_root_columns = ["bbox_idx_start", "bbox_idx_end"]
+        self._integration_meta_columns = ["time_stamp", "time"]
 
+        integration_dataset = self.h5f.create_dataset(
+            # self.NAME_FRAME_DS, 
+            settings.storage.databases.integration,
+            (self.config.initial_size, len(self._integration_columns)), 
+            maxshape=(None, len(self._integration_columns)), 
+            chunks=True, 
+            dtype=np.float32
+        )        
+        integration_dataset.attrs['columns'] = self._integration_columns
+        integration_dataset.attrs['size'] = 0
+
+        integration_root_dataset = self.h5f.create_dataset(
+            # self.NAME_FRAME_META_DS, 
+            settings.storage.databases.integration_root,
+            (self.config.initial_size, len(self._integration_root_columns)),
+            maxshape=(None, 2), 
+            chunks=True, 
+            dtype=np.int32
+        )
+        integration_root_dataset.attrs['columns'] = self._integration_root_columns
+        integration_root_dataset.attrs['size'] = 0
+
+        integration_meta_dataset = self.h5f.create_dataset(
+            # self.NAME_FRAME_META_DS, 
+            settings.storage.databases.integration_meta,
+            (self.config.initial_size, len(self._integration_meta_columns) ), 
+            maxshape=(None, len(self._integration_meta_columns) ), 
+            chunks=True, 
+            # chunks=(1, len(self.frame_meta_columns) ),
+            dtype=h5py.string_dtype(encoding='utf-8', length=None)
+        )
+        integration_meta_dataset.attrs['columns'] = self._integration_meta_columns
+        integration_meta_dataset.attrs['size'] = 0
+
+    def create_datasets(self):
         status = {
             "succ": True,
             "failed_datasets": [],
             "error_message": ""
         }
 
-        if self.config.save_frame:
-            try:
-                self.create_frame_dataset()
-            except Exception as e:                
-                logging.error(get_error_info(e))
-                status["failed_datasets"].append("frame")
-                status["error_message"] += str(e) + "\n"
-
-        if self.config.save_log:
-            try:
-                self.create_log_dataset()
-            except Exception as e:
-                logging.error(get_error_info(e))
-                status["failed_datasets"].append("log")
-                status["error_message"] += str(e) + "\n"
-
-        if self.config.save_ai:
-            try:
-                self.create_ai_dataset()
-            except Exception as e:
-                logging.error(get_error_info(e))
-                status["failed_datasets"].append("ai")
-                status["error_message"] += str(e) + "\n"
+        # Loop through all registered dataset creators
+        for dataset_creator in self.dataset_registry:
+            config_flag = getattr(self.config, dataset_creator['config_flag'], False)
+            if config_flag:
+                try:
+                    dataset_creator['method'](self)
+                except Exception as e:
+                    logging.error(get_error_info(e))
+                    status["failed_datasets"].append(dataset_creator['type'])
+                    status["error_message"] += str(e) + "\n"
 
         status['succ'] = len(status["failed_datasets"]) == 0
         return status
 
+    def _init_idx(self):
+        self._idx_log = 0
+        self._idx_frame = 0
+        self._idx_detection = 0
+        self._idx_integration = 0
+        self._idx_integration_bbox = 0
 
     @property
     def next_log_idx(self):
@@ -333,65 +460,17 @@ class Recorder:
         self._idx_detection += 1
         return idx
 
-    # this is the log part
     @property
-    def ds_log(self):
-        # return self.h5f[self.NAME_LOG_DS]
-        return self.h5f[settings.storage.databases.log]
-    
-    # this is the camera part
-    @property
-    def ds_frame(self):
-        # return self.h5f[self.NAME_FRAME_DS]
-        return self.h5f[settings.storage.databases.frame]
-    
-    
-    @property
-    def ds_frame_meta(self):
-        # return self.h5f[self.NAME_FRAME_META_DS]
-        return self.h5f[settings.storage.databases.frame_meta]
-
-    # this is the detection part
-    @property
-    def ds_pattern(self):
-        # return self.h5f[self.NAME_PATTERN_DS]
-        return self.h5f[settings.storage.databases.pattern]
-    
-    @property
-    def ds_detection_meta(self):
-        # return self.h5f[self.NAME_DETECTION_META_DS]
-        return self.h5f[settings.storage.databases.detection_meta]
+    def next_integration_idx(self):
+        idx = self._idx_integration
+        self._idx_integration += 1
+        return idx
 
     @property
-    def ds_classification(self):
-        # return self.h5f[self.NAME_CLASSIFICATION_DS]
-        return self.h5f[settings.storage.databases.classification]
-
-    @property
-    def ds_detection(self):
-        # return self.h5f[self.NAME_DETECTION_DS]
-        return self.h5f[settings.storage.databases.detection]
-
-    @property
-    def ds_instance_segmentation(self):
-        # return self.h5f[self.NAME_INSTANCE_SEGMENTATION_DS]
-        return self.h5f[settings.storage.databases.instance_segmentation]
-
-    @property
-    def ds_num_detection(self):
-        # return self.h5f[self.NAME_NUM_DETECTION_DS]
-        return self.h5f[settings.storage.databases.num_detection]
-
-    @property
-    def ds_num_tracking(self):
-        # return self.h5f[self.NAME_NUM_TRACK_DS]
-        return self.h5f[settings.storage.databases.num_tracking]
-
-    @property
-    def ds_tracking(self):
-        # return self.h5f[self.NAME_TRACK_DS]
-        return self.h5f[settings.storage.databases.tracking]
-
+    def next_integration_bbox_idx(self):
+        idx = self._idx_integration_bbox
+        self._idx_integration_bbox += 1
+        return idx
 
     def save_log(
             self, 
@@ -437,7 +516,6 @@ class Recorder:
         if idx is None: self.ds_frame.attrs['size'] += 1
         if idx is None: self.ds_frame_meta.attrs['size'] += 1
         # print(f"done {_idx}")
-
 
     def save_prediction(
         self,
@@ -518,11 +596,162 @@ class Recorder:
         if idx is None: self.ds_tracking.attrs['size'] += 1
         if idx is None: self.ds_num_tracking.attrs['size'] += 1
 
+    def _save_integrations_buffered_data(
+            self, integrations_data, integrations_meta, 
+            integrations_idx, integrations_bbox_idx_start, integrations_bbox_idx_end,
+            # is_append = True,
+        ):
+        
+        resize_if_over(integrations_bbox_idx_end[-1], self.ds_integration, resize_step=self.RESIZE_STEP)        
+        self.ds_integration[integrations_bbox_idx_start[0]:integrations_bbox_idx_end[-1]+1] = integrations_data
+        # print("save integration", integrations_bbox_idx_start, integrations_bbox_idx_end)
+
+        resize_if_over(integrations_bbox_idx_end[-1], self.ds_integration_meta, resize_step=self.RESIZE_STEP)
+        self.ds_integration_meta[integrations_bbox_idx_start[0]:integrations_bbox_idx_end[-1]+1] = integrations_meta
+        # print("save integration meta", integrations_bbox_idx_start, integrations_bbox_idx_end)
+
+        resize_if_over(integrations_idx[-1], self.ds_integration_root, resize_step=self.RESIZE_STEP)
+        _integrations_root_content = np.stack([ integrations_bbox_idx_start, integrations_bbox_idx_end ], axis=1)
+
+        self.ds_integration_root[integrations_idx[0]:integrations_idx[-1]+1] = _integrations_root_content
+        # print("save integration index", _integration_idx)
+
+        # if is_append:
+
+        self.ds_integration.attrs['size'] += integrations_bbox_idx_end[-1] - integrations_bbox_idx_start[0] + 1
+        self.ds_integration_root.attrs['size'] += len(integrations_idx)
+        self.ds_integration_meta.attrs['size'] += integrations_bbox_idx_end[-1] - integrations_bbox_idx_start[0] + 1
+
+    def save_integrations_buffered(
+        self,
+        integrations : IntegrationCollection,
+        integrations_meta : Dict[str, Any],
+        # integration_idx=None,
+        resize_step=None
+    ):
+        """
+        this function is used to save integrations in buffered mode. 
+        Only allow for appending integrations to the dataset.
+        """
+        self.check_save(self.config.save_integration, flag_name="save_integration")
+
+        _integrations_data = np.zeros((len(integrations), len(self._integration_columns)), dtype=np.float32)
+        _integrations_meta = np.zeros((len(integrations), len(self._integration_meta_columns)), dtype=np.object_)
+
+        # if integration_idx is None:
+        _integrations_idx = self.next_integration_idx
+        _integrations_bbox_idx_start, _integrations_bbox_idx_end = None, None
+        # else:
+        #     _integrations_idx = integration_idx
+        #     _integrations_bbox_idx_start, _integrations_bbox_idx_end = self.ds_integration_root[integration_idx]
+        #     assert 1 + (_integrations_bbox_idx_end - _integrations_bbox_idx_start) == len(integrations)
+
+        bbox_idxes = []
+        for i, (bbox_id, integration) in enumerate(integrations.items()):
+            _integration_bbox_idx = _integrations_bbox_idx_start + i if _integrations_bbox_idx_start is not None else self.next_integration_bbox_idx
+            _integrations_data[i] = [int(bbox_id)] + [ integration[k] for k in self._integration_columns[1:] ]
+            # create meta for each box for the ease of per bbox retrieval
+            _integrations_meta[i] = [ integrations_meta[k] for k in self._integration_meta_columns ]
+            bbox_idxes.append(_integration_bbox_idx)
+
+        _integrations_bbox_idx_start, _integrations_bbox_idx_end = bbox_idxes[0], bbox_idxes[-1]
+
+        with self._lock_buffer_integrations:            
+            # print("append integrations start", _integrations_bbox_idx_start, _integrations_bbox_idx_end, time.time())
+            self._buffer_integrations["content"].append(_integrations_data)
+            self._buffer_integrations["meta"].append(_integrations_meta)
+            self._buffer_integrations["bbox_idx_start"].append(_integrations_bbox_idx_start)
+            self._buffer_integrations["bbox_idx_end"].append(_integrations_bbox_idx_end)
+            self._buffer_integrations["integration_idx"].append(_integrations_idx)
+            # print("append integrations end", _integrations_bbox_idx_start, _integrations_bbox_idx_end, time.time())
+
+        if len(self._buffer_integrations["content"]) >= settings.storage.hdf5_recorder.buffer.intergration_buffer_size:
+            with self._lock_buffer_integrations:
+                if resize_step is None: resize_step = self.RESIZE_STEP
+
+                _integrations_data = np.concatenate(self._buffer_integrations["content"], axis=0)
+                _integrations_meta = np.concatenate(self._buffer_integrations["meta"], axis=0)
+                _integrations_idx = self._buffer_integrations["integration_idx"]
+                _integrations_bbox_idx_start = self._buffer_integrations["bbox_idx_start"]
+                _integrations_bbox_idx_end = self._buffer_integrations["bbox_idx_end"]
+
+                # print(_integrations_bbox_idx_start)
+
+                # print(_integrations_bbox_idx_end)
+
+                # print("save integrations from buffered data start", _integrations_bbox_idx_start[0], _integrations_bbox_idx_end[-1])
+                # print(_integrations_data.shape, _integrations_meta.shape, len(_integrations_idx), len(_integrations_bbox_idx_start), len(_integrations_bbox_idx_end))
+                try:
+                    self._save_integrations_buffered_data(
+                        _integrations_data,
+                        _integrations_meta,
+                        _integrations_idx,
+                        _integrations_bbox_idx_start,
+                        _integrations_bbox_idx_end,
+                    )
+                except Exception as e:
+                    logging.error(f"save integrations from buffered data error: {e}")
+                # print("save integrations from buffered data end", _integrations_bbox_idx_start[0], _integrations_bbox_idx_end[-1])
+
+                self._buffer_integrations["content"] = []
+                self._buffer_integrations["meta"] = []
+                self._buffer_integrations["bbox_idx_start"] = []
+                self._buffer_integrations["bbox_idx_end"] = []
+                self._buffer_integrations["integration_idx"] = []
+                # print("clear buffered integrations")
+
+
+    def save_integrations(
+        self,
+        integrations : IntegrationCollection,
+        integrations_meta : Dict[str, Any],
+        integration_idx=None,
+        resize_step=None
+    ):
+        self.check_save(self.config.save_integration, flag_name="save_integration")
+        
+        _integrations_data = np.zeros((len(integrations), len(self._integration_columns)), dtype=np.float32)
+        _integrations_meta = np.zeros((len(integrations), len(self._integration_meta_columns)), dtype=np.object_)
+
+        if integration_idx is None:
+            _integration_idx = self.next_integration_idx
+            _integration_bbox_idx_start, _integration_bbox_idx_end = self.next_integration_bbox_idx, None
+        else:
+            _integration_idx = integration_idx
+            _integration_bbox_idx_start, _integration_bbox_idx_end = self.ds_integration_root[integration_idx]
+            assert 1 + (_integration_bbox_idx_end - _integration_bbox_idx_start) == len(integrations)
+
+        if resize_step is None: resize_step = self.RESIZE_STEP
+
+        for i, (bbox_id, integration) in enumerate(integrations.items()):
+            _integration_bbox_idx = _integration_bbox_idx_start + i
+            _integrations_data[i] = [int(bbox_id)] + [ integration[k] for k in self._integration_columns[1:] ]
+            # create meta for each box for the ease of per bbox retrieval
+            _integrations_meta[i] = [ integrations_meta[k] for k in self._integration_meta_columns ]
+            resize_if_over(_integration_bbox_idx, self.ds_integration, resize_step=self.RESIZE_STEP)
+            resize_if_over(_integration_bbox_idx, self.ds_integration_meta, resize_step=self.RESIZE_STEP)
+        _integration_bbox_idx_end = _integration_bbox_idx
+
+        self.ds_integration[_integration_bbox_idx_start:_integration_bbox_idx_end+1] = _integrations_data
+        # print("save integration", _integration_bbox_idx_start, _integration_bbox_idx_end)
+
+        self.ds_integration_meta[_integration_bbox_idx_start:_integration_bbox_idx_end+1] = _integrations_meta
+        # print("save integration meta", _integration_bbox_idx_start, _integration_bbox_idx_end)
+        
+        resize_if_over(_integration_idx, self.ds_integration_root, resize_step=self.RESIZE_STEP)
+        _integrations_index_content = np.array([ _integration_bbox_idx_start, _integration_bbox_idx_end ])
+
+        self.ds_integration_root[_integration_idx] = _integrations_index_content
+        # print("save integration index", _integration_idx)
+
+        if integration_idx is None: self.ds_integration.attrs['size'] += _integration_bbox_idx_end - _integration_bbox_idx_start + 1
+        if integration_idx is None: self.ds_integration_root.attrs['size'] += 1
+        if integration_idx is None: self.ds_integration_meta.attrs['size'] += _integration_bbox_idx_end - _integration_bbox_idx_start + 1
 
 @dataclass
 class RecorderServerConfig:
-    idle_time : 0.1
-    max_workers : int = 8
+    idle_time : float = settings.storage.hdf5_recorder.idle_time
+    max_workers : int = settings.storage.hdf5_recorder.max_workers
 
 
 class RecorderServer(threading.Thread):
@@ -571,17 +800,27 @@ class RecorderServer(threading.Thread):
             self.futures[uuid.uuid4()] = future
         # self._total_jobs += 1
 
+    def save_integrations(self, *args, **kargs):
+        future = self.executor.submit( self.recorder.save_integrations_buffered, *args, **kargs )
+        with self._futures_lock:
+            self.futures[uuid.uuid4()] = future
+        # self._total_jobs += 1
+        # print("save integrations", args, kargs)
+
+
     def clear_futures(self):
         if self.executor._work_queue.qsize() > 50:
             logging.info(f"Recorder server ({self.ident}) #{self.executor._work_queue.qsize()} jobs stalled in workqueue. Performance may be degraded. Consider reducing the speed limit, improving compression strategy, or adjusting chunk shape")
 
         with self._futures_lock:
             self.futures = {}
-            for idx, future in self.futures.items():
-                if not future.done():
-                    self.futures[idx] = future
-                else:
-                    future.result()
+            # next_futures = {}
+            # for idx, future in self.futures.items():
+            #     if not future.done():
+            #         next_futures[idx] = future
+            #     else:
+            #         future.result()
+            # self.futures = next_futures
 
 
     def run(self):
@@ -607,69 +846,60 @@ class RecorderServer(threading.Thread):
         self._stop_event.set()
 
 
-class RecordReader:
+class RecordReader(RecordDataset):
 
     def __init__(self, record_path:Path):
         self.record_path = record_path
         self.h5f = h5py.File(record_path, 'r')
 
-    # this is the log part
-    @property
-    def ds_log(self):
-        # return self.h5f[self.NAME_LOG_DS]
-        return self.h5f[settings.storage.databases.log]
+    def get_integration_item(self, idx) -> Tuple[IntegrationCollection, Dict[str, Any]]:
+        integration_bbox_idx_start, integration_bbox_idx_end = self.ds_integration_root[idx]
+        integration_collector = self._parse_integration_item(self.ds_integration[integration_bbox_idx_start:integration_bbox_idx_end+1])
+        integration_meta = self._parse_integration_meta(self.ds_integration_meta[integration_bbox_idx_start])
+        return integration_collector, integration_meta
 
-    # this is the camera part
-    @property
-    def ds_frame(self):
-        # return self.h5f[self.NAME_FRAME_DS]
-        return self.h5f[settings.storage.databases.frame]
+    def _parse_integration_item(self, integration) -> IntegrationCollection:
+        integration_collector : IntegrationCollection = {}
+        for row_idx in range(integration.shape[0]):
+            content : IntegrationResult = { k : v for k, v in zip( self.ds_integration.attrs['columns'], integration[row_idx, 1:] )}            
+            integration_collector[integration[row_idx, 0]] = content
+        return integration_collector
 
-    @property
-    def ds_frame_meta(self):
-        # return self.h5f[self.NAME_FRAME_META_DS]
-        return self.h5f[settings.storage.databases.frame_meta]
+    def _parse_integration_meta(self, integration_meta) -> Dict[str, Any]:
+        integration_meta = { k : v.decode("utf-8") for k, v in zip( self.ds_integration_meta.attrs['columns'], integration_meta )}
+        integration_meta['time_stamp'] = np.datetime64(integration_meta['time_stamp']) if integration_meta['time_stamp'] else integration_meta['time_stamp']
+        integration_meta['time'] = float(integration_meta['time']) if integration_meta['time'] else integration_meta['time']
+        return integration_meta
 
-    # this is the detection part
-    @property
-    def ds_pattern(self):
-        # return self.h5f[self.NAME_PATTERN_DS]
-        return self.h5f[settings.storage.databases.pattern]
+    def iter_integration_dataset(self, start=0, end=None, step=1) -> Generator[Tuple[IntegrationCollection, Dict[str, Any]], None, None]:
+        end = self.ds_integration_root.attrs['size'] if end is None else end
+        for idx in range(start, end, step):
+            integration_collector, integration_meta = self.get_integration_item(idx)
+            yield integration_collector, integration_meta
 
-    @property
-    def ds_detection_meta(self):
-        # return self.h5f[self.NAME_DETECTION_META_DS]
-        return self.h5f[settings.storage.databases.detection_meta]
+    def get_integration_by_bbox_id(self, bbox_id) -> pd.DataFrame:
+        columns = list(self.ds_integration.attrs['columns']) + list(self.ds_integration_meta.attrs['columns'])
+        mask = np.array(self.ds_integration[:self.ds_integration.attrs['size'], 0], copy=True).astype(np.int32) == bbox_id
+        if not np.any(mask):
+            return pd.DataFrame(data=[], columns=columns)
 
-    @property
-    def ds_classification(self):
-        # return self.h5f[self.NAME_CLASSIFICATION_DS]
-        return self.h5f[settings.storage.databases.classification]
+        mask = np.where(mask)[0]
 
-    @property
-    def ds_detection(self):
-        # return self.h5f[self.NAME_DETECTION_DS]
-        return self.h5f[settings.storage.databases.detection]
+        data = np.concatenate([self.ds_integration[mask], self.ds_integration_meta[mask]], axis=1)
+        integration_df = pd.DataFrame(data, columns=columns)
+        integration_df['time'] = integration_df['time'].str.decode('utf-8').astype(np.float64)
+        integration_df['time_stamp'] = integration_df['time_stamp'].str.decode('utf-8').astype("datetime64[ns]")
+        return integration_df
+    
+    def get_all_integrations(self) -> Dict[int, pd.DataFrame]:
+        unique_bbox_ids = np.unique(np.array(self.ds_integration[:self.ds_integration.attrs['size'], 0], copy=True).astype(np.int32))
+        print(unique_bbox_ids)
 
-    @property
-    def ds_instance_segmentation(self):
-        # return self.h5f[self.NAME_INSTANCE_SEGMENTATION_DS]
-        return self.h5f[settings.storage.databases.instance_segmentation]
-
-    @property
-    def ds_num_detection(self):
-        # return self.h5f[self.NAME_NUM_DETECTION_DS]
-        return self.h5f[settings.storage.databases.num_detection]
-
-    @property
-    def ds_num_tracking(self):
-        # return self.h5f[self.NAME_NUM_TRACK_DS]
-        return self.h5f[settings.storage.databases.num_tracking]
-
-    @property
-    def ds_tracking(self):
-        # return self.h5f[self.NAME_TRACK_DS]
-        return self.h5f[settings.storage.databases.tracking]
+        integrations = {}
+        for bbox_id in unique_bbox_ids:
+            integration_df = self.get_integration_by_bbox_id(bbox_id)
+            integrations[bbox_id] = integration_df
+        return integrations
 
     def get_log_columns(self):
         return self.ds_log.attrs['columns']
@@ -735,19 +965,6 @@ class RecordReader:
         for idx in range(start, end, step):
             yield self.get_log_item(idx)
 
-
-    # def find_deposition_window(self):
-    #     """
-    #         return start and end point of the deposition based on the log dataset record
-    #     """
-    #     laser_pulses = self.get_logs_by_column("Laser moni")
-    #     laser_pulses_setpoint = self.get_logs_by_column("Laser set")
-    #     deposition_start = np.where(laser_pulses>0)[0]
-    #     deposition_end = np.where(laser_pulses==laser_pulses_setpoint)[0]
-    #     log_time = self.get_logs_by_column("time_stamp")
-
-    #     return log_time[deposition_start], log_time[deposition_end]
-    
     def get_log_idx_between(self, start_time, end_time):
         log_time = self.get_logs_by_column("time_stamp")
         start_time = np.datetime64(start_time)

@@ -13,12 +13,17 @@ from lumi.base.models import (
     RequestMessageQueueMessage,
     ResponseMessageQueueMessage,
 )
+from lumi.utils.common import decode_json
 from lumi.utils.error import get_error_info
 import numpy as np
 from dataclasses import dataclass
 
-from ..base.message_queue import BasicServer, BasicClient
-from ..rheed.communication import LiveCameraMessageQueueClient, CameraMessageQueueClient
+from ..base.message_queue import BasicServer, BasicClient, BasicStreamClient
+from ..rheed.communication import (
+    LiveCameraMessageQueueClient, 
+    CameraMessageQueueClient, 
+    LiveIntegratorMessageQueueClient,
+)
 from ..detection.communication import (
     LiveDetectionMessageQueueClient,
     DetectionMessageQueueClient,
@@ -78,19 +83,34 @@ class StorageMessageQueueClient(BasicClient):
         save_frame: bool = True,
         save_ai: bool = True,
         save_log: bool = True,
+        save_integration: bool = True,
         force_rewrite: bool = False,
     ):
+        # request_message = self.create_request_message(
+        #     body="".encode(),
+        #     headers={
+        #         "save_frame": save_frame,
+        #         "save_ai": save_ai,
+        #         "save_log": save_log,
+        #         "save_integration": save_integration,
+        #         "project_name": project_name,
+        #         "force_rewrite": force_rewrite,
+        #     },
+        #     request_type="start",
+        # )
         request_message = self.create_request_message(
-            body="".encode(),
-            headers={
+            body={
                 "save_frame": save_frame,
                 "save_ai": save_ai,
                 "save_log": save_log,
+                "save_integration": save_integration,
                 "project_name": project_name,
                 "force_rewrite": force_rewrite,
             },
+            headers={},
             request_type="start",
         )
+
         return await self.request(request_message)
 
     async def end_storage(self):
@@ -118,6 +138,7 @@ class StorageMessageQueueServer(BasicServer):
         camera_client: CameraMessageQueueClient,
         log_client: ChamberLogMessageQueueClient,
         detector_client: DetectionMessageQueueClient,
+        live_integrator_client: LiveIntegratorMessageQueueClient,
         live_camera_client: LiveCameraMessageQueueClient,
         live_detection_client: LiveDetectionMessageQueueClient,
         live_log_client: LiveChamberLogMessageQueueClient,
@@ -141,6 +162,7 @@ class StorageMessageQueueServer(BasicServer):
         self.camera_client = camera_client
         self.log_client = log_client
         self.detector_client = detector_client
+        self.live_integrator_client = live_integrator_client
         self.live_camera_client = live_camera_client
         self.live_detection_client = live_detection_client
         self.live_log_client = live_log_client
@@ -151,6 +173,7 @@ class StorageMessageQueueServer(BasicServer):
         self.state["is_storing_frame"] = False
         self.state["is_storing_ai"] = False
         self.state["is_storing_log"] = False
+        self.state["is_storing_integration"] = False
 
         self.recorder_server = None
         self.recorder_server_config = None
@@ -281,7 +304,11 @@ class StorageMessageQueueServer(BasicServer):
 
         return pattern_dim, detection_meta_columns, classifier_classes, detector_classes, status
 
-    async def _check_live_clients(self, headers: Dict[str, Any]) -> OperationStatus:
+    async def _check_live_clients(self, options: Dict[str, Any]) -> OperationStatus:
+        async def check_live_client(client: BasicStreamClient) -> bool:
+            state = await client.get_state()
+            return state["is_streaming"]
+
         status: OperationStatus = {
             "succ": True,
             "msg": "",
@@ -289,30 +316,24 @@ class StorageMessageQueueServer(BasicServer):
             "error_message": "",
         }
         not_active_clients = []
+        missing_options = []
+        check_lists = [
+            ("save_frame", self.live_camera_client, "live_camera"),
+            ("save_log", self.live_log_client, "live_log"),
+            ("save_ai", self.live_detection_client, "live_detection"),
+            ("save_integration", self.live_integrator_client, "live_integrator"),
+        ]
 
-        if (
-            headers["save_frame"]
-            and not (await self.live_camera_client.get_state())["is_streaming"]
-        ):
-            # await self.live_camera_client.start_server_streaming()
-            status["succ"] = False
-            not_active_clients.append("live camera")
+        for save_type, client, name in check_lists:
+            # make the headers backward compatible
+            if save_type not in options: 
+                options[save_type] = False
+                missing_options.append(save_type)
 
-        if (
-            headers["save_log"]
-            and not (await self.live_log_client.get_state())["is_streaming"]
-        ):
-            # await self.live_log_client.start_server_streaming()
-            status["succ"] = False
-            not_active_clients.append("live log")
+            if options[save_type] and not await check_live_client(client):
+                status["succ"] = False
+                not_active_clients.append(name)
 
-        if (
-            headers["save_ai"]
-            and not (await self.live_detection_client.get_state())["is_streaming"]
-        ):
-            # await self.live_detection_client.start_server_streaming()
-            status["succ"] = False
-            not_active_clients.append("live detection")
 
         if status["succ"]:
             status["msg"] = "All live clients are streaming"
@@ -323,25 +344,31 @@ class StorageMessageQueueServer(BasicServer):
             status["error_type"] = "LiveClientNotStreamingError"
             status["error_message"] = "One or more live clients are not streaming"
 
+        if len(missing_options) > 0:
+            status["msg"] += f" Missing options: {missing_options}."
+
         return status
 
-    async def _create_storages(self, body: bytes, headers: BaseResponseMessageHeader):
+    async def _create_storages(self, options: dict, headers: BaseResponseMessageHeader):
+
         frame_dim, frame_metas_columns, frame_status = await self._get_frame_metadata()
-        if headers["save_frame"] and not frame_status["succ"]:
+        if options["save_frame"] and not frame_status["succ"]:
             return frame_status
 
         log_columns, log_status = await self._get_log_metadata()
-        if headers["save_log"] and not log_status["succ"]:
+        if options["save_log"] and not log_status["succ"]:
             return log_status
 
         pattern_dim, detection_meta_columns, classifier_classes, detector_classes, ai_status = (
             await self._get_ai_metadata()
         )
-        if headers["save_ai"] and not ai_status["succ"]:
+        if options["save_ai"] and not ai_status["succ"]:
             return ai_status
+        
+        # live oscillation do not need meta check
 
         self.recorder_config = RecorderConfig(
-            project_name=headers["project_name"],
+            project_name=options["project_name"],
             root_folder=self.config.root_folder,
             frame_dim=frame_dim,
             frame_meta_columns=frame_metas_columns,
@@ -351,12 +378,13 @@ class StorageMessageQueueServer(BasicServer):
             classifier_classes=classifier_classes,
             detector_classes=detector_classes,
             initial_size=self.config.initial_size,
-            save_frame=headers["save_frame"],
-            save_log=headers["save_log"],
-            save_ai=headers["save_ai"],
+            save_frame=options["save_frame"] if "save_frame" in options else False,
+            save_log=options["save_log"] if "save_log" in options else False,
+            save_ai=options["save_ai"] if "save_ai" in options else False,
+            save_integration=options["save_integration"] if "save_integration" in options else False,
             frame_speed_limit=5, # TODO: make this configurable
             detection_speed_limit=5, # TODO: make this configurable
-            force_rewrite=headers["force_rewrite"],
+            force_rewrite=options["force_rewrite"],
             # compression="gzip",
             # compression_opts=4,
             compression="lzf",
@@ -377,7 +405,7 @@ class StorageMessageQueueServer(BasicServer):
                 "error_message": str(e),
             }
 
-        self.recorder_server_config = RecorderServerConfig(idle_time=0.01)
+        self.recorder_server_config = RecorderServerConfig() # use the default config that controlled by settings.toml
         self.recorder_server = RecorderServer(
             self.recorder_server_config, self.recorder, name="recoder_server"
         )
@@ -398,34 +426,40 @@ class StorageMessageQueueServer(BasicServer):
             "error_message": "",
         }
 
-    async def _start_individual_storages(self, headers):
+    async def _start_individual_storages(self, options):
         status = {
             "succ": True,
             "msg": "Start storages success",
             "error_type": "",
             "error_message": "",
         }
-        failed_storages = []
+        starting_storage = ""
         try:
-            if headers["save_frame"]:
+            if "save_frame" in options and options["save_frame"]:
+                starting_storage = "frame"
                 await self._start_frame_storage()
                 self.state["is_storing_frame"] = True
-                failed_storages.append("frame")
 
-            if headers["save_log"]:
+            if "save_log" in options and options["save_log"]:
+                starting_storage = "log"
                 await self._start_log_storage()
                 self.state["is_storing_log"] = True
-                failed_storages.append("log")
 
-            if headers["save_ai"]:
+            if "save_ai" in options and options["save_ai"]:
+                starting_storage = "ai"
                 await self._start_ai_storage()
                 self.state["is_storing_ai"] = True
-                failed_storages.append("ai")
+
+            if "save_integration" in options and options["save_integration"]:
+                starting_storage = "integration"
+                await self._start_integration_storage()
+                self.state["is_storing_integration"] = True
 
             self.state["is_storing"] = True
         except Exception as e:
+            logging.error(f"{self.log_prefix} Fail to start storage {starting_storage}: {e}")
             status["succ"] = False
-            status["msg"] = f"fail to start storages {failed_storages}"
+            status["msg"] = f"Fail to start storage {starting_storage}"
             status["error_type"] = "StartStorageError"
             status["error_message"] = str(e)
 
@@ -439,6 +473,8 @@ class StorageMessageQueueServer(BasicServer):
     async def start_storages(
         self, body, headers: BaseResponseMessageHeader
     ) -> ResponseMessageQueueMessage:
+        payload = decode_json(body)
+        logging.info(f"{self.log_prefix} start storage response with args {payload}")
         def create_response(
             status: OperationStatus, headers: BaseResponseMessageHeader
         ):
@@ -454,17 +490,17 @@ class StorageMessageQueueServer(BasicServer):
             return response
 
         if not self.state["is_storing"]:
-            live_status = await self._check_live_clients(headers)
+            live_status = await self._check_live_clients(payload)
             if not live_status["succ"]:
                 response = create_response(live_status, headers)
                 return response
 
-            status = await self._create_storages(body, headers)
+            status = await self._create_storages(payload, headers)
             if not status["succ"]:
                 response = create_response(status, headers)
                 return response
 
-            status = await self._start_individual_storages(headers)
+            status = await self._start_individual_storages(payload)
             if not status["succ"]:
                 response = create_response(status, headers)
                 return response
@@ -530,6 +566,24 @@ class StorageMessageQueueServer(BasicServer):
         )
         await self.live_log_client.start_main(start_consume_loop=True)
         logging.info(f"{self.log_prefix} starts log storage.")
+
+    async def _start_integration_storage(self):
+        async def on_response_callback(message: AbstractIncomingMessage):
+            try:
+                body, headers = message.body, message.headers
+                integrations = json.loads(body)
+                self.recorder_server.save_integrations(integrations=integrations, integrations_meta=headers)
+                return False
+
+            except Exception as e:
+                logging.error(e)
+                return True
+
+        self.live_integrator_client.update_on_reponse_callback(
+            on_response_callback=on_response_callback
+        )
+        await self.live_integrator_client.start_main(start_consume_loop=True)
+        logging.info(f"{self.log_prefix} starts integration storage.")
 
     async def _start_ai_storage(self):
         async def on_response_callback(message: AbstractIncomingMessage):
@@ -600,6 +654,11 @@ class StorageMessageQueueServer(BasicServer):
         self.state["is_storing_frame"] = False
         logging.info(f"{self.log_prefix} ends frame storage.")
 
+    async def _end_integration_storage(self):
+        await self.live_integrator_client.stop_main()
+        self.state["is_storing_integration"] = False
+        logging.info(f"{self.log_prefix} ends integration storage.")
+
     async def end_storages(
         self, body: bytes, headers: BaseResponseMessageHeader
     ) -> ResponseMessageQueueMessage:
@@ -607,6 +666,7 @@ class StorageMessageQueueServer(BasicServer):
             await self._end_frame_storage()
             await self._end_log_storage()
             await self._end_ai_storage()
+            await self._end_integration_storage()
             self.state["is_storing"] = False
 
             await self._close_storages()

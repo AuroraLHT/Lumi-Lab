@@ -11,6 +11,7 @@ from lumi.storage.communication import (
 from lumi.rheed.communication import (
     LiveCameraMessageQueueClient,
     CameraMessageQueueClient,
+    LiveIntegratorMessageQueueClient,
 )
 from lumi.detection.communication import (
     DetectionMessageQueueClient,
@@ -84,6 +85,20 @@ async def main(args):
     )
     await detector_client.start()
 
+    live_integrator_client = LiveIntegratorMessageQueueClient(
+        channel=channel,
+        exchange=exchange_rheed,
+        publish_routing_key=settings.rheed.mq.live_integrator.publish_key,
+        control_routing_key=settings.rheed.mq.live_integrator.ctrl_key,
+        state_routing_key=settings.rheed.mq.live_integrator.state_key,
+        on_response_callback=None,
+        client_name=settings.rheed.mq.live_integrator.name,
+        time_out=10,
+        on_state_callback=None,
+    )
+    await live_integrator_client.start_control()
+    await live_integrator_client.start_state()
+
     live_camera_client = LiveCameraMessageQueueClient(
         channel=channel,
         exchange=exchange_rheed,
@@ -140,6 +155,7 @@ async def main(args):
         camera_client=camera_client,
         log_client=log_client,
         detector_client=detector_client,
+        live_integrator_client=live_integrator_client,
         live_camera_client=live_camera_client,
         live_detection_client=live_detection_client,
         live_log_client=live_log_client,

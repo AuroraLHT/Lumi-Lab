@@ -15,6 +15,7 @@ from collections.abc import Callable, Awaitable
 
 import json
 from .integrator import MultiBoxIntegrator
+from .types import FFTResult
 
 @dataclass
 class STFTCalculatorConfig:
@@ -136,18 +137,18 @@ class STFTCalculator(threading.Thread):
         fft_freq = fft_freq[mask]
         return fft_freq, fft
 
-    def package_fft_result(self, fft_freq, fft, resampled_time, resampled_signal):
+    def package_fft_result(self, fft_freq, fft, resampled_time, resampled_signal) -> FFTResult:
 
-        result = {
-            "fft_freq": fft_freq.tolist(),
-            "fft_mag": np.abs(fft).tolist(),
-            "fft_phase": np.angle(fft).tolist(),
-            "time_end" : resampled_time[-1],
-            "timestamp_end" : datetime.datetime.fromtimestamp(resampled_time[-1]).isoformat(),
-            "time_start" : resampled_time[0],
-            "timestamp_start" : datetime.datetime.fromtimestamp(resampled_time[0]).isoformat(),
-            "time_resolution" : self.config.time_resolution,
-        }
+        result = FFTResult(
+            fft_freq=fft_freq.tolist(),
+            fft_mag=np.abs(fft).tolist(),
+            fft_phase=np.angle(fft).tolist(),
+            time_end=float(resampled_time[-1]),
+            timestamp_end=datetime.datetime.fromtimestamp(resampled_time[-1]).isoformat(),
+            time_start=float(resampled_time[0]),
+            timestamp_start=datetime.datetime.fromtimestamp(resampled_time[0]).isoformat(),
+            time_resolution=float(self.config.time_resolution),
+        )
         return result
     
     def prepare_content(self, result, header):

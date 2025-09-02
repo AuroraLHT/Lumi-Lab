@@ -6,6 +6,7 @@ class StorageRequest(BaseModel) :
     save_ai : bool = Field(default=False)
     save_frame : bool = Field(default=False)
     save_log : bool = Field(default=False)
+    save_integration : bool = Field(default=False)
 
 class WebsocketMessageHeaders(BaseModel):
     target: str

@@ -15,7 +15,6 @@ from fastapi.responses import StreamingResponse
 
 from aio_pika.abc import AbstractIncomingMessage
 
-from ..models import StorageRequest
 from ..communication import (
     LiveVideoFragmentsMessageQueueClient,
     LiveDetectionMessageQueueClient,

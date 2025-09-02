@@ -11,9 +11,9 @@ import uuid
 import numpy as np
 
 from dataclasses import dataclass
-
-from typing import Union, List, Optional, Dict, Deque
+from typing import Generator, Tuple, Union, List, Optional, Dict, Deque
 from collections.abc import Callable, Awaitable
+from .types import IntegrationResult, IntegrationCollection
 
 import json
 
@@ -66,23 +66,31 @@ class MultiBoxIntegrator(threading.Thread):
         
         return cv_frame, cv_frame_header
 
-    def compute_integration(self, image, bbox):
+    def compute_integration(self, image, bbox) -> IntegrationResult:
         try:
             aoi = image[bbox[1]:bbox[3], bbox[0]:bbox[2]]
-            return {"mean": np.mean(aoi), "max": np.max(aoi), "min": np.min(aoi), "width": bbox[2]-bbox[0], "height": bbox[3]-bbox[1]}
+            return IntegrationResult(
+                mean=float(np.mean(aoi)), 
+                max=float(np.max(aoi)), 
+                min=float(np.min(aoi)), 
+                height=int(bbox[2]-bbox[0]), 
+                width=int(bbox[3]-bbox[1]), 
+                center_x=float((bbox[0]+bbox[2])/2), 
+                center_y=float((bbox[1]+bbox[3])/2)
+            )
         except Exception as e:
             logging.error(f"Failed to compute integration: {e}. Bbox: {bbox}, Image shape: {image.shape}")
             raise e
 
-    def prepare_content(self, integration, header):
+    def prepare_content(self, integration, header) -> Tuple[IntegrationCollection, Dict]:
         return ( integration, header )
 
-    def yield_integration(self):
+    def yield_integration(self) -> Generator[Tuple[IntegrationCollection, Dict], None, None]:
         logging.info("start bbox integration")
 
         while True:
             if not self.camera_queue.empty() and len(self.bboxes) > 0:
-                integrations = {}
+                integrations : IntegrationCollection = {}
                 cv_frame, cv_frame_header = self.get_image(timeout=60)
                 for bbox_id, bbox in self.bboxes.items():
                     integration = self.compute_integration(cv_frame, bbox)
