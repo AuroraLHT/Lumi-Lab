@@ -51,6 +51,11 @@ from .models import (
 from ..utils.error import get_error_info
 from ..utils.common import decode_json, get_current_timestamp
 
+"""
+TODO: current the queue is deleleted without checking if the queue is empty.
+Need to implement the mechanism to empty the queue before deleting it.
+purge kinda work but the doc said there is still a chance that the message would be delivered after the purge.
+"""
 
 class BaseMessageHeaderMixin:
     log_prefix: str
@@ -522,7 +527,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             ):
                 # await self.response_queue.unbind(self.exchange, self.response_routing_key)
                 await self.response_queue.cancel(self._response_queue_consume_tag)
-                await self.response_queue.delete()
+                await self.response_queue.delete(is_empty=False)
                 self._reset_response_queues()
         if stop_control:
             if (
@@ -534,7 +539,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 )
                 await self.control_callback_queue.purge()
                 # await asyncio.sleep(0.05)
-                await self.control_callback_queue.delete()
+                await self.control_callback_queue.delete(is_empty=False)
                 self._reset_control_queues()
         if stop_update:
             if (
@@ -545,7 +550,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 await self.update_queue.cancel(self._update_queue_consume_tag)
                 await self.update_queue.purge()
                 # await asyncio.sleep(0.05)
-                await self.update_queue.delete()
+                await self.update_queue.delete(is_empty=False)
                 self._reset_update_queues()
         if stop_state:
             if self.state_queue is not None and self._state_consume_tag is not None:
@@ -553,7 +558,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 await self.state_queue.cancel(self._state_consume_tag)
                 await self.state_queue.purge()
                 # await asyncio.sleep(0.05)
-                await self.state_queue.delete()
+                await self.state_queue.delete(is_empty=False)
                 self._reset_state_queues()
 
     async def on_update(self, message: AbstractIncomingMessage) -> None:
@@ -862,7 +867,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             ):
                 await self.callback_queue.cancel(self._callback_queue_consume_tag)
                 await self.callback_queue.purge()
-                await self.callback_queue.delete()
+                await self.callback_queue.delete(is_empty=False)
                 self._reset_response_queues()
 
         if stop_control:
@@ -874,7 +879,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                     self._control_callback_queue_consume_tag
                 )
                 await self.control_callback_queue.purge()
-                await self.control_callback_queue.delete()
+                await self.control_callback_queue.delete(is_empty=False)
                 self._reset_control_queues()
 
         if stop_state:
@@ -882,7 +887,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 # await self.state_queue.unbind(self.exchange, self.state_routing_key)
                 await self.state_queue.cancel(self._state_consume_tag)
                 await self.state_queue.purge()
-                await self.state_queue.delete()
+                await self.state_queue.delete(is_empty=False)
                 self._reset_state_queues()
 
     async def on_response(self, message: AbstractIncomingMessage) -> None:
@@ -1274,8 +1279,8 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 )
                 await self.queue.purge()
 
-                await asyncio.sleep(0.05)
-                await self.queue.delete()
+                # await asyncio.sleep(0.05)
+                await self.queue.delete(is_empty=False)
             except Exception as e:
                 logging.error(f"{self.log_prefix} Fail to delete main queue: {get_error_info(e)}. May have to restart the server")
             
@@ -1293,8 +1298,8 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 )
                 await self.control_callback_queue.purge()
 
-                await asyncio.sleep(0.05)
-                await self.control_callback_queue.delete()
+                # await asyncio.sleep(0.05)
+                await self.control_callback_queue.delete(is_empty=False)
             except Exception as e:
                 logging.error(f"{self.log_prefix} Fail to delete control queue: {get_error_info(e)}. May have to restart the server")
                 succ, error = False, get_error_info(e)
@@ -1315,7 +1320,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 await self.state_queue.purge()
 
                 await asyncio.sleep(0.05)
-                await self.state_queue.delete()
+                await self.state_queue.delete(is_empty=False)
             except Exception as e:
                 logging.error(f"{self.log_prefix} Fail to delete state queue: {get_error_info(e)}. May have to restart the server")
                 succ, error = False, get_error_info(e)
@@ -1728,7 +1733,7 @@ class BasicStreamServer(
             await self.control_queue.cancel(self._control_consume_tag)
             await self.control_queue.purge()
             # await asyncio.sleep(0.05)
-            await self.control_queue.delete()
+            await self.control_queue.delete(is_empty=False)
 
         # this is to stop the streaming task
         self.set_stream_flag(False)
@@ -1940,13 +1945,13 @@ class BasicServer(
             await self.queue.cancel(self._consume_tag)
             await self.queue.purge()
             # await asyncio.sleep(0.05)
-            await self.queue.delete()
+            await self.queue.delete(is_empty=False)
 
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
             await self.control_queue.purge()
             # await asyncio.sleep(0.05)
-            await self.control_queue.delete()
+            await self.control_queue.delete(is_empty=False)
 
         self.reset_queues()
         self.state["is_running"] = False
@@ -2254,14 +2259,14 @@ class PubSubServer(
             await self.queue.cancel(self._consume_tag)
             await self.queue.purge()
             # await asyncio.sleep(0.05)
-            await self.queue.delete()
+            await self.queue.delete(is_empty=False)
             self.state["is_main_running"] = False
 
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
             await self.control_queue.purge()
             # await asyncio.sleep(0.05)
-            await self.control_queue.delete()
+            await self.control_queue.delete(is_empty=False)
             self.state["is_control_running"] = False
 
         if self._updating_task is not None:
