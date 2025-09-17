@@ -853,6 +853,8 @@ class RecordReader(RecordDataset):
         self.h5f = h5py.File(record_path, 'r')
 
     def get_integration_item(self, idx) -> Tuple[IntegrationCollection, Dict[str, Any]]:
+        if idx < 0: idx = self.ds_integration_root.attrs['size'] + idx
+
         integration_bbox_idx_start, integration_bbox_idx_end = self.ds_integration_root[idx]
         integration_collector = self._parse_integration_item(self.ds_integration[integration_bbox_idx_start:integration_bbox_idx_end+1])
         integration_meta = self._parse_integration_meta(self.ds_integration_meta[integration_bbox_idx_start])
@@ -861,7 +863,7 @@ class RecordReader(RecordDataset):
     def _parse_integration_item(self, integration) -> IntegrationCollection:
         integration_collector : IntegrationCollection = {}
         for row_idx in range(integration.shape[0]):
-            content : IntegrationResult = { k : v for k, v in zip( self.ds_integration.attrs['columns'], integration[row_idx, 1:] )}            
+            content : IntegrationResult = { k : v for k, v in zip( self.ds_integration.attrs['columns'][1:], integration[row_idx, 1:] )}            
             integration_collector[integration[row_idx, 0]] = content
         return integration_collector
 
