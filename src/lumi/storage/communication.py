@@ -640,46 +640,71 @@ class StorageMessageQueueServer(BasicServer):
         logging.info(f"{self.log_prefix} starts ai storage.")
 
     async def _end_log_storage(self):
-        await self.live_log_client.stop_main()
+        succ, error = await self.live_log_client.stop_main()
         self.state["is_storing_log"] = False
         logging.info(f"{self.log_prefix} ends log storage.")
+        return succ, error
 
     async def _end_ai_storage(self):
-        await self.live_detection_client.stop_main()
+        succ, error = await self.live_detection_client.stop_main()
         self.state["is_storing_ai"] = False
         logging.info(f"{self.log_prefix} ends ai storage.")
+        return succ, error
+
 
     async def _end_frame_storage(self):
-        await self.live_camera_client.stop_main()
+        succ, error = await self.live_camera_client.stop_main()
         self.state["is_storing_frame"] = False
         logging.info(f"{self.log_prefix} ends frame storage.")
+        return succ, error
 
     async def _end_integration_storage(self):
-        await self.live_integrator_client.stop_main()
+        succ, error = await self.live_integrator_client.stop_main()
         self.state["is_storing_integration"] = False
         logging.info(f"{self.log_prefix} ends integration storage.")
+        return succ, error
 
     async def end_storages(
         self, body: bytes, headers: BaseResponseMessageHeader
     ) -> ResponseMessageQueueMessage:
         if self.state["is_storing"]:
-            await self._end_frame_storage()
-            await self._end_log_storage()
-            await self._end_ai_storage()
-            await self._end_integration_storage()
+            succ_frame, error_frame = await self._end_frame_storage()
+            succ_log, error_log = await self._end_log_storage()
+            succ_ai, error_ai = await self._end_ai_storage()
+            succ_integration, error_integration = await self._end_integration_storage()
+
+            succ = succ_frame and succ_log and succ_ai and succ_integration
+
             self.state["is_storing"] = False
 
             await self._close_storages()
             logging.info(f"{self.log_prefix} ends storage")
-            response = self.create_response_message(
-                body="End storage success".encode(),
-                headers={},
-                request_type=headers["request_type"],
-                response_type=headers["request_type"],
-                succ=True,
-                error_type="",
-                error_message="",
-            )
+            if succ:
+                response = self.create_response_message(
+                    body="End storage success".encode(),
+                    headers={},
+                    request_type=headers["request_type"],
+                    response_type=headers["request_type"],
+                    succ=True,
+                    error_type="",
+                    error_message="",
+                )
+            else:
+                error = ""
+                error += "Error in frame storage: " + error_frame if not succ_frame else ""
+                error += "Error in log storage: " + error_log if not succ_log else ""
+                error += "Error in ai storage: " + error_ai if not succ_ai else ""
+                error += "Error in integration storage: " + error_integration if not succ_integration else ""
+
+                response = self.create_response_message(
+                    body=f"End storage failed.".encode(),
+                    headers={},
+                    request_type=headers["request_type"],
+                    response_type=headers["request_type"],
+                    succ=False,
+                    error_type="StorageTerminationError",
+                    error_message=f"{error}",
+                )
 
         else:
             response = self.create_response_message(
