@@ -893,7 +893,7 @@ class RecordReader(RecordDataset):
     
     def get_all_integrations(self) -> Dict[int, pd.DataFrame]:
         unique_bbox_ids = np.unique(np.array(self.ds_integration[:self.ds_integration.attrs['size'], 0], copy=True).astype(np.int32))
-        print(unique_bbox_ids)
+        # print(unique_bbox_ids)
 
         integrations = {}
         for bbox_id in unique_bbox_ids:

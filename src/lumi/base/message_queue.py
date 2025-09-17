@@ -47,6 +47,8 @@ from .models import (
     StreamMessageQueueMessage,
     UpdateMessageQueueMessage,
 )
+
+from ..utils.error import get_error_info
 from ..utils.common import decode_json, get_current_timestamp
 
 
@@ -1261,49 +1263,81 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
         logging.info(f"{self.log_prefix} starts live streaming")
 
-    async def stop_main(self):
+    async def stop_main(self) -> Tuple[bool, str]:
+        succ, error = True, ""
+        
         if self.is_main_running():
             # await self.queue.unbind(exchange=self.exchange, routing_key=self.publish_routing_key)
-            await self.queue.cancel(
-                self._consumer_tag,
-            )
-            await self.queue.purge()
-            # await asyncio.sleep(0.05)
-            await self.queue.delete()
+            try:
+                await self.queue.cancel(
+                    self._consumer_tag,
+                )
+                await self.queue.purge()
+
+                await asyncio.sleep(0.05)
+                await self.queue.delete()
+            except Exception as e:
+                logging.error(f"{self.log_prefix} Fail to delete main queue: {get_error_info(e)}. May have to restart the server")
+            
             self._reset_main_queue()
 
-    async def stop_control(self):
-        if self.is_control_running():
-            await self.control_callback_queue.cancel(
-                self._control_callback_consumer_tag,
-            )
-            await self.control_callback_queue.purge()
-            # await asyncio.sleep(0.05)
-            await self.control_callback_queue.delete()
-            self._reset_control_queue()
+        return succ, error
 
-    async def stop_state(self):
+    async def stop_control(self) -> Tuple[bool, str]:
+        succ, error = True, ""
+
+        if self.is_control_running():
+            try:
+                await self.control_callback_queue.cancel(
+                    self._control_callback_consumer_tag,
+                )
+                await self.control_callback_queue.purge()
+
+                await asyncio.sleep(0.05)
+                await self.control_callback_queue.delete()
+            except Exception as e:
+                logging.error(f"{self.log_prefix} Fail to delete control queue: {get_error_info(e)}. May have to restart the server")
+                succ, error = False, get_error_info(e)
+
+            self._reset_control_queue()
+        return succ, error
+
+    async def stop_state(self) -> Tuple[bool, str]:
+        succ, error = True, ""
+        
         if self.is_state_running():
             # await self.state_queue.unbind(exchange=self.exchange, routing_key=self.state_routing_key)
 
-            await self.state_queue.cancel(
-                self._state_consumer_tag,
-            )
-            await self.state_queue.purge()
-            # await asyncio.sleep(0.05)
-            await self.state_queue.delete()
+            try:
+                await self.state_queue.cancel(
+                    self._state_consumer_tag,
+                )
+                await self.state_queue.purge()
+
+                await asyncio.sleep(0.05)
+                await self.state_queue.delete()
+            except Exception as e:
+                logging.error(f"{self.log_prefix} Fail to delete state queue: {get_error_info(e)}. May have to restart the server")
+                succ, error = False, get_error_info(e)
+
             self._reset_state_queue()
+        return succ, error
 
     async def stop(
         self, stop_main: bool = True, stop_control: bool = True, stop_state: bool = True
-    ):
+    ) -> Tuple[bool, Dict[str, str]]:
+        succ, errors = True, {}
         logging.info(f"{self.log_prefix} terminate consume")
         if stop_main:
-            await self.stop_main()
+            succ_main, error_main = await self.stop_main()
         if stop_control:
-            await self.stop_control()
+            succ_control, error_control = await self.stop_control()
         if stop_state:
-            await self.stop_state()
+            succ_state, error_state = await self.stop_state()
+
+        succ = succ_main and succ_control and succ_state
+        errors = { "error_main": error_main, "error_control": error_control, "error_state": error_state }
+        return succ, errors
 
     async def on_response(self, message: AbstractIncomingMessage) -> None:
         logging.debug(f"{self.log_prefix} on live response")
