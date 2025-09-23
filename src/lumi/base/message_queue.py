@@ -434,27 +434,27 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         self._reset_update_queues()
 
     async def _create_state_queue(self):
-        self.state_queue = await self.channel.declare_queue(exclusive=True)
+        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
         logging.info(f"{self.log_prefix} creates state queue: {self.state_queue.name}")
 
     async def _create_response_queues(self):
         self.response_futures = {}
-        self.response_queue = await self.channel.declare_queue(exclusive=True)
+        self.response_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.response_queue.bind(self.exchange, self.response_routing_key)
         logging.info(
             f"{self.log_prefix} creates response queue: {self.response_queue.name} -> binded to {self.response_routing_key} ex:{self.exchange}"
         )
 
     async def _create_update_queue(self):
-        self.update_queue = await self.channel.declare_queue(exclusive=True)
+        self.update_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.update_queue.bind(self.exchange, self.update_routing_key)
         logging.info(
             f"{self.log_prefix} creates update queue: {self.update_queue.name} -> binded to {self.update_routing_key} ex:{self.exchange}"
         )
 
     async def _create_control_callback_queue(self):
-        self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
+        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         self.control_futures = {}
         logging.info(
             f"{self.log_prefix} creates control callback queue: {self.control_callback_queue.name}"
@@ -792,11 +792,11 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
 
     async def _create_state_queue(self):
         logging.info(f"{self.log_prefix} creates state queue")
-        self.state_queue = await self.channel.declare_queue(exclusive=True)
+        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
 
     async def _create_response_queue(self):
-        self.callback_queue = await self.channel.declare_queue(exclusive=True)
+        self.callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
 
         self.futures = {}
         logging.info(
@@ -804,7 +804,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         )
 
     async def _create_control_callback_queue(self):
-        self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
+        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
 
         self.control_futures = {}
         logging.info(
@@ -1197,12 +1197,12 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
     async def create_main_queue(self):
         # this queue is for listening to stream
-        self.queue = await self.channel.declare_queue(exclusive=True)
+        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.queue.bind(self.exchange, routing_key=self.publish_routing_key)
         logging.info(f"{self.log_prefix} creates queue: {self.queue.name}")
 
     async def create_control_queue(self):
-        self.control_callback_queue = await self.channel.declare_queue(exclusive=True)
+        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         self.control_futures = {}
         logging.info(
             f"{self.log_prefix} creates control callback queue: {self.control_callback_queue.name}"
@@ -1210,7 +1210,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
     async def create_state_queue(self):
         logging.info(f"{self.log_prefix} creates state queue")
-        self.state_queue = await self.channel.declare_queue(exclusive=True)
+        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
 
     async def create_queues(self):
@@ -1593,7 +1593,7 @@ class BasicStreamServer(
 
     async def create_control_queue(self):
         logging.info(f"{self.log_prefix} creates control queue")
-        self.control_queue = await self.channel.declare_queue(exclusive=True)
+        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
     async def create_queues(self):
@@ -1821,12 +1821,12 @@ class BasicServer(
 
     async def create_control_queue(self):
         logging.info(f"{self.log_prefix} creates control queue")
-        self.control_queue = await self.channel.declare_queue(exclusive=True)
+        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
     async def create_main_queue(self):
         logging.info(f"{self.log_prefix} creates main queue")
-        self.queue = await self.channel.declare_queue(exclusive=True)
+        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.queue.bind(self.exchange, routing_key=self.request_routing_key)
 
     async def create_queues(self):
@@ -2042,12 +2042,12 @@ class PubSubServer(
 
     async def create_control_queue(self):
         logging.info(f"{self.log_prefix} creates control queue")
-        self.control_queue = await self.channel.declare_queue(exclusive=True)
+        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
     async def create_main_queue(self):
         logging.info(f"{self.log_prefix} creates main queue")
-        self.queue = await self.channel.declare_queue(exclusive=True)
+        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
         await self.queue.bind(self.exchange, routing_key=self.request_routing_key)
 
     async def start_control(self):
