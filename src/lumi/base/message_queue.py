@@ -434,27 +434,27 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         self._reset_update_queues()
 
     async def _create_state_queue(self):
-        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
         logging.info(f"{self.log_prefix} creates state queue: {self.state_queue.name}")
 
     async def _create_response_queues(self):
         self.response_futures = {}
-        self.response_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.response_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.response_queue.bind(self.exchange, self.response_routing_key)
         logging.info(
             f"{self.log_prefix} creates response queue: {self.response_queue.name} -> binded to {self.response_routing_key} ex:{self.exchange}"
         )
 
     async def _create_update_queue(self):
-        self.update_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.update_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.update_queue.bind(self.exchange, self.update_routing_key)
         logging.info(
             f"{self.log_prefix} creates update queue: {self.update_queue.name} -> binded to {self.update_routing_key} ex:{self.exchange}"
         )
 
     async def _create_control_callback_queue(self):
-        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         self.control_futures = {}
         logging.info(
             f"{self.log_prefix} creates control callback queue: {self.control_callback_queue.name}"
@@ -527,7 +527,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             ):
                 # await self.response_queue.unbind(self.exchange, self.response_routing_key)
                 await self.response_queue.cancel(self._response_queue_consume_tag)
-                await self.response_queue.delete(is_empty=False)
+                await self.response_queue.delete(if_empty=False)
                 self._reset_response_queues()
         if stop_control:
             if (
@@ -539,7 +539,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 )
                 await self.control_callback_queue.purge()
                 # await asyncio.sleep(0.05)
-                await self.control_callback_queue.delete(is_empty=False)
+                await self.control_callback_queue.delete(if_empty=False)
                 self._reset_control_queues()
         if stop_update:
             if (
@@ -550,7 +550,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 await self.update_queue.cancel(self._update_queue_consume_tag)
                 await self.update_queue.purge()
                 # await asyncio.sleep(0.05)
-                await self.update_queue.delete(is_empty=False)
+                await self.update_queue.delete(if_empty=False)
                 self._reset_update_queues()
         if stop_state:
             if self.state_queue is not None and self._state_consume_tag is not None:
@@ -558,7 +558,7 @@ class PubSubClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 await self.state_queue.cancel(self._state_consume_tag)
                 await self.state_queue.purge()
                 # await asyncio.sleep(0.05)
-                await self.state_queue.delete(is_empty=False)
+                await self.state_queue.delete(if_empty=False)
                 self._reset_state_queues()
 
     async def on_update(self, message: AbstractIncomingMessage) -> None:
@@ -792,11 +792,11 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
 
     async def _create_state_queue(self):
         logging.info(f"{self.log_prefix} creates state queue")
-        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
 
     async def _create_response_queue(self):
-        self.callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
 
         self.futures = {}
         logging.info(
@@ -804,7 +804,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
         )
 
     async def _create_control_callback_queue(self):
-        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
 
         self.control_futures = {}
         logging.info(
@@ -867,7 +867,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
             ):
                 await self.callback_queue.cancel(self._callback_queue_consume_tag)
                 await self.callback_queue.purge()
-                await self.callback_queue.delete(is_empty=False)
+                await self.callback_queue.delete(if_empty=False)
                 self._reset_response_queues()
 
         if stop_control:
@@ -879,7 +879,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                     self._control_callback_queue_consume_tag
                 )
                 await self.control_callback_queue.purge()
-                await self.control_callback_queue.delete(is_empty=False)
+                await self.control_callback_queue.delete(if_empty=False)
                 self._reset_control_queues()
 
         if stop_state:
@@ -887,7 +887,7 @@ class BasicClient(BaseControlMessageMixin, BaseRequestMessageMixin):
                 # await self.state_queue.unbind(self.exchange, self.state_routing_key)
                 await self.state_queue.cancel(self._state_consume_tag)
                 await self.state_queue.purge()
-                await self.state_queue.delete(is_empty=False)
+                await self.state_queue.delete(if_empty=False)
                 self._reset_state_queues()
 
     async def on_response(self, message: AbstractIncomingMessage) -> None:
@@ -1197,12 +1197,12 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
     async def create_main_queue(self):
         # this queue is for listening to stream
-        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.queue.bind(self.exchange, routing_key=self.publish_routing_key)
         logging.info(f"{self.log_prefix} creates queue: {self.queue.name}")
 
     async def create_control_queue(self):
-        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.control_callback_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         self.control_futures = {}
         logging.info(
             f"{self.log_prefix} creates control callback queue: {self.control_callback_queue.name}"
@@ -1210,7 +1210,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
 
     async def create_state_queue(self):
         logging.info(f"{self.log_prefix} creates state queue")
-        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.state_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.state_queue.bind(self.exchange, self.state_routing_key)
 
     async def create_queues(self):
@@ -1280,7 +1280,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 await self.queue.purge()
 
                 # await asyncio.sleep(0.05)
-                await self.queue.delete(is_empty=False)
+                await self.queue.delete(if_empty=False)
             except Exception as e:
                 logging.error(f"{self.log_prefix} Fail to delete main queue: {get_error_info(e)}. May have to restart the server")
             
@@ -1299,7 +1299,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 await self.control_callback_queue.purge()
 
                 # await asyncio.sleep(0.05)
-                await self.control_callback_queue.delete(is_empty=False)
+                await self.control_callback_queue.delete(if_empty=False)
             except Exception as e:
                 logging.error(f"{self.log_prefix} Fail to delete control queue: {get_error_info(e)}. May have to restart the server")
                 succ, error = False, get_error_info(e)
@@ -1320,7 +1320,7 @@ class BasicStreamClient(BaseControlMessageMixin, BaseStreamMessageMixin):
                 await self.state_queue.purge()
 
                 await asyncio.sleep(0.05)
-                await self.state_queue.delete(is_empty=False)
+                await self.state_queue.delete(if_empty=False)
             except Exception as e:
                 logging.error(f"{self.log_prefix} Fail to delete state queue: {get_error_info(e)}. May have to restart the server")
                 succ, error = False, get_error_info(e)
@@ -1593,7 +1593,7 @@ class BasicStreamServer(
 
     async def create_control_queue(self):
         logging.info(f"{self.log_prefix} creates control queue")
-        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
     async def create_queues(self):
@@ -1733,7 +1733,7 @@ class BasicStreamServer(
             await self.control_queue.cancel(self._control_consume_tag)
             await self.control_queue.purge()
             # await asyncio.sleep(0.05)
-            await self.control_queue.delete(is_empty=False)
+            await self.control_queue.delete(if_empty=False)
 
         # this is to stop the streaming task
         self.set_stream_flag(False)
@@ -1821,12 +1821,12 @@ class BasicServer(
 
     async def create_control_queue(self):
         logging.info(f"{self.log_prefix} creates control queue")
-        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
     async def create_main_queue(self):
         logging.info(f"{self.log_prefix} creates main queue")
-        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.queue.bind(self.exchange, routing_key=self.request_routing_key)
 
     async def create_queues(self):
@@ -1945,13 +1945,13 @@ class BasicServer(
             await self.queue.cancel(self._consume_tag)
             await self.queue.purge()
             # await asyncio.sleep(0.05)
-            await self.queue.delete(is_empty=False)
+            await self.queue.delete(if_empty=False)
 
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
             await self.control_queue.purge()
             # await asyncio.sleep(0.05)
-            await self.control_queue.delete(is_empty=False)
+            await self.control_queue.delete(if_empty=False)
 
         self.reset_queues()
         self.state["is_running"] = False
@@ -2042,12 +2042,12 @@ class PubSubServer(
 
     async def create_control_queue(self):
         logging.info(f"{self.log_prefix} creates control queue")
-        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.control_queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.control_queue.bind(self.exchange, self.control_routing_key)
 
     async def create_main_queue(self):
         logging.info(f"{self.log_prefix} creates main queue")
-        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=True)
+        self.queue = await self.channel.declare_queue(exclusive=True, auto_delete=False)
         await self.queue.bind(self.exchange, routing_key=self.request_routing_key)
 
     async def start_control(self):
@@ -2259,14 +2259,14 @@ class PubSubServer(
             await self.queue.cancel(self._consume_tag)
             await self.queue.purge()
             # await asyncio.sleep(0.05)
-            await self.queue.delete(is_empty=False)
+            await self.queue.delete(if_empty=False)
             self.state["is_main_running"] = False
 
         if self.control_queue is not None and self._control_consume_tag is not None:
             await self.control_queue.cancel(self._control_consume_tag)
             await self.control_queue.purge()
             # await asyncio.sleep(0.05)
-            await self.control_queue.delete(is_empty=False)
+            await self.control_queue.delete(if_empty=False)
             self.state["is_control_running"] = False
 
         if self._updating_task is not None:
