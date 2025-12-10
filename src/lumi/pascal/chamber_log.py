@@ -45,8 +45,8 @@ PARSE_DICT["Shut Stat"] = {0: "Sample Shutter"}
 
 
 PARSE_DICT["Motor Stat"] = {
-    0: "Target spin",
-    1: "Motor free",
+    0: "Motor free",
+    1: "Target spin",
 }
 
 PARSE_DICT["Other Stat"] = {
@@ -112,7 +112,7 @@ PARSE_DICT["W Pross"] = {
 }
 
 PARSE_DICT["W etc"] = {
-    0: "T",
+    # 0: "T",
     1: "Mask1 confliction",
 }
 
