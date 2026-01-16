@@ -146,7 +146,7 @@ exchange_type = "direct"
 input_queue_size = 10
 output_queue_size = 10
 model_device = "cuda:3"
-model_folder = "/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps"
+model_folder = "/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps_Feb272025"
 name = "Detector"
 
 [detection.detector.crop_setup]
