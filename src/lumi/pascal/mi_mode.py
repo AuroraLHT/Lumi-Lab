@@ -285,6 +285,7 @@ class MIModeServer(threading.Thread):
         self._hold_event = threading.Event()
         self._io_lock = threading.Lock()
         self._reader_lock = threading.Lock()
+        self._execution_lock = threading.Lock()
 
         self.current_mi_execution = None
         self.mi_execution_history = collections.deque(maxlen=5)
@@ -354,11 +355,12 @@ class MIModeServer(threading.Thread):
             self.mi_execution_history.append(self.current_mi_execution)
 
     def change_current_execution_state(self, state: MIState):
-        if self.current_mi_execution is not None:
-            self.current_mi_execution.change_state(state)
-
-        for callback in self.execution_callbacks.values():
-            callback(self, self.current_mi_execution)
+        with self._execution_lock:
+            if self.current_mi_execution is not None:
+                self.current_mi_execution.change_state(state)
+                
+                for callback in self.execution_callbacks.values():
+                    callback(self, self.current_mi_execution)
 
     def execution_finished(self, mi_execution: MIModeExecution):
         # self.output_queue.put(
@@ -370,6 +372,7 @@ class MIModeServer(threading.Thread):
             future.set_result(result)
 
         self.clean_up_mi_execution(mi_execution=mi_execution)
+        self.current_mi_execution = None
 
     def create_mi_watcher(self):
         event_handler = MIModeFileSystemHandler(self.config.assist_file_name, self)
@@ -440,9 +443,8 @@ class MIModeServer(threading.Thread):
             if self.is_mi_execution_running():
                 if self.wait_for_execution_finished():
                     logging.info(f"execution finished: {self.current_mi_execution.script_file}")
-                    self.execution_finished(self.current_mi_execution)
-                    self.current_mi_execution = None
-
+                    with self._execution_lock:
+                        self.execution_finished(self.current_mi_execution)
             else:
                 self.start_next_execution(timeout=0.1)
 
