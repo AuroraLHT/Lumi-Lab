@@ -875,6 +875,9 @@ class RecordReader(RecordDataset):
 
     def iter_integration_dataset(self, start=0, end=None, step=1) -> Generator[Tuple[IntegrationCollection, Dict[str, Any]], None, None]:
         end = self.ds_integration_root.attrs['size'] if end is None else end
+        if end > self.ds_integration_root.shape[0]:
+            logging.warning(f"end = {end} is out of range, set to the dataset size {self.ds_integration_root.shape[0]}")
+            end = self.ds_integration_root.shape[0]
         for idx in range(start, end, step):
             integration_collector, integration_meta = self.get_integration_item(idx)
             yield integration_collector, integration_meta
@@ -964,6 +967,9 @@ class RecordReader(RecordDataset):
     
     def iter_log_dataset(self, start=0, end=None, step=1):
         end = self.ds_log.attrs['size'] if end is None else end
+        if end > self.ds_log.shape[0]:
+            logging.warning(f"end = {end} is out of range, set to the dataset size {self.ds_log.shape[0]}")
+            end = self.ds_log.shape[0]
         for idx in range(start, end, step):
             yield self.get_log_item(idx)
 
@@ -1016,12 +1022,18 @@ class RecordReader(RecordDataset):
 
     def iter_detection_dataset(self, start=0, end=None, step=1):
         end = self.ds_pattern.attrs['size'] if end is None else end
+        if end > self.ds_pattern.shape[0]:
+            logging.warning(f"end = {end} is out of range, set to the dataset size {self.ds_pattern.shape[0]}")
+            end = self.ds_pattern.shape[0]
         for idx in range(start, end, step):
             pattern, masks, detections, classification, detection_meta = self.get_detection_item(idx)
             yield pattern, masks, detections, classification, detection_meta
 
     def iter_frame_dataset(self, start=0, end=None, step=1):
         end = self.ds_frame.attrs['size'] if end is None else end
+        if end > self.ds_frame.shape[0]:
+            logging.warning(f"end = {end} is out of range, set to the dataset size {self.ds_frame.shape[0]}")
+            end = self.ds_frame.shape[0]
         for idx in range(start, end, step):
             frame, frame_meta = self.get_frame(idx)
             yield frame, frame_meta
