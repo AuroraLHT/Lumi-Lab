@@ -35,6 +35,9 @@ from rhana.pattern import Rheed
 
 # Instance Segmentation
 from rhana.labeler.detector import CascadeMaskRCNNDetectorAndClassifier
+from rhana.labeler.detector import CascadeMaskRCNNDetector
+from rhana.labeler.classifier import EfficientNetMultiClassBinaryClassifierInference
+
 from rhana.pattern import RheedInstanceSegmentation
 
 # tracking
@@ -52,20 +55,23 @@ from queue import Queue
 from typing import Union, Optional, List, Dict, Tuple
 import logging
 
-MODEL_FOLDER = Path("/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps")
-MODEL_DEVICE = "cuda:3"
+# this should be removed since we are using cfg.
+# MODEL_FOLDER = Path("/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps")
+# MODEL_DEVICE = "cuda:3"
 
 @dataclass
 class DetectorConfig:
     input_queue_size : int = 10
     output_queue_size : int = 10
-    model_folder : Optional[str] = None
-    model_device : Optional[str] = None
+    detector_model_folder : str = ""
+    classifier_model_folder : str = ""
+    detector_model_device : str = ""
+    classifier_model_device : str = ""
     idle_time : float = 0.1
 
-    def __post_init__(self):
-        self.model_folder = MODEL_FOLDER if self.model_folder is None else self.model_folder
-        self.model_device = MODEL_DEVICE if self.model_device is None else self.model_device
+    # def __post_init__(self):
+    #     self.model_folder = MODEL_FOLDER if self.model_folder is None else self.model_folder
+    #     self.model_device = MODEL_DEVICE if self.model_device is None else self.model_device
 
 @dataclass
 class DetectorState:
@@ -87,7 +93,31 @@ def get_model(model_folder, device):
     return aux_detector
 
 
+def get_models(
+    detector_model_path, 
+    detector_model_config_path, 
+    classifier_model_path, 
+    classifier_label_mapper_path,
+    classifier_transforms_path,
+    detector_device, 
+    classifier_device
+)-> Tuple[CascadeMaskRCNNDetector, EfficientNetMultiClassBinaryClassifierInference]:
+    detector = CascadeMaskRCNNDetector(
+        config_path = detector_model_config_path,
+        checkpoint_path = detector_model_path,
+        device = detector_device,
+    )
+    classifier = EfficientNetMultiClassBinaryClassifierInference(
+        model_path = classifier_model_path,
+        label_mapper_path = classifier_label_mapper_path,
+        device = classifier_device,
+        transforms = classifier_transforms_path,
+    )
+    return detector, classifier
+
 class DetectorServer(threading.Thread):
+    detector : CascadeMaskRCNNDetector
+    classifier : EfficientNetMultiClassBinaryClassifierInference
     DETECTION_METAS = ["time_stamp", "uuid", "time", "crop_setup_sx", "crop_setup_sy", "crop_setup_ex", "crop_setup_ey"]
 
     def __init__(self, config:DetectorConfig, name:Union[int, str], daemon:bool=True, detector_state:Optional[DetectorState]=None ) -> None:        
@@ -126,7 +156,7 @@ class DetectorServer(threading.Thread):
         # 2. scaling
         # 3. detection
         # 4. tracking
-        # 5. periodict analyis
+        # 5. periodicity analyis
         # all in this function
         if frame.ndim == 3:
             frame = frame[..., 0]
@@ -140,9 +170,12 @@ class DetectorServer(threading.Thread):
         # update the pattern_dim on the fly
         self.state.pattern_dims = rd.pattern.shape
         
-        result, cls_result = self.aux_detector.predict(rd)
-        rdinst = RheedInstanceSegmentation.from_mmdet(rd, result, self.aux_detector.model, auto_compute_regions=True)
+        # result, cls_result = self.aux_detector.predict(rd)
+        result = self.detector.predict(rd)
+        cls_result = self.classifier.predict(result)
 
+        # rdinst = RheedInstanceSegmentation.from_mmdet(rd, result, self.aux_detector.model, auto_compute_regions=True)
+        rdinst = RheedInstanceSegmentation.from_mmdet(rd, result, self.detector.model, auto_compute_regions=True)
 
         detections = regions2detections(rdinst.regions, rdinst.regions_label)
         region2tracks = self.tracker.update(detections, self._frame_idx)
@@ -176,7 +209,15 @@ class DetectorServer(threading.Thread):
             logging.error(f"Periodicity analysis failed: {e}, setting periodicity to None")
             periodicity = None
 
-        classification = { self.aux_detector.classifier_classes[i] : float(cls_result[0][i]) for i in range(len(cls_result[0]))}
+        # classification = { 
+        #     self.aux_detector.classifier_classes[i] : float(cls_result[0][i]) for i in range(len(cls_result[0]))
+        # }
+
+        if cls_result.ndim == 1: cls_result = cls_result[None, ...]
+        classification = { 
+            self.classifier.classes[i] : float(cls_result[0][i]) for i in range(len(cls_result[0]))
+        }
+
         instances = result.pred_instances
 
         bbox_outputs = {}                
@@ -209,7 +250,14 @@ class DetectorServer(threading.Thread):
 
 
     def on_initiate(self):
-        self.aux_detector = get_model(model_folder=self.config.model_folder, device=self.config.model_device)
+        # self.aux_detector = get_model(model_folder=self.config.model_folder, device=self.config.model_device)
+
+        self.detector, self.classifier = get_models(
+            detector_model_folder=self.config.detector_model_folder, 
+            classifier_model_folder=self.config.classifier_model_folder, 
+            detector_device=self.config.detector_model_device,
+            classifier_device=self.config.classifier_model_device
+        )
 
         # TODO: make the argument passed down from config
         self.tracker = IOUTracker(t_min=100000, sigma_iou=0.4)
