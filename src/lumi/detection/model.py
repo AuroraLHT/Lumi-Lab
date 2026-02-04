@@ -63,10 +63,13 @@ import logging
 class DetectorConfig:
     input_queue_size : int = 10
     output_queue_size : int = 10
-    detector_model_folder : str = ""
-    classifier_model_folder : str = ""
-    detector_model_device : str = ""
-    classifier_model_device : str = ""
+    detector_model_path : str = ""
+    detector_model_config_path : str = ""
+    classifier_model_path : str = ""
+    classifier_label_mapper_path : str = ""
+    classifier_transforms_path : str = ""
+    detector_model_device : str = "cpu"
+    classifier_model_device : str = "cpu"
     idle_time : float = 0.1
 
     # def __post_init__(self):
@@ -107,11 +110,12 @@ def get_models(
         checkpoint_path = detector_model_path,
         device = detector_device,
     )
+    
     classifier = EfficientNetMultiClassBinaryClassifierInference(
         model_path = classifier_model_path,
-        label_mapper_path = classifier_label_mapper_path,
         device = classifier_device,
         transforms = classifier_transforms_path,
+        label_mapper = classifier_label_mapper_path,
     )
     return detector, classifier
 
@@ -215,7 +219,7 @@ class DetectorServer(threading.Thread):
 
         if cls_result.ndim == 1: cls_result = cls_result[None, ...]
         classification = { 
-            self.classifier.classes[i] : float(cls_result[0][i]) for i in range(len(cls_result[0]))
+            self.classifier_classes[i] : float(cls_result[0][i]) for i in range(len(cls_result[0]))
         }
 
         instances = result.pred_instances
@@ -253,8 +257,11 @@ class DetectorServer(threading.Thread):
         # self.aux_detector = get_model(model_folder=self.config.model_folder, device=self.config.model_device)
 
         self.detector, self.classifier = get_models(
-            detector_model_folder=self.config.detector_model_folder, 
-            classifier_model_folder=self.config.classifier_model_folder, 
+            detector_model_path=self.config.detector_model_path, 
+            detector_model_config_path=self.config.detector_model_config_path,
+            classifier_model_path=self.config.classifier_model_path, 
+            classifier_label_mapper_path=self.config.classifier_label_mapper_path,
+            classifier_transforms_path=self.config.classifier_transforms_path,
             detector_device=self.config.detector_model_device,
             classifier_device=self.config.classifier_model_device
         )
@@ -355,3 +362,11 @@ class DetectorServer(threading.Thread):
     @property
     def metas(self):
         return self.DETECTION_METAS
+
+    @property
+    def classifier_classes(self):
+        return self.classifier.classes
+
+    @property
+    def detector_classes(self):
+        return self.detector.detector_classes
