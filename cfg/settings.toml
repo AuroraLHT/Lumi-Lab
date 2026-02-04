@@ -145,8 +145,12 @@ exchange_type = "direct"
 [detection.detector]
 input_queue_size = 10
 output_queue_size = 10
-model_device = "cuda:3"
-model_folder = "/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps_Feb272025"
+detector_model_device = "cuda:3"
+detector_model_path = "/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps/epoch_12.pth"
+detector_model_config_path = "/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps/config_predict.py"
+classifier_model_device = "cuda:3"
+classifier_model_path = "/home/hliang16/projects/RHEEDDetector/nn/efficientnet_v2_m_binary_classifier/model.pth"
+classifier_label_mapper_path = "/home/hliang16/projects/RHEEDDetector/nn/efficientnet_v2_m_binary_classifier/label_mapper.json"
 name = "Detector"
 
 [detection.detector.crop_setup]

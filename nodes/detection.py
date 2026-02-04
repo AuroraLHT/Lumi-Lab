@@ -35,8 +35,10 @@ async def main(args):
     config = DetectorConfig(
         input_queue_size=settings.detection.detector.input_queue_size,
         output_queue_size=settings.detection.detector.output_queue_size,
-        model_device=settings.detection.detector.model_device,
-        model_folder=settings.detection.detector.model_folder,
+        detector_model_device=settings.detection.detector.detector_model_device,
+        classifier_model_device=settings.detection.detector.classifier_model_device,
+        detector_model_folder=settings.detection.detector.detector_model_folder,
+        classifier_model_folder=settings.detection.detector.classifier_model_folder,
     )
 
     detector_state = DetectorState(
