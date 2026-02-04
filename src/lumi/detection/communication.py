@@ -139,8 +139,8 @@ class LiveDetectionMessageQueueServer(BasicStreamServer):
             {
                 "pattern_dim": self.detector.pattern_dims,
                 "detection_metas": self.detector.metas,
-                "classifier_classes": self.detector.aux_detector.classifier_classes,
-                "detector_classes": self.detector.aux_detector.detector_classes,
+                "classifier_classes": self.detector.classifier_classes,
+                "detector_classes": self.detector.detector_classes,
             }
         )
 
@@ -219,8 +219,8 @@ class DetectionMessageQueueServer(BasicServer):
             {
                 "pattern_dim": self.detector.pattern_dims,
                 "detection_metas": self.detector.metas,
-                "detector_classes": self.detector.aux_detector.detector_classes,
-                "classifier_classes": self.detector.aux_detector.classifier_classes,
+                "detector_classes": self.detector.detector_classes,
+                "classifier_classes": self.detector.classifier_classes,
             }
         )
 
