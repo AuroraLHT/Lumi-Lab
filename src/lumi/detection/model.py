@@ -176,7 +176,7 @@ class DetectorServer(threading.Thread):
         
         # result, cls_result = self.aux_detector.predict(rd)
         result = self.detector.predict(rd)
-        cls_result = self.classifier.predict(result)
+        cls_result = self.classifier.predict(rd)
 
         # rdinst = RheedInstanceSegmentation.from_mmdet(rd, result, self.aux_detector.model, auto_compute_regions=True)
         rdinst = RheedInstanceSegmentation.from_mmdet(rd, result, self.detector.model, auto_compute_regions=True)
