@@ -397,8 +397,14 @@ class WebsocketMultiClientsHandler:
                             response.body,
                         )
                 except Exception as e:
+                    if response is not None:
+                        response_body = response.body
+                        response_headers = response.headers
+                    else:
+                        response_body = None
+                        response_headers = None
                     logging.error(
-                        f"{websocket_headers.target} send_response error: {e}. Response: {response}"
+                        f"{websocket_headers.target} send_response error: {e}. Response body: {response_body} headers: {response_headers}"
                     )
                     raise e
 
