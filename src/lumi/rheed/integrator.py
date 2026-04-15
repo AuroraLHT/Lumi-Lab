@@ -7,6 +7,7 @@ import fractions
 import datetime
 import logging
 import uuid
+import copy
 
 import numpy as np
 
@@ -92,7 +93,8 @@ class MultiBoxIntegrator(threading.Thread):
             if not self.camera_queue.empty() and len(self.bboxes) > 0:
                 integrations : IntegrationCollection = {}
                 cv_frame, cv_frame_header = self.get_image(timeout=60)
-                for bbox_id, bbox in self.bboxes.items():
+                bboxes = copy.deepcopy(self.bboxes) # bbox might change when iterating the bbox items
+                for bbox_id, bbox in bboxes.items():
                     integration = self.compute_integration(cv_frame, bbox)
                     headers = {**cv_frame_header, "bbox_id": bbox_id}
                     single_content = self.prepare_content(integration, headers)
