@@ -4,6 +4,7 @@ from lumi.pascal.communication import (
 )
 from lumi.pascal.communication import MIModeMessageQueueServer
 from lumi.pascal.communication import ChamberConfigMessageQueueServer
+from lumi.pascal.communication import CameraMessageQueueServer, LiveCameraMessageQueueServer
 from lumi.pascal.log_reader import (
     LogReader,
     LogReaderConfig,
@@ -19,6 +20,17 @@ import asyncio
 import logging
 from pathlib import Path
 from lumi.config import settings
+
+# from lumi.base.camera.video_stream import (
+#     VideoCompressorConfig,
+#     VideoCompressor,
+#     VideoRecorderConfig,
+#     VideoRecorder,
+# )
+from lumi.base.camera.display import DisplayServer, DisplayConfig
+from lumi.base.camera.web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
+from lumi.base.camera.sim_camera import SimCamera, SimCameraConfig
+
 
 FORMAT = "%(asctime)s %(levelname)s:%(message)s"
 
@@ -40,6 +52,7 @@ async def main(args):
         ExchangeType(settings.pascal.exchange_type),
     )
 
+    # Log reader
     if args.src == "path":
         assert Path(
             args.log
@@ -88,6 +101,7 @@ async def main(args):
     log_reader.start()
     config_reader.start()
 
+    # MI mode server
     if args.src == "path":
         mi_config = MIModeServerConfig(
             queue_size=settings.pascal.mi_mode_server.queue_size,
@@ -116,6 +130,53 @@ async def main(args):
         mi_mode_simulator = MIModeBackendSimulator(mi_config)
         mi_mode_server.start()
         mi_mode_simulator.start()
+
+    if args.src == "webcam":
+        height = settings.pascal.webcam.height
+        width = settings.pascal.webcam.width
+        web_camera_config = WebCameraConfig(            
+            fps = settings.pascal.webcam.fps,  # the maximum is 30 for this webcam
+            queue_size = settings.pascal.webcam.queue_size,
+            idle_time = settings.pascal.webcam.idle_time,
+            height = settings.pascal.webcam.height,
+            width = settings.pascal.webcam.width,
+        )
+        camera = WebCamera(config=web_camera_config, name=settings.pascal.webcam.name)
+
+    else:
+        height = settings.pascal.simcam.height
+        width = settings.pascal.simcam.width
+        source = settings.pascal.simcam.source if Path(settings.pascal.simcam.source).is_absolute() else PROJECT_ROOT / settings.pascal.simcam.source
+        sim_camera_config = SimCameraConfig(
+            frame_dims = (height, width),
+            source = source,
+            fps = settings.pascal.simcam.fps,
+            queue_size = settings.pascal.simcam.queue_size,
+            idle_time = settings.pascal.simcam.idle_time,
+            is_base_oscillation = settings.pascal.simcam.is_base_oscillation,
+            base_oscillation_frequency = settings.pascal.simcam.base_oscillation_frequency,
+            base_oscillation_amplitude = settings.pascal.simcam.base_oscillation_amplitude,
+            is_feature_oscillation = settings.pascal.simcam.is_feature_oscillation,
+            feature_bbox = settings.pascal.simcam.feature_bbox,
+            feature_oscillation_frequency = settings.pascal.simcam.feature_oscillation_frequency,
+            feature_oscillation_amplitude = settings.pascal.simcam.feature_oscillation_amplitude,
+            exposure_time = settings.pascal.simcam.exposure_time,
+            gain = settings.pascal.simcam.gain,
+            gamma = settings.pascal.simcam.gamma,
+            max_intensity = settings.pascal.simcam.max_intensity
+        )
+        camera = SimCamera(config=sim_camera_config, name=settings.pascal.simcam.name)
+
+
+    # live_video_camera_queue = camera.register_queue(settings.pascal.video_compressor.name)
+    live_image_camera_queue = camera.register_queue(settings.pascal.mq.live_camera.name)
+
+    if settings.pascal.is_camera_display:
+        display_queue = camera.register_queue("display")
+        display_server = DisplayServer(config=DisplayConfig(title="display"), queue=display_queue)
+        display_server.start()
+
+    camera.start()
 
     chamber_mq = ChamberLogMessageQueueServer(
         log_reader=log_reader,
@@ -160,10 +221,33 @@ async def main(args):
         server_name=settings.pascal.mq.mi_mode.name,
     )
 
+    image_mq = CameraMessageQueueServer(
+        camera=camera, 
+        channel=channel, 
+        exchange=exchange_pascal, 
+        request_routing_key=settings.pascal.mq.camera.request_key,
+        control_routing_key=settings.pascal.mq.camera.ctrl_key,
+        state_routing_key=settings.pascal.mq.camera.state_key,
+        server_name=settings.pascal.mq.camera.name
+    )
+
+    live_image_mq = LiveCameraMessageQueueServer(
+        camera=camera,
+        camera_queue=live_image_camera_queue,
+        channel=channel,
+        exchange=exchange_pascal,
+        control_routing_key=settings.pascal.mq.live_camera.ctrl_key,
+        publish_routing_key=settings.pascal.mq.live_camera.publish_key,
+        state_routing_key=settings.pascal.mq.live_camera.state_key,
+        server_name=settings.pascal.mq.live_camera.name
+    )
+
     await chamber_mq.start()
     await chamber_config_mq.start()
     await live_chamber_mq.start()
     await mi_mode_mq.start()
+    await image_mq.start()
+    await live_image_mq.start()
 
     await asyncio.Future()
 

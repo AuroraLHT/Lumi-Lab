@@ -67,7 +67,8 @@ def frame_processing_testcam(frame, frame_header=None):
 
 
 def frame_processing_webcam(frame, frame_header=None):
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    # color flip is handled in the web camera class
+    # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     frame = add_time_stamp(frame, frame_header)
     return frame
 

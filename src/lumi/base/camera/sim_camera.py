@@ -7,7 +7,7 @@ import uuid
 import datetime
 from dataclasses import dataclass
 from typing import Union, Tuple, Optional
-# import cv2
+import cv2
 import numpy as np
 
 
@@ -48,7 +48,11 @@ class SimCamera(GenericCamera):
 
     def on_initiate(self, config:SimCameraConfig):
         # self.source_img = cv2.imread(config.source)
-        self.source_img : np.ndarray = np.load(config.source)
+        if config.source.endswith(".npy"):
+            self.source_img : np.ndarray = np.load(config.source)
+        else:
+            self.source_img : np.ndarray = cv2.imread(config.source)
+            self.source_img = cv2.cvtColor(self.source_img, cv2.COLOR_BGR2RGB)
 
         self._base_exposure_time = config.exposure_time
         self._exposure_scale = 1

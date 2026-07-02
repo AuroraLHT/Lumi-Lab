@@ -43,6 +43,7 @@ class WebCamera(GenericCamera):
         content is a bundle of frame and frame header
         """
         ret, frame = self.capture.read()
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         # frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         frame_time = time.time()
         frame_time_stamp = str(datetime.datetime.fromtimestamp(frame_time))

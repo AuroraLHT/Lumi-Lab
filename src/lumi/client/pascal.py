@@ -14,6 +14,29 @@ from aio_pika.abc import AbstractIncomingMessage
 
 import logging
 
+# new import for the bottom camera integration
+
+from lumi.base.camera.video_stream import (
+    VideoCompressorConfig,
+    VideoCompressor,
+    VideoRecorderConfig,
+    VideoRecorder,
+)
+from lumi.base.camera.web_camera import WebCamera, WebCameraConfig, list_devices as webcam_list_devices
+
+from lumi.pascal.communication import (
+    CameraMessageQueueClient,
+    VideoFragmentsMessageQueueClient,
+    LiveVideoFragmentsMessageQueueClient,
+    LiveCameraMessageQueueClient,
+)
+from lumi.utils.common import decode_json
+from lumi.client.base import StateCallbakcMixin
+
+from aio_pika.abc import AbstractIncomingMessage
+from lumi.utils.image import decode_img
+
+
 """
 This a notebook or interactive client that use message queue client to do the communication and store and cache the comm result
 """
@@ -256,3 +279,140 @@ class ChamberLogClient(ChamberLogMessageQueueClient, StateCallbakcMixin):
             return decode_json(response.body)
         else:
             raise Exception(f"get log failed {response.headers}")
+
+
+class CameraClient(CameraMessageQueueClient, StateCallbakcMixin):
+
+    server_state: Dict
+
+    def __init__(
+        self,
+        channel,
+        exchange,
+        request_routing_key,
+        control_routing_key,
+        state_routing_key,
+        client_name,
+        time_out,
+        on_state_callback=None,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            request_routing_key=request_routing_key,
+            control_routing_key=control_routing_key,
+            state_routing_key=state_routing_key,
+            client_name=client_name,
+            time_out=time_out,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
+        )
+        self.server_state = {}
+
+    async def get_image(self):
+        response = await super().get_live_image()
+        return decode_img(response.body, response.headers)
+    
+    async def get_camera_config(self):
+        response = await super().get_camera_config()
+        return decode_json(response.body), response.headers
+    
+    async def update_camera_config(self, config: dict):
+        response = await super().update_camera_config(config)
+        return decode_json(response.body), response.headers
+
+
+class LiveCameraClient(LiveCameraMessageQueueClient, StateCallbakcMixin):
+    def __init__(
+        self,
+        channel,
+        exchange,
+        publish_routing_key,
+        control_routing_key,
+        state_routing_key,
+        client_name,
+        time_out,
+        on_response_callback=None,
+        on_state_callback=None,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            publish_routing_key=publish_routing_key,
+            control_routing_key=control_routing_key,
+            state_routing_key=state_routing_key,
+            client_name=client_name,
+            time_out=time_out,
+            on_response_callback=on_response_callback,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
+        )
+        self.server_state = {}
+
+
+class VideoFragmentsClient(VideoFragmentsMessageQueueClient, StateCallbakcMixin):
+    def __init__(
+        self,
+        channel,
+        exchange,
+        request_routing_key,
+        control_routing_key,
+        state_routing_key,
+        client_name,
+        time_out,
+        on_state_callback=None,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            request_routing_key=request_routing_key,
+            control_routing_key=control_routing_key,
+            state_routing_key=state_routing_key,
+            client_name=client_name,
+            time_out=time_out,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
+        )
+        self.server_state = {}
+
+
+class LiveVideoFragmentsClient(
+    LiveVideoFragmentsMessageQueueClient, StateCallbakcMixin
+):
+    def __init__(
+        self,
+        channel,
+        exchange,
+        publish_routing_key,
+        control_routing_key,
+        state_routing_key,
+        client_name,
+        time_out,
+        on_response_callback=None,
+        on_state_callback=None,
+    ):
+        super().__init__(
+            channel=channel,
+            exchange=exchange,
+            publish_routing_key=publish_routing_key,
+            control_routing_key=control_routing_key,
+            state_routing_key=state_routing_key,
+            client_name=client_name,
+            time_out=time_out,
+            on_state_callback=(
+                self._on_state_callback
+                if on_state_callback is None
+                else on_state_callback
+            ),
+            on_response_callback=on_response_callback,
+        )
+        self.server_state = {}

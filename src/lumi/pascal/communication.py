@@ -38,6 +38,14 @@ from ..base.message_queue import (
     BaseMessageQueueMessage,
     BaseControlMixin,
 )
+
+# this is for the bottom camera
+from lumi.base.camera.communication import CameraMessageQueueServer, CameraMessageQueueClient
+from lumi.base.camera.communication import LiveCameraMessageQueueClient, LiveCameraMessageQueueServer
+from lumi.base.camera.communication import VideoFragmentsMessageQueueClient, VideoFragmentsMessageQueueServer
+from lumi.base.camera.communication import LiveVideoFragmentsMessageQueueClient, LiveVideoFragmentsMessageQueueServer
+
+
 from ..utils.common import decode_json, encode_json
 
 from typing import Callable, List, Dict, Any, Awaitable, Optional, TypedDict
