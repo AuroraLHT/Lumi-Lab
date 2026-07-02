@@ -111,7 +111,7 @@ async def _main(args):
             auto_aoi_intensity=settings.rheed.pylon.auto_aoi_intensity,
             auto_aoi_whitebalance=settings.rheed.pylon.auto_aoi_whitebalance
         )
-        camera = PylonCamera(config=pylon_camera_config, name=settings.rheed.pylon.name)
+        camera = PylonCamera(config=pylon_camera_config, name=settings.rheed.pylon.name, daemon=True)
 
     elif args.src == "webcam":
         frame_processing = frame_processing_webcam
@@ -121,10 +121,9 @@ async def _main(args):
             fps = settings.rheed.webcam.fps,  # the maximum is 30 for this webcam
             queue_size = settings.rheed.webcam.queue_size,
             idle_time = settings.rheed.webcam.idle_time,
-            height = settings.rheed.webcam.height,
-            width = settings.rheed.webcam.width,
+            frame_dims=(height, width)
         )
-        camera = WebCamera(config=web_camera_config, name=settings.rheed.webcam.name)
+        camera = WebCamera(config=web_camera_config, name=settings.rheed.webcam.name, daemon=True)
 
     else:
         frame_processing = frame_processing_testcam
@@ -149,7 +148,7 @@ async def _main(args):
             gamma = settings.rheed.simcam.gamma,
             max_intensity = settings.rheed.simcam.max_intensity
         )
-        camera = SimCamera(config=sim_camera_config, name=settings.rheed.simcam.name)
+        camera = SimCamera(config=sim_camera_config, name=settings.rheed.simcam.name, daemon=True)
 
     # record_camera_queue = camera.register_queue("record")
     live_video_camera_queue = camera.register_queue(settings.rheed.video_compressor.name)
@@ -185,6 +184,7 @@ async def _main(args):
         config=live_video_compressor_config,
         frame_processing=frame_processing,
         name=settings.rheed.video_compressor.name,
+        daemon=True
     )
 
     video_recorder_config = VideoRecorderConfig(
@@ -201,6 +201,7 @@ async def _main(args):
     #     config=video_recorder_config,
     #     frame_processing=frame_processing,
     #     name="video_record",
+    #     daemon=True
     # )
 
 
@@ -217,8 +218,8 @@ async def _main(args):
         output_queue_size=settings.rheed.integrator.output_queue_size,
     )
 
-    integrator = MultiBoxIntegrator(camera=None, camera_queue=live_integration_camera_queue, config=integrator_config)
-    stft_calculator = STFTCalculator(integrator=integrator, config=stft_config)
+    integrator = MultiBoxIntegrator(camera=None, camera_queue=live_integration_camera_queue, config=integrator_config, daemon=True)
+    stft_calculator = STFTCalculator(integrator=integrator, config=stft_config, daemon=True)
 
     live_video_mq = LiveVideoFragmentsMessageQueueServer(
         video_compressor=live_video_compressor,
@@ -303,16 +304,9 @@ async def _main(args):
         server_name=settings.rheed.mq.stft.name
     )
 
-    camera.daemon = True
     camera.start()
-
-    live_video_compressor.daemon = True
     live_video_compressor.start()
-
-    integrator.daemon = True
     integrator.start()
-
-    stft_calculator.daemon = True
     stft_calculator.start()
 
     logging.info("image and video started")

@@ -43,8 +43,8 @@ class SimCamera(GenericCamera):
     # FRAME_HEADER_KEYS = ["time", "uuid", "time_stamp"]
     config : SimCameraConfig
 
-    def __init__(self, config:SimCameraConfig, name:Union[int, str]) -> None:
-        super().__init__(config, name)
+    def __init__(self, config:SimCameraConfig, name:Union[int, str], daemon:bool=True) -> None:
+        super().__init__(config, name, daemon=daemon)
 
     def on_initiate(self, config:SimCameraConfig):
         # self.source_img = cv2.imread(config.source)

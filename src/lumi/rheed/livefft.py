@@ -37,8 +37,8 @@ class STFTCalculatorConfig:
 
 
 class STFTCalculator(threading.Thread):
-    def __init__(self, integrator: "MultiBoxIntegrator", config:STFTCalculatorConfig, name:Union[int|str]=""):
-        super().__init__(name=name)
+    def __init__(self, integrator: "MultiBoxIntegrator", config:STFTCalculatorConfig, name:Union[int|str]="", daemon:bool=True):
+        super().__init__(name=name, daemon=daemon)
         self.config = config
         self.output_queue = queue.Queue(maxsize=self.config.output_queue_size)
         self.integrator = integrator

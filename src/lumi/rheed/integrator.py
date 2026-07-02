@@ -32,8 +32,8 @@ class MultiBoxIntegratorConfig:
 class MultiBoxIntegrator(threading.Thread):
     HEADER_KEYS = ["time", "uuid", "time_stamp", "bbox_id"]
 
-    def __init__(self, camera, camera_queue:queue.Queue, config:MultiBoxIntegratorConfig, name:Union[int|str]=""):
-        super().__init__(name=name)
+    def __init__(self, camera, camera_queue:queue.Queue, config:MultiBoxIntegratorConfig, name:Union[int|str]="", daemon:bool=True):
+        super().__init__(name=name, daemon=daemon)
         self.io_lock = threading.Lock()
         self.config = config
         self.output_queue = queue.Queue(maxsize=self.config.output_queue_size)

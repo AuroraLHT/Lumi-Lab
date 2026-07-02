@@ -81,9 +81,9 @@ class PylonCamera(GenericCamera):
     camera : Optional[pylon.InstantCamera] = None
     # FRAME_HEADER_KEYS = ["time", "uuid", "time_stamp"]
 
-    def __init__(self, config:PylonCameraConfig, name:Union[int, str]) -> None:
+    def __init__(self, config:PylonCameraConfig, name:Union[int, str], daemon:bool=True) -> None:
         self._is_running = False
-        super().__init__(config=config, name=name)
+        super().__init__(config=config, name=name, daemon=daemon)
 
         # self.camera_io_lock = threading.Lock()
 
