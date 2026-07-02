@@ -15,8 +15,6 @@ class GenericCameraConfig:
     queue_size : int
     frame_dims : Tuple[int, int]
 
-    
-
     @property
     def spf(self):
         return 1 / self.fps
@@ -89,8 +87,8 @@ class GenericCamera(threading.Thread):
             Optionally, __del__(self)
     """
 
-    def __init__(self, config:GenericCameraConfig, name:Union[int, str] ) -> None:        
-        super().__init__(name=name)
+    def __init__(self, config:GenericCameraConfig, name:Union[int, str], daemon=True) -> None:        
+        super().__init__(name=name, daemon=daemon)
         self.camera_io_lock = threading.Lock()
         self.config = config
 

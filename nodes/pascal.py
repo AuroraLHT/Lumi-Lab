@@ -1,3 +1,5 @@
+from lumi.path import PROJECT_ROOT
+
 from lumi.pascal.communication import (
     ChamberLogMessageQueueServer,
     LiveChamberLogMessageQueueServer,
@@ -131,17 +133,17 @@ async def main(args):
         mi_mode_server.start()
         mi_mode_simulator.start()
 
-    if args.src == "webcam":
+    if args.src == "path":
         height = settings.pascal.webcam.height
         width = settings.pascal.webcam.width
         web_camera_config = WebCameraConfig(            
             fps = settings.pascal.webcam.fps,  # the maximum is 30 for this webcam
             queue_size = settings.pascal.webcam.queue_size,
             idle_time = settings.pascal.webcam.idle_time,
-            height = settings.pascal.webcam.height,
-            width = settings.pascal.webcam.width,
+            frame_dims = (height, width),
+            device=settings.pascal.webcam.device
         )
-        camera = WebCamera(config=web_camera_config, name=settings.pascal.webcam.name)
+        camera = WebCamera(config=web_camera_config, name=settings.pascal.webcam.name, daemon=True)
 
     else:
         height = settings.pascal.simcam.height
@@ -165,15 +167,16 @@ async def main(args):
             gamma = settings.pascal.simcam.gamma,
             max_intensity = settings.pascal.simcam.max_intensity
         )
-        camera = SimCamera(config=sim_camera_config, name=settings.pascal.simcam.name)
+        camera = SimCamera(config=sim_camera_config, name=settings.pascal.simcam.name, daemon=True)
 
 
     # live_video_camera_queue = camera.register_queue(settings.pascal.video_compressor.name)
     live_image_camera_queue = camera.register_queue(settings.pascal.mq.live_camera.name)
 
-    if settings.pascal.is_camera_display:
+    if settings.pascal.display.enable:
         display_queue = camera.register_queue("display")
-        display_server = DisplayServer(config=DisplayConfig(title="display"), queue=display_queue)
+        display_config = DisplayConfig(title="Bottom Cam (press q to quit)", add_timestamp=settings.pascal.display.add_timestamp)
+        display_server = DisplayServer(config=display_config, queue=display_queue, name="Display", daemon=True)
         display_server.start()
 
     camera.start()
@@ -247,7 +250,7 @@ async def main(args):
     await live_chamber_mq.start()
     await mi_mode_mq.start()
     await image_mq.start()
-    await live_image_mq.start()
+    # await live_image_mq.start()
 
     await asyncio.Future()
 
@@ -255,6 +258,8 @@ async def main(args):
     await chamber_config_mq.cancel()
     await live_chamber_mq.cancel()
     await mi_mode_mq.cancel()
+    await image_mq.cancel()
+    # await live_image_mq.cancel()
 
     if args.src == "path":
         mi_mode_server.stop()
@@ -269,6 +274,10 @@ async def main(args):
     log_reader.join()
     config_reader.stop()
     config_reader.join()
+
+    camera.join()
+    if settings.pascal.display.enable:
+        display_server.join()
 
 if __name__ == "__main__":
     import argparse

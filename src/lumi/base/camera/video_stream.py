@@ -58,8 +58,8 @@ class VideoCompressorConfig:
 
 
 class VideoCompressor(threading.Thread):
-    def __init__(self, camera, camera_queue:queue.Queue, config:VideoCompressorConfig, frame_processing:Callable=None, name:Union[int|str]=""):
-        super().__init__(name=name)
+    def __init__(self, camera, camera_queue:queue.Queue, config:VideoCompressorConfig, frame_processing:Callable=None, name:Union[int|str]="", daemon:bool=True):
+        super().__init__(name=name, daemon=daemon)
         self.io_lock = threading.Lock()
         self.config = config
         self.startup_fragments = [] # for client that join in the middle of the streaming
@@ -311,8 +311,8 @@ class VideoRecorderConfig:
 
 
 class VideoRecorder(threading.Thread):
-    def __init__(self, camera, camera_queue:queue.Queue, config:VideoCompressorConfig, frame_processing:Callable=None, name:Union[int|str]=""):
-        super().__init__(name=name)
+    def __init__(self, camera, camera_queue:queue.Queue, config:VideoCompressorConfig, frame_processing:Callable=None, name:Union[int|str]="", daemon:bool=True):
+        super().__init__(name=name, daemon=daemon)
         self.io_lock = threading.Lock()
         self.config = config
         self.camera = camera

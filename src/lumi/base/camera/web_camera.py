@@ -24,19 +24,23 @@ def list_devices(verbose=True):
 
     return devices
 
-
+@dataclass
 class WebCameraConfig(GenericCameraConfig):
     device : Union[int, str]
 
 class WebCamera(GenericCamera):
-    def __init__(self, config:WebCameraConfig, name:Union[int|str]) -> None:
-        super().__init__(config=config, name=name)
+    def __init__(self, config:WebCameraConfig, name:Union[int|str], daemon:bool=True) -> None:
+        super().__init__(config=config, name=name, daemon=daemon)
         
     def on_initiate(self, config:WebCameraConfig):
         self.capture = cv2.VideoCapture(config.device)
         self.capture.set(cv2.CAP_PROP_FPS, config.fps)
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, config.frame_dims[0])
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, config.frame_dims[1])
+
+    def on_run(self):
+        pass
+
 
     def on_grab(self):
         """
@@ -59,3 +63,7 @@ class WebCamera(GenericCamera):
     def on_stop(self):
         if hasattr(self, "capture"):
             self.capture.release()
+
+    def apply_camera_config(self):
+        logging.info("Applying camera config. Not implementated yet")
+        pass

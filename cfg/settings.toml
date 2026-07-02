@@ -37,6 +37,7 @@ width = 640
 name = "Web Cam"
 idle_time = 0.0033
 queue_size = 2
+device = 0
 
 [rheed.simcam]
 fps = 30
@@ -179,8 +180,6 @@ exchange_type = "direct"
 mi_mode_folder = "mi_mode"
 chamber_log_folder = "chamber_log"
 
-is_camera_display = true
-
 [pascal.config_reader.test]
 idle_time = 0.1
 config_path = "src/lumi/pascal/assets/PLDconfig_07102025.ini"
@@ -216,6 +215,7 @@ width = 640
 name = "Web Cam"
 idle_time = 0.004
 queue_size = 2
+device = 1
 
 [pascal.simcam]
 fps = 25
@@ -238,6 +238,10 @@ feature_bbox = [100, 100, 340, 240]
 feature_oscillation_frequency = 0.03
 feature_oscillation_amplitude = 20
 max_intensity = 255
+
+[pascal.display]
+enable = false
+add_timestamp = true
 
 [pascal.video_compressor]
 fps = 60
