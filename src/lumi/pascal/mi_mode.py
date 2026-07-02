@@ -40,27 +40,27 @@ def clean_mi_files(
         if assit_file_with_prefix.exists():
             assit_file_with_prefix.unlink()
             if verbose:
-                logging.info(assit_file_with_prefix, " removed")
+                logging.info("[MI] " + assit_file_with_prefix + " removed")
         else:
             if verbose:
-                logging.info(assit_file_with_prefix, "not removed")
+                logging.info("[MI] " + assit_file_with_prefix + " not removed")
 
     for script_file in mi_folder.glob(f"{SCRIPT_PREFIX}*"):
         script_file.unlink()
         if verbose:
-            logging.info(script_file, " removed")
+            logging.info("[MI] "+ script_file+" removed")
 
 def create_empty_mi_files( mi_folder: Union[str, Path], assit_filename: str, verbose: bool = False):
     mi_folder = Path(mi_folder)
     assit_file = mi_folder / (f"{assit_filename}")
     with open(assit_file, "w") as f:
         if verbose:
-            logging.info(f"create a empty assist file at {assit_file}")
+            logging.info(f"[MI] create a empty assist file at {assit_file}")
     
     script_file = mi_folder / f"{SCRIPT_PREFIX}"
     with open(script_file, "w") as f:
         if verbose:
-            logging.info(f"create a empty script file at {script_file}")
+            logging.info(f"[MI] create a empty script file at {script_file}")
     
 
 def is_mi_file_trigger(filename: str, base_filename: str) -> bool:
@@ -113,7 +113,7 @@ class MIModeExecution:
 
     def change_state(self, state: MIState):
         self.state = state
-        logging.info(f"mi execution state changed to {state}")
+        logging.info(f"[MI] Execution state changed to {state}")
 
         if self.state == MIState.COMPLETED:
             self.is_execution_finished = True
@@ -217,7 +217,7 @@ class MIModeFileSystemHandler(FileSystemEventHandler):
         print(f"on moved: {src_filename} -> {dest_filename}")
 
         if is_mi_file_trigger(filename=src_filename, base_filename=self.based_filename):
-            logging.info(f"assist file state move {get_mi_state(filename=src_filename, base_filename=self.based_filename)} -> {get_mi_state(filename=dest_filename, base_filename=self.based_filename)}" )
+            logging.info(f"[MI] assist file on move. state: {get_mi_state(filename=src_filename, base_filename=self.based_filename)} -> {get_mi_state(filename=dest_filename, base_filename=self.based_filename)}" )
             if self.mi_execution is not None:
                 self.mi_server.change_current_execution_state(
                     get_mi_state(
@@ -236,7 +236,7 @@ class MIModeFileSystemHandler(FileSystemEventHandler):
         src_filename = Path(event.src_path).name
         print(f"on modified: {src_filename}")
         if is_mi_file_trigger(filename=src_filename, base_filename=self.based_filename):
-            logging.info(f"assist file modified to state -> {get_mi_state(filename=src_filename, base_filename=self.based_filename)}" )
+            logging.info(f"[MI] assist file on modified. state -> {get_mi_state(filename=src_filename, base_filename=self.based_filename)}" )
             if self.mi_execution is not None:
                 self.mi_server.change_current_execution_state(
                     get_mi_state(
@@ -256,6 +256,11 @@ class MIModeServerConfig:
     assist_file_name: str = "MItest.txt"
     mi_folder: str = ""
 
+def brief_commands(commands:str, max_length=80):
+    if len(commands) > max_length:
+        return commands[:80] + "..."
+    else:
+        return commands
 
 class MIModeServer(threading.Thread):
     current_mi_execution: MIModeExecution
@@ -316,6 +321,11 @@ class MIModeServer(threading.Thread):
 
     @staticmethod
     def default_execution_callback(mi_server: "MIModeServer", mi_execution: MIModeExecution):
+        # create a warning on aborted operation. seems to cause issue with subsequence MI call.
+        if mi_execution.state == MIState.ABORTED:
+            logging.warning(f"[MI] Command {mi_execution.uuid} Aborted! \n\t Content: {mi_execution.commands}")
+
+        # after each execution, update the queue to the finished execution and all other executions that is still in the line.
         if not mi_server.update_queue.full():
             mi_server.update_queue.put( ( mi_execution.to_dict(), {"update_content": "current_execution"} ) )
             
@@ -323,7 +333,7 @@ class MIModeServer(threading.Thread):
             mi_server.update_queue.put( ( mi_server.list_executions(), {"update_content": "all_executions"} ) )
 
     def register_commands(self, commands: str, commands_uuid: str):
-        logging.info(f"register commands_uuid: {commands_uuid}")
+        logging.info(f"[MI] Register commands {commands_uuid}\n\t Content: {brief_commands(commands)}")
         if commands.startswith("$"):
             special_commands = commands[1:]
             if special_commands == "stop":
@@ -380,7 +390,7 @@ class MIModeServer(threading.Thread):
         observer.schedule(event_handler, path=self.config.mi_folder, recursive=True)
         observer.daemon = self.daemon
         self._observer = observer
-        logging.info("observer created")
+        logging.info("[MI] Observer created")
 
     def is_mi_execution_running(self):
         return self.current_mi_execution is not None
@@ -427,7 +437,7 @@ class MIModeServer(threading.Thread):
         # create the mi watcher to monitor the mi mode backend state
         self.create_mi_watcher()
         self._observer.start()
-        logging.info("watch dog started")
+        logging.info("[MI] Filesystem watch dog started")
 
         while True:
             stop_flag = self._stop_event.wait(self.config.idle_time)
@@ -436,13 +446,13 @@ class MIModeServer(threading.Thread):
 
             hold_flag = self._hold_event.wait(self.config.idle_time)
             if hold_flag:
-                logging.info(f"On hold, sleep for {self.config.idle_time * 10}")
+                logging.info(f"[MI] On hold, sleep for {self.config.idle_time * 10}")
                 time.sleep(self.config.idle_time * 10)
                 continue
 
             if self.is_mi_execution_running():
                 if self.wait_for_execution_finished():
-                    logging.info(f"execution finished: {self.current_mi_execution.script_file}")
+                    logging.info(f"[MI] Execution finished: {self.current_mi_execution.script_file}")
                     with self._execution_lock:
                         self.execution_finished(self.current_mi_execution)
             else:
@@ -455,15 +465,15 @@ class MIModeServer(threading.Thread):
             return MIModeExecution(uuid="", commands="", assist_filename=self.config.assist_file_name, mi_folder=self.config.mi_folder, on_state_change_callbacks={})
 
     def hold(self):
-        logging.info(f"MI Mode thread ({self.ident}) receives a hold signal")
+        logging.info(f"[MI] thread ({self.ident}) receives a hold signal")
         self._hold_event.set()
 
     def resume(self):
-        logging.info(f"MI Mode thread ({self.ident}) receives a resume signal")
+        logging.info(f"[MI] thread ({self.ident}) receives a resume signal")
         self._hold_event.clear()
 
     def stop(self):
-        logging.info(f"MI Mode thread ({self.ident}) receives a stop signal")
+        logging.info(f"[MI] thread ({self.ident}) receives a stop signal")
         self._stop_event.set()
         self._observer.stop()
         self._observer.join()
