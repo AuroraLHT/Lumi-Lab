@@ -179,6 +179,8 @@ exchange_type = "direct"
 mi_mode_folder = "mi_mode"
 chamber_log_folder = "chamber_log"
 
+is_camera_display = true
+
 [pascal.config_reader.test]
 idle_time = 0.1
 config_path = "src/lumi/pascal/assets/PLDconfig_07102025.ini"
@@ -206,6 +208,72 @@ queue_size = 1000
 idle_time = 0.01
 assist_file_name = "assist.txt"
 name = "mi_mode_server"
+
+[pascal.webcam]
+fps = 25
+height = 480
+width = 640
+name = "Web Cam"
+idle_time = 0.004
+queue_size = 2
+
+[pascal.simcam]
+fps = 25
+height = 480
+width = 640
+source = "src/lumi/pascal/assets/YSZ.bmp"
+name = "Test Cam"
+idle_time = 0.004
+queue_size = 2
+
+exposure_time = 3000 # in units of μs
+gain = 200 # ranges from 0 to 240
+gamma = 1.0 # ranges from 0 to 3.99
+
+is_base_oscillation = true
+base_oscillation_frequency = 0.1
+base_oscillation_amplitude = 5
+is_feature_oscillation = true
+feature_bbox = [100, 100, 340, 240]
+feature_oscillation_frequency = 0.03
+feature_oscillation_amplitude = 20
+max_intensity = 255
+
+[pascal.video_compressor]
+fps = 60
+frames_per_keyframe = 1
+fragment_queue_size = 60
+cached_startup_fragments = 5
+bit_rate = 12000000
+name = "Video Compressor"
+
+
+[pascal.mq.live_video]
+ctrl_key = "live_video_ctrl"
+publish_key = "live_video"
+state_key = "live_video_state"
+name = "Live Pascal Video"
+state_monitor_name = "Live Pascal Cam Monitor"
+
+[pascal.mq.video]
+ctrl_key = "video_ctrl"
+request_key = "video"
+state_key = "video_state"
+name = "Pascal Video"
+
+[pascal.mq.camera]
+request_key = "camera"
+ctrl_key = "camera_ctrl"
+state_key = "camera_state"
+name = "Pascal Camera"
+
+[pascal.mq.live_camera]
+ctrl_key = "live_camera_ctrl"
+publish_key = "live_camera"
+state_key = "live_camera_state"
+name = "Live Pascal Camera"
+state_monitor_name = "Live Pascal Camera Monitor"
+
 
 [pascal.mq.chamber_log]
 request_key = "chamber_log"
@@ -259,7 +327,6 @@ tracking = "tracking"
 num_tracking = "num_tracking"
 
 detection_meta = "detection_meta"
-
 
 [storage.hdf5_recorder]
 idle_time = 0.01
