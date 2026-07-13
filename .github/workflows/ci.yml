@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      # The broker tests are the ones that matter (competing consumers, reply_to,
+      # message TTL, stream fan-out, presence expiry). They are not faked, so CI
+      # runs a real broker.
+      rabbitmq:
+        image: rabbitmq:4-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --all-extras
+
+      - name: Generated code is in sync with the contract
+        # Must run before the tests: a stale client would otherwise be tested
+        # against, and pass, while describing a wire format that no longer exists.
+        run: uv run lumi-codegen --check
+
+      - name: Tests
+        env:
+          LUMI_TEST_AMQP_URL: amqp://guest:guest@localhost:5672/
+        run: uv run pytest -q
+
+  typescript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Typecheck the generated browser client
+        # The browser talks STOMP directly to the broker; this is the client it uses.
+        run: >-
+          npx --yes -p typescript@5 tsc --noEmit --strict
+          --target es2020 --lib es2020,dom --moduleResolution node
+          web/src/generated/lumi.ts

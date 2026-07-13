@@ -138,3 +138,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# MI-mode simulator scratch output (written at runtime by the chamber sim)
+src/lumi/pascal/assets/mi_mode/

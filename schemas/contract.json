@@ -1,0 +1,4562 @@
+{
+  "chamber": {
+    "capabilities": [
+      {
+        "kind": "duplex",
+        "name": "log",
+        "ops": [
+          {
+            "name": "log",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "LogEntry": {
+                  "description": "One row of the chamber log.",
+                  "properties": {
+                    "time": {
+                      "title": "Time",
+                      "type": "number"
+                    },
+                    "time_stamp": {
+                      "title": "Time Stamp",
+                      "type": "string"
+                    },
+                    "values": {
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "title": "Values",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "time_stamp",
+                    "values"
+                  ],
+                  "title": "LogEntry",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "entries": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/LogEntry"
+                  },
+                  "title": "Entries",
+                  "type": "array"
+                }
+              },
+              "title": "LogBatch",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "chamber.log.ctrl.*",
+          "publish": "chamber.log.pub",
+          "request_pattern": "chamber.log.req.*",
+          "requests": {
+            "log": "chamber.log.req.log"
+          },
+          "state": "chamber.log.state",
+          "update": "chamber.log.update",
+          "work_queue": "q.chamber.log.req"
+        },
+        "state": {
+          "properties": {
+            "columns": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Columns",
+              "type": "array"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "last_entry_time": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Last Entry Time"
+            },
+            "log_file": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Log File"
+            },
+            "n_entries": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Entries"
+            }
+          },
+          "title": "ChamberLogState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "json",
+          "name": "log",
+          "payload": {
+            "description": "One row of the chamber log.",
+            "properties": {
+              "time": {
+                "title": "Time",
+                "type": "number"
+              },
+              "time_stamp": {
+                "title": "Time Stamp",
+                "type": "string"
+              },
+              "values": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "title": "Values",
+                "type": "object"
+              }
+            },
+            "required": [
+              "time",
+              "time_stamp",
+              "values"
+            ],
+            "title": "LogEntry",
+            "type": "object"
+          }
+        },
+        "update": null
+      },
+      {
+        "kind": "rpc",
+        "name": "config",
+        "ops": [
+          {
+            "name": "get_all_config",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "configs": {
+                  "additionalProperties": {
+                    "additionalProperties": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    },
+                    "type": "object"
+                  },
+                  "title": "Configs",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "configs"
+              ],
+              "title": "AllConfigs",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_config",
+            "request": {
+              "properties": {
+                "key": {
+                  "title": "Key",
+                  "type": "string"
+                },
+                "section": {
+                  "title": "Section",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "section",
+                "key"
+              ],
+              "title": "ConfigQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ],
+                  "title": "Value"
+                }
+              },
+              "required": [
+                "value"
+              ],
+              "title": "ConfigEntry",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_configs_by_section",
+            "request": {
+              "properties": {
+                "section": {
+                  "title": "Section",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "section"
+              ],
+              "title": "SectionQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "section": {
+                  "title": "Section",
+                  "type": "string"
+                },
+                "values": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "title": "Values",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "section",
+                "values"
+              ],
+              "title": "ConfigSection",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_sections",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "sections": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Sections",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "sections"
+              ],
+              "title": "ConfigSections",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "chamber.config.ctrl.*",
+          "publish": "chamber.config.pub",
+          "request_pattern": "chamber.config.req.*",
+          "requests": {
+            "get_all_config": "chamber.config.req.get_all_config",
+            "get_config": "chamber.config.req.get_config",
+            "get_configs_by_section": "chamber.config.req.get_configs_by_section",
+            "get_sections": "chamber.config.req.get_sections"
+          },
+          "state": "chamber.config.state",
+          "update": "chamber.config.update",
+          "work_queue": "q.chamber.config.req"
+        },
+        "state": {
+          "properties": {
+            "config_file": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Config File"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "sections": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Sections",
+              "type": "array"
+            }
+          },
+          "title": "ChamberConfigState",
+          "type": "object"
+        },
+        "stream": null,
+        "update": null
+      },
+      {
+        "kind": "pubsub",
+        "name": "mi_mode",
+        "ops": [
+          {
+            "name": "register_commands",
+            "request": {
+              "properties": {
+                "commands": {
+                  "title": "Commands",
+                  "type": "string"
+                },
+                "commands_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Commands Uuid"
+                }
+              },
+              "required": [
+                "commands"
+              ],
+              "title": "MICommands",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "One submitted command script and where it has got to.\n\nMirrors MIExecution.to_dict() in lumi.pascal.mi_mode -- which is the shape that\nhas always been on the wire, just never written down anywhere a client could see.",
+              "properties": {
+                "commands": {
+                  "title": "Commands",
+                  "type": "string"
+                },
+                "commands_uuid": {
+                  "title": "Commands Uuid",
+                  "type": "string"
+                },
+                "is_aborted": {
+                  "default": false,
+                  "title": "Is Aborted",
+                  "type": "boolean"
+                },
+                "is_cleaned_up": {
+                  "default": false,
+                  "title": "Is Cleaned Up",
+                  "type": "boolean"
+                },
+                "is_execution_finished": {
+                  "default": false,
+                  "title": "Is Execution Finished",
+                  "type": "boolean"
+                },
+                "is_stopped": {
+                  "default": false,
+                  "title": "Is Stopped",
+                  "type": "boolean"
+                },
+                "state": {
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "commands",
+                "commands_uuid",
+                "state"
+              ],
+              "title": "MIExecution",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_execution",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "MIExecution": {
+                  "description": "One submitted command script and where it has got to.\n\nMirrors MIExecution.to_dict() in lumi.pascal.mi_mode -- which is the shape that\nhas always been on the wire, just never written down anywhere a client could see.",
+                  "properties": {
+                    "commands": {
+                      "title": "Commands",
+                      "type": "string"
+                    },
+                    "commands_uuid": {
+                      "title": "Commands Uuid",
+                      "type": "string"
+                    },
+                    "is_aborted": {
+                      "default": false,
+                      "title": "Is Aborted",
+                      "type": "boolean"
+                    },
+                    "is_cleaned_up": {
+                      "default": false,
+                      "title": "Is Cleaned Up",
+                      "type": "boolean"
+                    },
+                    "is_execution_finished": {
+                      "default": false,
+                      "title": "Is Execution Finished",
+                      "type": "boolean"
+                    },
+                    "is_stopped": {
+                      "default": false,
+                      "title": "Is Stopped",
+                      "type": "boolean"
+                    },
+                    "state": {
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "commands",
+                    "commands_uuid",
+                    "state"
+                  ],
+                  "title": "MIExecution",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "executions": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MIExecution"
+                  },
+                  "title": "Executions",
+                  "type": "array"
+                }
+              },
+              "title": "MIExecutionList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "chamber.mi_mode.ctrl.*",
+          "publish": "chamber.mi_mode.pub",
+          "request_pattern": "chamber.mi_mode.req.*",
+          "requests": {
+            "list_execution": "chamber.mi_mode.req.list_execution",
+            "register_commands": "chamber.mi_mode.req.register_commands"
+          },
+          "state": "chamber.mi_mode.state",
+          "update": "chamber.mi_mode.update",
+          "work_queue": "q.chamber.mi_mode.req"
+        },
+        "state": {
+          "properties": {
+            "current_execution": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Current Execution"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "num_executions": {
+              "default": 0,
+              "title": "Num Executions",
+              "type": "integer"
+            }
+          },
+          "title": "MIModeState",
+          "type": "object"
+        },
+        "stream": null,
+        "update": {
+          "codec": "json",
+          "name": "execution",
+          "payload": {
+            "description": "One submitted command script and where it has got to.\n\nMirrors MIExecution.to_dict() in lumi.pascal.mi_mode -- which is the shape that\nhas always been on the wire, just never written down anywhere a client could see.",
+            "properties": {
+              "commands": {
+                "title": "Commands",
+                "type": "string"
+              },
+              "commands_uuid": {
+                "title": "Commands Uuid",
+                "type": "string"
+              },
+              "is_aborted": {
+                "default": false,
+                "title": "Is Aborted",
+                "type": "boolean"
+              },
+              "is_cleaned_up": {
+                "default": false,
+                "title": "Is Cleaned Up",
+                "type": "boolean"
+              },
+              "is_execution_finished": {
+                "default": false,
+                "title": "Is Execution Finished",
+                "type": "boolean"
+              },
+              "is_stopped": {
+                "default": false,
+                "title": "Is Stopped",
+                "type": "boolean"
+              },
+              "state": {
+                "title": "State",
+                "type": "string"
+              }
+            },
+            "required": [
+              "commands",
+              "commands_uuid",
+              "state"
+            ],
+            "title": "MIExecution",
+            "type": "object"
+          }
+        }
+      },
+      {
+        "kind": "duplex",
+        "name": "camera",
+        "ops": [
+          {
+            "name": "image",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Headers for a frame. The body is the np.save buffer (Codec.NPY).",
+              "properties": {
+                "dtype": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Dtype"
+                },
+                "frame_idx": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Frame Idx"
+                },
+                "shape": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Shape"
+                },
+                "time": {
+                  "title": "Time",
+                  "type": "number"
+                },
+                "time_stamp": {
+                  "title": "Time Stamp",
+                  "type": "string"
+                },
+                "uuid": {
+                  "title": "Uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "time",
+                "uuid",
+                "time_stamp"
+              ],
+              "title": "ImageMeta",
+              "type": "object"
+            },
+            "response_codec": "npy"
+          },
+          {
+            "name": "get_camera_config",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Tunable camera parameters.\n\nOptional throughout: `update_camera_config` is a partial update, and the old\ndict-based version relied on the caller simply omitting keys.",
+              "properties": {
+                "auto_exposure": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Auto Exposure"
+                },
+                "auto_gain": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Auto Gain"
+                },
+                "black_level": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Black Level"
+                },
+                "exposure_time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Exposure Time"
+                },
+                "fps": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Fps"
+                },
+                "gain": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gain"
+                },
+                "gamma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gamma"
+                },
+                "height": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Height"
+                },
+                "width": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Width"
+                }
+              },
+              "title": "CameraConfig",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "update_camera_config",
+            "request": {
+              "description": "Tunable camera parameters.\n\nOptional throughout: `update_camera_config` is a partial update, and the old\ndict-based version relied on the caller simply omitting keys.",
+              "properties": {
+                "auto_exposure": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Auto Exposure"
+                },
+                "auto_gain": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Auto Gain"
+                },
+                "black_level": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Black Level"
+                },
+                "exposure_time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Exposure Time"
+                },
+                "fps": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Fps"
+                },
+                "gain": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gain"
+                },
+                "gamma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gamma"
+                },
+                "height": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Height"
+                },
+                "width": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Width"
+                }
+              },
+              "title": "CameraConfig",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "chamber.camera.ctrl.*",
+          "publish": "chamber.camera.pub",
+          "request_pattern": "chamber.camera.req.*",
+          "requests": {
+            "get_camera_config": "chamber.camera.req.get_camera_config",
+            "image": "chamber.camera.req.image",
+            "update_camera_config": "chamber.camera.req.update_camera_config"
+          },
+          "state": "chamber.camera.state",
+          "update": "chamber.camera.update",
+          "work_queue": "q.chamber.camera.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "fps": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Fps"
+            },
+            "frame_dims": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Frame Dims"
+            },
+            "frame_metas": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Frame Metas"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            }
+          },
+          "title": "CameraState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "npy",
+          "name": "frame",
+          "payload": {
+            "description": "Headers for a frame. The body is the np.save buffer (Codec.NPY).",
+            "properties": {
+              "dtype": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Dtype"
+              },
+              "frame_idx": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Frame Idx"
+              },
+              "shape": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Shape"
+              },
+              "time": {
+                "title": "Time",
+                "type": "number"
+              },
+              "time_stamp": {
+                "title": "Time Stamp",
+                "type": "string"
+              },
+              "uuid": {
+                "title": "Uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "time",
+              "uuid",
+              "time_stamp"
+            ],
+            "title": "ImageMeta",
+            "type": "object"
+          }
+        },
+        "update": null
+      }
+    ],
+    "exchange": "CHAMBER",
+    "exchange_type": "topic",
+    "name": "chamber",
+    "version": "2.0"
+  },
+  "detection": {
+    "capabilities": [
+      {
+        "kind": "duplex",
+        "name": "detection",
+        "ops": [
+          {
+            "name": "detection",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "DetectedBox": {
+                  "properties": {
+                    "bbox_id": {
+                      "title": "Bbox Id",
+                      "type": "integer"
+                    },
+                    "height": {
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "mask_ref": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Ref"
+                    },
+                    "score": {
+                      "title": "Score",
+                      "type": "number"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bbox_id",
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "score"
+                  ],
+                  "title": "DetectedBox",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "boxes": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/DetectedBox"
+                  },
+                  "title": "Boxes",
+                  "type": "array"
+                },
+                "classification": {
+                  "additionalProperties": {
+                    "type": "number"
+                  },
+                  "default": {},
+                  "title": "Classification",
+                  "type": "object"
+                },
+                "pattern_ref": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pattern Ref"
+                },
+                "region2tracks": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  "default": {},
+                  "title": "Region2Tracks",
+                  "type": "object"
+                },
+                "time": {
+                  "title": "Time",
+                  "type": "number"
+                },
+                "time_stamp": {
+                  "title": "Time Stamp",
+                  "type": "string"
+                },
+                "uuid": {
+                  "title": "Uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "time",
+                "time_stamp",
+                "uuid"
+              ],
+              "title": "DetectionResult",
+              "type": "object"
+            },
+            "response_codec": "npz"
+          },
+          {
+            "name": "set_detection_crop",
+            "request": {
+              "description": "Region of the frame fed to the detector.",
+              "properties": {
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                },
+                "x": {
+                  "title": "X",
+                  "type": "integer"
+                },
+                "y": {
+                  "title": "Y",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "title": "CropSetup",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "detection.detection.ctrl.*",
+          "publish": "detection.detection.pub",
+          "request_pattern": "detection.detection.req.*",
+          "requests": {
+            "detection": "detection.detection.req.detection",
+            "set_detection_crop": "detection.detection.req.set_detection_crop"
+          },
+          "state": "detection.detection.state",
+          "update": "detection.detection.update",
+          "work_queue": "q.detection.detection.req"
+        },
+        "state": {
+          "$defs": {
+            "CropSetup": {
+              "description": "Region of the frame fed to the detector.",
+              "properties": {
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                },
+                "x": {
+                  "title": "X",
+                  "type": "integer"
+                },
+                "y": {
+                  "title": "Y",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "title": "CropSetup",
+              "type": "object"
+            }
+          },
+          "properties": {
+            "classifier_classes": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Classifier Classes",
+              "type": "array"
+            },
+            "crop": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CropSetup"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "device": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Device"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "model_path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Model Path"
+            }
+          },
+          "title": "DetectionState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "npz",
+          "name": "detection",
+          "payload": {
+            "$defs": {
+              "DetectedBox": {
+                "properties": {
+                  "bbox_id": {
+                    "title": "Bbox Id",
+                    "type": "integer"
+                  },
+                  "height": {
+                    "title": "Height",
+                    "type": "number"
+                  },
+                  "label": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Label"
+                  },
+                  "mask_ref": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Mask Ref"
+                  },
+                  "score": {
+                    "title": "Score",
+                    "type": "number"
+                  },
+                  "width": {
+                    "title": "Width",
+                    "type": "number"
+                  },
+                  "x": {
+                    "title": "X",
+                    "type": "number"
+                  },
+                  "y": {
+                    "title": "Y",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "bbox_id",
+                  "x",
+                  "y",
+                  "width",
+                  "height",
+                  "score"
+                ],
+                "title": "DetectedBox",
+                "type": "object"
+              }
+            },
+            "properties": {
+              "boxes": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/DetectedBox"
+                },
+                "title": "Boxes",
+                "type": "array"
+              },
+              "classification": {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "default": {},
+                "title": "Classification",
+                "type": "object"
+              },
+              "pattern_ref": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Pattern Ref"
+              },
+              "region2tracks": {
+                "additionalProperties": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                "default": {},
+                "title": "Region2Tracks",
+                "type": "object"
+              },
+              "time": {
+                "title": "Time",
+                "type": "number"
+              },
+              "time_stamp": {
+                "title": "Time Stamp",
+                "type": "string"
+              },
+              "uuid": {
+                "title": "Uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "time",
+              "time_stamp",
+              "uuid"
+            ],
+            "title": "DetectionResult",
+            "type": "object"
+          }
+        },
+        "update": null
+      },
+      {
+        "kind": "stream",
+        "name": "overlay",
+        "ops": [],
+        "routing_keys": {
+          "control_pattern": "detection.overlay.ctrl.*",
+          "publish": "detection.overlay.pub",
+          "request_pattern": "detection.overlay.req.*",
+          "requests": {},
+          "state": "detection.overlay.state",
+          "update": "detection.overlay.update",
+          "work_queue": "q.detection.overlay.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "n_boxes": {
+              "default": 0,
+              "title": "N Boxes",
+              "type": "integer"
+            }
+          },
+          "title": "OverlayState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "json",
+          "name": "overlay",
+          "payload": {
+            "$defs": {
+              "OverlayBox": {
+                "description": "A box, with no mask.",
+                "properties": {
+                  "bbox_id": {
+                    "title": "Bbox Id",
+                    "type": "integer"
+                  },
+                  "height": {
+                    "title": "Height",
+                    "type": "number"
+                  },
+                  "label": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Label"
+                  },
+                  "score": {
+                    "title": "Score",
+                    "type": "number"
+                  },
+                  "width": {
+                    "title": "Width",
+                    "type": "number"
+                  },
+                  "x": {
+                    "title": "X",
+                    "type": "number"
+                  },
+                  "y": {
+                    "title": "Y",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "bbox_id",
+                  "x",
+                  "y",
+                  "width",
+                  "height",
+                  "score"
+                ],
+                "title": "OverlayBox",
+                "type": "object"
+              }
+            },
+            "description": "What a browser draws on top of the video: boxes and labels, nothing else.\n\nThis exists so that masks and the full RHEED pattern are never *sent* to a browser,\nrather than being sent and then stripped by a proxy. At 30fps the difference is\nhundreds of KB/s (plus a decode cost in the tab) against roughly 50 KB/s -- and with\na separate routing key the heavy arrays only ever travel toward the consumers that\nbind the heavy key, which is storage.",
+            "properties": {
+              "boxes": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/OverlayBox"
+                },
+                "title": "Boxes",
+                "type": "array"
+              },
+              "classification": {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "default": {},
+                "title": "Classification",
+                "type": "object"
+              },
+              "time": {
+                "title": "Time",
+                "type": "number"
+              },
+              "time_stamp": {
+                "title": "Time Stamp",
+                "type": "string"
+              },
+              "uuid": {
+                "title": "Uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "time",
+              "time_stamp",
+              "uuid"
+            ],
+            "title": "DetectionOverlay",
+            "type": "object"
+          }
+        },
+        "update": null
+      }
+    ],
+    "exchange": "RHEED",
+    "exchange_type": "topic",
+    "name": "detection",
+    "version": "2.0"
+  },
+  "rheed": {
+    "capabilities": [
+      {
+        "kind": "duplex",
+        "name": "camera",
+        "ops": [
+          {
+            "name": "image",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Headers for a frame. The body is the np.save buffer (Codec.NPY).",
+              "properties": {
+                "dtype": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Dtype"
+                },
+                "frame_idx": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Frame Idx"
+                },
+                "shape": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Shape"
+                },
+                "time": {
+                  "title": "Time",
+                  "type": "number"
+                },
+                "time_stamp": {
+                  "title": "Time Stamp",
+                  "type": "string"
+                },
+                "uuid": {
+                  "title": "Uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "time",
+                "uuid",
+                "time_stamp"
+              ],
+              "title": "ImageMeta",
+              "type": "object"
+            },
+            "response_codec": "npy"
+          },
+          {
+            "name": "get_camera_config",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Tunable camera parameters.\n\nOptional throughout: `update_camera_config` is a partial update, and the old\ndict-based version relied on the caller simply omitting keys.",
+              "properties": {
+                "auto_exposure": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Auto Exposure"
+                },
+                "auto_gain": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Auto Gain"
+                },
+                "black_level": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Black Level"
+                },
+                "exposure_time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Exposure Time"
+                },
+                "fps": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Fps"
+                },
+                "gain": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gain"
+                },
+                "gamma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gamma"
+                },
+                "height": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Height"
+                },
+                "width": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Width"
+                }
+              },
+              "title": "CameraConfig",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "update_camera_config",
+            "request": {
+              "description": "Tunable camera parameters.\n\nOptional throughout: `update_camera_config` is a partial update, and the old\ndict-based version relied on the caller simply omitting keys.",
+              "properties": {
+                "auto_exposure": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Auto Exposure"
+                },
+                "auto_gain": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Auto Gain"
+                },
+                "black_level": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Black Level"
+                },
+                "exposure_time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Exposure Time"
+                },
+                "fps": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Fps"
+                },
+                "gain": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gain"
+                },
+                "gamma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gamma"
+                },
+                "height": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Height"
+                },
+                "width": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Width"
+                }
+              },
+              "title": "CameraConfig",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "rheed.camera.ctrl.*",
+          "publish": "rheed.camera.pub",
+          "request_pattern": "rheed.camera.req.*",
+          "requests": {
+            "get_camera_config": "rheed.camera.req.get_camera_config",
+            "image": "rheed.camera.req.image",
+            "update_camera_config": "rheed.camera.req.update_camera_config"
+          },
+          "state": "rheed.camera.state",
+          "update": "rheed.camera.update",
+          "work_queue": "q.rheed.camera.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "fps": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Fps"
+            },
+            "frame_dims": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Frame Dims"
+            },
+            "frame_metas": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Frame Metas"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            }
+          },
+          "title": "CameraState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "npy",
+          "name": "frame",
+          "payload": {
+            "description": "Headers for a frame. The body is the np.save buffer (Codec.NPY).",
+            "properties": {
+              "dtype": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Dtype"
+              },
+              "frame_idx": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Frame Idx"
+              },
+              "shape": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Shape"
+              },
+              "time": {
+                "title": "Time",
+                "type": "number"
+              },
+              "time_stamp": {
+                "title": "Time Stamp",
+                "type": "string"
+              },
+              "uuid": {
+                "title": "Uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "time",
+              "uuid",
+              "time_stamp"
+            ],
+            "title": "ImageMeta",
+            "type": "object"
+          }
+        },
+        "update": null
+      },
+      {
+        "kind": "duplex",
+        "name": "video",
+        "ops": [
+          {
+            "name": "initial_fragments",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "The startup fragments a player must append before any media fragment.\n\nThere are several of them, and the body is their concatenation -- `sizes` says\nwhere to cut. The old wire format base64'd each one into a JSON dict, which\ninflated the whole init segment by a third for no reason; a media-source player\nappends them back-to-back regardless.",
+              "properties": {
+                "count": {
+                  "title": "Count",
+                  "type": "integer"
+                },
+                "headers": {
+                  "default": [],
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Headers",
+                  "type": "array"
+                },
+                "sizes": {
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "Sizes",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "count",
+                "sizes"
+              ],
+              "title": "InitialFragmentsMeta",
+              "type": "object"
+            },
+            "response_codec": "raw"
+          },
+          {
+            "name": "initial_fragments_size",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "size": {
+                  "title": "Size",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "size"
+              ],
+              "title": "FragmentsSize",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "video_fragment",
+            "request": {
+              "properties": {
+                "fragment_idx": {
+                  "title": "Fragment Idx",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "fragment_idx"
+              ],
+              "title": "FragmentIndex",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Headers for an encoded video fragment. Body is the raw container (Codec.RAW).",
+              "properties": {
+                "fragment_idx": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Fragment Idx"
+                },
+                "time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Time"
+                },
+                "time_stamp": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Time Stamp"
+                }
+              },
+              "title": "VideoFragmentMeta",
+              "type": "object"
+            },
+            "response_codec": "raw"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "rheed.video.ctrl.*",
+          "publish": "rheed.video.pub",
+          "request_pattern": "rheed.video.req.*",
+          "requests": {
+            "initial_fragments": "rheed.video.req.initial_fragments",
+            "initial_fragments_size": "rheed.video.req.initial_fragments_size",
+            "video_fragment": "rheed.video.req.video_fragment"
+          },
+          "state": "rheed.video.state",
+          "update": "rheed.video.update",
+          "work_queue": "q.rheed.video.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "fragment_duration": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Fragment Duration"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "n_fragments": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Fragments"
+            }
+          },
+          "title": "VideoState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "raw",
+          "name": "fragment",
+          "payload": {
+            "description": "Headers for an encoded video fragment. Body is the raw container (Codec.RAW).",
+            "properties": {
+              "fragment_idx": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Fragment Idx"
+              },
+              "time": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Time"
+              },
+              "time_stamp": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Time Stamp"
+              }
+            },
+            "title": "VideoFragmentMeta",
+            "type": "object"
+          }
+        },
+        "update": null
+      },
+      {
+        "kind": "duplex",
+        "name": "integrator",
+        "ops": [
+          {
+            "name": "register",
+            "request": {
+              "$defs": {
+                "BBox": {
+                  "description": "An integration region, in pixels.",
+                  "properties": {
+                    "height": {
+                      "title": "Height",
+                      "type": "integer"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "integer"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "integer"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "BBox",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "bbox": {
+                  "$ref": "#/$defs/BBox"
+                },
+                "bbox_id": {
+                  "title": "Bbox Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bbox_id",
+                "bbox"
+              ],
+              "title": "RegisterBBox",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "remove",
+            "request": {
+              "properties": {
+                "bbox_id": {
+                  "title": "Bbox Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bbox_id"
+              ],
+              "title": "BBoxId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bboxes",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "BBox": {
+                  "description": "An integration region, in pixels.",
+                  "properties": {
+                    "height": {
+                      "title": "Height",
+                      "type": "integer"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "integer"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "integer"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "BBox",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "bboxes": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/BBox"
+                  },
+                  "title": "Bboxes",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "bboxes"
+              ],
+              "title": "BBoxList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "cache",
+            "request": {
+              "properties": {
+                "bbox_id": {
+                  "title": "Bbox Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bbox_id"
+              ],
+              "title": "BBoxId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "IntegrationHeader": {
+                  "properties": {
+                    "bbox_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ],
+                      "title": "Bbox Id"
+                    },
+                    "integration_uuid": {
+                      "title": "Integration Uuid",
+                      "type": "string"
+                    },
+                    "time": {
+                      "title": "Time",
+                      "type": "number"
+                    },
+                    "time_stamp": {
+                      "title": "Time Stamp",
+                      "type": "string"
+                    },
+                    "uuid": {
+                      "title": "Uuid",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "uuid",
+                    "time_stamp",
+                    "bbox_id",
+                    "integration_uuid"
+                  ],
+                  "title": "IntegrationHeader",
+                  "type": "object"
+                },
+                "IntegrationResult": {
+                  "description": "Pixel statistics over one bbox for one frame.",
+                  "properties": {
+                    "center_x": {
+                      "title": "Center X",
+                      "type": "number"
+                    },
+                    "center_y": {
+                      "title": "Center Y",
+                      "type": "number"
+                    },
+                    "height": {
+                      "title": "Height",
+                      "type": "integer"
+                    },
+                    "max": {
+                      "title": "Max",
+                      "type": "number"
+                    },
+                    "mean": {
+                      "title": "Mean",
+                      "type": "number"
+                    },
+                    "min": {
+                      "title": "Min",
+                      "type": "number"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "mean",
+                    "max",
+                    "min",
+                    "height",
+                    "width",
+                    "center_x",
+                    "center_y"
+                  ],
+                  "title": "IntegrationResult",
+                  "type": "object"
+                },
+                "IntegrationSample": {
+                  "description": "One streamed integration tick: every registered box for one frame.",
+                  "properties": {
+                    "header": {
+                      "$ref": "#/$defs/IntegrationHeader"
+                    },
+                    "results": {
+                      "additionalProperties": {
+                        "$ref": "#/$defs/IntegrationResult"
+                      },
+                      "title": "Results",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "header",
+                    "results"
+                  ],
+                  "title": "IntegrationSample",
+                  "type": "object"
+                }
+              },
+              "description": "The integrator's retained history for one bbox.",
+              "properties": {
+                "bbox_id": {
+                  "title": "Bbox Id",
+                  "type": "integer"
+                },
+                "samples": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/IntegrationSample"
+                  },
+                  "title": "Samples",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "bbox_id"
+              ],
+              "title": "IntegrationCache",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "rheed.integrator.ctrl.*",
+          "publish": "rheed.integrator.pub",
+          "request_pattern": "rheed.integrator.req.*",
+          "requests": {
+            "bboxes": "rheed.integrator.req.bboxes",
+            "cache": "rheed.integrator.req.cache",
+            "register": "rheed.integrator.req.register",
+            "remove": "rheed.integrator.req.remove"
+          },
+          "state": "rheed.integrator.state",
+          "update": "rheed.integrator.update",
+          "work_queue": "q.rheed.integrator.req"
+        },
+        "state": {
+          "properties": {
+            "cache_size": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Cache Size"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "registered_bboxes": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Registered Bboxes",
+              "type": "array"
+            }
+          },
+          "title": "IntegratorState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "json",
+          "name": "integration",
+          "payload": {
+            "$defs": {
+              "IntegrationHeader": {
+                "properties": {
+                  "bbox_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ],
+                    "title": "Bbox Id"
+                  },
+                  "integration_uuid": {
+                    "title": "Integration Uuid",
+                    "type": "string"
+                  },
+                  "time": {
+                    "title": "Time",
+                    "type": "number"
+                  },
+                  "time_stamp": {
+                    "title": "Time Stamp",
+                    "type": "string"
+                  },
+                  "uuid": {
+                    "title": "Uuid",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "time",
+                  "uuid",
+                  "time_stamp",
+                  "bbox_id",
+                  "integration_uuid"
+                ],
+                "title": "IntegrationHeader",
+                "type": "object"
+              },
+              "IntegrationResult": {
+                "description": "Pixel statistics over one bbox for one frame.",
+                "properties": {
+                  "center_x": {
+                    "title": "Center X",
+                    "type": "number"
+                  },
+                  "center_y": {
+                    "title": "Center Y",
+                    "type": "number"
+                  },
+                  "height": {
+                    "title": "Height",
+                    "type": "integer"
+                  },
+                  "max": {
+                    "title": "Max",
+                    "type": "number"
+                  },
+                  "mean": {
+                    "title": "Mean",
+                    "type": "number"
+                  },
+                  "min": {
+                    "title": "Min",
+                    "type": "number"
+                  },
+                  "width": {
+                    "title": "Width",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "mean",
+                  "max",
+                  "min",
+                  "height",
+                  "width",
+                  "center_x",
+                  "center_y"
+                ],
+                "title": "IntegrationResult",
+                "type": "object"
+              }
+            },
+            "description": "One streamed integration tick: every registered box for one frame.",
+            "properties": {
+              "header": {
+                "$ref": "#/$defs/IntegrationHeader"
+              },
+              "results": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/IntegrationResult"
+                },
+                "title": "Results",
+                "type": "object"
+              }
+            },
+            "required": [
+              "header",
+              "results"
+            ],
+            "title": "IntegrationSample",
+            "type": "object"
+          }
+        },
+        "update": null
+      },
+      {
+        "kind": "duplex",
+        "name": "stft",
+        "ops": [
+          {
+            "name": "register",
+            "request": {
+              "$defs": {
+                "BBox": {
+                  "description": "An integration region, in pixels.",
+                  "properties": {
+                    "height": {
+                      "title": "Height",
+                      "type": "integer"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "integer"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "integer"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "BBox",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "bbox": {
+                  "$ref": "#/$defs/BBox"
+                },
+                "bbox_id": {
+                  "title": "Bbox Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bbox_id",
+                "bbox"
+              ],
+              "title": "RegisterBBox",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "remove",
+            "request": {
+              "properties": {
+                "bbox_id": {
+                  "title": "Bbox Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bbox_id"
+              ],
+              "title": "BBoxId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bboxes",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "BBox": {
+                  "description": "An integration region, in pixels.",
+                  "properties": {
+                    "height": {
+                      "title": "Height",
+                      "type": "integer"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "integer"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "integer"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "BBox",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "bboxes": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/BBox"
+                  },
+                  "title": "Bboxes",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "bboxes"
+              ],
+              "title": "BBoxList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "cache",
+            "request": {
+              "properties": {
+                "bbox_id": {
+                  "title": "Bbox Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bbox_id"
+              ],
+              "title": "BBoxId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "FFTResult": {
+                  "properties": {
+                    "fft_freq": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Fft Freq",
+                      "type": "array"
+                    },
+                    "fft_mag": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Fft Mag",
+                      "type": "array"
+                    },
+                    "fft_phase": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Fft Phase",
+                      "type": "array"
+                    },
+                    "time_end": {
+                      "title": "Time End",
+                      "type": "number"
+                    },
+                    "time_resolution": {
+                      "title": "Time Resolution",
+                      "type": "number"
+                    },
+                    "time_start": {
+                      "title": "Time Start",
+                      "type": "number"
+                    },
+                    "timestamp_end": {
+                      "title": "Timestamp End",
+                      "type": "string"
+                    },
+                    "timestamp_start": {
+                      "title": "Timestamp Start",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "fft_freq",
+                    "fft_mag",
+                    "fft_phase",
+                    "time_start",
+                    "time_end",
+                    "timestamp_start",
+                    "timestamp_end",
+                    "time_resolution"
+                  ],
+                  "title": "FFTResult",
+                  "type": "object"
+                },
+                "STFTSample": {
+                  "properties": {
+                    "bbox_id": {
+                      "title": "Bbox Id",
+                      "type": "integer"
+                    },
+                    "result": {
+                      "$ref": "#/$defs/FFTResult"
+                    }
+                  },
+                  "required": [
+                    "bbox_id",
+                    "result"
+                  ],
+                  "title": "STFTSample",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "bbox_id": {
+                  "title": "Bbox Id",
+                  "type": "integer"
+                },
+                "samples": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/STFTSample"
+                  },
+                  "title": "Samples",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "bbox_id"
+              ],
+              "title": "STFTCache",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "rheed.stft.ctrl.*",
+          "publish": "rheed.stft.pub",
+          "request_pattern": "rheed.stft.req.*",
+          "requests": {
+            "bboxes": "rheed.stft.req.bboxes",
+            "cache": "rheed.stft.req.cache",
+            "register": "rheed.stft.req.register",
+            "remove": "rheed.stft.req.remove"
+          },
+          "state": "rheed.stft.state",
+          "update": "rheed.stft.update",
+          "work_queue": "q.rheed.stft.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "registered_bboxes": {
+              "default": [],
+              "items": {
+                "type": "integer"
+              },
+              "title": "Registered Bboxes",
+              "type": "array"
+            },
+            "time_resolution": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Time Resolution"
+            },
+            "window_size": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Window Size"
+            }
+          },
+          "title": "STFTState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "json",
+          "name": "stft",
+          "payload": {
+            "$defs": {
+              "FFTResult": {
+                "properties": {
+                  "fft_freq": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "title": "Fft Freq",
+                    "type": "array"
+                  },
+                  "fft_mag": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "title": "Fft Mag",
+                    "type": "array"
+                  },
+                  "fft_phase": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "title": "Fft Phase",
+                    "type": "array"
+                  },
+                  "time_end": {
+                    "title": "Time End",
+                    "type": "number"
+                  },
+                  "time_resolution": {
+                    "title": "Time Resolution",
+                    "type": "number"
+                  },
+                  "time_start": {
+                    "title": "Time Start",
+                    "type": "number"
+                  },
+                  "timestamp_end": {
+                    "title": "Timestamp End",
+                    "type": "string"
+                  },
+                  "timestamp_start": {
+                    "title": "Timestamp Start",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "fft_freq",
+                  "fft_mag",
+                  "fft_phase",
+                  "time_start",
+                  "time_end",
+                  "timestamp_start",
+                  "timestamp_end",
+                  "time_resolution"
+                ],
+                "title": "FFTResult",
+                "type": "object"
+              }
+            },
+            "properties": {
+              "bbox_id": {
+                "title": "Bbox Id",
+                "type": "integer"
+              },
+              "result": {
+                "$ref": "#/$defs/FFTResult"
+              }
+            },
+            "required": [
+              "bbox_id",
+              "result"
+            ],
+            "title": "STFTSample",
+            "type": "object"
+          }
+        },
+        "update": null
+      }
+    ],
+    "exchange": "RHEED",
+    "exchange_type": "topic",
+    "name": "rheed",
+    "version": "2.0"
+  },
+  "storage": {
+    "capabilities": [
+      {
+        "kind": "rpc",
+        "name": "storage",
+        "ops": [
+          {
+            "name": "start_recording",
+            "request": {
+              "properties": {
+                "force_rewrite": {
+                  "default": false,
+                  "title": "Force Rewrite",
+                  "type": "boolean"
+                },
+                "project_name": {
+                  "title": "Project Name",
+                  "type": "string"
+                },
+                "save_ai": {
+                  "default": false,
+                  "title": "Save Ai",
+                  "type": "boolean"
+                },
+                "save_frame": {
+                  "default": false,
+                  "title": "Save Frame",
+                  "type": "boolean"
+                },
+                "save_integration": {
+                  "default": false,
+                  "title": "Save Integration",
+                  "type": "boolean"
+                },
+                "save_log": {
+                  "default": false,
+                  "title": "Save Log",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "project_name"
+              ],
+              "title": "StorageRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Path"
+                },
+                "project_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Name"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "StorageStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "stop_recording",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Path"
+                },
+                "project_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Name"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "StorageStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "storage.storage.ctrl.*",
+          "publish": "storage.storage.pub",
+          "request_pattern": "storage.storage.req.*",
+          "requests": {
+            "start_recording": "storage.storage.req.start_recording",
+            "stop_recording": "storage.storage.req.stop_recording"
+          },
+          "state": "storage.storage.state",
+          "update": "storage.storage.update",
+          "work_queue": "q.storage.storage.req"
+        },
+        "state": {
+          "properties": {
+            "deps_available": {
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "default": {},
+              "title": "Deps Available",
+              "type": "object"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_storing": {
+              "default": false,
+              "title": "Is Storing",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "n_frames": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Frames"
+            },
+            "path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Path"
+            },
+            "project_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Project Name"
+            }
+          },
+          "title": "StorageState",
+          "type": "object"
+        },
+        "stream": null,
+        "update": null
+      }
+    ],
+    "exchange": "STORAGE",
+    "exchange_type": "topic",
+    "name": "storage",
+    "version": "2.0"
+  },
+  "system": {
+    "capabilities": [
+      {
+        "kind": "duplex",
+        "name": "registry",
+        "ops": [
+          {
+            "name": "list_nodes",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "CapabilityPresence": {
+                  "properties": {
+                    "is_running": {
+                      "default": false,
+                      "title": "Is Running",
+                      "type": "boolean"
+                    },
+                    "is_streaming": {
+                      "default": false,
+                      "title": "Is Streaming",
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "state": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "State",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kind"
+                  ],
+                  "title": "CapabilityPresence",
+                  "type": "object"
+                },
+                "NodeRecord": {
+                  "description": "A node as the monitor sees it.",
+                  "properties": {
+                    "capabilities": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/CapabilityPresence"
+                      },
+                      "title": "Capabilities",
+                      "type": "array"
+                    },
+                    "contract_hash": {
+                      "title": "Contract Hash",
+                      "type": "string"
+                    },
+                    "contract_matches": {
+                      "default": true,
+                      "description": "False when the node's contract_hash differs from the monitor's own",
+                      "title": "Contract Matches",
+                      "type": "boolean"
+                    },
+                    "equipment": {
+                      "title": "Equipment",
+                      "type": "string"
+                    },
+                    "host": {
+                      "title": "Host",
+                      "type": "string"
+                    },
+                    "instance_id": {
+                      "title": "Instance Id",
+                      "type": "string"
+                    },
+                    "last_seen": {
+                      "title": "Last Seen",
+                      "type": "string"
+                    },
+                    "pid": {
+                      "title": "Pid",
+                      "type": "integer"
+                    },
+                    "started_at": {
+                      "title": "Started At",
+                      "type": "string"
+                    },
+                    "status": {
+                      "$ref": "#/$defs/NodeStatus"
+                    }
+                  },
+                  "required": [
+                    "equipment",
+                    "instance_id",
+                    "host",
+                    "pid",
+                    "status",
+                    "contract_hash",
+                    "started_at",
+                    "last_seen"
+                  ],
+                  "title": "NodeRecord",
+                  "type": "object"
+                },
+                "NodeStatus": {
+                  "enum": [
+                    "up",
+                    "down",
+                    "leaving"
+                  ],
+                  "title": "NodeStatus",
+                  "type": "string"
+                }
+              },
+              "properties": {
+                "nodes": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/NodeRecord"
+                  },
+                  "title": "Nodes",
+                  "type": "array"
+                }
+              },
+              "title": "NodeList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_node",
+            "request": {
+              "properties": {
+                "equipment": {
+                  "title": "Equipment",
+                  "type": "string"
+                },
+                "instance_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Instance Id"
+                }
+              },
+              "required": [
+                "equipment"
+              ],
+              "title": "NodeQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "CapabilityPresence": {
+                  "properties": {
+                    "is_running": {
+                      "default": false,
+                      "title": "Is Running",
+                      "type": "boolean"
+                    },
+                    "is_streaming": {
+                      "default": false,
+                      "title": "Is Streaming",
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "state": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "State",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kind"
+                  ],
+                  "title": "CapabilityPresence",
+                  "type": "object"
+                },
+                "NodeStatus": {
+                  "enum": [
+                    "up",
+                    "down",
+                    "leaving"
+                  ],
+                  "title": "NodeStatus",
+                  "type": "string"
+                }
+              },
+              "description": "A node as the monitor sees it.",
+              "properties": {
+                "capabilities": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/CapabilityPresence"
+                  },
+                  "title": "Capabilities",
+                  "type": "array"
+                },
+                "contract_hash": {
+                  "title": "Contract Hash",
+                  "type": "string"
+                },
+                "contract_matches": {
+                  "default": true,
+                  "description": "False when the node's contract_hash differs from the monitor's own",
+                  "title": "Contract Matches",
+                  "type": "boolean"
+                },
+                "equipment": {
+                  "title": "Equipment",
+                  "type": "string"
+                },
+                "host": {
+                  "title": "Host",
+                  "type": "string"
+                },
+                "instance_id": {
+                  "title": "Instance Id",
+                  "type": "string"
+                },
+                "last_seen": {
+                  "title": "Last Seen",
+                  "type": "string"
+                },
+                "pid": {
+                  "title": "Pid",
+                  "type": "integer"
+                },
+                "started_at": {
+                  "title": "Started At",
+                  "type": "string"
+                },
+                "status": {
+                  "$ref": "#/$defs/NodeStatus"
+                }
+              },
+              "required": [
+                "equipment",
+                "instance_id",
+                "host",
+                "pid",
+                "status",
+                "contract_hash",
+                "started_at",
+                "last_seen"
+              ],
+              "title": "NodeRecord",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "wait_for",
+            "request": {
+              "properties": {
+                "equipment": {
+                  "title": "Equipment",
+                  "type": "string"
+                },
+                "timeout_s": {
+                  "default": 30.0,
+                  "title": "Timeout S",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "equipment"
+              ],
+              "title": "WaitForNode",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "CapabilityPresence": {
+                  "properties": {
+                    "is_running": {
+                      "default": false,
+                      "title": "Is Running",
+                      "type": "boolean"
+                    },
+                    "is_streaming": {
+                      "default": false,
+                      "title": "Is Streaming",
+                      "type": "boolean"
+                    },
+                    "kind": {
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "state": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "State",
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "kind"
+                  ],
+                  "title": "CapabilityPresence",
+                  "type": "object"
+                },
+                "NodeStatus": {
+                  "enum": [
+                    "up",
+                    "down",
+                    "leaving"
+                  ],
+                  "title": "NodeStatus",
+                  "type": "string"
+                }
+              },
+              "description": "A node as the monitor sees it.",
+              "properties": {
+                "capabilities": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/CapabilityPresence"
+                  },
+                  "title": "Capabilities",
+                  "type": "array"
+                },
+                "contract_hash": {
+                  "title": "Contract Hash",
+                  "type": "string"
+                },
+                "contract_matches": {
+                  "default": true,
+                  "description": "False when the node's contract_hash differs from the monitor's own",
+                  "title": "Contract Matches",
+                  "type": "boolean"
+                },
+                "equipment": {
+                  "title": "Equipment",
+                  "type": "string"
+                },
+                "host": {
+                  "title": "Host",
+                  "type": "string"
+                },
+                "instance_id": {
+                  "title": "Instance Id",
+                  "type": "string"
+                },
+                "last_seen": {
+                  "title": "Last Seen",
+                  "type": "string"
+                },
+                "pid": {
+                  "title": "Pid",
+                  "type": "integer"
+                },
+                "started_at": {
+                  "title": "Started At",
+                  "type": "string"
+                },
+                "status": {
+                  "$ref": "#/$defs/NodeStatus"
+                }
+              },
+              "required": [
+                "equipment",
+                "instance_id",
+                "host",
+                "pid",
+                "status",
+                "contract_hash",
+                "started_at",
+                "last_seen"
+              ],
+              "title": "NodeRecord",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "system.registry.ctrl.*",
+          "publish": "system.registry.pub",
+          "request_pattern": "system.registry.req.*",
+          "requests": {
+            "get_node": "system.registry.req.get_node",
+            "list_nodes": "system.registry.req.list_nodes",
+            "wait_for": "system.registry.req.wait_for"
+          },
+          "state": "system.registry.state",
+          "update": "system.registry.update",
+          "work_queue": "q.system.registry.req"
+        },
+        "state": {
+          "properties": {
+            "contract_hash": {
+              "default": "",
+              "title": "Contract Hash",
+              "type": "string"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "n_nodes": {
+              "default": 0,
+              "title": "N Nodes",
+              "type": "integer"
+            },
+            "n_up": {
+              "default": 0,
+              "title": "N Up",
+              "type": "integer"
+            }
+          },
+          "title": "RegistryState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "json",
+          "name": "registry_event",
+          "payload": {
+            "$defs": {
+              "CapabilityPresence": {
+                "properties": {
+                  "is_running": {
+                    "default": false,
+                    "title": "Is Running",
+                    "type": "boolean"
+                  },
+                  "is_streaming": {
+                    "default": false,
+                    "title": "Is Streaming",
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "name": {
+                    "title": "Name",
+                    "type": "string"
+                  },
+                  "state": {
+                    "additionalProperties": true,
+                    "default": {},
+                    "title": "State",
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind"
+                ],
+                "title": "CapabilityPresence",
+                "type": "object"
+              },
+              "NodeRecord": {
+                "description": "A node as the monitor sees it.",
+                "properties": {
+                  "capabilities": {
+                    "default": [],
+                    "items": {
+                      "$ref": "#/$defs/CapabilityPresence"
+                    },
+                    "title": "Capabilities",
+                    "type": "array"
+                  },
+                  "contract_hash": {
+                    "title": "Contract Hash",
+                    "type": "string"
+                  },
+                  "contract_matches": {
+                    "default": true,
+                    "description": "False when the node's contract_hash differs from the monitor's own",
+                    "title": "Contract Matches",
+                    "type": "boolean"
+                  },
+                  "equipment": {
+                    "title": "Equipment",
+                    "type": "string"
+                  },
+                  "host": {
+                    "title": "Host",
+                    "type": "string"
+                  },
+                  "instance_id": {
+                    "title": "Instance Id",
+                    "type": "string"
+                  },
+                  "last_seen": {
+                    "title": "Last Seen",
+                    "type": "string"
+                  },
+                  "pid": {
+                    "title": "Pid",
+                    "type": "integer"
+                  },
+                  "started_at": {
+                    "title": "Started At",
+                    "type": "string"
+                  },
+                  "status": {
+                    "$ref": "#/$defs/NodeStatus"
+                  }
+                },
+                "required": [
+                  "equipment",
+                  "instance_id",
+                  "host",
+                  "pid",
+                  "status",
+                  "contract_hash",
+                  "started_at",
+                  "last_seen"
+                ],
+                "title": "NodeRecord",
+                "type": "object"
+              },
+              "NodeStatus": {
+                "enum": [
+                  "up",
+                  "down",
+                  "leaving"
+                ],
+                "title": "NodeStatus",
+                "type": "string"
+              }
+            },
+            "description": "Streamed whenever the registry changes.",
+            "properties": {
+              "event": {
+                "title": "Event",
+                "type": "string"
+              },
+              "node": {
+                "$ref": "#/$defs/NodeRecord"
+              }
+            },
+            "required": [
+              "event",
+              "node"
+            ],
+            "title": "RegistryEvent",
+            "type": "object"
+          }
+        },
+        "update": null
+      },
+      {
+        "kind": "rpc",
+        "name": "supervisor",
+        "ops": [
+          {
+            "name": "list_hosts",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "HostInfo": {
+                  "properties": {
+                    "available_nodes": {
+                      "default": [],
+                      "items": {
+                        "type": "string"
+                      },
+                      "title": "Available Nodes",
+                      "type": "array"
+                    },
+                    "host": {
+                      "title": "Host",
+                      "type": "string"
+                    },
+                    "processes": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/ProcessInfo"
+                      },
+                      "title": "Processes",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "host"
+                  ],
+                  "title": "HostInfo",
+                  "type": "object"
+                },
+                "ProcessInfo": {
+                  "properties": {
+                    "host": {
+                      "title": "Host",
+                      "type": "string"
+                    },
+                    "instance_id": {
+                      "title": "Instance Id",
+                      "type": "string"
+                    },
+                    "node": {
+                      "title": "Node",
+                      "type": "string"
+                    },
+                    "pid": {
+                      "title": "Pid",
+                      "type": "integer"
+                    },
+                    "running": {
+                      "title": "Running",
+                      "type": "boolean"
+                    },
+                    "started_at": {
+                      "title": "Started At",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "instance_id",
+                    "node",
+                    "host",
+                    "pid",
+                    "started_at",
+                    "running"
+                  ],
+                  "title": "ProcessInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "hosts": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/HostInfo"
+                  },
+                  "title": "Hosts",
+                  "type": "array"
+                }
+              },
+              "title": "HostList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "spawn",
+            "request": {
+              "description": "Start a node on a host.\n\n`node` is a key into the agent's *local* allowlist, never a command line. The\nagent resolves it to `[sys.executable, \"-m\", <module>, *args]`. Anything else\nwould make the bus a remote-code-execution channel.",
+              "properties": {
+                "args": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Args",
+                  "type": "array"
+                },
+                "host": {
+                  "title": "Host",
+                  "type": "string"
+                },
+                "instance_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Instance Id"
+                },
+                "node": {
+                  "title": "Node",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "host",
+                "node"
+              ],
+              "title": "SpawnRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "kill",
+            "request": {
+              "properties": {
+                "grace_s": {
+                  "default": 10.0,
+                  "title": "Grace S",
+                  "type": "number"
+                },
+                "instance_id": {
+                  "title": "Instance Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "instance_id"
+              ],
+              "title": "KillRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "restart",
+            "request": {
+              "properties": {
+                "grace_s": {
+                  "default": 10.0,
+                  "title": "Grace S",
+                  "type": "number"
+                },
+                "instance_id": {
+                  "title": "Instance Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "instance_id"
+              ],
+              "title": "KillRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "system.supervisor.ctrl.*",
+          "publish": "system.supervisor.pub",
+          "request_pattern": "system.supervisor.req.*",
+          "requests": {
+            "kill": "system.supervisor.req.kill",
+            "list_hosts": "system.supervisor.req.list_hosts",
+            "restart": "system.supervisor.req.restart",
+            "spawn": "system.supervisor.req.spawn"
+          },
+          "state": "system.supervisor.state",
+          "update": "system.supervisor.update",
+          "work_queue": "q.system.supervisor.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "n_hosts": {
+              "default": 0,
+              "title": "N Hosts",
+              "type": "integer"
+            },
+            "n_processes": {
+              "default": 0,
+              "title": "N Processes",
+              "type": "integer"
+            }
+          },
+          "title": "SupervisorState",
+          "type": "object"
+        },
+        "stream": null,
+        "update": null
+      }
+    ],
+    "exchange": "lumi.system",
+    "exchange_type": "topic",
+    "name": "system",
+    "version": "2.0"
+  }
+}

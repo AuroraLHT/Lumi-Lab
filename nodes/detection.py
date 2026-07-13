@@ -1,115 +1,126 @@
-from lumi.detection.communication import (
-    DetectionMessageQueueServer,
-    LiveDetectionMessageQueueServer,
-    CameraMessageQueueClient,
-)
-from lumi.detection.model import DetectorServer, DetectorConfig, DetectorState
+"""The detection node: Cascade Mask R-CNN over the RHEED pattern.
 
-import time
-import datetime
+    python -m nodes.detection
+
+Requires the model stack (torch, mmdet, mmcv, rhana) -- see the `detection` extra in
+pyproject.toml. Only this process needs it; the detection *contract* and its generated
+client do not.
+
+Unlike the old node, this one does not RPC the camera for every frame. It subscribes
+to `rheed.camera`'s stream and feeds the detector as frames arrive.
+"""
+
+from __future__ import annotations
+
+import argparse
 import asyncio
 import logging
 
-import cv2
+from aio_pika import ExchangeType
 
-import aio_pika
-from aio_pika import ExchangeType, connect
 from lumi.config import settings
+from lumi.contracts.detection import DETECTION_NODE
+from lumi.contracts.rheed import RHEED
+from lumi.detection.handlers import DetectionHandler, OverlayHandler
+from lumi.generated.clients.rheed import RheedCameraClient
+from lumi.node import EquipmentNode
 
-FORMAT = '%(asctime)s %(levelname)s:%(message)s'
-logging.basicConfig(level=logging.INFO, format=FORMAT)
+log = logging.getLogger(__name__)
 
-async def main(args):
-    # Perform connection
-    connection = await connect(f"amqp://guest:guest@{args.host}/")
 
-    # Creating a channel
-    channel = await connection.channel()
+def build_detector():
+    from lumi.detection.model import DetectorConfig, DetectorServer, DetectorState
 
-    rheed_exchange = await channel.declare_exchange(
-        settings.rheed.exchange,
-        ExchangeType(settings.rheed.exchange_type),
-        # ExchangeType.DIRECT,
-    )
-
+    cfg = settings.detection.detector
     config = DetectorConfig(
-        input_queue_size=settings.detection.detector.input_queue_size,
-        output_queue_size=settings.detection.detector.output_queue_size,
-        detector_model_path=settings.detection.detector.detector_model_path,
-        detector_model_config_path=settings.detection.detector.detector_model_config_path,
-        classifier_model_path=settings.detection.detector.classifier_model_path,
-        classifier_label_mapper_path=settings.detection.detector.classifier_label_mapper_path,
-        classifier_transforms_path=settings.detection.detector.classifier_transforms_path,
-        detector_model_device=settings.detection.detector.detector_model_device,
-        classifier_model_device=settings.detection.detector.classifier_model_device,
+        input_queue_size=cfg.input_queue_size,
+        output_queue_size=cfg.output_queue_size,
+        detector_model_path=cfg.detector_model_path,
+        detector_model_config_path=cfg.detector_model_config_path,
+        classifier_model_path=cfg.classifier_model_path,
+        classifier_label_mapper_path=cfg.classifier_label_mapper_path,
+        classifier_transforms_path=cfg.classifier_transforms_path,
+        detector_model_device=cfg.detector_model_device,
+        classifier_model_device=cfg.classifier_model_device,
     )
-
-    detector_state = DetectorState(
+    state = DetectorState(
         horizontal_center=None,
         pattern_dims=None,
         crop_setup={
-            "sx":settings.detection.detector.crop_setup.sx,
-            "sy":settings.detection.detector.crop_setup.sy,
-            "ex":settings.detection.detector.crop_setup.ex,
-            "ey":settings.detection.detector.crop_setup.ey,
+            "sx": cfg.crop_setup.sx,
+            "sy": cfg.crop_setup.sy,
+            "ex": cfg.crop_setup.ex,
+            "ey": cfg.crop_setup.ey,
         },
         db_track=None,
     )
+    return DetectorServer(config=config, name=cfg.name, daemon=True, detector_state=state)
 
-    detector = DetectorServer(config=config, name=settings.detection.detector.name, daemon=True, detector_state=detector_state)
-    detector.start()
 
-    camera_client = CameraMessageQueueClient(
-        channel=channel, 
-        exchange=rheed_exchange, 
-        request_routing_key=settings.rheed.mq.camera.request_key,
-        control_routing_key=settings.rheed.mq.camera.ctrl_key,
-        state_routing_key=settings.rheed.mq.camera.state_key,
-        client_name=settings.rheed.mq.camera.name,
-        time_out=10,
-        on_state_callback=None,
+async def main(args: argparse.Namespace) -> None:
+    detector = build_detector()
+    handler = DetectionHandler(detector)
+
+    # The overlay is the same inference, published without the masks or the pattern, on
+    # its own routing key. Browsers bind that key; storage binds the heavy one. So the
+    # arrays are never *sent* to a browser rather than being sent and then discarded.
+    overlay = OverlayHandler()
+    handler.add_sink(overlay.on_detection)
+
+    node = EquipmentNode(
+        DETECTION_NODE,
+        amqp_url=f"amqp://{args.user}:{args.password}@{args.host}/",
+        instance_id=args.instance,
     )
+    node.mount("detection", handler)
+    node.mount("overlay", overlay)
+    node.thread(detector)
+    await node.start()
 
-    await camera_client.start()
-
-    detection_mq = DetectionMessageQueueServer(
-        detector=detector,
-        camera_client= camera_client,
-        channel=channel,
-        exchange=rheed_exchange,
-        request_routing_key=settings.detection.mq.detection.request_key,
-        control_routing_key=settings.detection.mq.detection.ctrl_key,
-        state_routing_key=settings.detection.mq.detection.state_key,
-        server_name=settings.detection.mq.detection.name,
+    # Subscribe to the RHEED camera. Detection and RHEED share the RHEED exchange, so
+    # we can reuse the node's own channel.
+    assert node.channel is not None
+    rheed_exchange = await node.channel.declare_exchange(
+        RHEED.exchange, ExchangeType(RHEED.exchange_type), durable=True
     )
-    live_detection_mq = LiveDetectionMessageQueueServer(
-        detector=detector,
-        camera_client=camera_client,
-        channel=channel,
-        exchange=rheed_exchange,
-        control_routing_key=settings.detection.mq.live_detection.ctrl_key,
-        publish_routing_key=settings.detection.mq.live_detection.publish_key,
-        state_routing_key=settings.detection.mq.live_detection.state_key,
-        server_name=settings.detection.mq.live_detection.name,
+    camera = RheedCameraClient(node.channel, rheed_exchange, name=f"detection-{node.instance_id}")
+    await camera.start()
+
+    async def on_frame(meta, frame) -> None:
+        handler.on_frame(frame, meta.model_dump())
+
+    await camera.on_frame(on_frame)
+    # The RHEED node's stream flag is global, so ask it to push. If RHEED is not up yet
+    # this raises, and we would rather say so than sit silently detecting nothing.
+    try:
+        await camera.start_streaming()
+    except Exception as exc:
+        log.warning("could not start the RHEED camera stream (%s); is the rheed node up?", exc)
+
+    node.on_drain(camera.stop)
+    log.info("detection node up; consuming rheed.camera")
+
+    try:
+        await node._shutdown.wait()
+    finally:
+        await node.drain()
+
+
+def cli() -> None:
+    parser = argparse.ArgumentParser(prog="lumi-detection", description="RHEED detection node")
+    parser.add_argument("--host", default=settings.rabbitmq.host)
+    parser.add_argument("--user", default="guest")
+    parser.add_argument("--password", default="guest")
+    parser.add_argument("--instance", default=None)
+    parser.add_argument("-v", "--verbose", action="store_true")
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
     )
-    await detection_mq.start()
-    await live_detection_mq.start()
-
-    print("message queue started")
-    await asyncio.Future()
-
-    detector.join()
-    print("program exit")
+    asyncio.run(main(args))
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(
-                        prog='Detection Node',
-                        description='...',
-                        epilog='...')
-    parser.add_argument("--host", type=str, default=settings.rabbitmq.host)
-    args= parser.parse_args()
-
-    asyncio.run(main(args))
+    cli()

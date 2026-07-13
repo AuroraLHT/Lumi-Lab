@@ -1,0 +1,82 @@
+[project]
+name = "lumi"
+version = "0.1.0"
+description = "Autonomous PLD and RHEED equipment control"
+readme = "README.md"
+requires-python = ">=3.12"
+
+# Core: what every node and every client needs. Deliberately small -- the bus,
+# the contract models, config, and arrays. Anything hardware- or role-specific
+# belongs in an optional-dependency group below so a detection box does not
+# have to install pypylon and the camera host does not have to install CUDA.
+dependencies = [
+    "aio-pika>=9.4",
+    "pydantic>=2.7",
+    "dynaconf>=3.2",
+    "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+# RHEED / chamber camera acquisition and video encoding.
+camera = [
+    "opencv-python>=4.9",
+    "av>=12.0",
+    "pypylon>=4.0",       # Basler GigE; only needed on the host with the pylon camera
+]
+# Pascal chamber: log/config file watching and log parsing.
+pascal = [
+    "watchdog>=4.0",
+    "pandas>=2.2",
+]
+# HDF5 recorder.
+storage = [
+    "h5py>=3.11",
+    "pandas>=2.2",
+]
+# FastAPI / websocket bridge.
+api = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+]
+# Detection model. NOT resolvable from PyPI alone: `rhana` is an internal package
+# and the mmdet/mmcv stack is version-coupled to the installed torch+CUDA build,
+# which uv cannot pin portably. Install these by hand on the detection host:
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cu121
+#   uv pip install -U openmim && mim install mmcv mmdet mmengine
+#   uv pip install -e path/to/rhana
+# The detection *contract* and its generated client have no such requirement --
+# only the node process that actually loads the model does.
+detection = [
+    "scikit-image>=0.23",
+    "pillow>=10.3",
+]
+
+[project.scripts]
+lumi-codegen = "lumi.codegen.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "testcontainers[rabbitmq]>=4.5",
+    "httpx>=0.27",       # required by fastapi.testclient for the bridge tests
+    "websockets>=12",    # ASGI websocket driver for TestClient
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lumi"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "broker: requires a live RabbitMQ (spun up via testcontainers; slow)",
+    "hardware: requires real lab hardware (camera, chamber); never runs in CI",
+]
+# The legacy tests/ tree is a pile of `__main__` integration scripts, not a suite,
+# and most of them import torch/cv2/pypylon at module scope. tests/conftest.py
+# quarantines them via collect_ignore; entries are removed there as they are ported.

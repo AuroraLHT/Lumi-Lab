@@ -160,18 +160,18 @@ Password="PLD"
         motor_config = parser.get_configs_by_section('MotorSettings')
         
         # Test some key motor settings
-        self.assertEqual(motor_config['X1speed'], '30000')
-        self.assertEqual(motor_config['Y1speed'], '10000')
-        self.assertEqual(motor_config['CPU_Xspeed'], '100000')
-        self.assertEqual(motor_config['X1ratio'], '10000.000000')
-        self.assertEqual(motor_config['Y1ratio'], '200.000000')
-        self.assertEqual(motor_config['X1offset'], '0')
-        self.assertEqual(motor_config['Y2offset'], '0')
-        self.assertEqual(motor_config['CPU_Xoffset'], '72000')
-        self.assertEqual(motor_config['CPU_Yoffset'], '1500000')
-        self.assertEqual(motor_config['X1twist_speed'], '1.000000')
-        self.assertEqual(motor_config['Mask1setmax'], '160.000000')
-        self.assertEqual(motor_config['ORGmode'], '2')
+        self.assertEqual(motor_config['X1speed'], 30000)
+        self.assertEqual(motor_config['Y1speed'], 10000)
+        self.assertEqual(motor_config['CPU_Xspeed'], 100000)
+        self.assertEqual(motor_config['X1ratio'], 10000.0)
+        self.assertEqual(motor_config['Y1ratio'], 200.0)
+        self.assertEqual(motor_config['X1offset'], 0)
+        self.assertEqual(motor_config['Y2offset'], 0)
+        self.assertEqual(motor_config['CPU_Xoffset'], 72000)
+        self.assertEqual(motor_config['CPU_Yoffset'], 1500000)
+        self.assertEqual(motor_config['X1twist_speed'], 1.0)
+        self.assertEqual(motor_config['Mask1setmax'], 160.0)
+        self.assertEqual(motor_config['ORGmode'], 2)
     
     def test_parse_tg_settings_section(self):
         """Test parsing TGsettings section from PLD config"""
@@ -181,17 +181,17 @@ Password="PLD"
         tg_config = parser.get_configs_by_section('TGsettings')
         
         # Test TG settings
-        self.assertEqual(tg_config['TGcurr'], '0')
-        self.assertEqual(tg_config['TGnum'], '7')
-        self.assertEqual(tg_config['TGbuck'], '1000')
-        self.assertEqual(tg_config['TG1name'], '"SpotSizeCrys"')
-        self.assertEqual(tg_config['TG2name'], '"TbFeO3"')
-        self.assertEqual(tg_config['TG3name'], '"La0.7Sr0.3MnO3"')
-        self.assertEqual(tg_config['TG1angle'], '51.500000')
-        self.assertEqual(tg_config['TG2angle'], '103.000000')
-        self.assertEqual(tg_config['TG1twist'], '15.000000')
-        self.assertEqual(tg_config['TG_PCD'], '90.400000')
-        self.assertEqual(tg_config['TG1adj'], '-4.500000')
+        self.assertEqual(tg_config['TGcurr'], 0)
+        self.assertEqual(tg_config['TGnum'], 7)
+        self.assertEqual(tg_config['TGbuck'], 1000)
+        self.assertEqual(tg_config['TG1name'], 'SpotSizeCrys')
+        self.assertEqual(tg_config['TG2name'], 'TbFeO3')
+        self.assertEqual(tg_config['TG3name'], 'La0.7Sr0.3MnO3')
+        self.assertEqual(tg_config['TG1angle'], 51.5)
+        self.assertEqual(tg_config['TG2angle'], 103.0)
+        self.assertEqual(tg_config['TG1twist'], 15.0)
+        self.assertEqual(tg_config['TG_PCD'], 90.4)
+        self.assertEqual(tg_config['TG1adj'], -4.5)
     
     def test_parse_sample_settings_section(self):
         """Test parsing Sample_settings section from PLD config"""
@@ -201,14 +201,14 @@ Password="PLD"
         sample_config = parser.get_configs_by_section('Sample_settings')
         
         # Test sample settings
-        self.assertEqual(sample_config['Sample_trans'], '5.000000')
-        self.assertEqual(sample_config['Sample_tempcheck'], '0.000000')
-        self.assertEqual(sample_config['MoveEndDelay(msec)'], '0')
-        self.assertEqual(sample_config['ZeroAdjust(0:Disable/1:Enable)'], '0')
-        self.assertEqual(sample_config['SmplShutterClose'], '5.000000')
-        self.assertEqual(sample_config['MaskSample0'], '100.000000')
-        self.assertEqual(sample_config['MaskSample1'], '122.000000')
-        self.assertEqual(sample_config['MaskSample5'], '160.000000')
+        self.assertEqual(sample_config['Sample_trans'], 5.0)
+        self.assertEqual(sample_config['Sample_tempcheck'], 0.0)
+        self.assertEqual(sample_config['MoveEndDelay(msec)'], 0)
+        self.assertEqual(sample_config['ZeroAdjust(0:Disable/1:Enable)'], 0)
+        self.assertEqual(sample_config['SmplShutterClose'], 5.0)
+        self.assertEqual(sample_config['MaskSample0'], 100.0)
+        self.assertEqual(sample_config['MaskSample1'], 122.0)
+        self.assertEqual(sample_config['MaskSample5'], 160.0)
     
     def test_parse_warning_check_section(self):
         """Test parsing WarningCheck section from PLD config"""
@@ -218,14 +218,14 @@ Password="PLD"
         warning_config = parser.get_configs_by_section('WarningCheck')
         
         # Test warning check settings
-        self.assertEqual(warning_config['Excimer'], '10')
-        self.assertEqual(warning_config['HeatingTemp'], '10')
-        self.assertEqual(warning_config['HeatingCurr'], '5.000000')
-        self.assertEqual(warning_config['Pressure'], '5.000000')
-        self.assertEqual(warning_config['MFC1'], '1.000000')
-        self.assertEqual(warning_config['MFC2'], '5.000000')
-        self.assertEqual(warning_config['MFC3'], '5.000000')
-        self.assertEqual(warning_config['Mask1BadPosition'], '10.000000')
+        self.assertEqual(warning_config['Excimer'], 10)
+        self.assertEqual(warning_config['HeatingTemp'], 10)
+        self.assertEqual(warning_config['HeatingCurr'], 5.0)
+        self.assertEqual(warning_config['Pressure'], 5.0)
+        self.assertEqual(warning_config['MFC1'], 1.0)
+        self.assertEqual(warning_config['MFC2'], 5.0)
+        self.assertEqual(warning_config['MFC3'], 5.0)
+        self.assertEqual(warning_config['Mask1BadPosition'], 10.0)
     
     def test_parse_password_section(self):
         """Test parsing Password section from PLD config"""
@@ -235,7 +235,7 @@ Password="PLD"
         password_config = parser.get_configs_by_section('Password')
         
         # Test password setting
-        self.assertEqual(password_config['Password'], '"PLD"')
+        self.assertEqual(password_config['Password'], 'PLD')
     
     def test_get_config_specific_key(self):
         """Test getting specific config key from PLD config"""
@@ -243,13 +243,13 @@ Password="PLD"
         parser = ConfigParser(config_file)
         
         # Test various key types from PLD config
-        self.assertEqual(parser.get_config('MotorSettings', 'X1speed'), '30000')
-        self.assertEqual(parser.get_config('MotorSettings', 'X1ratio'), '10000.000000')
-        self.assertEqual(parser.get_config('TGsettings', 'TG1name'), '"SpotSizeCrys"')
-        self.assertEqual(parser.get_config('TGsettings', 'TG1angle'), '51.500000')
-        self.assertEqual(parser.get_config('Sample_settings', 'Sample_trans'), '5.000000')
-        self.assertEqual(parser.get_config('WarningCheck', 'MFC1'), '1.000000')
-        self.assertEqual(parser.get_config('Password', 'Password'), '"PLD"')
+        self.assertEqual(parser.get_config('MotorSettings', 'X1speed'), 30000)
+        self.assertEqual(parser.get_config('MotorSettings', 'X1ratio'), 10000.0)
+        self.assertEqual(parser.get_config('TGsettings', 'TG1name'), 'SpotSizeCrys')
+        self.assertEqual(parser.get_config('TGsettings', 'TG1angle'), 51.5)
+        self.assertEqual(parser.get_config('Sample_settings', 'Sample_trans'), 5.0)
+        self.assertEqual(parser.get_config('WarningCheck', 'MFC1'), 1.0)
+        self.assertEqual(parser.get_config('Password', 'Password'), 'PLD')
     
     def test_get_all_config(self):
         """Test getting all config content from PLD config"""
@@ -265,9 +265,9 @@ Password="PLD"
         self.assertEqual(len(all_config), 5)
         
         # Verify some specific values are present
-        self.assertEqual(all_config['MotorSettings']['X1speed'], '30000')
-        self.assertEqual(all_config['TGsettings']['TG1name'], '"SpotSizeCrys"')
-        self.assertEqual(all_config['Password']['Password'], '"PLD"')
+        self.assertEqual(all_config['MotorSettings']['X1speed'], 30000)
+        self.assertEqual(all_config['TGsettings']['TG1name'], 'SpotSizeCrys')
+        self.assertEqual(all_config['Password']['Password'], 'PLD')
     
     def test_empty_config(self):
         """Test parsing empty config file"""
@@ -318,21 +318,21 @@ Password="PLD"
             
             # Test some specific values from the real config
             motor_config = parser.get_configs_by_section('MotorSettings')
-            self.assertEqual(motor_config['X1speed'], '30000')
-            self.assertEqual(motor_config['Y1speed'], '10000')
-            self.assertEqual(motor_config['CPU_Xspeed'], '100000')
+            self.assertEqual(motor_config['X1speed'], 30000)
+            self.assertEqual(motor_config['Y1speed'], 10000)
+            self.assertEqual(motor_config['CPU_Xspeed'], 100000)
             
             tg_config = parser.get_configs_by_section('TGsettings')
-            self.assertEqual(tg_config['TG1name'], '"SpotSizeCrys"')
-            self.assertEqual(tg_config['TG2name'], '"TbFeO3"')
-            self.assertEqual(tg_config['TG1angle'], '51.500000')
+            self.assertEqual(tg_config['TG1name'], 'SpotSizeCrys')
+            self.assertEqual(tg_config['TG2name'], 'TbFeO3')
+            self.assertEqual(tg_config['TG1angle'], 51.5)
             
             warning_config = parser.get_configs_by_section('WarningCheck')
-            self.assertEqual(warning_config['MFC1'], '1.000000')
-            self.assertEqual(warning_config['MFC2'], '5.000000')
+            self.assertEqual(warning_config['MFC1'], 1.0)
+            self.assertEqual(warning_config['MFC2'], 5.0)
             
             password_config = parser.get_configs_by_section('Password')
-            self.assertEqual(password_config['Password'], '"PLD"')
+            self.assertEqual(password_config['Password'], 'PLD')
         else:
             self.skipTest(f"Real PLD config file not found at {self.real_config_path}")
 
@@ -365,11 +365,14 @@ class TestConfigFileModifyHandler(unittest.TestCase):
         """Test on_modified method for file events"""
         mock_event = Mock()
         mock_event.is_directory = False
-        mock_event.src_path = "/path/to/config.ini"
-        
+        # ConfigFileModifyHandler.on_modified only reacts to the chamber's own
+        # config file by name; any other modified file in the watched directory
+        # is ignored on purpose.
+        mock_event.src_path = "/path/to/PLDconfig.ini"
+
         self.handler.on_modified(mock_event)
-        
-        self.mock_config_reader.update_config_file.assert_called_once_with("/path/to/config.ini")
+
+        self.mock_config_reader.update_config_file.assert_called_once_with("/path/to/PLDconfig.ini")
     
     def test_on_modified_directory(self):
         """Test on_modified method ignores directory events"""
@@ -494,12 +497,12 @@ Password="PLD"
         self.assertIn('Password', config_content)
         
         # Test specific PLD config values
-        self.assertEqual(config_content['MotorSettings']['X1speed'], '30000')
-        self.assertEqual(config_content['MotorSettings']['Y1speed'], '10000')
-        self.assertEqual(config_content['TGsettings']['TG1name'], '"SpotSizeCrys"')
-        self.assertEqual(config_content['TGsettings']['TG2name'], '"TbFeO3"')
-        self.assertEqual(config_content['WarningCheck']['MFC1'], '1.000000')
-        self.assertEqual(config_content['Password']['Password'], '"PLD"')
+        self.assertEqual(config_content['MotorSettings']['X1speed'], 30000)
+        self.assertEqual(config_content['MotorSettings']['Y1speed'], 10000)
+        self.assertEqual(config_content['TGsettings']['TG1name'], 'SpotSizeCrys')
+        self.assertEqual(config_content['TGsettings']['TG2name'], 'TbFeO3')
+        self.assertEqual(config_content['WarningCheck']['MFC1'], 1.0)
+        self.assertEqual(config_content['Password']['Password'], 'PLD')
     
     def test_open_reader_timeout(self):
         """Test timeout when config file doesn't exist"""
@@ -543,10 +546,10 @@ Password="PLD"
         self.assertIn('Password', config_content)
         
         # Test specific PLD config values
-        self.assertEqual(config_content['MotorSettings']['X1speed'], '30000')
-        self.assertEqual(config_content['TGsettings']['TG1name'], '"SpotSizeCrys"')
-        self.assertEqual(config_content['WarningCheck']['MFC1'], '1.000000')
-        self.assertEqual(config_content['Password']['Password'], '"PLD"')
+        self.assertEqual(config_content['MotorSettings']['X1speed'], 30000)
+        self.assertEqual(config_content['TGsettings']['TG1name'], 'SpotSizeCrys')
+        self.assertEqual(config_content['WarningCheck']['MFC1'], 1.0)
+        self.assertEqual(config_content['Password']['Password'], 'PLD')
     
     def test_hold_and_resume(self):
         """Test hold and resume functionality"""
@@ -639,12 +642,12 @@ Password="PLD"
                 self.assertIn(section, config_content, f"Section {section} not found")
             
             # Test specific values from real PLD config
-            self.assertEqual(config_content['MotorSettings']['X1speed'], '30000')
-            self.assertEqual(config_content['MotorSettings']['Y1speed'], '10000')
-            self.assertEqual(config_content['TGsettings']['TG1name'], '"SpotSizeCrys"')
-            self.assertEqual(config_content['TGsettings']['TG2name'], '"TbFeO3"')
-            self.assertEqual(config_content['WarningCheck']['MFC1'], '1.000000')
-            self.assertEqual(config_content['Password']['Password'], '"PLD"')
+            self.assertEqual(config_content['MotorSettings']['X1speed'], 30000)
+            self.assertEqual(config_content['MotorSettings']['Y1speed'], 10000)
+            self.assertEqual(config_content['TGsettings']['TG1name'], 'SpotSizeCrys')
+            self.assertEqual(config_content['TGsettings']['TG2name'], 'TbFeO3')
+            self.assertEqual(config_content['WarningCheck']['MFC1'], 1.0)
+            self.assertEqual(config_content['Password']['Password'], 'PLD')
         else:
             self.skipTest(f"Real PLD config file not found at {real_config_path}")
 
@@ -659,8 +662,10 @@ class TestConfigReaderIntegration(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         self.temp_dir = tempfile.mkdtemp()
-        self.config_path = os.path.join(self.temp_dir, "test_config.ini")
-        
+        # Must be named PLDconfig.ini: ConfigFileModifyHandler.on_modified filters
+        # filesystem events by this exact filename.
+        self.config_path = os.path.join(self.temp_dir, "PLDconfig.ini")
+
         self.config = ConfigReaderConfig(
             idle_time=0.01,
             config_path=self.config_path  # Watch the directory
@@ -733,21 +738,23 @@ MFC1=1.000000
 """
         with open(self.config_path, 'w') as f:
             f.write(config_content)
-        
-        # Give time for file system events
-        time.sleep(0.2)
 
-        content_after = reader.get_all_configs()
+        # Poll for the watchdog event rather than sleeping a fixed interval --
+        # filesystem event latency varies by platform and a fixed sleep makes
+        # this test flaky.
+        deadline = time.time() + 5.0
+        content_after = content_before
+        while time.time() < deadline:
+            content_after = reader.get_all_configs()
+            if content_after != content_before:
+                break
+            time.sleep(0.02)
 
         self.assertNotEqual(content_before, content_after)
-        
+
         # Stop the reader
         reader.stop()
         reader.join(timeout=1)
-        
-        # The update_config_file should have been called
-        # Note: This might not work reliably on all systems due to file system event timing
-        # In a real scenario, you might need to adjust timing or use different testing strategies
 
 
 if __name__ == '__main__':
