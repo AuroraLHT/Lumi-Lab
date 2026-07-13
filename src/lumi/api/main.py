@@ -1,96 +1,104 @@
-from collections.abc import Awaitable, Callable
-from typing import Any, Union, Optional
-from contextlib import asynccontextmanager
-import asyncio
-import json
-import struct
-import logging
-from pathlib import Path
-from dataclasses import dataclass
-import traceback
+"""The web backend.
 
-from fastapi import FastAPI, WebSocket, Request
-from fastapi.responses import HTMLResponse, Response, JSONResponse, StreamingResponse
+Two jobs, and only two: authenticate users, and bridge their browser to the bus. The
+data path is the generic contract-driven bridge in `bridge.py`; there are no
+per-capability routes and none are generated. Adding a capability to the contract makes
+it reachable from the browser with no change here.
+
+Everything the browser can do is gated by the user's role, enforced in
+`BridgeSession` with the same predicate the broker uses (`lumi.contracts.policy`).
+The broker is never exposed to the browser.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from aio_pika import connect_robust
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from aio_pika import Message, connect, ExchangeType
-from aio_pika.abc import AbstractIncomingMessage, AbstractConnection, AbstractChannel, AbstractExchange
+from lumi.config import settings
 
-from .lifespan import lifespan
-from .routes import rheed, chamber, storage, nodes
+from .auth import authenticate
+from .bridge import BridgeSession, BusProxy
 
-"""
-TODO: refactor into this structure
-api/
-├── __init__.py
-├── main.py
-├── connection_state.py
-├── websocket_handlers.py
-├── routes.py
-├── lifespan.py
-└── utils.py
-"""
+log = logging.getLogger(__name__)
 
-import sys
-sys.setrecursionlimit(10000) 
 
-# Allow all origins, or specify a list of allowed origins
-origins = [    
-    "http://127.0.0.1:8000",
-    "http://localhost:8000",
-    "http://[::1]:8000",  # IPv6 localhost
+def _amqp_url() -> str:
+    """Where the bridge connects to the bus.
 
-    "http://127.0.0.1:5173",
-    "http://localhost:5173",
-    "http://[::1]:5173",  # IPv6 localhost
-    "http://0.0.0.0:5173",  # Any IPv4 address
-    # Add other origins if needed
+    LUMI_AMQP_URL wins if set -- a single explicit override for deployment and for
+    tests, so pointing the backend at a specific broker never depends on dynaconf's
+    env-var caching (which reads settings.toml's lab IP if any module touched settings
+    before an env override was set).
+    """
+    if url := os.environ.get("LUMI_AMQP_URL"):
+        return url
+    api = settings.get("api", {})
+    return (
+        f"amqp://{api.get('bus_user', 'guest')}:"
+        f"{api.get('bus_password', 'guest')}@{settings.rabbitmq.host}/"
+    )
 
-    "http://127.0.0.1:5174",
-    "http://localhost:5174",
-    "http://[::1]:5174",  # IPv6 localhost
-    "http://0.0.0.0:5174",  # Any IPv4 address
-]
 
-FORMAT = "%(asctime)s %(levelname)s:%(message)s"
-logging.basicConfig(level=logging.INFO, format=FORMAT)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # One privileged connection to the bus, shared by every browser session. Browsers
+    # never get broker credentials -- that is the whole point of the backend.
+    # A short connect timeout so a wrong/unreachable broker fails fast (~5s) rather
+    # than hanging on the TCP default (~135s).
+    connection = await connect_robust(_amqp_url(), timeout=5.0)
+    channel = await connection.channel()
+    proxy = BusProxy(connection, channel)
+    await proxy.start()
+    app.state.proxy = proxy
+    try:
+        yield
+    finally:
+        await proxy.stop()
+        await connection.close()
 
-app = FastAPI(lifespan=lifespan)
 
+app = FastAPI(title="lumi", lifespan=lifespan)
+
+# The browser origin(s). Tighten for production rather than allowing "*".
 app.add_middleware(
     CORSMiddleware,
-    # this is the default
-    # allow_origins=origins,
-    # allow_credentials=True,
-
-    allow_origins=["*"],
+    allow_origins=settings.get("api", {}).get("allow_origins", ["*"]),
     allow_credentials=True,
-
-    allow_methods=["*"],  # Or specify allowed methods like ["GET", "POST"]
-    # allow_methods=["GET", "POST"],
-    allow_headers=["*"],  # Or specify allowed headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
-app.include_router(rheed.router)
-app.include_router(chamber.router)
-app.include_router(storage.router)
-app.include_router(nodes.router)
+@app.get("/health")
+async def health() -> dict:
+    proxy: BusProxy = app.state.proxy
+    return {"ok": True, "capabilities": sorted(proxy.clients)}
 
 
-@app.get("/")
-async def read_root():
-    with open(Path(__file__).parent / "index.html", "r") as f:
-        html_content = f.read()
+@app.websocket("/ws")
+async def ws(websocket: WebSocket) -> None:
+    """The one browser endpoint. Authenticate, then hand off to the generic bridge."""
+    identity = await authenticate(websocket)
+    if identity is None:
+        await websocket.close(code=4401)  # unauthorized
+        return
 
-    return HTMLResponse(content=html_content, status_code=200)
-
-@app.post("/test_post")
-async def test_post(request: Request):
-    print(request)
-    return JSONResponse(content={"message": "Hello, World!"}, status_code=200)
-
-@app.get("/test_get")
-async def test_get(request: Request):
-    print(request)
-    return JSONResponse(content={"message": "Hello, World!"}, status_code=200)
+    await websocket.accept()
+    session = BridgeSession(
+        ws=websocket,
+        proxy=app.state.proxy,
+        role=identity.role,
+        user=identity.user,
+    )
+    try:
+        await session.run()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        log.exception("bridge session crashed")
