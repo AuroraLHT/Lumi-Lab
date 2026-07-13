@@ -27,9 +27,11 @@ import pytest
 # integration scripts that import torch / cv2 / pypylon / mmdet at module scope
 # and require live nodes. They are not a suite and cannot be collected. Each
 # entry is deleted from this list as its area is ported.
+# Pre-refactor `__main__` experiment scripts, unrelated to the messaging layer, kept
+# out of collection. (The old-layer tests that imported the now-deleted transport were
+# removed outright rather than quarantined.)
 collect_ignore = [
     "aio_gather_test.py",
-    "detection.py",
     "fft.py",
     "nodes.py",
     "opencv_live.py",
@@ -38,20 +40,7 @@ collect_ignore = [
 ]
 collect_ignore_glob = [
     "asyncio/*",
-    "image/*",
-    "message_queue/*",
     "speed/*",
-    "storage/*",
-    # tests/pascal/test_communication.py asserts on a header schema that no longer
-    # exists (headers["type"] == "execution_result", headers["success"]) -- it has
-    # been silently broken for a long time and is replaced by the generated
-    # conformance test. The genuinely useful pascal unit tests (test_command.py,
-    # test_config_parser.py) are NOT ignored and keep running.
-    "pascal/test_communication.py",
-    "pascal/test_api.py",
-    "pascal/test_mi_client.py",
-    "pascal/test_chamber_client.py",
-    "pascal/test_mimode_module.py",
 ]
 
 
