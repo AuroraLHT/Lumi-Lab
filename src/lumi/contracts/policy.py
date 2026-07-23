@@ -163,10 +163,27 @@ def node_permissions() -> dict[str, Permission]:
     }
 
 
+def admin_permissions() -> dict[str, Permission]:
+    """A human administrator: everything an operator can do, plus node supervision --
+    spawn and kill nodes via the supervisor capability. Full read/write on every
+    exchange, so it is the role that manages the fleet.
+
+    An `admin` role is what `lumi.api.auth` hands the bridge for an administrator
+    account (and for a wide-open, auth-disabled backend). It MUST have an entry here:
+    `permits()` does `ROLES[role]()`, so a missing key raises `KeyError` inside the
+    bridge before it can send an error frame, and the browser's RPC hangs until it
+    times out."""
+    return {
+        contract.exchange: Permission(exchange=contract.exchange, write=".*", read=".*")
+        for contract in REGISTRY.values()
+    }
+
+
 ROLES = {
     "viewer": viewer_permissions,
     "operator": operator_permissions,
     "node": node_permissions,
+    "admin": admin_permissions,
 }
 
 

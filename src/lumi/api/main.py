@@ -1,13 +1,17 @@
 """The web backend.
 
-Two jobs, and only two: authenticate users, and bridge their browser to the bus. The
-data path is the generic contract-driven bridge in `bridge.py`; there are no
-per-capability routes and none are generated. Adding a capability to the contract makes
-it reachable from the browser with no change here.
+Two jobs: authenticate users, and bridge their browser to the bus. The live data
+path is the generic contract-driven bridge in `bridge.py`; there are no
+per-capability routes and none are generated. Adding a capability to the contract
+makes it reachable from the browser with no change here.
 
-Everything the browser can do is gated by the user's role, enforced in
-`BridgeSession` with the same predicate the broker uses (`lumi.contracts.policy`).
-The broker is never exposed to the browser.
+Beside the `/ws` bridge sits a small HTTP surface -- login and account management
+(`/auth/*`) and per-user UI settings (`/users/me/settings`) -- backed by a SQLite
+user store (`db.py`). Login mints a JWT carrying the user's role; the browser
+presents it on the `/ws` upgrade, and `auth.authenticate` resolves it to an
+`Identity(user, role)`. Everything the browser can then do on the bus is gated by
+that role, enforced in `BridgeSession` with the same predicate the broker uses
+(`lumi.contracts.policy`). The broker is never exposed to the browser.
 """
 
 from __future__ import annotations
@@ -24,6 +28,9 @@ from lumi.config import settings
 
 from .auth import authenticate
 from .bridge import BridgeSession, BusProxy
+from .db import UserStore, bootstrap_default_user
+from .routes import auth as auth_routes
+from .routes import settings as settings_routes
 
 log = logging.getLogger(__name__)
 
@@ -47,20 +54,32 @@ def _amqp_url() -> str:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # One privileged connection to the bus, shared by every browser session. Browsers
-    # never get broker credentials -- that is the whole point of the backend.
-    # A short connect timeout so a wrong/unreachable broker fails fast (~5s) rather
-    # than hanging on the TCP default (~135s).
-    connection = await connect_robust(_amqp_url(), timeout=5.0)
-    channel = await connection.channel()
-    proxy = BusProxy(connection, channel)
-    await proxy.start()
-    app.state.proxy = proxy
+    # The user store comes up first and independently of the bus, so login and
+    # account management keep working even if the broker is unreachable.
+    user_store = UserStore()
+    await user_store.connect()
+    await bootstrap_default_user(user_store)
+    app.state.user_store = user_store
+
+    connection = None
+    proxy = None
     try:
+        # One privileged connection to the bus, shared by every browser session.
+        # Browsers never get broker credentials -- that is the whole point of the
+        # backend. A short connect timeout so a wrong/unreachable broker fails fast
+        # (~5s) rather than hanging on the TCP default (~135s).
+        connection = await connect_robust(_amqp_url(), timeout=5.0)
+        channel = await connection.channel()
+        proxy = BusProxy(connection, channel)
+        await proxy.start()
+        app.state.proxy = proxy
         yield
     finally:
-        await proxy.stop()
-        await connection.close()
+        if proxy is not None:
+            await proxy.stop()
+        if connection is not None:
+            await connection.close()
+        await user_store.close()
 
 
 app = FastAPI(title="lumi", lifespan=lifespan)
@@ -73,6 +92,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Login / account management and per-user UI settings. Protected endpoints gate
+# themselves with the get_current_user dependency; there is no global middleware.
+app.include_router(auth_routes.router)
+app.include_router(settings_routes.router)
 
 
 @app.get("/health")
