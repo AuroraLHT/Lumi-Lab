@@ -6,6 +6,33 @@ host = "0.0.0.0"
 port = 8000
 workers = 10
 
+[auth]
+# false = run the backend wide open: the /ws token check is skipped and every
+# connection is treated as an administrator. Anyone who can reach this host can
+# then drive the equipment. Keep this `true` here -- this file is tracked in git
+# and a committed `false` is one merge away from being deployed. To turn auth off
+# on your own machine, override it in cfg/.secrets.toml (git-ignored) instead:
+#
+#     [auth]
+#     enabled = false
+enabled = true
+
+# dev_mode = true permits the placeholder secret_key below. In production, set a
+# real key in cfg/.secrets.toml (or DYNACONF_AUTH__SECRET_KEY) and set this to
+# false -- the backend then refuses to start while the placeholder is still in
+# use. Generate one with: python -m lumi.api.manage gen-secret
+dev_mode = true
+secret_key = "dev-only-insecure-key-change-me"
+
+access_token_expire_minutes = 720  # 12 hours
+database_path = "cfg/users.db"
+
+# Bootstraps a first admin account when the user database is empty. Leave the
+# password empty in production and create accounts explicitly with:
+#   python -m lumi.api.manage create-user <name> --role admin
+default_admin_username = "admin"
+default_admin_password = ""
+
 [suffix]
 state_monitior = "State Monitor"
 
