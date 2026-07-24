@@ -33,10 +33,10 @@ from lumi.contracts.payloads.detection import (
     CropSetup,
     DetectedBox,
     DetectionOverlay,
+    DetectionReadout,
     DetectionResult,
-    DetectionState,
     OverlayBox,
-    OverlayState,
+    OverlayReadout,
 )
 
 log = logging.getLogger(__name__)
@@ -107,6 +107,22 @@ class DetectionHandler:
         """Fan a new detection out to another capability (the overlay stream)."""
         self._sinks.append(fn)
 
+    def readout(self) -> DetectionReadout:
+        crop = getattr(self.detector.state, "crop_setup", None) or {}
+        return DetectionReadout(
+            classifier_classes=list(getattr(self.detector, "classifier_classes", []) or []),
+            device=getattr(self.detector.config, "detector_model_device", None),
+            crop=(
+                CropSetup(
+                    x=crop["sx"], y=crop["sy"],
+                    width=crop["ex"] - crop["sx"], height=crop["ey"] - crop["sy"],
+                )
+                if crop
+                else None
+            ),
+            model_path=getattr(self.detector.config, "detector_model_path", None),
+        )
+
 
 class OverlayHandler:
     """Serves the `overlay` stream: boxes only, no masks, no pattern.
@@ -140,25 +156,8 @@ class OverlayHandler:
         pending, self._pending = self._pending, None
         return pending
 
-    def state(self) -> OverlayState:
-        return OverlayState(is_running=True, n_boxes=self._n_boxes)
-
-    def state(self) -> DetectionState:
-        crop = getattr(self.detector.state, "crop_setup", None) or {}
-        return DetectionState(
-            is_running=self.detector.is_alive(),
-            classifier_classes=list(getattr(self.detector, "classifier_classes", []) or []),
-            device=getattr(self.detector.config, "detector_model_device", None),
-            crop=(
-                CropSetup(
-                    x=crop["sx"], y=crop["sy"],
-                    width=crop["ex"] - crop["sx"], height=crop["ey"] - crop["sy"],
-                )
-                if crop
-                else None
-            ),
-            model_path=getattr(self.detector.config, "detector_model_path", None),
-        )
+    def readout(self) -> OverlayReadout:
+        return OverlayReadout(n_boxes=self._n_boxes)
 
 
 def _to_contract(

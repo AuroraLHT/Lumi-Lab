@@ -25,7 +25,7 @@ import numpy as np
 
 from lumi.config import settings
 from lumi.contracts.payloads.common import Empty
-from lumi.contracts.payloads.storage import StorageRequest, StorageState, StorageStatus
+from lumi.contracts.payloads.storage import StorageReadout, StorageRequest, StorageStatus
 from lumi.storage.record import Recorder, RecorderConfig, RecorderServer, RecorderServerConfig
 
 log = logging.getLogger(__name__)
@@ -51,8 +51,8 @@ class StorageHandler:
         self.project_name: str | None = None
         self.path: str | None = None
         self._subscribed: list = []
-        #: Last known liveness of each source, refreshed from the registry. state() is
-        #: synchronous (the heartbeat calls it), so it cannot query the bus itself.
+        #: Last known liveness of each source, refreshed from the registry. readout()
+        #: is synchronous (the heartbeat calls it), so it cannot query the bus itself.
         self._deps: dict[str, bool] = {name: False for name in set(DEPENDENCIES.values())}
 
     # --- ops ---------------------------------------------------------------
@@ -124,9 +124,8 @@ class StorageHandler:
         log.info("stopped recording %s", name)
         return StorageStatus(ok=True, message="stopped", project_name=name, path=self.path)
 
-    def state(self) -> StorageState:
-        return StorageState(
-            is_running=True,
+    def readout(self) -> StorageReadout:
+        return StorageReadout(
             is_storing=self.recorder_server is not None,
             project_name=self.project_name,
             path=self.path,

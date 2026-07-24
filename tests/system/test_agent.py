@@ -173,7 +173,7 @@ async def test_a_node_that_ignores_sigterm_is_eventually_killed(monkeypatch, age
 
 
 async def test_state_reports_what_this_host_may_run(agent):
-    state = agent.state()
+    state = agent.readout()
     assert state.host == "testhost"
     assert state.available_nodes == ["rheed", "storage"]
     assert state.n_processes == 0

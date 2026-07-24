@@ -30,9 +30,9 @@ from lumi.contracts.payloads.system import (
     NodeRecord,
     NodeStatus,
     RegistryEvent,
-    RegistryState,
+    RegistryReadout,
     SpawnRequest,
-    SupervisorState,
+    SupervisorReadout,
     WaitForNode,
 )
 from lumi.contracts.system import SYSTEM
@@ -149,9 +149,8 @@ class RegistryHandler:
         except asyncio.QueueEmpty:
             return None
 
-    def state(self) -> RegistryState:
-        return RegistryState(
-            is_running=True,
+    def readout(self) -> RegistryReadout:
+        return RegistryReadout(
             n_nodes=len(self.registry.list_nodes()),
             n_up=self.registry.n_up,
             contract_hash=contract_hash(),
@@ -245,6 +244,6 @@ class SupervisorHandler:
     def _host_of(self, instance_id: str) -> str:
         return self._record_of(instance_id).host
 
-    def state(self) -> SupervisorState:
+    def readout(self) -> SupervisorReadout:
         hosts = {n.host for n in self.registry.registry.list_nodes()}
-        return SupervisorState(is_running=True, n_hosts=len(hosts))
+        return SupervisorReadout(n_hosts=len(hosts))

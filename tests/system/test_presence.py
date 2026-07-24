@@ -10,6 +10,7 @@ import asyncio
 
 import pytest
 from aio_pika import connect_robust
+from pydantic import BaseModel
 
 from lumi.contracts import Capability, EquipmentContract, Kind
 from lumi.contracts.payloads.common import Ack, Empty, ServerStateBase
@@ -21,8 +22,12 @@ from lumi.system.monitor import RegistryHandler
 pytestmark = pytest.mark.broker
 
 
-class ToyState(ServerStateBase):
+class ToyReadout(BaseModel):
     pings: int = 0
+
+
+class ToyState(ServerStateBase, ToyReadout):
+    pass
 
 
 TOY_CAP = Capability(name="toy", kind=Kind.RPC, state=ToyState, ops=(Op("ping", Empty, Ack),))
@@ -38,8 +43,8 @@ class ToyHandler:
         self.pings += 1
         return Ack()
 
-    def state(self) -> ToyState:
-        return ToyState(is_running=True, pings=self.pings)
+    def readout(self) -> ToyReadout:
+        return ToyReadout(pings=self.pings)
 
 
 @pytest.fixture

@@ -29,7 +29,7 @@ class StorageStatus(BaseModel):
     path: str | None = None
 
 
-class StorageState(ServerStateBase):
+class StorageReadout(BaseModel):
     is_storing: bool = False
     project_name: str | None = None
     path: str | None = None
@@ -37,3 +37,8 @@ class StorageState(ServerStateBase):
     # record because a source is down. Surface that rather than failing opaquely.
     deps_available: dict[str, bool] = {}
     n_frames: int | None = None
+
+
+class StorageState(StorageReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the recorder's readout.
+    pass

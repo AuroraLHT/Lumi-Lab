@@ -88,10 +88,15 @@ class RegistryEvent(BaseModel):
     node: NodeRecord
 
 
-class RegistryState(ServerStateBase):
+class RegistryReadout(BaseModel):
     n_nodes: int = 0
     n_up: int = 0
     contract_hash: str = ""
+
+
+class RegistryState(RegistryReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the monitor's readout.
+    pass
 
 
 # --- Supervision -----------------------------------------------------------
@@ -139,12 +144,22 @@ class HostList(BaseModel):
     hosts: list[HostInfo] = []
 
 
-class SupervisorState(ServerStateBase):
+class SupervisorReadout(BaseModel):
     n_hosts: int = 0
     n_processes: int = 0
 
 
-class AgentState(ServerStateBase):
+class SupervisorState(SupervisorReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the supervisor's readout.
+    pass
+
+
+class AgentReadout(BaseModel):
     host: str = ""
     available_nodes: list[str] = []
     n_processes: int = 0
+
+
+class AgentState(AgentReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the host agent's readout.
+    pass

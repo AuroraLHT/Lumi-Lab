@@ -18,13 +18,13 @@ import numpy as np
 
 from lumi.contracts.payloads.camera import (
     CameraConfig,
-    CameraState,
+    CameraReadout,
     FragmentIndex,
     FragmentsSize,
     ImageMeta,
     InitialFragmentsMeta,
     VideoFragmentMeta,
-    VideoState,
+    VideoReadout,
 )
 from lumi.contracts.payloads.common import Ack, Empty
 
@@ -83,9 +83,8 @@ class CameraHandler:
             shape=list(frame.shape),
         )
 
-    def state(self) -> CameraState:
-        return CameraState(
-            is_running=self.camera.is_alive() if hasattr(self.camera, "is_alive") else True,
+    def readout(self) -> CameraReadout:
+        return CameraReadout(
             frame_dims=list(self.camera.frame_dims),
             fps=getattr(self.camera.config, "fps", None),
         )
@@ -140,10 +139,9 @@ class VideoHandler:
             fragment,
         )
 
-    def state(self) -> VideoState:
+    def readout(self) -> VideoReadout:
         cfg = self.compressor.config
-        return VideoState(
-            is_running=self.compressor.is_alive() if hasattr(self.compressor, "is_alive") else True,
+        return VideoReadout(
             fragment_duration=getattr(cfg, "frames_per_keyframe", 0) / max(getattr(cfg, "fps", 1), 1),
         )
 

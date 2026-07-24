@@ -64,12 +64,22 @@ class InitialFragmentsMeta(BaseModel):
     headers: list[dict[str, object]] = []
 
 
-class CameraState(ServerStateBase):
+class CameraReadout(BaseModel):
     frame_dims: list[int] | None = None
     frame_metas: dict[str, object] | None = None
     fps: float | None = None
 
 
-class VideoState(ServerStateBase):
+class CameraState(CameraReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the camera's readout.
+    pass
+
+
+class VideoReadout(BaseModel):
     n_fragments: int | None = None
     fragment_duration: float | None = None
+
+
+class VideoState(VideoReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the compressor's readout.
+    pass

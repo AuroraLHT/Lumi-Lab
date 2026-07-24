@@ -77,12 +77,22 @@ class DetectionOverlay(BaseModel):
     classification: dict[str, float] = {}
 
 
-class DetectionState(ServerStateBase):
+class DetectionReadout(BaseModel):
     classifier_classes: list[str] = []
     device: str | None = None
     crop: CropSetup | None = None
     model_path: str | None = None
 
 
-class OverlayState(ServerStateBase):
+class DetectionState(DetectionReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the detector's readout.
+    pass
+
+
+class OverlayReadout(BaseModel):
     n_boxes: int = 0
+
+
+class OverlayState(OverlayReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the overlay's readout.
+    pass

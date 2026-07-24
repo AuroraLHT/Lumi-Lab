@@ -42,11 +42,26 @@ class FrameHeader(BaseModel):
 
 
 class ServerStateBase(BaseModel):
-    """Fields every capability's state carries.
+    """The lifecycle fields the *server* owns, carried by every capability's state.
 
     The old code kept state in a free-form dict, so consumers read it by string
     (`camera_state["frame_dims"]`) and a typo was a KeyError at runtime, in the
     lab, mid-experiment.
+
+    Ownership is split by type. These three fields are the server's: whether the
+    capability is serving (`is_running`), whether its stream is emitting
+    (`is_streaming`), and whether it is degraded (`error`) are transport lifecycle,
+    not equipment readings. Everything a handler observes about its hardware lives
+    on a sibling `*Readout` model, and the published `*State` is the union:
+
+        class CameraReadout(BaseModel):        # what the handler reports
+            frame_dims: list[int] | None = None
+        class CameraState(ServerStateBase, CameraReadout):  # what goes on the wire
+            ...
+
+    The handler returns a `*Readout` (no lifecycle fields), so `refresh_state` can
+    fold its readings in without ever clobbering the server-owned flags -- the
+    readout's type simply has no `is_streaming` to overwrite it with.
     """
 
     is_running: bool = False

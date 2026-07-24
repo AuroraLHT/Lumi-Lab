@@ -83,7 +83,7 @@ class MIExecutionList(BaseModel):
     executions: list[MIExecution] = []
 
 
-class ChamberLogState(ServerStateBase):
+class ChamberLogReadout(BaseModel):
     log_file: str | None = None
     n_entries: int | None = None
     last_entry_time: str | None = None
@@ -92,11 +92,26 @@ class ChamberLogState(ServerStateBase):
     columns: list[str] = []
 
 
-class ChamberConfigState(ServerStateBase):
+class ChamberLogState(ChamberLogReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the log reader's readout.
+    pass
+
+
+class ChamberConfigReadout(BaseModel):
     config_file: str | None = None
     sections: list[str] = []
 
 
-class MIModeState(ServerStateBase):
+class ChamberConfigState(ChamberConfigReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the config reader's readout.
+    pass
+
+
+class MIModeReadout(BaseModel):
     num_executions: int = 0
     current_execution: str | None = None
+
+
+class MIModeState(MIModeReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the MI server's readout.
+    pass

@@ -7,8 +7,8 @@ import queue
 
 from lumi.contracts.payloads.chamber import (
     AllConfigs,
-    ChamberConfigState,
-    ChamberLogState,
+    ChamberConfigReadout,
+    ChamberLogReadout,
     ConfigEntry,
     ConfigQuery,
     ConfigSection,
@@ -18,7 +18,7 @@ from lumi.contracts.payloads.chamber import (
     MICommands,
     MIExecution,
     MIExecutionList,
-    MIModeState,
+    MIModeReadout,
     SectionQuery,
 )
 from lumi.contracts.payloads.common import Empty
@@ -61,7 +61,7 @@ class ChamberLogHandler:
             return None
         return _entry(row, header)
 
-    def state(self) -> ChamberLogState:
+    def readout(self) -> ChamberLogReadout:
         # Storage sizes its HDF5 log table from these column names, so they have to be
         # in the state rather than inferred from whatever row happens to arrive first.
         columns: list[str] = []
@@ -72,8 +72,7 @@ class ChamberLogHandler:
         except Exception:
             log.debug("could not read log columns", exc_info=True)
 
-        return ChamberLogState(
-            is_running=self.log_reader.is_alive(),
+        return ChamberLogReadout(
             log_file=str(getattr(self.log_reader.config, "log_path", "") or ""),
             columns=columns,
         )
@@ -117,13 +116,12 @@ class ChamberConfigHandler:
     def _sections(self) -> list[str]:
         return list(self.config_reader.get_sections()["sections"])
 
-    def state(self) -> ChamberConfigState:
+    def readout(self) -> ChamberConfigReadout:
         try:
             sections = self._sections()
         except Exception:
             sections = []
-        return ChamberConfigState(
-            is_running=self.config_reader.is_alive(),
+        return ChamberConfigReadout(
             config_file=str(getattr(self.config_reader.config, "config_path", "") or ""),
             sections=sections,
         )
@@ -183,11 +181,10 @@ class MIModeHandler:
         if exc is not None:
             log.error("MI execution failed: %s", exc)
 
-    def state(self) -> MIModeState:
+    def readout(self) -> MIModeReadout:
         executions = self.mi_server.list_executions()
         running = [e for e in executions if not e.get("is_execution_finished")]
-        return MIModeState(
-            is_running=self.mi_server.is_alive(),
+        return MIModeReadout(
             num_executions=len(executions),
             current_execution=running[0]["commands_uuid"] if running else None,
         )
