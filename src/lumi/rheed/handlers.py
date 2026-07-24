@@ -24,11 +24,11 @@ from lumi.contracts.payloads.rheed import (
     IntegrationHeader,
     IntegrationResult,
     IntegrationSample,
-    IntegratorState,
+    IntegratorReadout,
     RegisterBBox,
     STFTCache,
     STFTSample,
-    STFTState,
+    STFTReadout,
 )
 
 log = logging.getLogger(__name__)
@@ -87,9 +87,8 @@ class IntegratorHandler:
             return None
         return _sample(result, header)
 
-    def state(self) -> IntegratorState:
-        return IntegratorState(
-            is_running=self.integrator.is_alive() if hasattr(self.integrator, "is_alive") else True,
+    def readout(self) -> IntegratorReadout:
+        return IntegratorReadout(
             registered_bboxes=sorted(self.integrator.bboxes),
         )
 
@@ -149,8 +148,7 @@ class STFTHandler:
         bbox_id = int((header or {}).get("bbox_id", -1))
         return STFTSample(bbox_id=bbox_id, result=FFTResult(**dict(result)))
 
-    def state(self) -> STFTState:
-        return STFTState(
-            is_running=self.calculator.is_alive() if hasattr(self.calculator, "is_alive") else True,
+    def readout(self) -> STFTReadout:
+        return STFTReadout(
             registered_bboxes=sorted(getattr(self.calculator, "bboxes", {})),
         )

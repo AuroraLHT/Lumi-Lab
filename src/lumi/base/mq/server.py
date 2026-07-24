@@ -68,7 +68,7 @@ class CapabilityServer(ControlPlane):
         self._inflight = 0
         self._draining = False
 
-        self.state = StatePublisher(self._read_state(), self._publish_state)
+        self.state = StatePublisher(self._initial_state(), self._publish_state)
 
     # --- wiring -----------------------------------------------------------
 
@@ -95,15 +95,40 @@ class CapabilityServer(ControlPlane):
             )
         return table
 
-    def _read_state(self) -> BaseModel:
-        reader = getattr(self.handler, "state", None)
-        if reader is None:
-            return self.cap.state()
-        return reader()
+    def _readout(self) -> BaseModel | None:
+        """The handler's view of its own equipment: hardware readings, no lifecycle.
+
+        A handler exposes `readout()` returning a `*Readout` model (see
+        `ServerStateBase`) -- the fields the equipment observes, never `is_running`
+        or `is_streaming`, which are the server's to set. None when a capability has
+        no equipment to read (its state is lifecycle-only).
+        """
+        reader = getattr(self.handler, "readout", None)
+        return reader() if reader is not None else None
+
+    def _initial_state(self) -> BaseModel:
+        state = self.cap.state()
+        readout = self._readout()
+        if readout is not None:
+            state = state.model_copy(update=dict(readout))
+        return state
 
     def refresh_state(self) -> None:
-        """Re-read the handler's state and publish if it changed."""
-        self.state.set(self._read_state())
+        """Fold the handler's latest readout into the published state, leaving the
+        server-owned lifecycle flags untouched.
+
+        This is why a `start`/`stop` survives a heartbeat. The readout carries only
+        equipment fields, so overlaying it onto the current state cannot reset
+        `is_streaming` -- the readout's type has no such field to reset it with. The
+        old version replaced the whole state from `handler.state()`, whose defaults
+        flipped `is_streaming` back to False every ~2s.
+
+        `dict(readout)` (not `model_dump()`) so nested models like `crop` stay typed
+        rather than collapsing to plain dicts as they pass through `model_copy`.
+        """
+        readout = self._readout()
+        if readout is not None:
+            self.state.update(**dict(readout))
 
     # --- lifecycle --------------------------------------------------------
 

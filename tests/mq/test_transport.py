@@ -38,8 +38,12 @@ class Tick(BaseModel):
     n: int
 
 
-class ProbeState(ServerStateBase):
+class ProbeReadout(BaseModel):
     calls: int = 0
+
+
+class ProbeState(ServerStateBase, ProbeReadout):
+    pass
 
 
 PROBE = Capability(
@@ -81,8 +85,8 @@ class ProbeHandler:
         self._n += 1
         return Tick(n=self._n)
 
-    def state(self) -> ProbeState:
-        return ProbeState(is_running=True, calls=self.calls)
+    def readout(self) -> ProbeReadout:
+        return ProbeReadout(calls=self.calls)
 
 
 @pytest.fixture

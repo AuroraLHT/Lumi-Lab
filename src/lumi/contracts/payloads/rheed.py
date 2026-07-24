@@ -89,12 +89,22 @@ class STFTCache(BaseModel):
     samples: list[STFTSample] = []
 
 
-class IntegratorState(ServerStateBase):
+class IntegratorReadout(BaseModel):
     registered_bboxes: list[int] = []
     cache_size: int | None = None
 
 
-class STFTState(ServerStateBase):
+class IntegratorState(IntegratorReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the integrator's readout.
+    pass
+
+
+class STFTReadout(BaseModel):
     registered_bboxes: list[int] = []
     window_size: int | None = None
     time_resolution: float | None = None
+
+
+class STFTState(STFTReadout, ServerStateBase):
+    # Wire state = server lifecycle (ServerStateBase) + the calculator's readout.
+    pass

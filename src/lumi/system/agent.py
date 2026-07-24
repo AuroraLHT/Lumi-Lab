@@ -32,7 +32,7 @@ from aio_pika.abc import AbstractChannel, AbstractIncomingMessage
 
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.system import (
-    AgentState,
+    AgentReadout,
     KillRequest,
     ProcessInfo,
     ProcessList,
@@ -164,9 +164,8 @@ class HostAgent:
     async def list_processes(self, req: Empty) -> ProcessList:
         return ProcessList(processes=[p.info(self.host) for p in self.processes.values()])
 
-    def state(self) -> AgentState:
-        return AgentState(
-            is_running=True,
+    def readout(self) -> AgentReadout:
+        return AgentReadout(
             host=self.host,
             available_nodes=sorted(self.allowlist),
             n_processes=sum(1 for p in self.processes.values() if p.running),
