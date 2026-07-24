@@ -7,9 +7,12 @@
 #
 # Usage:
 #   scripts/start_simulation.sh [--host HOST] [--with-detection] [--with-agent]
-#                               [--with-auth] [--keep-database]
+#                               [--with-auth] [--keep-database] [--no-reset-broker]
 #
-# Ctrl-C shuts every node down.
+# On a localhost broker it first deletes any contract exchange whose type has
+# drifted (the old stack left RHEED/CHAMBER/STORAGE as `direct`; the contract now
+# wants `topic`), so the nodes can redeclare them cleanly. --no-reset-broker
+# skips that. Ctrl-C shuts every node down.
 
 set -euo pipefail
 
@@ -21,6 +24,7 @@ WITH_DETECTION=0
 WITH_AGENT=0
 WITH_AUTH=0
 KEEP_DATABASE=0
+RESET_BROKER=1
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -29,7 +33,8 @@ while [[ $# -gt 0 ]]; do
         --with-agent) WITH_AGENT=1; shift ;;
         --with-auth) WITH_AUTH=1; shift ;;
         --keep-database) KEEP_DATABASE=1; shift ;;
-        -h|--help) sed -n '3,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --no-reset-broker) RESET_BROKER=0; shift ;;
+        -h|--help) sed -n '3,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -84,6 +89,64 @@ if ! timeout 3 bash -c "cat < /dev/null > /dev/tcp/$RABBITMQ_HOST/5672" 2>/dev/n
     echo "RabbitMQ is not reachable at $RABBITMQ_HOST:5672" >&2
     echo "start it first, e.g. 'docker run -p 5672:5672 -p 15672:15672 rabbitmq:3-management'" >&2
     exit 1
+fi
+
+# The old messaging layer declared its exchanges as `direct`; the contract now
+# declares them `topic`, and RabbitMQ refuses to redeclare an exchange with a
+# different type -- the storage node dies on startup with PRECONDITION_FAILED.
+# Delete only the contract exchanges whose type has actually drifted, so the
+# nodes can recreate them; correctly-typed exchanges are left alone. Localhost
+# only, since this is destructive on a shared broker.
+reset_stale_exchanges() {
+    "$PYTHON" - "$LUMI_AMQP_URL" <<'PY'
+import asyncio
+import sys
+
+from aio_pika import ExchangeType, connect_robust
+from aiormq.exceptions import ChannelPreconditionFailed
+
+from lumi.contracts.registry import REGISTRY
+
+
+async def main(url: str) -> None:
+    conn = await connect_robust(url, timeout=5.0)
+    try:
+        wanted = {c.exchange: c.exchange_type for c in REGISTRY.values()}
+        for name, xtype in wanted.items():
+            channel = await conn.channel()
+            try:
+                # A normal (non-passive) declare enforces type/durability
+                # equivalence: it creates the exchange if absent, is a no-op if it
+                # already matches, and raises if an existing one has a different
+                # type. (A *passive* declare would only check existence and ignore
+                # the type, so it cannot detect the drift we are fixing.)
+                await channel.declare_exchange(name, ExchangeType(xtype), durable=True)
+                await channel.close()
+            except ChannelPreconditionFailed:
+                # Left over from the old stack with a different type: delete it and
+                # recreate with the type the contract expects.
+                fresh = await conn.channel()
+                exchange = await fresh.get_exchange(name, ensure=False)
+                await exchange.delete(if_unused=False)
+                await fresh.declare_exchange(name, ExchangeType(xtype), durable=True)
+                await fresh.close()
+                print(f"  reset exchange {name} (type drift) -> {xtype}")
+    finally:
+        await conn.close()
+
+
+asyncio.run(main(sys.argv[1]))
+PY
+}
+
+if [[ $RESET_BROKER -eq 1 ]]; then
+    case "$RABBITMQ_HOST" in
+        localhost|127.0.0.1|::1)
+            echo "checking for exchanges left over from the old (direct) stack..."
+            reset_stale_exchanges || echo "  (skipped: could not reach the broker to reset)" ;;
+        *)
+            echo "note: --host is not localhost; skipping exchange reset" >&2 ;;
+    esac
 fi
 
 PIDS=()
