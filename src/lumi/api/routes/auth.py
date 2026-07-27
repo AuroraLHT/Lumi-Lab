@@ -10,7 +10,13 @@ from fastapi.security import OAuth2PasswordRequestForm
 from lumi.config import settings
 
 from ..db import User, UserStore
-from ..deps import get_current_admin, get_current_user, get_user_store
+from ..deps import (
+    ANONYMOUS_USER,
+    auth_enabled,
+    get_current_admin,
+    get_current_user,
+    get_user_store,
+)
 from ..models import (
     CreateUserRequest,
     PasswordChangeRequest,
@@ -43,16 +49,30 @@ async def login(
     Uses the OAuth2 password-form shape (`username`/`password` as form fields)
     so FastAPI's interactive docs can drive it. The token carries the user's
     `role`, which the /ws bridge reads to gate every bus call.
-    """
-    user = await store.authenticate(form_data.username, form_data.password)
 
-    if user is None:
-        logging.info(f"Failed login attempt for username '{form_data.username}'")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
-            headers={"WWW-Authenticate": "Bearer"},
+    When `auth.enabled` is false the whole backend is wide open -- every other
+    dependency already resolves to `ANONYMOUS_USER` -- so this hands back a
+    matching token instead of checking credentials. Rejecting here would leave
+    the UI showing a login screen that nothing can satisfy, which is exactly
+    what happens if the user database is empty (the common case, since the
+    simulation launcher points auth at a scratch file).
+    """
+    if not auth_enabled():
+        user = ANONYMOUS_USER
+        logging.info(
+            f"auth.enabled is false; issuing anonymous admin token for login "
+            f"attempt as '{form_data.username}'"
         )
+    else:
+        user = await store.authenticate(form_data.username, form_data.password)
+
+        if user is None:
+            logging.info(f"Failed login attempt for username '{form_data.username}'")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     expires_minutes = int(settings.get("auth.access_token_expire_minutes", 720))
     token = create_access_token(
