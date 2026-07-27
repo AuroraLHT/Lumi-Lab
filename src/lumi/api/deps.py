@@ -30,7 +30,10 @@ CREDENTIALS_EXCEPTION = HTTPException(
 
 #: The synthetic identity returned when auth is disabled entirely. Mirrors the
 #: /ws seam, which hands the bridge the "admin" role in the same situation.
-_ANONYMOUS_USER: User = {
+#: `id` is 0, which matches no real row, so a token minted for this identity
+#: stops working the moment auth is turned back on -- `_user_from_token` looks
+#: the subject up and rejects it.
+ANONYMOUS_USER: User = {
     "id": 0,
     "username": "anonymous",
     "full_name": "Anonymous (auth disabled)",
@@ -81,7 +84,7 @@ async def get_current_user(
     store: UserStore = Depends(get_user_store),
 ) -> User:
     if not auth_enabled():
-        return _ANONYMOUS_USER
+        return ANONYMOUS_USER
 
     raw_token = credentials.credentials if credentials else token
     if not raw_token:
