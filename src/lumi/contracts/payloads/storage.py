@@ -36,7 +36,17 @@ class StorageReadout(BaseModel):
     # Storage is a consumer of the other nodes, so it can be up but unable to
     # record because a source is down. Surface that rather than failing opaquely.
     deps_available: dict[str, bool] = {}
-    n_frames: int | None = None
+    # There is deliberately no frame counter here. `n_frames` used to be declared and
+    # never assigned, so every heartbeat advertised a number that was always null and
+    # every client had to write code for a value that never arrived.
+    #
+    # A progress count is still wanted, but not on this model: capability state rides
+    # the 2s heartbeat, and `NodeRegistry.on_heartbeat` emits `state_changed` whenever
+    # the blob differs from the previous one. Every field here is stable for the
+    # duration of a recording, so events fire on real transitions only. A value that
+    # ticks every 2s would turn the registry into a 0.5 Hz event pump, waking every
+    # connected client for the length of a growth. When the counter is built it should
+    # ride the getState() control call and be polled by whoever is actually looking.
 
 
 class StorageState(StorageReadout, ServerStateBase):
