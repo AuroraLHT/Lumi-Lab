@@ -65,6 +65,7 @@ class CapabilityServer(ControlPlane):
         self._stream_task: asyncio.Task | None = None
         self._update_task: asyncio.Task | None = None
         self._streaming = False
+        self._stream_errors = 0
         self._inflight = 0
         self._draining = False
 
@@ -160,6 +161,7 @@ class CapabilityServer(ControlPlane):
             self._stream_task = asyncio.create_task(
                 self._stream_loop(), name=f"stream:{self.source}"
             )
+            self._stream_task.add_done_callback(self._on_loop_finished)
 
         if self.cap.update is not None:
             # Updates are not gated by start/stop: they are results being broadcast
@@ -167,6 +169,7 @@ class CapabilityServer(ControlPlane):
             self._update_task = asyncio.create_task(
                 self._update_loop(), name=f"update:{self.source}"
             )
+            self._update_task.add_done_callback(self._on_loop_finished)
 
         self.state.update(is_running=True)
         log.info("%s serving (ops=%s)", self.source, ",".join(self._ops) or "-")
@@ -299,6 +302,32 @@ class CapabilityServer(ControlPlane):
 
     # --- streaming --------------------------------------------------------
 
+    def _on_loop_finished(self, task: asyncio.Task) -> None:
+        """A background loop ended. Say so -- loudly -- unless we asked it to.
+
+        These tasks are held on `self`, so they are never garbage collected, and
+        asyncio only prints "Task exception was never retrieved" at collection time.
+        A loop that died therefore left *no trace at all*: no log line, no state
+        change, and `is_streaming` still True. The chamber camera and the RHEED video
+        feed both ran that way for hours -- producers healthy, queues filling and
+        being dropped, nothing on the wire, nothing in the log.
+
+        Ending is not itself a fault (drain cancels these deliberately), so a
+        cancellation during shutdown stays quiet.
+        """
+        if task.cancelled() or self._draining:
+            return
+        exc = task.exception()
+        if exc is None:
+            log.warning("%s: %s loop exited unexpectedly", self.source, task.get_name())
+            self.state.update(error=f"{task.get_name()} loop stopped")
+            return
+        log.error(
+            "%s: %s loop died -- the capability is no longer serving it",
+            self.source, task.get_name(), exc_info=exc,
+        )
+        self.state.update(is_streaming=False, error=f"{type(exc).__name__}: {exc}")
+
     async def _stream_loop(self) -> None:
         spec = self.cap.stream
         assert spec is not None
@@ -326,15 +355,45 @@ class CapabilityServer(ControlPlane):
                 log.exception("%s could not encode a stream item", self.source)
                 continue
 
-            await self.exchange.publish(
-                Message(body=body, headers=envelope.stream(self.source, spec.name, str(spec.codec), **extra)),
-                routing_key=self.keys.publish,
-                # A broadcast with nobody listening is normal, not an error. aio_pika
-                # defaults to mandatory=True, so an unsubscribed stream would have the
-                # broker return every frame as unroutable and raise DeliveryError --
-                # once per frame, at 30fps, for a camera nobody is watching.
-                mandatory=False,
-            )
+            try:
+                await self.exchange.publish(
+                    Message(body=body, headers=envelope.stream(self.source, spec.name, str(spec.codec), **extra)),
+                    routing_key=self.keys.publish,
+                    # A broadcast with nobody listening is normal, not an error. aio_pika
+                    # defaults to mandatory=True, so an unsubscribed stream would have the
+                    # broker return every frame as unroutable and raise DeliveryError --
+                    # once per frame, at 30fps, for a camera nobody is watching.
+                    mandatory=False,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # This used to be unguarded, and it is the one call in the loop that
+                # fails for reasons that have nothing to do with the payload. The
+                # connection is `connect_robust`, so a broker blip closes the channel
+                # underneath us and raises ChannelInvalidStateError here -- once. That
+                # single exception left the while loop, ended the task, and stopped the
+                # capability forever: the task object is held in self._stream_task so it
+                # is never garbage collected, which is precisely when asyncio would have
+                # printed "Task exception was never retrieved". Nothing logged, nothing
+                # restarted, and `is_streaming` stayed True over a feed that had been
+                # dead for hours.
+                #
+                # RobustChannel restores itself, so the right response is to drop this
+                # frame and keep going -- a live stream has nothing to gain from
+                # retrying a stale one.
+                self._stream_errors += 1
+                if self._stream_errors == 1 or self._stream_errors % 100 == 0:
+                    log.exception("%s could not publish a stream item", self.source)
+                self.state.update(error=f"{type(exc).__name__}: {exc}")
+                await asyncio.sleep(0.1)
+                continue
+
+            if self._stream_errors:
+                # Recovered: clear the degraded flag rather than leaving a stale error
+                # pinned to a capability that is working again.
+                self._stream_errors = 0
+                self.state.update(error=None)
 
     async def _update_loop(self) -> None:
         """Drain the handler's pending updates and broadcast them."""
