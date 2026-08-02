@@ -145,12 +145,14 @@ class StorageHandler:
         """The set of live equipment, or None if the monitor did not answer."""
         if self.registry is None:
             return None
-        from lumi.contracts.payloads.common import Empty as _Empty
 
         try:
-            listing = await self.registry.list_nodes(_Empty())
+            # codegen drops the request argument for ops whose request type is Empty,
+            # so this takes no payload. Passing one raised a TypeError that the except
+            # below swallowed, which made every dependency look permanently down.
+            listing = await self.registry.list_nodes()
         except Exception as exc:
-            log.debug("registry unreachable: %s", exc)
+            log.warning("registry unreachable: %s", exc, exc_info=True)
             return None
         return {n.equipment for n in listing.nodes if n.status == "up"}
 

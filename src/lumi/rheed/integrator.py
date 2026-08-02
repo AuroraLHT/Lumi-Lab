@@ -74,8 +74,11 @@ class MultiBoxIntegrator(threading.Thread):
                 mean=float(np.mean(aoi)), 
                 max=float(np.max(aoi)), 
                 min=float(np.min(aoi)), 
-                height=int(bbox[2]-bbox[0]), 
-                width=int(bbox[3]-bbox[1]), 
+                # bbox is [x1, y1, x2, y2]: the x-extent is the width, the y-extent
+                # the height. These two were swapped, so every reported box came back
+                # transposed even though the centers (below) were right.
+                width=int(bbox[2]-bbox[0]),
+                height=int(bbox[3]-bbox[1]),
                 center_x=float((bbox[0]+bbox[2])/2), 
                 center_y=float((bbox[1]+bbox[3])/2)
             )

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import queue
+from collections import deque
 
 from lumi.contracts.payloads.common import Ack
 from lumi.contracts.payloads.rheed import (
@@ -112,21 +113,42 @@ def _sample(result, header) -> IntegrationSample:
 
 
 class STFTHandler:
+    """The STFT of a box is computed from that box's *integration* series, so the
+    calculator tracks a subset of the integrator's boxes rather than boxes of its own.
+    Its API is therefore register_integration/remove_integration keyed on a bbox_id --
+    this handler used to call register_bbox/remove_bbox/.bboxes, none of which exist
+    on STFTCalculator, so every register raised AttributeError.
+    """
+
     def __init__(self, calculator, stream_queue: "queue.Queue | None" = None) -> None:
         self.calculator = calculator
         self.stream_queue = stream_queue
+        #: The calculator emits one dict of {bbox_id: result} per hop, but the contract's
+        #: stream is one box per message, so flatten into here and drain one at a time.
+        self._pending: "deque[STFTSample]" = deque()
 
     async def register(self, req: RegisterBBox) -> Ack:
-        self.calculator.register_bbox(bbox=_bbox_to_raw(req.bbox), bbox_id=req.bbox_id)
+        # register_integration reads integrator.bboxes[bbox_id], so the box has to exist
+        # on the integrator first -- otherwise it is a KeyError. Registering it here lets
+        # a client subscribe to the STFT of a box directly, as the frontend does.
+        integrator = self.calculator.integrator
+        if req.bbox_id not in integrator.bboxes:
+            integrator.register_bbox(bbox=_bbox_to_raw(req.bbox), bbox_id=req.bbox_id)
+        self.calculator.register_integration(req.bbox_id)
         return Ack()
 
     async def remove(self, req: BBoxId) -> Ack:
-        self.calculator.remove_bbox(req.bbox_id)
+        # Only stops the STFT. The underlying integration is left registered: a client
+        # may still be plotting its oscillation, and integrator.remove drops it properly.
+        self.calculator.remove_integration(req.bbox_id)
         return Ack()
 
     async def bboxes(self, req) -> BBoxList:
         return BBoxList(
-            bboxes={bid: _bbox_to_model(raw) for bid, raw in self.calculator.bboxes.items()}
+            bboxes={
+                bid: _bbox_to_model(raw)
+                for bid, raw in self.calculator.registered_integrations.items()
+            }
         )
 
     async def cache(self, req: BBoxId) -> STFTCache:
@@ -139,16 +161,27 @@ class STFTHandler:
         )
 
     async def next(self) -> STFTSample | None:
+        if self._pending:
+            return self._pending.popleft()
         if self.stream_queue is None:
             return None
         try:
-            result, header = self.stream_queue.get_nowait()
+            results, _header = self.stream_queue.get_nowait()
         except queue.Empty:
             return None
-        bbox_id = int((header or {}).get("bbox_id", -1))
-        return STFTSample(bbox_id=bbox_id, result=FFTResult(**dict(result)))
+        # `results` is {bbox_id: FFTResult} for one hop, and the header carries a
+        # stft_uuid rather than a bbox_id -- reading bbox_id off the header always gave
+        # -1 and treating the whole dict as a single FFTResult raised on every sample.
+        self._pending.extend(
+            STFTSample(bbox_id=int(bid), result=FFTResult(**dict(res)))
+            for bid, res in (results or {}).items()
+        )
+        return self._pending.popleft() if self._pending else None
 
     def readout(self) -> STFTReadout:
+        config = self.calculator.config
         return STFTReadout(
-            registered_bboxes=sorted(getattr(self.calculator, "bboxes", {})),
+            registered_bboxes=sorted(self.calculator.registered_integrations),
+            window_size=int(config.window_size),
+            time_resolution=float(config.time_resolution),
         )

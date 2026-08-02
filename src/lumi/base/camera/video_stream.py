@@ -74,6 +74,14 @@ class VideoCompressor(threading.Thread):
         self.frame_current_time = None
         self.frame_prev_pts = None
 
+        #: Producer health. `is_streaming` on the wire is a transport flag owned by the
+        #: server and says nothing about whether this thread is alive, so these are the
+        #: only signals that distinguish "encoding" from "died 20 minutes ago".
+        self.error: Optional[str] = None
+        self.n_failures = 0
+        self.n_fragments = 0
+        self.last_fragment_at: Optional[float] = None
+
     def get_time_diff(self, current_time):
         time_diff = current_time - self.frame_start_time
         return time_diff
@@ -90,7 +98,13 @@ class VideoCompressor(threading.Thread):
         frame = av.VideoFrame.from_ndarray(cv_frame, format='rgb24')
         
         pts = round(time_diff / self.config.time_base)
-        if pts == self.frame_prev_pts: pts+=1
+        # Frame times come from time.time() (see sim_camera/pylon_camera), a wall clock
+        # that can step *backwards* -- NTP correction, or a laptop/VM resuming. The muxer
+        # requires strictly increasing dts and fails the packet with EINVAL (errno 22)
+        # otherwise, which is what killed this thread. Guarding only `pts == prev` caught
+        # a stalled clock but not a rewound one.
+        if self.frame_prev_pts is not None and pts <= self.frame_prev_pts:
+            pts = self.frame_prev_pts + 1
         frame.pts = pts
         frame.dts = pts
         frame.time_base = self.config.time_base
@@ -248,10 +262,80 @@ class VideoCompressor(threading.Thread):
 
 
     def run(self):
-        for content in self.yield_video():
-            self.fragments.put(content)
-            # with self.io_lock:
-            #     self.fragments.append(fragment)
+        """Encode until stopped, rebuilding the encoder if it throws.
+
+        This used to be a bare `for content in self.yield_video(): put(content)`. Since
+        yield_video re-raises on any encode/mux failure, one bad packet propagated out of
+        run(), the thread exited, and *nothing else changed*: the server's is_streaming
+        stayed True and error stayed None, so the capability advertised a healthy video
+        feed over a dead producer. initial_fragments kept working (it reads a plain list
+        that outlives the thread), so only the live stream went silent -- and a full
+        process restart was the only way back.
+        """
+        while not self._stop_event.is_set():
+            try:
+                for content in self.yield_video():
+                    self._put_fragment(content)
+            except Exception as exc:
+                self.error = f"{type(exc).__name__}: {exc}"
+                self.n_failures += 1
+                logging.exception(
+                    "Video compressor failed (%s); rebuilding the encoder", self.error
+                )
+            else:
+                break  # yield_video returned normally: a clean stop.
+
+            # Back off before rebuilding: a failure that reproduces immediately (a bad
+            # codec config rather than one malformed packet) must not become a hot loop.
+            if self._stop_event.wait(max(self.config.idle_time, 1.0)):
+                break
+            self._reset_encoder_state()
+
+    def _reset_encoder_state(self):
+        """Drop everything tied to the container we are about to replace.
+
+        A new container emits a new `moov`, so the cached startup fragments and any
+        queued fragments belong to a stream clients can no longer decode against it.
+        Serving a stale init segment is worse than serving none.
+        """
+        self.clear()
+        self.frame_start_time = None
+        self.frame_current_time = None
+        self.frame_prev_pts = None
+
+    def _put_fragment(self, content):
+        """Never block the encoder on a slow consumer.
+
+        A plain blocking put() on a bounded queue parks the producer forever if the drain
+        stalls -- again with the capability still reporting itself healthy. For live video
+        the stale fragment is the one to discard, not the new one.
+        """
+        try:
+            self.fragments.put_nowait(content)
+        except queue.Full:
+            try:
+                self.fragments.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.fragments.put_nowait(content)
+            except queue.Full:
+                return
+        self.n_fragments += 1
+        self.last_fragment_at = time.time()
+        self.error = None
+
+    def is_producing(self, stale_after: float = 5.0) -> bool:
+        """True when the encoder thread is alive *and* recently published.
+
+        `is_alive()` alone is not enough: the thread can be alive but parked. Callers use
+        this to tell a working feed from one that only looks like it is working.
+        """
+        if not self.is_alive():
+            return False
+        if self.last_fragment_at is None:
+            return True  # started, not yet past the first keyframe
+        return (time.time() - self.last_fragment_at) < stale_after
 
     def clear(self):
         while not self.fragments.empty():
