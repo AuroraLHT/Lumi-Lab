@@ -65,6 +65,10 @@ class BusProxy:
     to every browser. Browsers never hold broker credentials.
     """
 
+    #: Per-stream-channel prefetch. Only bites once a consumer acks (stream queues are
+    #: no_ack today), but it costs nothing and bounds the damage if that ever changes.
+    stream_prefetch = 32
+
     def __init__(self, connection: AbstractConnection, channel: AbstractChannel) -> None:
         self.connection = connection
         self.channel = channel
@@ -100,19 +104,40 @@ class BusProxy:
         equipment, cap = self.caps[target]
         return equipment, cap, self.clients[target]
 
-    async def make_stream_client(self, target: str) -> CapabilityClient:
-        """A fresh client with its own queue, for one session's subscription.
+    async def make_stream_client(self, target: str) -> tuple[CapabilityClient, AbstractChannel]:
+        """A fresh client with its own queue AND its own channel, for one subscription.
 
         Streams are stateful: a shared client has one callback and one queue, so two
         browsers watching the camera would overwrite each other and one unsubscribe
         would stop the feed for both. Each session gets its own instead -- which is
         also how N browsers each receive the full feed.
+
+        The dedicated *channel* is what keeps a stream from taking the bridge down with
+        it. Everything used to multiplex over `self.channel`: every browser's camera
+        feed and every RPC. A stream consumer is `no_ack`, so the broker pushes frames
+        with no flow control at all -- and chamber.camera alone was ~900KB per frame at
+        25fps then (it streams MJPEG now, ~50KB, but nothing here should depend on that:
+        rheed.camera still streams raw arrays and a 12-bit sensor is larger still).
+        Tearing a subscription down means `queue.cancel`/`queue.delete`, which
+        are themselves round-trips on that same channel, so cleanup for a disconnected
+        browser queued up behind a flood of frames destined for its dead socket. The
+        session then never finished closing, its consumer was never cancelled, and the
+        next reconnect added another one. Per-channel isolation bounds the damage to
+        the one subscription, and closing the channel cancels its consumer and reaps
+        its exclusive queue in a single operation.
         """
         equipment, cap = self.caps[target]
-        exchange = self._exchanges[REGISTRY[equipment].exchange]
-        client = CapabilityClient(cap, equipment, channel=self.channel, exchange=exchange)
+        channel = await self.connection.channel()
+        await channel.set_qos(prefetch_count=self.stream_prefetch)
+        contract = REGISTRY[equipment]
+        # An Exchange object is bound to the channel that declared it, so the shared
+        # one cannot be reused here. This is a no-op declare of an existing exchange.
+        exchange = await channel.declare_exchange(
+            contract.exchange, ExchangeType(contract.exchange_type), durable=True
+        )
+        client = CapabilityClient(cap, equipment, channel=channel, exchange=exchange)
         await client.start()
-        return client
+        return client, channel
 
 
 # --- one browser connection -------------------------------------------------
@@ -130,9 +155,16 @@ class BridgeSession:
     proxy: BusProxy
     role: str
     user: str = "anonymous"
-    # This session's own stream clients, one per subscribed target -- its own queues,
-    # independent of every other browser.
-    _stream_clients: dict[str, CapabilityClient] = field(default_factory=dict)
+    #: Deadline on each broker round-trip during teardown. Generous enough for a healthy
+    #: broker, short enough that a wedged one cannot leak a session forever.
+    teardown_timeout: float = 5.0
+    # This session's own stream clients, one per subscribed target -- its own queues
+    # and its own channel, independent of every other browser.
+    _stream_clients: dict[str, tuple[CapabilityClient, AbstractChannel]] = field(default_factory=dict)
+    #: Set as soon as a send fails. A stream consumer runs in its own task and cannot
+    #: see that the socket died, so without this it happily forwards a 25fps feed into
+    #: a closed transport, logging a full traceback per frame.
+    _closed: bool = False
 
     async def run(self) -> None:
         try:
@@ -198,10 +230,10 @@ class BridgeSession:
         resp = {"kind": "response", "correlation_id": cid}
         if wire_payload is not None:
             resp["meta"] = model.model_dump()
-            await self.ws.send_bytes(pack(resp, wire_payload))
+            await self._send(pack(resp, wire_payload))
         else:
             resp["body"] = model.model_dump()
-            await self.ws.send_bytes(pack(resp))
+            await self._send(pack(resp))
 
     async def _call(self, cap: Capability, client: CapabilityClient, op_name: str, payload: bytes):
         op = cap.op(op_name)
@@ -253,41 +285,95 @@ class BridgeSession:
         codec = spec.codec
 
         async def forward(model, decoded) -> None:
+            if self._closed:
+                return
             # Re-encode the binary payload to wire bytes (npy/raw) for the browser, the
             # same as for RPCs; JSON streams carry their data in meta and need no body.
             if decoded is not None and codec is not Codec.JSON:
                 body, _ = encode_body(model, codec, decoded)
             else:
                 body = b""
-            await self.ws.send_bytes(pack(
+            # _send latches on failure, so a browser that has gone away costs one quiet
+            # log line -- not the traceback per frame (25MB of them) that used to burn
+            # the event loop the still-live sessions need.
+            await self._send(pack(
                 {"kind": "stream", "target": target, "stream": stream, "meta": model.model_dump()},
                 body,
             ))
 
-        # A per-session client, so this browser's subscribe/unsubscribe never touches
-        # another's feed.
-        stream_client = await self.proxy.make_stream_client(target)
+        # A per-session client on its own channel, so this browser's subscribe /
+        # unsubscribe / disconnect never touches another's feed or the RPC path.
+        stream_client, channel = await self.proxy.make_stream_client(target)
         if spec is cap.stream:
             await stream_client.subscribe_stream(forward)
         else:
             await stream_client.subscribe_updates(forward)
-        self._stream_clients[target] = stream_client
+        # Re-subscribing to a target it already holds used to overwrite the entry and
+        # orphan the old client -- still consuming, no longer reachable by cleanup.
+        previous = self._stream_clients.get(target)
+        self._stream_clients[target] = (stream_client, channel)
+        if previous is not None:
+            await self._release(*previous)
 
     async def _unsubscribe(self, header: dict) -> None:
         target = header.get("target", "")
-        client = self._stream_clients.pop(target, None)
-        if client is not None:
-            await client.stop()
+        entry = self._stream_clients.pop(target, None)
+        if entry is not None:
+            await self._release(*entry)
+
+    async def _release(self, client: CapabilityClient, channel: AbstractChannel) -> None:
+        """Tear one subscription down, and never let it block the caller.
+
+        Close the channel *first*, and do not try to cancel the consumer gracefully.
+        A stream queue is `no_ack`, so the broker keeps pushing frames regardless of
+        what the consumer wants; `Basic.Cancel` is a round-trip that has to make it
+        through that flood, and on a 900KB-per-frame camera feed it does not return --
+        measurably, it blows a 5s deadline. Closing the channel needs no cooperation
+        from the delivery stream: it cancels every consumer on it at once, and because
+        these queues are exclusive and auto-delete the broker reaps them with it.
+
+        client.stop() still runs afterwards to clear the client's own bookkeeping and
+        cancel pending futures. Its queue RPCs fail fast against a closed channel, which
+        is exactly what we want -- they have nothing left to do.
+        """
+        try:
+            await asyncio.wait_for(channel.close(), timeout=self.teardown_timeout)
+        except Exception:
+            log.warning("stream channel did not close cleanly", exc_info=True)
+        try:
+            await asyncio.wait_for(client.stop(), timeout=self.teardown_timeout)
+        except Exception:
+            log.debug("stream client bookkeeping did not clear", exc_info=True)
+
+    async def _send(self, frame: bytes) -> None:
+        """The one way anything reaches the browser.
+
+        Every send can lose a race with the socket closing -- an in-flight RPC reply, a
+        stream frame, an error. Latching here means one quiet log line per session
+        instead of a traceback per attempt, and it stops later work on a dead socket.
+        """
+        if self._closed:
+            return
+        try:
+            await self.ws.send_bytes(frame)
+        except Exception:
+            self._closed = True
+            log.debug("browser gone; dropping outbound frame for %s", self.user)
 
     async def _error(self, cid, error_type: str, message: str) -> None:
-        await self.ws.send_bytes(pack(
+        await self._send(pack(
             {"kind": "error", "correlation_id": cid, "error_type": error_type, "error_message": message}
         ))
 
     async def _cleanup(self) -> None:
-        for client in self._stream_clients.values():
-            try:
-                await client.stop()
-            except Exception:
-                pass
+        # Latch first: the consumers are still live until _release returns, and there is
+        # no socket left to write to.
+        self._closed = True
+        entries = list(self._stream_clients.values())
         self._stream_clients.clear()
+        # Concurrently, so one slow teardown does not delay the others -- they are on
+        # separate channels now, and each is already bounded by its own timeout.
+        await asyncio.gather(
+            *(self._release(client, channel) for client, channel in entries),
+            return_exceptions=True,
+        )
