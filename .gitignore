@@ -142,3 +142,9 @@ dmypy.json
 
 # MI-mode simulator scratch output (written at runtime by the chamber sim)
 src/lumi/pascal/assets/mi_mode/
+
+# Claude Code's local scaffolding. Linked worktrees live under .claude/worktrees/,
+# so without this a `git add -A` from the top of the repo records the worktree as an
+# embedded repository -- a gitlink no clone can resolve. Purely local; nothing here
+# belongs in history.
+.claude/
