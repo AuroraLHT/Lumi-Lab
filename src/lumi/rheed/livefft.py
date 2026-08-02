@@ -191,12 +191,15 @@ class STFTCalculator(threading.Thread):
                             # t_after_computed = time.time()
                             # print(f"fft computed within the time of {t_after_computed - t_before_computed}")
                             
-                            self.live_stft_cache[bbox_id].append( (fft_freq, fft)  )
-
                             # t_b = time.time()
                             content = self.package_fft_result( fft_freq, fft, resampled_time, resampled_signal )
                             # t_a = time.time()
                             # print("package result time", t_b - t_a)
+
+                            # Cache the packaged result, not the raw (freq, fft) arrays:
+                            # `cache` puts these straight on the wire as FFTResult, and a
+                            # bare tuple of ndarrays cannot be serialised as one.
+                            self.live_stft_cache[bbox_id].append( content )
 
                             stfts[bbox_id] = content
 
