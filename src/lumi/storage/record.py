@@ -212,6 +212,22 @@ class Recorder(RecordDataset):
         self._buffer_integrations = {"content": [], "meta": [], "bbox_idx_start": [], "bbox_idx_end": [], "integration_idx": []}
         self._lock_buffer_integrations = threading.Lock()
 
+        # Every save_* below runs on RecorderServer's ThreadPoolExecutor, which is
+        # max_workers=8 -- so eight threads mutate this recorder at once. Each save is
+        # allocate-an-index, resize-if-needed, write, bump size: four read-modify-write
+        # steps on shared state, none of them atomic. Two threads could take the same
+        # index and silently overwrite each other's frame.
+        #
+        # This lock makes one save atomic. It costs close to nothing: h5py routes every
+        # API call through its own global lock (h5py._objects.phil), so these threads
+        # were already serialised inside HDF5. The pool's real job is keeping the
+        # asyncio event loop off blocking file IO, and that is unaffected.
+        #
+        # Reentrant because save_integrations_buffered allocates under it and then
+        # calls _save_integrations_buffered_data, which takes it again. Acquire it
+        # *inside* _lock_buffer_integrations, never the other way round.
+        self._lock_write = threading.RLock()
+
     def check_save(self, save_flag, flag_name):
         if not save_flag: 
             logging.warning(f"save flag {flag_name} is not enabled")
@@ -442,35 +458,62 @@ class Recorder(RecordDataset):
         self._idx_integration = 0
         self._idx_integration_bbox = 0
 
+    # The next_*_idx properties below CONSUME an index: reading one increments the
+    # counter. Never touch them to find out how much has been written -- that hands
+    # out an index nobody writes to and desynchronises the sequence. Use the
+    # *_written properties further down for that.
+
+    def _next_idx(self, attr, n=1):
+        """Hand out the next `n` indices for `attr` as one atomic step.
+
+        Taking a block rather than calling a property n times matters for the
+        integration path, which writes a contiguous slice and would be corrupted by
+        another thread allocating in the middle of its run.
+        """
+        with self._lock_write:
+            idx = getattr(self, attr)
+            setattr(self, attr, idx + n)
+            return idx
+
     @property
     def next_log_idx(self):
-        idx = self._idx_log
-        self._idx_log += 1
-        return idx
-    
+        return self._next_idx("_idx_log")
+
     @property
     def next_frame_idx(self):
-        idx = self._idx_frame
-        self._idx_frame += 1
-        return idx
+        return self._next_idx("_idx_frame")
 
     @property
     def next_detection_idx(self):
-        idx = self._idx_detection
-        self._idx_detection += 1
-        return idx
+        return self._next_idx("_idx_detection")
 
     @property
     def next_integration_idx(self):
-        idx = self._idx_integration
-        self._idx_integration += 1
-        return idx
+        return self._next_idx("_idx_integration")
 
     @property
     def next_integration_bbox_idx(self):
-        idx = self._idx_integration_bbox
-        self._idx_integration_bbox += 1
-        return idx
+        return self._next_idx("_idx_integration_bbox")
+
+    # Side-effect-free counts, for anything that wants to *display* progress. These
+    # read frames written, not frames received: the speed limiter returns before the
+    # index is consumed, which is the right semantic for a progress bar.
+
+    @property
+    def frames_written(self):
+        return self._idx_frame
+
+    @property
+    def logs_written(self):
+        return self._idx_log
+
+    @property
+    def detections_written(self):
+        return self._idx_detection
+
+    @property
+    def integrations_written(self):
+        return self._idx_integration
 
     def save_log(
             self, 
@@ -481,12 +524,14 @@ class Recorder(RecordDataset):
         self.check_save(self.config.save_log, flag_name="save_log")
 
         if resize_step is None: resize_step = self.RESIZE_STEP
-        _idx = self.next_log_idx if idx is None else idx
 
-        resize_if_over(_idx, self.ds_log, resize_step=self.RESIZE_STEP)
-        self.ds_log[_idx] = [ str(chamber_log[k]) for k in self.ds_log.attrs['columns'] ]
+        with self._lock_write:
+            _idx = self.next_log_idx if idx is None else idx
 
-        if idx is None: self.ds_log.attrs['size'] += 1
+            resize_if_over(_idx, self.ds_log, resize_step=self.RESIZE_STEP)
+            self.ds_log[_idx] = [ str(chamber_log[k]) for k in self.ds_log.attrs['columns'] ]
+
+            if idx is None: self.ds_log.attrs['size'] += 1
 
     def save_frame(
             self, 
@@ -503,18 +548,20 @@ class Recorder(RecordDataset):
                 return
 
         if resize_step is None: resize_step = self.RESIZE_STEP
-        # this would break the order of storage
-        _idx = self.next_frame_idx if idx is None else idx
-        # logging.info(f"save_frame data {_idx}")
-        resize_if_over(_idx, self.ds_frame, resize_step=resize_step)
-        self.ds_frame[_idx] = frame if frame.ndim == 2 else frame[..., 0]
-        # logging.info(f"save_frame meta {_idx} done")
-        resize_if_over(_idx, self.ds_frame_meta, resize_step=resize_step)
-        self.ds_frame_meta[_idx] = [ str(frame_headers[k]) for k in self.ds_frame_meta.attrs['columns'] ]
 
-        # logging.info(f"add size")
-        if idx is None: self.ds_frame.attrs['size'] += 1
-        if idx is None: self.ds_frame_meta.attrs['size'] += 1
+        with self._lock_write:
+            # this would break the order of storage
+            _idx = self.next_frame_idx if idx is None else idx
+            # logging.info(f"save_frame data {_idx}")
+            resize_if_over(_idx, self.ds_frame, resize_step=resize_step)
+            self.ds_frame[_idx] = frame if frame.ndim == 2 else frame[..., 0]
+            # logging.info(f"save_frame meta {_idx} done")
+            resize_if_over(_idx, self.ds_frame_meta, resize_step=resize_step)
+            self.ds_frame_meta[_idx] = [ str(frame_headers[k]) for k in self.ds_frame_meta.attrs['columns'] ]
+
+            # logging.info(f"add size")
+            if idx is None: self.ds_frame.attrs['size'] += 1
+            if idx is None: self.ds_frame_meta.attrs['size'] += 1
         # print(f"done {_idx}")
 
     def save_prediction(
@@ -540,61 +587,65 @@ class Recorder(RecordDataset):
                 return
         
         if resize_step is None: resize_step = self.RESIZE_STEP
-        _idx = self.next_detection_idx if idx is None else idx
 
         num_detection = len(masks)
         num_tracking = len(tracking)
 
-        if num_detection > 0:
-            # num detection
-            resize_if_over(_idx, self.ds_num_detection, resize_step, axis=0)
-            self.ds_num_detection[_idx] = num_detection
-            # pattern
-            resize_if_over(_idx, self.ds_pattern, resize_step, axis=0)
-            self.ds_pattern[_idx] = pattern
-            # classification
-            resize_if_over(_idx, self.ds_classification, resize_step, axis=0)
-            if isinstance(cls_result, dict):
-                cls_result = [ cls_result[k] for k in self.ds_classification.attrs['class_name'] ]
-            self.ds_classification[_idx] = cls_result
-            # instance segmentation
-            resize_if_over(_idx, self.ds_instance_segmentation, resize_step, axis=0)
-            resize_if_over(num_detection, self.ds_instance_segmentation, resize_absolute=num_detection, axis=1 )
-            self.ds_instance_segmentation[_idx, :len(masks) ] = masks
-            # detection
-            resize_if_over(_idx, self.ds_detection, resize_step, axis=0)
-            resize_if_over(num_detection, self.ds_detection, resize_absolute=num_detection, axis=1 )
+        # One prediction touches seven datasets; all of them have to move together or
+        # the row at _idx means different things in different datasets.
+        with self._lock_write:
+            _idx = self.next_detection_idx if idx is None else idx
 
-            detections = np.concatenate( (bboxes, np.stack( (labels, scores), axis=1)), axis=1 )
-            
-            self.ds_detection[_idx, :len(detections) ] = detections
+            if num_detection > 0:
+                # num detection
+                resize_if_over(_idx, self.ds_num_detection, resize_step, axis=0)
+                self.ds_num_detection[_idx] = num_detection
+                # pattern
+                resize_if_over(_idx, self.ds_pattern, resize_step, axis=0)
+                self.ds_pattern[_idx] = pattern
+                # classification
+                resize_if_over(_idx, self.ds_classification, resize_step, axis=0)
+                if isinstance(cls_result, dict):
+                    cls_result = [ cls_result[k] for k in self.ds_classification.attrs['class_name'] ]
+                self.ds_classification[_idx] = cls_result
+                # instance segmentation
+                resize_if_over(_idx, self.ds_instance_segmentation, resize_step, axis=0)
+                resize_if_over(num_detection, self.ds_instance_segmentation, resize_absolute=num_detection, axis=1 )
+                self.ds_instance_segmentation[_idx, :len(masks) ] = masks
+                # detection
+                resize_if_over(_idx, self.ds_detection, resize_step, axis=0)
+                resize_if_over(num_detection, self.ds_detection, resize_absolute=num_detection, axis=1 )
 
-        resize_if_over(_idx, self.ds_detection_meta, resize_step=resize_step)
-        self.ds_detection_meta[_idx] = [ str(detection_meta[k]) for k in self.ds_detection_meta.attrs['columns'] ]
+                detections = np.concatenate( (bboxes, np.stack( (labels, scores), axis=1)), axis=1 )
 
-        # tracking
-        resize_if_over(_idx, self.ds_num_tracking, resize_step, axis=0)
-        self.ds_num_tracking[_idx] = num_tracking
+                self.ds_detection[_idx, :len(detections) ] = detections
 
-        resize_if_over(_idx, self.ds_tracking, resize_step, axis=0)
-        resize_if_over(num_tracking, self.ds_tracking, resize_absolute=num_tracking, axis=1 )
-        if isinstance(tracking, dict):
-            # assume tracking is region -> track relationship
-            _tracking = -np.ones(num_tracking)
-            for k, v in tracking.items():
-                _tracking[int(k)] = int(v)
-        else:
-            _tracking = tracking
+            resize_if_over(_idx, self.ds_detection_meta, resize_step=resize_step)
+            self.ds_detection_meta[_idx] = [ str(detection_meta[k]) for k in self.ds_detection_meta.attrs['columns'] ]
 
-        self.ds_tracking[_idx, :len(tracking) ] = _tracking
+            # tracking
+            resize_if_over(_idx, self.ds_num_tracking, resize_step, axis=0)
+            self.ds_num_tracking[_idx] = num_tracking
 
-        if idx is None: self.ds_pattern.attrs['size'] += 1
-        if idx is None: self.ds_detection_meta.attrs['size'] += 1
-        if idx is None: self.ds_classification.attrs['size'] += 1
-        if idx is None: self.ds_instance_segmentation.attrs['size'] += 1
-        if idx is None: self.ds_detection.attrs['size'] += 1
-        if idx is None: self.ds_tracking.attrs['size'] += 1
-        if idx is None: self.ds_num_tracking.attrs['size'] += 1
+            resize_if_over(_idx, self.ds_tracking, resize_step, axis=0)
+            resize_if_over(num_tracking, self.ds_tracking, resize_absolute=num_tracking, axis=1 )
+            if isinstance(tracking, dict):
+                # assume tracking is region -> track relationship
+                _tracking = -np.ones(num_tracking)
+                for k, v in tracking.items():
+                    _tracking[int(k)] = int(v)
+            else:
+                _tracking = tracking
+
+            self.ds_tracking[_idx, :len(tracking) ] = _tracking
+
+            if idx is None: self.ds_pattern.attrs['size'] += 1
+            if idx is None: self.ds_detection_meta.attrs['size'] += 1
+            if idx is None: self.ds_classification.attrs['size'] += 1
+            if idx is None: self.ds_instance_segmentation.attrs['size'] += 1
+            if idx is None: self.ds_detection.attrs['size'] += 1
+            if idx is None: self.ds_tracking.attrs['size'] += 1
+            if idx is None: self.ds_num_tracking.attrs['size'] += 1
 
     def _save_integrations_buffered_data(
             self, integrations_data, integrations_meta, 
@@ -602,25 +653,26 @@ class Recorder(RecordDataset):
             # is_append = True,
         ):
         
-        resize_if_over(integrations_bbox_idx_end[-1], self.ds_integration, resize_step=self.RESIZE_STEP)        
-        self.ds_integration[integrations_bbox_idx_start[0]:integrations_bbox_idx_end[-1]+1] = integrations_data
-        # print("save integration", integrations_bbox_idx_start, integrations_bbox_idx_end)
+        with self._lock_write:
+            resize_if_over(integrations_bbox_idx_end[-1], self.ds_integration, resize_step=self.RESIZE_STEP)
+            self.ds_integration[integrations_bbox_idx_start[0]:integrations_bbox_idx_end[-1]+1] = integrations_data
+            # print("save integration", integrations_bbox_idx_start, integrations_bbox_idx_end)
 
-        resize_if_over(integrations_bbox_idx_end[-1], self.ds_integration_meta, resize_step=self.RESIZE_STEP)
-        self.ds_integration_meta[integrations_bbox_idx_start[0]:integrations_bbox_idx_end[-1]+1] = integrations_meta
-        # print("save integration meta", integrations_bbox_idx_start, integrations_bbox_idx_end)
+            resize_if_over(integrations_bbox_idx_end[-1], self.ds_integration_meta, resize_step=self.RESIZE_STEP)
+            self.ds_integration_meta[integrations_bbox_idx_start[0]:integrations_bbox_idx_end[-1]+1] = integrations_meta
+            # print("save integration meta", integrations_bbox_idx_start, integrations_bbox_idx_end)
 
-        resize_if_over(integrations_idx[-1], self.ds_integration_root, resize_step=self.RESIZE_STEP)
-        _integrations_root_content = np.stack([ integrations_bbox_idx_start, integrations_bbox_idx_end ], axis=1)
+            resize_if_over(integrations_idx[-1], self.ds_integration_root, resize_step=self.RESIZE_STEP)
+            _integrations_root_content = np.stack([ integrations_bbox_idx_start, integrations_bbox_idx_end ], axis=1)
 
-        self.ds_integration_root[integrations_idx[0]:integrations_idx[-1]+1] = _integrations_root_content
-        # print("save integration index", _integration_idx)
+            self.ds_integration_root[integrations_idx[0]:integrations_idx[-1]+1] = _integrations_root_content
+            # print("save integration index", _integration_idx)
 
-        # if is_append:
+            # if is_append:
 
-        self.ds_integration.attrs['size'] += integrations_bbox_idx_end[-1] - integrations_bbox_idx_start[0] + 1
-        self.ds_integration_root.attrs['size'] += len(integrations_idx)
-        self.ds_integration_meta.attrs['size'] += integrations_bbox_idx_end[-1] - integrations_bbox_idx_start[0] + 1
+            self.ds_integration.attrs['size'] += integrations_bbox_idx_end[-1] - integrations_bbox_idx_start[0] + 1
+            self.ds_integration_root.attrs['size'] += len(integrations_idx)
+            self.ds_integration_meta.attrs['size'] += integrations_bbox_idx_end[-1] - integrations_bbox_idx_start[0] + 1
 
     def save_integrations_buffered(
         self,
@@ -638,8 +690,15 @@ class Recorder(RecordDataset):
         _integrations_data = np.zeros((len(integrations), len(self._integration_columns)), dtype=np.float32)
         _integrations_meta = np.zeros((len(integrations), len(self._integration_meta_columns)), dtype=np.object_)
 
+        # The root index and the whole run of per-bbox indices are taken together.
+        # _save_integrations_buffered_data writes one contiguous slice
+        # [bbox_idx_start[0] : bbox_idx_end[-1]+1], so this run has to be unbroken --
+        # allocating one bbox index at a time let another thread interleave into the
+        # middle of it, and the slice then covered rows belonging to both.
         # if integration_idx is None:
-        _integrations_idx = self.next_integration_idx
+        with self._lock_write:
+            _integrations_idx = self.next_integration_idx
+            _bbox_idx_base = self._next_idx("_idx_integration_bbox", len(integrations))
         _integrations_bbox_idx_start, _integrations_bbox_idx_end = None, None
         # else:
         #     _integrations_idx = integration_idx
@@ -648,7 +707,7 @@ class Recorder(RecordDataset):
 
         bbox_idxes = []
         for i, (bbox_id, integration) in enumerate(integrations.items()):
-            _integration_bbox_idx = _integrations_bbox_idx_start + i if _integrations_bbox_idx_start is not None else self.next_integration_bbox_idx
+            _integration_bbox_idx = _integrations_bbox_idx_start + i if _integrations_bbox_idx_start is not None else _bbox_idx_base + i
             _integrations_data[i] = [int(bbox_id)] + [ integration[k] for k in self._integration_columns[1:] ]
             # create meta for each box for the ease of per bbox retrieval
             _integrations_meta[i] = [ integrations_meta[k] for k in self._integration_meta_columns ]
@@ -714,8 +773,13 @@ class Recorder(RecordDataset):
         _integrations_meta = np.zeros((len(integrations), len(self._integration_meta_columns)), dtype=np.object_)
 
         if integration_idx is None:
-            _integration_idx = self.next_integration_idx
-            _integration_bbox_idx_start, _integration_bbox_idx_end = self.next_integration_bbox_idx, None
+            with self._lock_write:
+                _integration_idx = self.next_integration_idx
+                # Reserve one slot per box. This used to take a single index while the
+                # loop below wrote len(integrations) rows starting at it, so the next
+                # call began inside the rows this one had just written.
+                _integration_bbox_idx_start = self._next_idx("_idx_integration_bbox", len(integrations))
+            _integration_bbox_idx_end = None
         else:
             _integration_idx = integration_idx
             _integration_bbox_idx_start, _integration_bbox_idx_end = self.ds_integration_root[integration_idx]
@@ -728,25 +792,27 @@ class Recorder(RecordDataset):
             _integrations_data[i] = [int(bbox_id)] + [ integration[k] for k in self._integration_columns[1:] ]
             # create meta for each box for the ease of per bbox retrieval
             _integrations_meta[i] = [ integrations_meta[k] for k in self._integration_meta_columns ]
-            resize_if_over(_integration_bbox_idx, self.ds_integration, resize_step=self.RESIZE_STEP)
-            resize_if_over(_integration_bbox_idx, self.ds_integration_meta, resize_step=self.RESIZE_STEP)
-        _integration_bbox_idx_end = _integration_bbox_idx
+            _integration_bbox_idx_end = _integration_bbox_idx
 
-        self.ds_integration[_integration_bbox_idx_start:_integration_bbox_idx_end+1] = _integrations_data
-        # print("save integration", _integration_bbox_idx_start, _integration_bbox_idx_end)
+        with self._lock_write:
+            resize_if_over(_integration_bbox_idx_end, self.ds_integration, resize_step=self.RESIZE_STEP)
+            resize_if_over(_integration_bbox_idx_end, self.ds_integration_meta, resize_step=self.RESIZE_STEP)
 
-        self.ds_integration_meta[_integration_bbox_idx_start:_integration_bbox_idx_end+1] = _integrations_meta
-        # print("save integration meta", _integration_bbox_idx_start, _integration_bbox_idx_end)
-        
-        resize_if_over(_integration_idx, self.ds_integration_root, resize_step=self.RESIZE_STEP)
-        _integrations_index_content = np.array([ _integration_bbox_idx_start, _integration_bbox_idx_end ])
+            self.ds_integration[_integration_bbox_idx_start:_integration_bbox_idx_end+1] = _integrations_data
+            # print("save integration", _integration_bbox_idx_start, _integration_bbox_idx_end)
 
-        self.ds_integration_root[_integration_idx] = _integrations_index_content
-        # print("save integration index", _integration_idx)
+            self.ds_integration_meta[_integration_bbox_idx_start:_integration_bbox_idx_end+1] = _integrations_meta
+            # print("save integration meta", _integration_bbox_idx_start, _integration_bbox_idx_end)
 
-        if integration_idx is None: self.ds_integration.attrs['size'] += _integration_bbox_idx_end - _integration_bbox_idx_start + 1
-        if integration_idx is None: self.ds_integration_root.attrs['size'] += 1
-        if integration_idx is None: self.ds_integration_meta.attrs['size'] += _integration_bbox_idx_end - _integration_bbox_idx_start + 1
+            resize_if_over(_integration_idx, self.ds_integration_root, resize_step=self.RESIZE_STEP)
+            _integrations_index_content = np.array([ _integration_bbox_idx_start, _integration_bbox_idx_end ])
+
+            self.ds_integration_root[_integration_idx] = _integrations_index_content
+            # print("save integration index", _integration_idx)
+
+            if integration_idx is None: self.ds_integration.attrs['size'] += _integration_bbox_idx_end - _integration_bbox_idx_start + 1
+            if integration_idx is None: self.ds_integration_root.attrs['size'] += 1
+            if integration_idx is None: self.ds_integration_meta.attrs['size'] += _integration_bbox_idx_end - _integration_bbox_idx_start + 1
 
 @dataclass
 class RecorderServerConfig:
