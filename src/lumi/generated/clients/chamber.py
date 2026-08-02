@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 33d6c4f476c4dda8
+# contract_hash: 5a6b14ce52d03047
 
 """Generated clients for the chamber node."""
 
@@ -17,7 +17,7 @@ from aio_pika.abc import AbstractChannel, AbstractExchange
 
 from lumi.base.mq import CapabilityClient
 from lumi.contracts.chamber import CAMERA, CONFIG, LOG, MI_MODE
-from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta
+from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta, JpegMeta
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, LogBatch, LogEntry, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 
@@ -130,7 +130,7 @@ class ChamberMiModeClient(CapabilityClient):
 
 
 class ChamberCameraClient(CapabilityClient):
-    """Chamber-facing webcam. Same contract as the RHEED camera -- which is why there is one camera handler and one generated camera client, not two."""
+    """Chamber-facing webcam. Shares the RHEED camera's ops -- which is why there is one camera handler and one generated camera client, not two -- but streams MJPEG rather than raw arrays."""
 
     def __init__(
         self,
@@ -159,7 +159,7 @@ class ChamberCameraClient(CapabilityClient):
         return await self.call("update_camera_config", req)  # type: ignore[return-value]
 
     async def on_frame(
-        self, callback: Callable[[ImageMeta, np.ndarray], Awaitable[None]]
+        self, callback: Callable[[JpegMeta, bytes], Awaitable[None]]
     ) -> None:
         """Subscribe to the frame stream.
 

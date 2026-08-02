@@ -278,6 +278,19 @@ cached_startup_fragments = 5
 bit_rate = 12000000
 name = "Video Compressor"
 
+# The chamber camera's live stream. Encoded MJPEG, not raw arrays -- see the camera
+# capability in lumi/contracts/chamber.py for why.
+#
+# queue_size is deliberately tiny: this is a live view, so when the consumer falls
+# behind the right frame to discard is the old one, and a deep buffer just adds
+# latency before it starts dropping anyway.
+[pascal.jpeg_encoder]
+quality = 80
+queue_size = 4
+idle_time = 0.1
+max_intensity = 255
+name = "JPEG Encoder"
+
 
 [pascal.mq.live_video]
 ctrl_key = "live_video_ctrl"

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from lumi.base.camera.jpeg_stream import JpegEncoder, JpegEncoderConfig
 from lumi.base.camera.sim_camera import SimCamera, SimCameraConfig
 from lumi.base.camera.web_camera import WebCamera, WebCameraConfig
 from lumi.config import settings
@@ -136,3 +137,20 @@ def build_camera(src: str):
         daemon=True,
     )
     return camera, cfg.height, cfg.width
+
+
+def build_jpeg_encoder(camera, camera_queue) -> JpegEncoder:
+    """The chamber camera's live stream encoder. See CHAMBER's camera capability."""
+    cfg = settings.pascal.jpeg_encoder
+    return JpegEncoder(
+        camera=camera,
+        camera_queue=camera_queue,
+        config=JpegEncoderConfig(
+            quality=cfg.quality,
+            queue_size=cfg.queue_size,
+            idle_time=cfg.idle_time,
+            max_intensity=cfg.max_intensity,
+        ),
+        name=cfg.name,
+        daemon=True,
+    )
