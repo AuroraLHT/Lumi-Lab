@@ -3677,18 +3677,6 @@
               "title": "Is Streaming",
               "type": "boolean"
             },
-            "n_frames": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null,
-              "title": "N Frames"
-            },
             "path": {
               "anyOf": [
                 {
