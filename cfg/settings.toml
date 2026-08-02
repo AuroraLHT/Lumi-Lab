@@ -15,6 +15,13 @@ workers = 10
 #
 #     [auth]
 #     enabled = false
+#
+# Setting this false also seeds an "anonymous" user row (id 0) in the user database,
+# because per-user UI settings are a foreign key onto users(id) and the wide-open
+# identity would otherwise have nothing to point at. That row is created inactive and
+# with a random password, so it can never be logged into and a token minted while auth
+# was off still stops working once auth is back on. With auth enabled the row is never
+# created -- this switch is the only thing that gates it.
 enabled = true
 
 # dev_mode = true permits the placeholder secret_key below. In production, set a

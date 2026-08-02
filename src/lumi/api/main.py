@@ -28,7 +28,8 @@ from lumi.config import settings
 
 from .auth import authenticate
 from .bridge import BridgeSession, BusProxy
-from .db import UserStore, bootstrap_default_user
+from .db import UserStore, bootstrap_default_user, ensure_anonymous_user
+from .deps import auth_enabled
 from .routes import auth as auth_routes
 from .routes import settings as settings_routes
 
@@ -59,6 +60,11 @@ async def lifespan(app: FastAPI):
     user_store = UserStore()
     await user_store.connect()
     await bootstrap_default_user(user_store)
+    # `auth.enabled = false` is the gate: only a wide-open (simulation/dev) backend
+    # gets the anonymous row, so a production database never grows one. Nothing else
+    # needs configuring -- production keeps auth on, and then this is skipped.
+    if not auth_enabled():
+        await ensure_anonymous_user(user_store)
     app.state.user_store = user_store
 
     connection = None

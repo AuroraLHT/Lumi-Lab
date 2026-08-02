@@ -20,6 +20,7 @@ persists and returns it. That keeps UI changes from requiring a migration here.
 import datetime
 import json
 import logging
+import secrets
 from pathlib import Path
 from typing import Any, Optional, TypedDict
 
@@ -34,6 +35,14 @@ from .security import hash_password, verify_password
 #: equipment processes, never people, so it is deliberately not offered here.
 USER_ROLES = ("viewer", "operator", "admin")
 DEFAULT_ROLE = "viewer"
+
+#: Identity of the synthetic account used when `auth.enabled` is false. `users.id` is
+#: AUTOINCREMENT, which starts at 1 and never reuses a value, so 0 cannot collide with
+#: a real account -- which is why it was chosen as the sentinel. See
+#: `ensure_anonymous_user` for why a row for it nevertheless has to exist on disk.
+ANONYMOUS_USER_ID = 0
+ANONYMOUS_USERNAME = "anonymous"
+ANONYMOUS_FULL_NAME = "Anonymous (auth disabled)"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -226,6 +235,72 @@ class UserStore:
     async def delete_settings(self, user_id: int) -> None:
         await self.db.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))
         await self.db.commit()
+
+
+async def ensure_anonymous_user(store: UserStore) -> None:
+    """Give the auth-disabled identity a real row, so its settings can be persisted.
+
+    With `auth.enabled = false` every request resolves to `deps.ANONYMOUS_USER`, whose
+    id is 0. That identity is synthetic and was never written to the database, but
+    `user_settings.user_id` is `REFERENCES users(id)` and this store turns foreign keys
+    on (they are off by default in SQLite), so saving settings raised
+
+        sqlite3.IntegrityError: FOREIGN KEY constraint failed
+
+    on every PUT /users/me/settings. Reads were unaffected -- a SELECT for a missing id
+    just returns nothing, and the route maps that to "{}" -- so the UI loaded happily
+    and silently failed to ever save anything.
+
+    The row is inserted **inactive**, with an unguessable random password. That
+    preserves the property the sentinel was chosen for in the first place: a token
+    minted while auth was off must stop working the moment auth is turned back on.
+    Both token paths (`deps._user_from_token` and the /ws `auth._identity_from_token`)
+    reject on `not user["is_active"]`, and `authenticate` checks it too, so this row
+    can anchor a foreign key but can never log in or authorise anything.
+
+    `role` mirrors ANONYMOUS_USER's "admin" so an operator listing users sees what the
+    anonymous identity actually gets at runtime. The role is never read for an
+    authorisation decision -- with auth off the hardcoded dict is used and the database
+    is not consulted; with auth on the row is refused as inactive before its role is
+    looked at -- so `is_active`, not the role, is the guard.
+
+    Only called when auth is disabled (see `main.lifespan`), so an auth-enabled
+    deployment never grows a passwordless admin-shaped row.
+    """
+    if await store.get_user_by_id(ANONYMOUS_USER_ID) is not None:
+        return
+
+    await store.db.execute(
+        "INSERT INTO users (id, username, full_name, password_hash, role, is_active,"
+        " created_at) VALUES (?, ?, ?, ?, 'admin', 0, ?) ON CONFLICT DO NOTHING",
+        (
+            ANONYMOUS_USER_ID,
+            ANONYMOUS_USERNAME,
+            ANONYMOUS_FULL_NAME,
+            # A real bcrypt hash of a value nobody holds, rather than a placeholder
+            # string: verify_password logs a warning on a malformed hash, and this
+            # fails the comparison cleanly instead.
+            hash_password(secrets.token_urlsafe(32)),
+            _now(),
+        ),
+    )
+    await store.db.commit()
+
+    if await store.get_user_by_id(ANONYMOUS_USER_ID) is None:
+        # ON CONFLICT DO NOTHING also swallows a clash on the UNIQUE username, which
+        # happens if someone created a genuine account called "anonymous". Saving
+        # settings will keep failing, so say why rather than leaving another silent 500.
+        logging.error(
+            f"Could not seed the anonymous user (id={ANONYMOUS_USER_ID}): a different "
+            f"account already uses the name {ANONYMOUS_USERNAME!r}. Per-user settings "
+            "will fail to save while auth is disabled; rename that account to fix it."
+        )
+        return
+
+    logging.info(
+        f"Seeded the inactive '{ANONYMOUS_USERNAME}' user (id={ANONYMOUS_USER_ID}) "
+        "because auth is disabled; it exists only so UI settings can be saved."
+    )
 
 
 async def bootstrap_default_user(store: UserStore) -> None:

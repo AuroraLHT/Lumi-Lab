@@ -16,7 +16,13 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from lumi.config import settings
 
-from .db import User, UserStore
+from .db import (
+    ANONYMOUS_FULL_NAME,
+    ANONYMOUS_USER_ID,
+    ANONYMOUS_USERNAME,
+    User,
+    UserStore,
+)
 from .security import TokenError, decode_access_token
 
 # auto_error=False so we can fall back to the query parameter before rejecting.
@@ -30,13 +36,20 @@ CREDENTIALS_EXCEPTION = HTTPException(
 
 #: The synthetic identity returned when auth is disabled entirely. Mirrors the
 #: /ws seam, which hands the bridge the "admin" role in the same situation.
-#: `id` is 0, which matches no real row, so a token minted for this identity
-#: stops working the moment auth is turned back on -- `_user_from_token` looks
-#: the subject up and rejects it.
+#:
+#: This dict is what requests actually run as; it is returned directly, without
+#: consulting the database. While auth is disabled `db.ensure_anonymous_user` also
+#: keeps a matching row on disk, purely so `user_settings.user_id` has a foreign key
+#: to point at -- that row is inactive and has no usable password.
+#:
+#: A token minted for this identity therefore still stops working the moment auth is
+#: turned back on: `_user_from_token` looks the subject up and rejects it, now because
+#: the row it finds is inactive rather than because no row exists. `is_active` is what
+#: enforces that, so it must stay false on the seeded row.
 ANONYMOUS_USER: User = {
-    "id": 0,
-    "username": "anonymous",
-    "full_name": "Anonymous (auth disabled)",
+    "id": ANONYMOUS_USER_ID,
+    "username": ANONYMOUS_USERNAME,
+    "full_name": ANONYMOUS_FULL_NAME,
     "role": "admin",
     "is_admin": True,
     "is_active": True,
