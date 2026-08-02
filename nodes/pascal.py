@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import logging
 
-from lumi.base.camera.handlers import CameraHandler
+from lumi.base.camera.handlers import JpegCameraHandler
 from lumi.config import settings
 from lumi.contracts.chamber import CHAMBER
 from lumi.node import EquipmentNode
@@ -19,6 +19,7 @@ from lumi.pascal.handlers import ChamberConfigHandler, ChamberLogHandler, MIMode
 from lumi.pascal.hardware import (
     build_camera,
     build_config_reader,
+    build_jpeg_encoder,
     build_log_reader,
     build_mi_mode,
 )
@@ -32,7 +33,11 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     mi_server, mi_simulator = build_mi_mode(args.src, args.mi)
     camera, _, _ = build_camera(args.src)
 
+    # The camera's in-process fan-out: one grab feeds every consumer. The stream is
+    # served from the encoder's output, not from a camera queue directly, so `frames`
+    # is the encoder's input rather than the handler's.
     frames_q = camera.register_queue("frames")
+    jpeg_encoder = build_jpeg_encoder(camera, frames_q)
 
     node = EquipmentNode(
         CHAMBER,
@@ -43,9 +48,9 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     node.mount("log", ChamberLogHandler(log_reader, getattr(log_reader, "queue", None)))
     node.mount("config", ChamberConfigHandler(config_reader))
     node.mount("mi_mode", MIModeHandler(mi_server))
-    node.mount("camera", CameraHandler(camera, frames_q))
+    node.mount("camera", JpegCameraHandler(camera, jpeg_encoder))
 
-    workers = [log_reader, config_reader, mi_server, camera]
+    workers = [log_reader, config_reader, mi_server, camera, jpeg_encoder]
     if mi_simulator is not None:
         workers.append(mi_simulator)
     for worker in workers:

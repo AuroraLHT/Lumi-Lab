@@ -23,6 +23,7 @@ from lumi.contracts.payloads.camera import (
     FragmentsSize,
     ImageMeta,
     InitialFragmentsMeta,
+    JpegMeta,
     VideoFragmentMeta,
     VideoReadout,
 )
@@ -90,6 +91,53 @@ class CameraHandler:
         )
 
 
+class JpegCameraHandler(CameraHandler):
+    """Serves a `camera` capability whose stream is MJPEG (chamber), not raw NPY.
+
+    Only `next()` differs. The ops are inherited unchanged and stay lossless -- the
+    split is the whole point: `image` is for when the pixels matter, the stream is for
+    watching. See the chamber contract for why JPEG rather than H.264.
+
+    The encoder is a separate thread rather than work done here, so `stream_queue` is
+    its output queue and this handler only re-labels what comes off it.
+    """
+
+    def __init__(self, camera, encoder, stream_queue: "queue.Queue | None" = None) -> None:
+        super().__init__(camera, stream_queue if stream_queue is not None else encoder.frames)
+        self.encoder = encoder
+
+    async def next(self) -> tuple[JpegMeta, bytes] | None:
+        if self.stream_queue is None:
+            return None
+        try:
+            blob, header = self.stream_queue.get_nowait()
+        except queue.Empty:
+            return None
+        header = header or {}
+        return (
+            JpegMeta(
+                # The camera writes `time` into the header as a *string* (see
+                # SimCamera.on_grab), so this cannot just be passed through.
+                time=float(header.get("time", 0.0)),
+                uuid=str(header.get("uuid", "")),
+                time_stamp=str(header.get("time_stamp", "")),
+                width=int(header.get("width", 0)),
+                height=int(header.get("height", 0)),
+                channels=int(header.get("channels", 3)),
+                quality=int(self.encoder.config.quality),
+            ),
+            blob,
+        )
+
+    def readout(self) -> CameraReadout:
+        readout = super().readout()
+        readout.n_encoded = getattr(self.encoder, "n_encoded", None)
+        # Reported alongside n_encoded because n_encoded on its own is misleading: the
+        # encoder evicts to make room, so it keeps counting with nothing draining.
+        readout.n_dropped = getattr(self.encoder, "n_dropped", None)
+        return readout
+
+
 class VideoHandler:
     """Serves the `video` capability: H.264 fragments for browser playback."""
 
@@ -142,6 +190,11 @@ class VideoHandler:
     def readout(self) -> VideoReadout:
         cfg = self.compressor.config
         return VideoReadout(
+            # Declared by the contract but never populated, which left no way at all to
+            # tell a live encoder from a dead one: is_streaming is a transport flag the
+            # server owns, and it stays True over a stopped producer. A count that fails
+            # to advance is the health signal, and it costs nothing.
+            n_fragments=getattr(self.compressor, "n_fragments", None),
             fragment_duration=getattr(cfg, "frames_per_keyframe", 0) / max(getattr(cfg, "fps", 1), 1),
         )
 

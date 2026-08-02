@@ -1111,28 +1111,45 @@
               "default": false,
               "title": "Is Streaming",
               "type": "boolean"
+            },
+            "n_dropped": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Dropped"
+            },
+            "n_encoded": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Encoded"
             }
           },
           "title": "CameraState",
           "type": "object"
         },
         "stream": {
-          "codec": "npy",
+          "codec": "raw",
           "name": "frame",
           "payload": {
-            "description": "Headers for a frame. The body is the np.save buffer (Codec.NPY).",
+            "description": "Headers for a JPEG-encoded frame. The body is the JFIF buffer (Codec.RAW).\n\nThe sibling of ImageMeta for capabilities that stream for *viewing* rather than\nfor analysis. It carries width/height rather than `shape`/`dtype` because the\nbody is no longer an array: the browser hands it to `createImageBitmap` and never\nlearns what the sensor's dtype was. Consumers that need the true pixels call the\n`image` op instead, which stays lossless NPY.",
             "properties": {
-              "dtype": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null,
-                "title": "Dtype"
+              "channels": {
+                "default": 3,
+                "title": "Channels",
+                "type": "integer"
               },
               "frame_idx": {
                 "anyOf": [
@@ -1146,20 +1163,21 @@
                 "default": null,
                 "title": "Frame Idx"
               },
-              "shape": {
+              "height": {
+                "title": "Height",
+                "type": "integer"
+              },
+              "quality": {
                 "anyOf": [
                   {
-                    "items": {
-                      "type": "integer"
-                    },
-                    "type": "array"
+                    "type": "integer"
                   },
                   {
                     "type": "null"
                   }
                 ],
                 "default": null,
-                "title": "Shape"
+                "title": "Quality"
               },
               "time": {
                 "title": "Time",
@@ -1172,14 +1190,20 @@
               "uuid": {
                 "title": "Uuid",
                 "type": "string"
+              },
+              "width": {
+                "title": "Width",
+                "type": "integer"
               }
             },
             "required": [
               "time",
               "uuid",
-              "time_stamp"
+              "time_stamp",
+              "width",
+              "height"
             ],
-            "title": "ImageMeta",
+            "title": "JpegMeta",
             "type": "object"
           }
         },
@@ -2196,6 +2220,30 @@
               "default": false,
               "title": "Is Streaming",
               "type": "boolean"
+            },
+            "n_dropped": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Dropped"
+            },
+            "n_encoded": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Encoded"
             }
           },
           "title": "CameraState",
