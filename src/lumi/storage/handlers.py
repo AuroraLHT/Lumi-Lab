@@ -210,6 +210,8 @@ class StorageHandler:
             classifier_classes = list(detection.classifier_classes or [])
             detector_classes = list(getattr(detection, "detector_classes", []) or [])
             pattern_dim = frame_dim
+            # Matches the keys _prediction() always puts in detection_meta (handlers.py).
+            detection_meta_columns = ["time", "time_stamp", "uuid"]
 
         cfg = settings.storage.hdf5_recorder
         return RecorderConfig(
@@ -311,7 +313,12 @@ def _prediction(result, arrays: dict[str, np.ndarray]) -> dict:
             b.mask_ref for b in boxes
         ) else np.array([])
         bboxes = np.stack([[b.x, b.y, b.x + b.width, b.y + b.height] for b in boxes])
-        labels = np.stack([b.label for b in boxes])
+        # ds_detection is a plain float32 array (label + score share it with the bbox
+        # coords), so the label needs to go back to the numeric class index it started
+        # as before _to_contract stringified it (DetectedBox.label is str for the wire
+        # contract). A string here forces the whole concatenated array to a string
+        # dtype, which h5py then can't write into the float32 dataset at all.
+        labels = np.array([float(b.label) for b in boxes], dtype=np.float32)
         scores = np.stack([b.score for b in boxes])
     else:
         masks = bboxes = labels = scores = np.array([])
