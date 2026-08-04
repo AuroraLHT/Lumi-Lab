@@ -14,6 +14,24 @@
 # wants `topic`), so the nodes can redeclare them cleanly. --no-reset-broker
 # skips that. Ctrl-C shuts every node down.
 
+# Run this directly (scripts/start_simulation.sh ...) -- do not `source`/`. ` it. In an
+# interactive shell, sourcing runs the script's background jobs and trap as jobs of
+# your own shell's job control, and bash's interactive SIGINT handling for that case
+# silently bypasses this script's own `trap ... INT` -- Ctrl-C then just aborts back to
+# your prompt without ever running the shutdown/kill-TERM loop below, leaving every node
+# process orphaned. Confirmed empirically: identical script, `bash script.sh` + Ctrl-C
+# runs the trap and cleans up; `. script.sh` + Ctrl-C does not, even though `kill -INT
+# $$` on the same sourced shell does trigger it -- so it is specifically about how the
+# terminal's SIGINT interacts with an interactive shell's foreground job control, not
+# the trap logic itself. This check has to run before `set -euo pipefail` below, or
+# sourcing has already mutated the caller's shell options by the time we bail out.
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    echo "error: don't source this script (you ran '. ${BASH_SOURCE[0]}' or 'source ...')." >&2
+    echo "  Run it directly instead: scripts/start_simulation.sh $*" >&2
+    echo "  Sourcing breaks Ctrl-C cleanup -- see the comment above this check." >&2
+    return 1
+fi
+
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
