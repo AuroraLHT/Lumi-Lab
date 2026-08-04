@@ -200,7 +200,8 @@ fi
 
 if [[ $WITH_DETECTION -eq 1 ]]; then
     # Needs torch/mmcv/mmdet/rhana, which pyproject.toml deliberately leaves out
-    # (no mmcv wheel for 3.12, rhana is not on PyPI). Install them by hand first.
+    # (no mmcv wheel for 3.12, rhana is not on PyPI). Run
+    # scripts/install_detection_deps.sh first.
     start_node detection --host "$RABBITMQ_HOST"
 fi
 
