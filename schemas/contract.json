@@ -1326,10 +1326,7 @@
                 },
                 "region2tracks": {
                   "additionalProperties": {
-                    "items": {
-                      "type": "integer"
-                    },
-                    "type": "array"
+                    "type": "integer"
                   },
                   "default": {},
                   "title": "Region2Tracks",
@@ -1619,10 +1616,7 @@
               },
               "region2tracks": {
                 "additionalProperties": {
-                  "items": {
-                    "type": "integer"
-                  },
-                  "type": "array"
+                  "type": "integer"
                 },
                 "default": {},
                 "title": "Region2Tracks",
