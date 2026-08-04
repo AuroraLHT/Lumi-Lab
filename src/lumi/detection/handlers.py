@@ -206,7 +206,7 @@ def _to_contract(
         boxes=boxes,
         classification={str(k): float(v) for k, v in (raw.get("classification") or {}).items()},
         region2tracks={
-            str(k): [int(i) for i in v] for k, v in (raw.get("region2tracks") or {}).items()
+            str(k): int(v) for k, v in (raw.get("region2tracks") or {}).items()
         },
         pattern_ref=pattern_ref,
     )

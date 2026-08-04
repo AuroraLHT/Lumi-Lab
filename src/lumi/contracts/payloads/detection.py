@@ -43,7 +43,7 @@ class DetectionResult(BaseModel):
     uuid: str
     boxes: list[DetectedBox] = []
     classification: dict[str, float] = {}
-    region2tracks: dict[str, list[int]] = {}
+    region2tracks: dict[str, int] = {}
     # Reference to the pattern buffer in the NPY payload, if not dropped.
     pattern_ref: str | None = None
 
