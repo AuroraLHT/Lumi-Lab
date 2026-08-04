@@ -600,6 +600,7 @@ class Recorder(RecordDataset):
                 # num detection
                 resize_if_over(_idx, self.ds_num_detection, resize_step, axis=0)
                 self.ds_num_detection[_idx] = num_detection
+                if idx is None: self.ds_num_detection.attrs['size'] += 1
                 # pattern
                 resize_if_over(_idx, self.ds_pattern, resize_step, axis=0)
                 self.ds_pattern[_idx] = pattern
@@ -710,7 +711,10 @@ class Recorder(RecordDataset):
             _integration_bbox_idx = _integrations_bbox_idx_start + i if _integrations_bbox_idx_start is not None else _bbox_idx_base + i
             _integrations_data[i] = [int(bbox_id)] + [ integration[k] for k in self._integration_columns[1:] ]
             # create meta for each box for the ease of per bbox retrieval
-            _integrations_meta[i] = [ integrations_meta[k] for k in self._integration_meta_columns ]
+            # ds_integration_meta is a string-dtype dataset, but IntegrationHeader.time is
+            # a float -- str() it like detection_meta's save does, or h5py refuses to
+            # write it ("Can't implicitly convert non-string objects to strings").
+            _integrations_meta[i] = [ str(integrations_meta[k]) for k in self._integration_meta_columns ]
             bbox_idxes.append(_integration_bbox_idx)
 
         _integrations_bbox_idx_start, _integrations_bbox_idx_end = bbox_idxes[0], bbox_idxes[-1]
@@ -791,7 +795,10 @@ class Recorder(RecordDataset):
             _integration_bbox_idx = _integration_bbox_idx_start + i
             _integrations_data[i] = [int(bbox_id)] + [ integration[k] for k in self._integration_columns[1:] ]
             # create meta for each box for the ease of per bbox retrieval
-            _integrations_meta[i] = [ integrations_meta[k] for k in self._integration_meta_columns ]
+            # ds_integration_meta is a string-dtype dataset, but IntegrationHeader.time is
+            # a float -- str() it like detection_meta's save does, or h5py refuses to
+            # write it ("Can't implicitly convert non-string objects to strings").
+            _integrations_meta[i] = [ str(integrations_meta[k]) for k in self._integration_meta_columns ]
             _integration_bbox_idx_end = _integration_bbox_idx
 
         with self._lock_write:
