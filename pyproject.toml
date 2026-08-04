@@ -3,7 +3,12 @@ name = "lumi"
 version = "0.1.0"
 description = "Autonomous PLD and RHEED equipment control"
 readme = "README.md"
-requires-python = ">=3.12"
+# Floor of 3.11: real code uses datetime.UTC and enum.StrEnum (both added in 3.11).
+# Capped below 3.12: mmdet hard-requires mmcv<2.2.0, but OpenMMLab only publishes
+# prebuilt mmcv<2.2.0 wheels up to cp311 -- see the `detection` extra below and
+# scripts/install_detection_deps.sh for the full story. Stopgap until mmdet is
+# replaced; lift the cap once it is.
+requires-python = ">=3.11,<3.12"
 
 # Core: what every node and every client needs. Deliberately small -- the bus,
 # the contract models, config, and arrays. Anything hardware- or role-specific
@@ -46,10 +51,11 @@ api = [
 ]
 # Detection model. NOT resolvable from PyPI alone: `rhana` is an internal package
 # and the mmdet/mmcv stack is version-coupled to the installed torch+CUDA build,
-# which uv cannot pin portably. Install these by hand on the detection host:
-#   uv pip install torch --index-url https://download.pytorch.org/whl/cu121
-#   uv pip install -U openmim && mim install mmcv mmdet mmengine
-#   uv pip install -e path/to/rhana
+# which uv cannot pin portably -- it also forces numpy<2 in this venv (torch2.1.0
+# predates NumPy 2.0) despite the numpy>=2.0 floor above, and requires the
+# requires-python<3.12 cap above it. Run scripts/install_detection_deps.sh on the
+# detection host instead of adding these to this list (see that script's header
+# for exactly what it runs and why).
 # The detection *contract* and its generated client have no such requirement --
 # only the node process that actually loads the model does.
 detection = [

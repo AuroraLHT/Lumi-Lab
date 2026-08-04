@@ -180,13 +180,13 @@ exchange_type = "direct"
 [detection.detector]
 input_queue_size = 10
 output_queue_size = 10
-detector_model_device = "cuda:3"
-detector_model_path = "/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps/epoch_12.pth"
-detector_model_config_path = "/home/hliang16/projects/RHEEDDetector/nn/cascade_maskrcnn_exps/config_predict.py"
-classifier_model_device = "cuda:3"
-classifier_model_path = "/home/hliang16/projects/RHEEDDetector/nn/efficientnet_v2_m_binary_classifier/model.pth"
-classifier_label_mapper_path = "/home/hliang16/projects/RHEEDDetector/nn/efficientnet_v2_m_binary_classifier/label_mapper.json"
-classifier_transforms_path = "/home/hliang16/projects/RHEEDDetector/nn/efficientnet_v2_m_binary_classifier/test_transforms.pth"
+detector_model_device = "cuda:0"
+detector_model_path = "/home/aurora/nn/cascade_maskrcnn_exps/epoch_12.pth"
+detector_model_config_path = "/home/aurora/nn/cascade_maskrcnn_exps/config_predict.py"
+classifier_model_device = "cuda:0"
+classifier_model_path = "/home/aurora/nn/efficientnet_v2_m_binary_classifier/model.pth"
+classifier_label_mapper_path = "/home/aurora/nn/efficientnet_v2_m_binary_classifier/label_mapper.json"
+classifier_transforms_path = "/home/aurora/nn/efficientnet_v2_m_binary_classifier/test_transforms.pth"
 name = "Detector"
 
 [detection.detector.crop_setup]
