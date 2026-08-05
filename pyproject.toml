@@ -62,6 +62,16 @@ detection = [
     "scikit-image>=0.23",
     "pillow>=10.3",
 ]
+# Experiment driver: substrate/project/growth provenance in a local SQLite database.
+experiment = [
+    "aiosqlite>=0.20",
+]
+# The MCP server that exposes the experiment node's ops as tools for an LLM agent.
+# A separate extra from `experiment` itself: the node needs aiosqlite, the MCP
+# server (a distinct process) needs the SDK, and neither host has to install both.
+mcp = [
+    "mcp>=1.0",
+]
 
 [project.scripts]
 lumi-codegen = "lumi.codegen.__main__:main"

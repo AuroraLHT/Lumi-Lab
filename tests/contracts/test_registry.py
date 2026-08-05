@@ -187,9 +187,14 @@ def test_binary_payloads_are_not_json():
     assert video.stream.codec is Codec.RAW
 
 
-def test_mi_mode_is_the_only_pubsub():
-    pubsubs = [f"{eq}.{cap.name}" for eq, cap in _all_caps() if cap.kind is Kind.PUBSUB]
-    assert pubsubs == ["chamber.mi_mode"]
+def test_pubsub_is_reserved_for_submit_now_result_later_ops():
+    """PUBSUB is for a request that can't resolve inline: chamber.mi_mode submits a
+    script and reports completion later; experiment.driver submits a long-running op
+    (to_temperature, perform_deposition, ...) or a human-gated one (set_laser_power,
+    ...) the same way, via current_task/pending_confirmation on its update channel.
+    Anything else declaring PUBSUB should be looked at hard before landing."""
+    pubsubs = {f"{eq}.{cap.name}" for eq, cap in _all_caps() if cap.kind is Kind.PUBSUB}
+    assert pubsubs == {"chamber.mi_mode", "experiment.driver"}
 
 
 def test_every_exchange_is_a_topic_exchange():
