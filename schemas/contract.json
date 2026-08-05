@@ -1798,6 +1798,2614 @@
     "name": "detection",
     "version": "2.0"
   },
+  "experiment": {
+    "capabilities": [
+      {
+        "kind": "pubsub",
+        "name": "driver",
+        "ops": [
+          {
+            "name": "register_project",
+            "request": {
+              "properties": {
+                "description": {
+                  "default": "",
+                  "title": "Description",
+                  "type": "string"
+                },
+                "project_name": {
+                  "title": "Project Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "project_name"
+              ],
+              "title": "RegisterProject",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "project_id": {
+                  "title": "Project Id",
+                  "type": "integer"
+                },
+                "project_name": {
+                  "title": "Project Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "project_id",
+                "project_name"
+              ],
+              "title": "ProjectInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "register_substrate",
+            "request": {
+              "properties": {
+                "height": {
+                  "default": 0.0,
+                  "title": "Height",
+                  "type": "number"
+                },
+                "manufacture_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacture Date"
+                },
+                "manufacturer": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacturer"
+                },
+                "materials": {
+                  "default": "",
+                  "title": "Materials",
+                  "type": "string"
+                },
+                "orientation": {
+                  "default": "",
+                  "title": "Orientation",
+                  "type": "string"
+                },
+                "pixel_spacing": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Spacing"
+                },
+                "positions": {
+                  "default": [],
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Positions",
+                  "type": "array"
+                },
+                "substrate_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Name"
+                },
+                "thickness": {
+                  "default": 0.0,
+                  "title": "Thickness",
+                  "type": "number"
+                },
+                "width": {
+                  "default": 0.0,
+                  "title": "Width",
+                  "type": "number"
+                }
+              },
+              "title": "RegisterSubstrate",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PixelPosition": {
+                  "properties": {
+                    "accessible": {
+                      "default": true,
+                      "title": "Accessible",
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "title": "Index",
+                      "type": "integer"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "rheed_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Position"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "position"
+                  ],
+                  "title": "PixelPosition",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "current_pixel_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Current Pixel Index"
+                },
+                "height": {
+                  "default": 0.0,
+                  "title": "Height",
+                  "type": "number"
+                },
+                "materials": {
+                  "default": "",
+                  "title": "Materials",
+                  "type": "string"
+                },
+                "orientation": {
+                  "default": "",
+                  "title": "Orientation",
+                  "type": "string"
+                },
+                "pixel_spacing": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Spacing"
+                },
+                "positions": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/PixelPosition"
+                  },
+                  "title": "Positions",
+                  "type": "array"
+                },
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                },
+                "substrate_uuid": {
+                  "title": "Substrate Uuid",
+                  "type": "string"
+                },
+                "thickness": {
+                  "default": 0.0,
+                  "title": "Thickness",
+                  "type": "number"
+                },
+                "width": {
+                  "default": 0.0,
+                  "title": "Width",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "substrate_id",
+                "substrate_uuid"
+              ],
+              "title": "SubstrateInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "resume_substrate",
+            "request": {
+              "properties": {
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "substrate_id"
+              ],
+              "title": "ResumeSubstrate",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PixelPosition": {
+                  "properties": {
+                    "accessible": {
+                      "default": true,
+                      "title": "Accessible",
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "title": "Index",
+                      "type": "integer"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "rheed_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Position"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "position"
+                  ],
+                  "title": "PixelPosition",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "current_pixel_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Current Pixel Index"
+                },
+                "height": {
+                  "default": 0.0,
+                  "title": "Height",
+                  "type": "number"
+                },
+                "materials": {
+                  "default": "",
+                  "title": "Materials",
+                  "type": "string"
+                },
+                "orientation": {
+                  "default": "",
+                  "title": "Orientation",
+                  "type": "string"
+                },
+                "pixel_spacing": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Spacing"
+                },
+                "positions": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/PixelPosition"
+                  },
+                  "title": "Positions",
+                  "type": "array"
+                },
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                },
+                "substrate_uuid": {
+                  "title": "Substrate Uuid",
+                  "type": "string"
+                },
+                "thickness": {
+                  "default": 0.0,
+                  "title": "Thickness",
+                  "type": "number"
+                },
+                "width": {
+                  "default": 0.0,
+                  "title": "Width",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "substrate_id",
+                "substrate_uuid"
+              ],
+              "title": "SubstrateInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "show_available_targets",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "targets": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "default": {},
+                  "title": "Targets",
+                  "type": "object"
+                }
+              },
+              "title": "TargetMap",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_target_name_by_id",
+            "request": {
+              "properties": {
+                "target_id": {
+                  "title": "Target Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_id"
+              ],
+              "title": "TargetId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "target_name": {
+                  "title": "Target Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_name"
+              ],
+              "title": "TargetName",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_target_id_by_name",
+            "request": {
+              "properties": {
+                "target_name": {
+                  "title": "Target Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_name"
+              ],
+              "title": "TargetName",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "target_id": {
+                  "title": "Target Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_id"
+              ],
+              "title": "TargetId",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "current_substrate",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PixelPosition": {
+                  "properties": {
+                    "accessible": {
+                      "default": true,
+                      "title": "Accessible",
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "title": "Index",
+                      "type": "integer"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "rheed_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Position"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "position"
+                  ],
+                  "title": "PixelPosition",
+                  "type": "object"
+                },
+                "SubstrateInfo": {
+                  "properties": {
+                    "current_pixel_index": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Current Pixel Index"
+                    },
+                    "height": {
+                      "default": 0.0,
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "materials": {
+                      "default": "",
+                      "title": "Materials",
+                      "type": "string"
+                    },
+                    "orientation": {
+                      "default": "",
+                      "title": "Orientation",
+                      "type": "string"
+                    },
+                    "pixel_spacing": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Spacing"
+                    },
+                    "positions": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/PixelPosition"
+                      },
+                      "title": "Positions",
+                      "type": "array"
+                    },
+                    "substrate_id": {
+                      "title": "Substrate Id",
+                      "type": "integer"
+                    },
+                    "substrate_uuid": {
+                      "title": "Substrate Uuid",
+                      "type": "string"
+                    },
+                    "thickness": {
+                      "default": 0.0,
+                      "title": "Thickness",
+                      "type": "number"
+                    },
+                    "width": {
+                      "default": 0.0,
+                      "title": "Width",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "substrate_id",
+                    "substrate_uuid"
+                  ],
+                  "title": "SubstrateInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "substrate": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/SubstrateInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                }
+              },
+              "title": "CurrentSubstrateResponse",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "finish_substrate",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "finish_current_pixel",
+            "request": {
+              "properties": {
+                "material": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Material"
+                },
+                "thickness": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Thickness"
+                }
+              },
+              "title": "FinishCurrentPixel",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_current_log",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "One row of the chamber log.",
+              "properties": {
+                "time": {
+                  "title": "Time",
+                  "type": "number"
+                },
+                "time_stamp": {
+                  "title": "Time Stamp",
+                  "type": "string"
+                },
+                "values": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": "Values",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "time",
+                "time_stamp",
+                "values"
+              ],
+              "title": "LogEntry",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_current_pressure",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "gauge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Gauge"
+                },
+                "pressure": {
+                  "title": "Pressure",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "pressure"
+              ],
+              "title": "PressureReading",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_current_temperature",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "temperature": {
+                  "title": "Temperature",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "temperature"
+              ],
+              "title": "TemperatureReading",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_valve_status",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "valves": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "default": {},
+                  "title": "Valves",
+                  "type": "object"
+                }
+              },
+              "title": "ValveStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_mfc_status",
+            "request": {
+              "properties": {
+                "mfc_id": {
+                  "title": "Mfc Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mfc_id"
+              ],
+              "title": "MfcQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "mfc_id": {
+                  "title": "Mfc Id",
+                  "type": "string"
+                },
+                "monitor": {
+                  "title": "Monitor",
+                  "type": "number"
+                },
+                "set": {
+                  "title": "Set",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "mfc_id",
+                "set",
+                "monitor"
+              ],
+              "title": "MfcStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_pump_status",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "pumps": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "default": {},
+                  "title": "Pumps",
+                  "type": "object"
+                }
+              },
+              "title": "PumpStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "is_motor_free",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "free": {
+                  "title": "Free",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "free"
+              ],
+              "title": "MotorFree",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_current_mask_position",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "position": {
+                  "title": "Position",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "title": "MaskPosition",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_target",
+            "request": {
+              "properties": {
+                "rotation_mode": {
+                  "default": "AUTO",
+                  "title": "Rotation Mode",
+                  "type": "string"
+                },
+                "target_id": {
+                  "title": "Target Id",
+                  "type": "string"
+                },
+                "twist_mode": {
+                  "default": "AUTO",
+                  "title": "Twist Mode",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_id"
+              ],
+              "title": "SetTarget",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "move_mask_to_position",
+            "request": {
+              "properties": {
+                "position": {
+                  "title": "Position",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "title": "MoveTo",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "move_rheed_to_position",
+            "request": {
+              "properties": {
+                "position": {
+                  "title": "Position",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "title": "MoveTo",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "to_pixel",
+            "request": {
+              "properties": {
+                "index": {
+                  "title": "Index",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "index"
+              ],
+              "title": "PixelIndex",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "index": {
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "mask_position": {
+                  "title": "Mask Position",
+                  "type": "number"
+                },
+                "rheed_position": {
+                  "title": "Rheed Position",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "index",
+                "mask_position",
+                "rheed_position"
+              ],
+              "title": "PixelMoveResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "to_current_pixel",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "index": {
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "mask_position": {
+                  "title": "Mask Position",
+                  "type": "number"
+                },
+                "rheed_position": {
+                  "title": "Rheed Position",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "index",
+                "mask_position",
+                "rheed_position"
+              ],
+              "title": "PixelMoveResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_mfc_flow",
+            "request": {
+              "properties": {
+                "flow": {
+                  "title": "Flow",
+                  "type": "number"
+                },
+                "mfc_id": {
+                  "title": "Mfc Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mfc_id",
+                "flow"
+              ],
+              "title": "SetMfcFlow",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "initiate_heating_laser",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "turn_off_heating_laser",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "start_storage",
+            "request": {
+              "properties": {
+                "is_dryrun": {
+                  "default": false,
+                  "title": "Is Dryrun",
+                  "type": "boolean"
+                },
+                "project_name": {
+                  "title": "Project Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "project_name"
+              ],
+              "title": "StartStorage",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Path"
+                },
+                "record_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Uuid"
+                },
+                "storage_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Storage Name"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "StorageResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "end_storage",
+            "request": {
+              "properties": {
+                "is_dryrun": {
+                  "default": false,
+                  "title": "Is Dryrun",
+                  "type": "boolean"
+                }
+              },
+              "title": "EndStorage",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Path"
+                },
+                "record_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Uuid"
+                },
+                "storage_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Storage Name"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "StorageResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "finish_experiment_record",
+            "request": {
+              "properties": {
+                "experiment_uuid": {
+                  "title": "Experiment Uuid",
+                  "type": "string"
+                },
+                "is_pixel": {
+                  "default": false,
+                  "title": "Is Pixel",
+                  "type": "boolean"
+                },
+                "laser_power": {
+                  "title": "Laser Power",
+                  "type": "number"
+                },
+                "laser_repetition_rate": {
+                  "title": "Laser Repetition Rate",
+                  "type": "number"
+                },
+                "num_pulse": {
+                  "title": "Num Pulse",
+                  "type": "integer"
+                },
+                "pixel_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Index"
+                },
+                "pressure": {
+                  "title": "Pressure",
+                  "type": "number"
+                },
+                "project_id": {
+                  "title": "Project Id",
+                  "type": "integer"
+                },
+                "record_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Uuid"
+                },
+                "storage_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Storage Name"
+                },
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                },
+                "target_material": {
+                  "title": "Target Material",
+                  "type": "string"
+                },
+                "temperature": {
+                  "title": "Temperature",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "substrate_id",
+                "project_id",
+                "experiment_uuid",
+                "temperature",
+                "pressure",
+                "laser_power",
+                "laser_repetition_rate",
+                "target_material",
+                "num_pulse"
+              ],
+              "title": "FinishExperimentRecord",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "experiment_id": {
+                  "title": "Experiment Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "experiment_id"
+              ],
+              "title": "ExperimentRecordId",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "to_temperature",
+            "request": {
+              "properties": {
+                "ramp_rate": {
+                  "default": 20.0,
+                  "title": "Ramp Rate",
+                  "type": "number"
+                },
+                "temperature": {
+                  "title": "Temperature",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "temperature"
+              ],
+              "title": "ToTemperature",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "task_id": {
+                  "title": "Task Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id"
+              ],
+              "title": "TaskAck",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "cool_down",
+            "request": {
+              "properties": {
+                "ramp_rate": {
+                  "default": 20.0,
+                  "title": "Ramp Rate",
+                  "type": "number"
+                }
+              },
+              "title": "CoolDown",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "task_id": {
+                  "title": "Task Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id"
+              ],
+              "title": "TaskAck",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "perform_preablation",
+            "request": {
+              "properties": {
+                "frequency": {
+                  "default": 10.0,
+                  "title": "Frequency",
+                  "type": "number"
+                },
+                "is_dryrun": {
+                  "default": false,
+                  "title": "Is Dryrun",
+                  "type": "boolean"
+                },
+                "move_mask_to_block_position": {
+                  "default": true,
+                  "title": "Move Mask To Block Position",
+                  "type": "boolean"
+                },
+                "num_pulse": {
+                  "default": 1000,
+                  "title": "Num Pulse",
+                  "type": "integer"
+                },
+                "target_id": {
+                  "title": "Target Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_id"
+              ],
+              "title": "PerformPreablation",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "task_id": {
+                  "title": "Task Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id"
+              ],
+              "title": "TaskAck",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "perform_deposition",
+            "request": {
+              "properties": {
+                "is_dryrun": {
+                  "default": false,
+                  "title": "Is Dryrun",
+                  "type": "boolean"
+                },
+                "laser_repetition_rate": {
+                  "title": "Laser Repetition Rate",
+                  "type": "number"
+                },
+                "num_pulse": {
+                  "title": "Num Pulse",
+                  "type": "integer"
+                },
+                "target_id": {
+                  "title": "Target Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "num_pulse",
+                "laser_repetition_rate",
+                "target_id"
+              ],
+              "title": "PerformDeposition",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "task_id": {
+                  "title": "Task Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id"
+              ],
+              "title": "TaskAck",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "anneal",
+            "request": {
+              "$defs": {
+                "AnnealStep": {
+                  "properties": {
+                    "ramp_rate": {
+                      "default": 20.0,
+                      "title": "Ramp Rate",
+                      "type": "number"
+                    },
+                    "temperature": {
+                      "title": "Temperature",
+                      "type": "number"
+                    },
+                    "wait_time": {
+                      "default": 0.0,
+                      "title": "Wait Time",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "temperature"
+                  ],
+                  "title": "AnnealStep",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "steps": {
+                  "items": {
+                    "$ref": "#/$defs/AnnealStep"
+                  },
+                  "title": "Steps",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "steps"
+              ],
+              "title": "Anneal",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "task_id": {
+                  "title": "Task Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id"
+              ],
+              "title": "TaskAck",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "begin_set_laser_power",
+            "request": {
+              "properties": {
+                "force": {
+                  "default": false,
+                  "title": "Force",
+                  "type": "boolean"
+                },
+                "laser_power": {
+                  "title": "Laser Power",
+                  "type": "number"
+                },
+                "target_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Target Id"
+                }
+              },
+              "required": [
+                "laser_power"
+              ],
+              "title": "BeginSetLaserPower",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "confirm_laser_power",
+            "request": {
+              "properties": {
+                "measured_power": {
+                  "title": "Measured Power",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "measured_power"
+              ],
+              "title": "ConfirmLaserPower",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "measured_power": {
+                  "title": "Measured Power",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "measured_power"
+              ],
+              "title": "LaserPowerResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "begin_align_center_mask",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "confirm_center_mask",
+            "request": {
+              "properties": {
+                "position": {
+                  "title": "Position",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "title": "ConfirmCenterMask",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "begin_check_mask_center",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "confirm_mask_center",
+            "request": {
+              "properties": {
+                "aligned": {
+                  "title": "Aligned",
+                  "type": "boolean"
+                },
+                "corrected_position": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Corrected Position"
+                }
+              },
+              "required": [
+                "aligned"
+              ],
+              "title": "ConfirmMaskCenter",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PendingConfirmation": {
+                  "properties": {
+                    "id": {
+                      "title": "Id",
+                      "type": "string"
+                    },
+                    "kind": {
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "message": {
+                      "title": "Message",
+                      "type": "string"
+                    },
+                    "requested_at": {
+                      "title": "Requested At",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind",
+                    "message",
+                    "requested_at"
+                  ],
+                  "title": "PendingConfirmation",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "pending": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/PendingConfirmation"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                }
+              },
+              "title": "PendingStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "begin_adjust_rheed_gain",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_rheed_gain",
+            "request": {
+              "properties": {
+                "gain": {
+                  "title": "Gain",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "gain"
+              ],
+              "title": "SetRheedGain",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "confirm_rheed_gain",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "begin_check_rheed_pixels",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "done": {
+                  "default": false,
+                  "title": "Done",
+                  "type": "boolean"
+                },
+                "dropped": {
+                  "default": [],
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "Dropped",
+                  "type": "array"
+                },
+                "index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Index"
+                },
+                "mask_position": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Mask Position"
+                },
+                "position": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Position"
+                },
+                "rheed_position": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rheed Position"
+                }
+              },
+              "title": "PixelCheckStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "resolve_pixel_check",
+            "request": {
+              "properties": {
+                "keep": {
+                  "title": "Keep",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "keep"
+              ],
+              "title": "ResolvePixelCheck",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "done": {
+                  "default": false,
+                  "title": "Done",
+                  "type": "boolean"
+                },
+                "dropped": {
+                  "default": [],
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "Dropped",
+                  "type": "array"
+                },
+                "index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Index"
+                },
+                "mask_position": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Mask Position"
+                },
+                "position": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Position"
+                },
+                "rheed_position": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rheed Position"
+                }
+              },
+              "title": "PixelCheckStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "confirm",
+            "request": {
+              "properties": {
+                "confirmation_id": {
+                  "title": "Confirmation Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "confirmation_id"
+              ],
+              "title": "ConfirmProceed",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "experiment.driver.ctrl.*",
+          "publish": "experiment.driver.pub",
+          "request_pattern": "experiment.driver.req.*",
+          "requests": {
+            "anneal": "experiment.driver.req.anneal",
+            "begin_adjust_rheed_gain": "experiment.driver.req.begin_adjust_rheed_gain",
+            "begin_align_center_mask": "experiment.driver.req.begin_align_center_mask",
+            "begin_check_mask_center": "experiment.driver.req.begin_check_mask_center",
+            "begin_check_rheed_pixels": "experiment.driver.req.begin_check_rheed_pixels",
+            "begin_set_laser_power": "experiment.driver.req.begin_set_laser_power",
+            "confirm": "experiment.driver.req.confirm",
+            "confirm_center_mask": "experiment.driver.req.confirm_center_mask",
+            "confirm_laser_power": "experiment.driver.req.confirm_laser_power",
+            "confirm_mask_center": "experiment.driver.req.confirm_mask_center",
+            "confirm_rheed_gain": "experiment.driver.req.confirm_rheed_gain",
+            "cool_down": "experiment.driver.req.cool_down",
+            "current_substrate": "experiment.driver.req.current_substrate",
+            "end_storage": "experiment.driver.req.end_storage",
+            "finish_current_pixel": "experiment.driver.req.finish_current_pixel",
+            "finish_experiment_record": "experiment.driver.req.finish_experiment_record",
+            "finish_substrate": "experiment.driver.req.finish_substrate",
+            "get_current_log": "experiment.driver.req.get_current_log",
+            "get_current_mask_position": "experiment.driver.req.get_current_mask_position",
+            "get_current_pressure": "experiment.driver.req.get_current_pressure",
+            "get_current_temperature": "experiment.driver.req.get_current_temperature",
+            "get_mfc_status": "experiment.driver.req.get_mfc_status",
+            "get_pump_status": "experiment.driver.req.get_pump_status",
+            "get_target_id_by_name": "experiment.driver.req.get_target_id_by_name",
+            "get_target_name_by_id": "experiment.driver.req.get_target_name_by_id",
+            "get_valve_status": "experiment.driver.req.get_valve_status",
+            "initiate_heating_laser": "experiment.driver.req.initiate_heating_laser",
+            "is_motor_free": "experiment.driver.req.is_motor_free",
+            "move_mask_to_position": "experiment.driver.req.move_mask_to_position",
+            "move_rheed_to_position": "experiment.driver.req.move_rheed_to_position",
+            "perform_deposition": "experiment.driver.req.perform_deposition",
+            "perform_preablation": "experiment.driver.req.perform_preablation",
+            "register_project": "experiment.driver.req.register_project",
+            "register_substrate": "experiment.driver.req.register_substrate",
+            "resolve_pixel_check": "experiment.driver.req.resolve_pixel_check",
+            "resume_substrate": "experiment.driver.req.resume_substrate",
+            "set_mfc_flow": "experiment.driver.req.set_mfc_flow",
+            "set_rheed_gain": "experiment.driver.req.set_rheed_gain",
+            "set_target": "experiment.driver.req.set_target",
+            "show_available_targets": "experiment.driver.req.show_available_targets",
+            "start_storage": "experiment.driver.req.start_storage",
+            "to_current_pixel": "experiment.driver.req.to_current_pixel",
+            "to_pixel": "experiment.driver.req.to_pixel",
+            "to_temperature": "experiment.driver.req.to_temperature",
+            "turn_off_heating_laser": "experiment.driver.req.turn_off_heating_laser"
+          },
+          "state": "experiment.driver.state",
+          "update": "experiment.driver.update",
+          "work_queue": "q.experiment.driver.req"
+        },
+        "state": {
+          "$defs": {
+            "CurrentTask": {
+              "properties": {
+                "detail": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Detail",
+                  "type": "object"
+                },
+                "id": {
+                  "title": "Id",
+                  "type": "string"
+                },
+                "kind": {
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "started_at": {
+                  "title": "Started At",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "started_at"
+              ],
+              "title": "CurrentTask",
+              "type": "object"
+            },
+            "PendingConfirmation": {
+              "properties": {
+                "id": {
+                  "title": "Id",
+                  "type": "string"
+                },
+                "kind": {
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "requested_at": {
+                  "title": "Requested At",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "message",
+                "requested_at"
+              ],
+              "title": "PendingConfirmation",
+              "type": "object"
+            }
+          },
+          "properties": {
+            "current_pixel_index": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Current Pixel Index"
+            },
+            "current_task": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/CurrentTask"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "deps_available": {
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "default": {},
+              "title": "Deps Available",
+              "type": "object"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_recording": {
+              "default": false,
+              "title": "Is Recording",
+              "type": "boolean"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "laser_power_real": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Laser Power Real"
+            },
+            "laser_power_set": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Laser Power Set"
+            },
+            "mode": {
+              "default": "idle",
+              "title": "Mode",
+              "type": "string"
+            },
+            "num_pixel_positions": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Num Pixel Positions"
+            },
+            "pending_confirmation": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/PendingConfirmation"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "project_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Project Id"
+            },
+            "project_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Project Name"
+            },
+            "substrate_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Substrate Id"
+            }
+          },
+          "title": "ExperimentState",
+          "type": "object"
+        },
+        "stream": null,
+        "update": {
+          "codec": "json",
+          "name": "pending",
+          "payload": {
+            "$defs": {
+              "CurrentTask": {
+                "properties": {
+                  "detail": {
+                    "additionalProperties": true,
+                    "default": {},
+                    "title": "Detail",
+                    "type": "object"
+                  },
+                  "id": {
+                    "title": "Id",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "started_at": {
+                    "title": "Started At",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "started_at"
+                ],
+                "title": "CurrentTask",
+                "type": "object"
+              },
+              "PendingConfirmation": {
+                "properties": {
+                  "id": {
+                    "title": "Id",
+                    "type": "string"
+                  },
+                  "kind": {
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "message": {
+                    "title": "Message",
+                    "type": "string"
+                  },
+                  "requested_at": {
+                    "title": "Requested At",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind",
+                  "message",
+                  "requested_at"
+                ],
+                "title": "PendingConfirmation",
+                "type": "object"
+              }
+            },
+            "description": "Pushed on the update channel whenever pending_confirmation or current_task\nchanges -- a client that is already connected does not have to poll state in a\nloop to notice a gate opened or a long-running op finished.",
+            "properties": {
+              "current_task": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CurrentTask"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "pending_confirmation": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/PendingConfirmation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "task_result": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Task Result"
+              }
+            },
+            "title": "TaskEvent",
+            "type": "object"
+          }
+        }
+      }
+    ],
+    "exchange": "EXPERIMENT",
+    "exchange_type": "topic",
+    "name": "experiment",
+    "version": "1.0"
+  },
   "rheed": {
     "capabilities": [
       {

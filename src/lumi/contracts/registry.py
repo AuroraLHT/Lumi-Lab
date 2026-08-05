@@ -16,6 +16,7 @@ from typing import Any
 
 from .chamber import CHAMBER
 from .detection import DETECTION_NODE
+from .experiment import EXPERIMENT
 from .rheed import RHEED
 from .spec import Capability, EquipmentContract, Op, StreamSpec
 from .storage import STORAGE_NODE
@@ -23,7 +24,7 @@ from .system import SYSTEM
 
 REGISTRY: dict[str, EquipmentContract] = {
     c.name: c
-    for c in (RHEED, CHAMBER, DETECTION_NODE, STORAGE_NODE, SYSTEM)
+    for c in (RHEED, CHAMBER, DETECTION_NODE, STORAGE_NODE, EXPERIMENT, SYSTEM)
 }
 
 # Contracts a node process can host. `system` is hosted by the monitor and the

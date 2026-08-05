@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 2f9766420f4b66a6
+# contract_hash: 573e8d3fd5a840bc
 
 """Generated clients. One per node."""
 
@@ -12,6 +12,7 @@ from .rheed import RheedClient
 from .chamber import ChamberClient
 from .detection import DetectionClient
 from .storage import StorageClient
+from .experiment import ExperimentClient
 from .system import SystemClient
 
 __all__ = [
@@ -19,5 +20,6 @@ __all__ = [
     "ChamberClient",
     "DetectionClient",
     "StorageClient",
+    "ExperimentClient",
     "SystemClient",
 ]

@@ -393,3 +393,44 @@ request_key = "storage"
 ctrl_key = "storage_ctrl"
 state_key = "storage_state"
 name = "Storage"
+
+[experiment]
+exchange = "EXPERIMENT"
+exchange_type = "topic"
+growth_db_path = "cfg/growth.db"
+
+# PLDChamberConfiguration -- the chamber geometry a growth is planned against.
+# Previously copy-pasted into each notebook run and drifted with every physical
+# realignment; one source of truth now.
+[experiment.pld_config]
+center_mask_pos = 100.0
+center_rheed_pos = 0.0
+plumb_center = 0.0
+target_to_mask_distance = 60.16
+mask_to_sample_distance = 0.0
+rheed_limit = [-3.0, 3.0]
+mask_block_position = 75.0
+
+# Hardware bounds previously hardcoded as bare literals inside manager.py method
+# bodies (a `< 160` assert, a `[160, 1000]` clamp, a `220` PID-engage special case).
+[experiment.bounds]
+mask_travel_max = 160.0
+temperature_min = 160.0
+temperature_max = 1000.0
+temperature_pid_engage_threshold = 220.0
+warm_up_step = 0.1
+warm_up_current_ramp_rate = 0.015
+warm_up_wait_interval = 0.2
+warm_up_max_waittime = 180.0
+
+# PASCAL target-carousel slot -> chamber-log field name. Chamber-specific; was a
+# hardcoded dict (_target_id_mapper) inside BaseExperimentManager.__init__.
+[experiment.target_mapper]
+A = "TG1name"
+B = "TG2name"
+C = "TG3name"
+D = "TG4name"
+E = "TG5name"
+F = "TG6name"
+Clear = "TG7name"
+Monitor = "TG8name"

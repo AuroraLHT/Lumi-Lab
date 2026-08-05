@@ -7,7 +7,8 @@
 #
 # Usage:
 #   scripts/start_simulation.sh [--host HOST] [--with-detection] [--with-agent]
-#                               [--with-auth] [--keep-database] [--no-reset-broker]
+#                               [--with-auth] [--with-experiment] [--keep-database]
+#                               [--no-reset-broker]
 #
 # On a localhost broker it first deletes any contract exchange whose type has
 # drifted (the old stack left RHEED/CHAMBER/STORAGE as `direct`; the contract now
@@ -41,6 +42,7 @@ RABBITMQ_HOST="localhost"
 WITH_DETECTION=0
 WITH_AGENT=0
 WITH_AUTH=0
+WITH_EXPERIMENT=0
 KEEP_DATABASE=0
 RESET_BROKER=1
 
@@ -50,6 +52,7 @@ while [[ $# -gt 0 ]]; do
         --with-detection) WITH_DETECTION=1; shift ;;
         --with-agent) WITH_AGENT=1; shift ;;
         --with-auth) WITH_AUTH=1; shift ;;
+        --with-experiment) WITH_EXPERIMENT=1; shift ;;
         --keep-database) KEEP_DATABASE=1; shift ;;
         --no-reset-broker) RESET_BROKER=0; shift ;;
         -h|--help) sed -n '3,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
@@ -223,6 +226,12 @@ if [[ $WITH_DETECTION -eq 1 ]]; then
     start_node detection --host "$RABBITMQ_HOST"
 fi
 
+if [[ $WITH_EXPERIMENT -eq 1 ]]; then
+    # A consumer of chamber/rheed/storage, like storage is of rheed/chamber -- needs
+    # them already up, which they are by this point in the script.
+    start_node experiment --host "$RABBITMQ_HOST"
+fi
+
 sleep 2
 start_node api
 
@@ -233,6 +242,7 @@ for i in "${!NAMES[@]}"; do
 done
 [[ $WITH_AGENT -eq 0 ]] && echo "  agent      skipped (pass --with-agent)"
 [[ $WITH_DETECTION -eq 0 ]] && echo "  detection  skipped (pass --with-detection once its deps are installed)"
+[[ $WITH_EXPERIMENT -eq 0 ]] && echo "  experiment skipped (pass --with-experiment)"
 echo
 echo "API on http://localhost:8000 -- $AUTH_NOTE"
 echo "logs in $LOG_DIR"
