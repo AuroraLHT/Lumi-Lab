@@ -24,6 +24,7 @@ original. An MCP-driven agent supplies its own providers instead of blocking std
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from typing import Awaitable, Callable
@@ -42,6 +43,8 @@ from lumi.contracts.payloads.experiment import (
     ToTemperature,
 )
 from lumi.experiment.client import ExperimentSession
+
+log = logging.getLogger(__name__)
 
 InputProvider = Callable[[str], Awaitable[None]]
 ValueProvider = Callable[[str], Awaitable[str]]
@@ -63,11 +66,15 @@ async def default_value_provider(prompt: str) -> str:
 async def _wait_for_task(exp: ExperimentSession, task_id: str, poll_interval: float = 0.5) -> dict | None:
     """Poll the server's authoritative state (not the locally cached subscription
     value) until the given task is no longer current -- avoids a race between the
-    RPC reply carrying task_id and the update-channel push that sets current_task."""
+    RPC reply carrying task_id and the update-channel push that sets current_task.
+
+    Returns the task's outcome (`{"ok": ...}`) when the session saw one. Note that the
+    functions below do not act on it: a failed ramp does not stop the sequence, which
+    is a known gap -- see docs/TODO.md."""
     while True:
         state = await exp.driver.get_state()
         if state.current_task is None or state.current_task.id != task_id:
-            return None
+            return exp.last_task_result
         await asyncio.sleep(poll_interval)
 
 
@@ -159,6 +166,12 @@ async def perform_single_deposition(
     if current.substrate is None or current.substrate.current_pixel_index is None or (
         current.substrate.current_pixel_index >= len(current.substrate.positions)
     ):
+        log.warning(
+            "no pixel left to grow on: substrate=%s index=%s of %s positions",
+            getattr(current.substrate, "substrate_id", None),
+            getattr(current.substrate, "current_pixel_index", None),
+            len(current.substrate.positions) if current.substrate else 0,
+        )
         return False, (None, None)
 
     if do_preablation:
@@ -170,6 +183,7 @@ async def perform_single_deposition(
     state = await exp.driver.get_state()
     start = await exp.driver.start_storage(StartStorage(project_name=project_name, is_dryrun=is_dryrun))
     if not start.ok:
+        log.warning("start_storage refused: %s", start.message or "(no reason given)")
         return False, (None, None)
 
     await asyncio.sleep(before_experiment_waittime)
@@ -183,6 +197,7 @@ async def perform_single_deposition(
 
     end = await exp.driver.end_storage(EndStorage(is_dryrun=is_dryrun))
     if not end.ok:
+        log.warning("end_storage failed: %s", end.message or "(no reason given)")
         return False, (None, None)
 
     await exp.driver.finish_experiment_record(FinishExperimentRecord(
@@ -236,6 +251,7 @@ async def perform_pixel_deposition(
     if current.substrate is None or current.substrate.current_pixel_index is None or (
         current.substrate.current_pixel_index >= len(current.substrate.positions)
     ):
+        log.warning("no pixel left to grow on")
         return False, False, (None, None)
     pixel_index = current.substrate.current_pixel_index
 
@@ -279,6 +295,7 @@ async def perform_pixel_deposition(
     state = await exp.driver.get_state()
     start = await exp.driver.start_storage(StartStorage(project_name=project_name, is_dryrun=is_dryrun))
     if not start.ok:
+        log.warning("start_storage refused: %s", start.message or "(no reason given)")
         return False, False, (start.storage_name, final_conditions)
 
     await asyncio.sleep(before_experiment_waittime)
@@ -293,6 +310,7 @@ async def perform_pixel_deposition(
     if not is_dryrun:
         end = await exp.driver.end_storage(EndStorage(is_dryrun=is_dryrun))
         if not end.ok:
+            log.warning("end_storage failed: %s", end.message or "(no reason given)")
             return False, False, (start.storage_name, final_conditions)
 
         await exp.driver.finish_experiment_record(FinishExperimentRecord(

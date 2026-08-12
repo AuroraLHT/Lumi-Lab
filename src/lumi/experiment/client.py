@@ -56,6 +56,7 @@ class ExperimentSession:
         self.chamber_log = chamber_log
         self._pending: PendingConfirmation | None = None
         self._current_task: CurrentTask | None = None
+        self._last_task_result: dict | None = None
 
     @classmethod
     async def open(
@@ -101,6 +102,12 @@ class ExperimentSession:
     async def _on_update(self, event: TaskEvent, _payload) -> None:
         self._pending = event.pending_confirmation
         self._current_task = event.current_task
+        # A long-running op reports its outcome exactly once, here. Dropping it left a
+        # failed ramp indistinguishable from a successful one -- `current_task` clears
+        # either way -- so a caller waiting on the task would carry on as if the
+        # substrate had reached temperature.
+        if event.task_result is not None:
+            self._last_task_result = event.task_result
 
     @property
     def pending(self) -> PendingConfirmation | None:
@@ -109,6 +116,12 @@ class ExperimentSession:
     @property
     def current_task(self) -> CurrentTask | None:
         return self._current_task
+
+    @property
+    def last_task_result(self) -> dict | None:
+        """The most recent long-running op's outcome: `{"ok": True, ...}` or
+        `{"ok": False, "error": "..."}`. None until one has finished."""
+        return self._last_task_result
 
     async def confirm(self, **fields) -> Ack:
         """Resolve whatever is currently pending. Convenience only -- for a typed
