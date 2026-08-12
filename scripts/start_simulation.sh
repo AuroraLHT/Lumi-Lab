@@ -5,10 +5,21 @@
 # comes from the simulated sources bundled under src/lumi/*/assets. The monitor
 # node tracks presence; the API bridges the browser to the bus over /ws.
 #
+# The chamber runs the state-model simulator (`nodes/pascal.py --src sim`): MI
+# commands drive a chamber model and the growth log is rendered from it, so a
+# deposition really does advance LaserPuls and a temperature set really does ramp.
+# --chamber-speed compresses simulated time for impatient end-to-end runs.
+#
 # Usage:
 #   scripts/start_simulation.sh [--host HOST] [--with-detection] [--with-agent]
 #                               [--with-auth] [--with-experiment] [--keep-database]
-#                               [--no-reset-broker]
+#                               [--no-reset-broker] [--chamber-speed N]
+#                               [--experiment-speed N]
+#
+# --chamber-speed compresses the chamber's own clock. --experiment-speed (defaults to
+# the same value) compresses the experiment node's wall-clock warm-up pacing, which the
+# chamber's clock cannot reach -- without it a growth waits ~280s before it starts, no
+# matter how fast the chamber is.
 #
 # On a localhost broker it first deletes any contract exchange whose type has
 # drifted (the old stack left RHEED/CHAMBER/STORAGE as `direct`; the contract now
@@ -45,6 +56,8 @@ WITH_AUTH=0
 WITH_EXPERIMENT=0
 KEEP_DATABASE=0
 RESET_BROKER=1
+CHAMBER_SPEED=1
+EXPERIMENT_SPEED=
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -55,7 +68,9 @@ while [[ $# -gt 0 ]]; do
         --with-experiment) WITH_EXPERIMENT=1; shift ;;
         --keep-database) KEEP_DATABASE=1; shift ;;
         --no-reset-broker) RESET_BROKER=0; shift ;;
-        -h|--help) sed -n '3,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --chamber-speed) CHAMBER_SPEED="$2"; shift 2 ;;
+        --experiment-speed) EXPERIMENT_SPEED="$2"; shift 2 ;;
+        -h|--help) sed -n '3,26p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -210,7 +225,7 @@ start_node monitor --host "$RABBITMQ_HOST"
 start_node storage "${STORAGE_ARGS[@]}"
 sleep 2
 
-start_node pascal --host "$RABBITMQ_HOST" --src test
+start_node pascal --host "$RABBITMQ_HOST" --src sim --speed "$CHAMBER_SPEED"
 start_node rheed  --host "$RABBITMQ_HOST" --src simcam
 
 if [[ $WITH_AGENT -eq 1 ]]; then
@@ -227,6 +242,33 @@ if [[ $WITH_DETECTION -eq 1 ]]; then
 fi
 
 if [[ $WITH_EXPERIMENT -eq 1 ]]; then
+    # The experiment node paces parts of a growth in *wall* time of its own, which
+    # --chamber-speed cannot touch: the warm-up ramp sleeps
+    # `warm_up_step / warm_up_current_ramp_rate` per current step, and then waits up to
+    # `warm_up_max_waittime` for the substrate to reach the PID-engage threshold. At the
+    # shipped values that is ~280s before a growth even starts, however fast the chamber
+    # is running. Scale those bounds by the same factor so the whole simulated stack
+    # runs on one clock -- the chamber's thermal lag is accelerated by the same amount,
+    # so the relationship between them is preserved.
+    #
+    # Simulation only. These are real machine limits on the lab node: the ramp rate is
+    # how fast the heater may be driven, not a polling interval.
+    : "${EXPERIMENT_SPEED:=$CHAMBER_SPEED}"
+    if awk "BEGIN{exit !($EXPERIMENT_SPEED > 1)}"; then
+        DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_CURRENT_RAMP_RATE=$(
+            awk "BEGIN{printf \"%.6f\", 0.015 * $EXPERIMENT_SPEED}")
+        DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_MAX_WAITTIME=$(
+            awk "BEGIN{printf \"%.3f\", 180.0 / $EXPERIMENT_SPEED}")
+        # Floored: below ~50ms the poll costs more than it saves, and it is an RPC.
+        DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_WAIT_INTERVAL=$(
+            awk "BEGIN{v = 0.2 / $EXPERIMENT_SPEED; printf \"%.3f\", (v < 0.05 ? 0.05 : v)}")
+        export DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_CURRENT_RAMP_RATE
+        export DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_MAX_WAITTIME
+        export DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_WAIT_INTERVAL
+        echo "experiment node: warm-up bounds scaled ${EXPERIMENT_SPEED}x for simulation"
+        echo "  ramp rate ${DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_CURRENT_RAMP_RATE} A/s," \
+             "max wait ${DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_MAX_WAITTIME}s"
+    fi
     # A consumer of chamber/rheed/storage, like storage is of rheed/chamber -- needs
     # them already up, which they are by this point in the script.
     start_node experiment --host "$RABBITMQ_HOST"
@@ -246,6 +288,15 @@ done
 echo
 echo "API on http://localhost:8000 -- $AUTH_NOTE"
 echo "logs in $LOG_DIR"
+echo
+echo "to make the chamber actually do something, run a growth alongside this:"
+echo "  uv run scripts/demo_growth.py --speed $CHAMBER_SPEED       # chamber node, raw MI"
+if [[ $WITH_EXPERIMENT -eq 1 ]]; then
+    echo "  uv run scripts/demo_experiment.py --speed $CHAMBER_SPEED   # experiment node, as a notebook would"
+else
+    echo "  (restart with --with-experiment for scripts/demo_experiment.py, which drives"
+    echo "   the same growth through the experiment node instead)"
+fi
 
 # Exit as soon as any node dies, rather than sitting on a half-dead stack.
 while true; do
