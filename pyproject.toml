@@ -69,8 +69,16 @@ experiment = [
 # The MCP server that exposes the experiment node's ops as tools for an LLM agent.
 # A separate extra from `experiment` itself: the node needs aiosqlite, the MCP
 # server (a distinct process) needs the SDK, and neither host has to install both.
+# uvicorn/bcrypt/pyjwt/aiosqlite are here (duplicating parts of `api`) because the
+# HTTP transport verifies bearer tokens against the same JWT/user store the browser
+# bridge uses (lumi.api.db/security) and serves over uvicorn -- this extra has to be
+# self-sufficient on a host that never installs `api`.
 mcp = [
     "mcp>=1.0",
+    "uvicorn[standard]>=0.30",
+    "aiosqlite>=0.20",
+    "bcrypt>=4.2",
+    "pyjwt>=2.9",
 ]
 
 [project.scripts]
