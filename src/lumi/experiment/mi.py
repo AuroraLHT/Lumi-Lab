@@ -33,11 +33,49 @@ class MIExecutionFailed(Exception):
         self.execution = execution
 
 
-class MiCommandRunner:
-    """Wraps one ChamberMiModeClient with a request/response `execute()`."""
+#: `execute(timeout=...)` not passed at all. Distinct from `None`, which is the
+#: caller explicitly asking for an unbounded wait.
+_DEFAULT = object()
 
-    def __init__(self, client: ChamberMiModeClient) -> None:
+#: How often to log that an unbounded wait is still waiting. Without this a script
+#: that will never complete (see the lost-update modes in docs/TODO.md) is
+#: indistinguishable from a healthy three-hour one in the node's log.
+_STILL_WAITING_S = 300.0
+
+
+def brief(text: str, max_length: int = 80) -> str:
+    """A script is many lines; a log line is one. (Same idea as mi_mode.brief_commands,
+    duplicated rather than imported: that module pulls in watchdog, which is the
+    chamber host's dependency, not this node's.)"""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= max_length else flat[:max_length] + "..."
+
+
+class MiCommandRunner:
+    """Wraps one ChamberMiModeClient with a request/response `execute()`.
+
+    `timeout` is the default deadline for the *completion* wait -- the chamber's
+    acknowledgement of the submission is a separate, always-bounded RPC. `None` means
+    wait indefinitely, which is what a script whose duration cannot be estimated needs:
+    a superlattice loop or a slow mask traverse finishes when it finishes, and there is
+    no upper bound to pick that is both safe and generous enough.
+
+    Be aware of what an unbounded wait costs, because nothing else here can rescue it:
+
+    - The completion update is a single lossy message (exclusive, auto-delete, no_ack).
+      Lose it -- broker reconnect, a full update queue, a chamber-node restart -- and
+      the wait never ends.
+    - Nothing can cancel it. `_start_task` keeps no task handle, there is no abort op,
+      and the PASCAL firmware has no filesystem cancel, so `$stop` would only lie.
+    - Ops that await inline in a request handler hold one of the node's 8 prefetch
+      slots for the duration. Eight stuck ops and the node stops taking requests.
+
+    So it is left bounded by default, and the caller opts in. See docs/TODO.md.
+    """
+
+    def __init__(self, client: ChamberMiModeClient, *, timeout: float | None = 30.0) -> None:
         self.client = client
+        self.timeout = timeout
         self._pending: dict[str, asyncio.Future[MIExecution]] = {}
         self._subscribed = False
 
@@ -52,10 +90,43 @@ class MiCommandRunner:
         if fut is not None and not fut.done() and execution.is_execution_finished:
             fut.set_result(execution)
 
-    async def execute(self, commands: str | PascalCommand | PascalScope, *, timeout: float = 30.0) -> MIExecution:
-        """Submit a command script and wait for it to finish. Raises TimeoutError if
-        the chamber does not report completion in time, MIExecutionFailed if it
-        reports one that was aborted or stopped."""
+    async def _wait(self, fut: asyncio.Future[MIExecution], timeout: float | None, text: str) -> MIExecution:
+        """Await a completion, bounded or not. An unbounded wait still says so
+        periodically -- silence for an hour should not look like health."""
+        if timeout is not None:
+            try:
+                return await asyncio.wait_for(fut, timeout)
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f"MI command did not finish within {timeout}s: {text!r}"
+                ) from None
+
+        waited = 0.0
+        while True:
+            try:
+                return await asyncio.wait_for(asyncio.shield(fut), _STILL_WAITING_S)
+            except asyncio.TimeoutError:
+                waited += _STILL_WAITING_S
+                log.warning(
+                    "still waiting on an unbounded MI execution after %.0f min: %s",
+                    waited / 60.0, brief(text),
+                )
+
+    async def execute(
+        self,
+        commands: str | PascalCommand | PascalScope,
+        *,
+        timeout: float | None | object = _DEFAULT,
+    ) -> MIExecution:
+        """Submit a command script and wait for it to finish.
+
+        `timeout` defaults to this runner's; pass a number to override it for one call,
+        or `None` to wait indefinitely (see the class docstring for what that gives up).
+        Raises TimeoutError if the chamber does not report completion in time,
+        MIExecutionFailed if it reports one that was aborted or stopped.
+        """
+        deadline = self.timeout if timeout is _DEFAULT else timeout
+        assert deadline is None or isinstance(deadline, (int, float))
         await self.start()
 
         text = commands.to_text() if hasattr(commands, "to_text") else str(commands)
@@ -73,12 +144,7 @@ class MiCommandRunner:
             if ack.state == "special" or ack.is_execution_finished:
                 execution = ack
             else:
-                try:
-                    execution = await asyncio.wait_for(fut, timeout)
-                except asyncio.TimeoutError:
-                    raise TimeoutError(
-                        f"MI command did not finish within {timeout}s: {text!r}"
-                    ) from None
+                execution = await self._wait(fut, deadline, text)
         finally:
             self._pending.pop(commands_uuid, None)
 

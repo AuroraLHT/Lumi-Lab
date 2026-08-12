@@ -99,8 +99,14 @@ async def main(args: argparse.Namespace) -> None:
     )
 
     chamber_mi_client = ChamberMiModeClient(channel, chamber_x)
+    # 0 (or negative) means "no deadline": the script finishes when it finishes. See the
+    # setting's comment in cfg/settings.toml for what that gives up.
+    mi_timeout = args.mi_timeout if args.mi_timeout is not None else float(settings.experiment.mi_command_timeout)
+    if mi_timeout <= 0:
+        mi_timeout = None
+        log.warning("MI completion waits are unbounded -- a lost update will hang the op that is waiting")
     sources = {
-        "chamber_mi": MiCommandRunner(chamber_mi_client),
+        "chamber_mi": MiCommandRunner(chamber_mi_client, timeout=mi_timeout),
         "chamber_log": ChamberLogClient(channel, chamber_x),
         "chamber_config": ChamberConfigClient(channel, chamber_x),
         "rheed_camera": RheedCameraClient(channel, rheed_x),
@@ -148,6 +154,9 @@ def cli() -> None:
     parser.add_argument("--instance", default=None)
     parser.add_argument("--db-path", default=None,
                         help="growth database path (defaults to experiment.growth_db_path)")
+    parser.add_argument("--mi-timeout", type=float, default=None,
+                        help="seconds to wait for an MI script to finish; 0 = wait forever "
+                             "(defaults to experiment.mi_command_timeout)")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
