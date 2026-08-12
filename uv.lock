@@ -502,7 +502,11 @@ experiment = [
     { name = "aiosqlite" },
 ]
 mcp = [
+    { name = "aiosqlite" },
+    { name = "bcrypt" },
     { name = "mcp" },
+    { name = "pyjwt" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 pascal = [
     { name = "pandas" },
@@ -527,8 +531,10 @@ requires-dist = [
     { name = "aio-pika", specifier = ">=9.4" },
     { name = "aiosqlite", marker = "extra == 'api'", specifier = ">=0.20" },
     { name = "aiosqlite", marker = "extra == 'experiment'", specifier = ">=0.20" },
+    { name = "aiosqlite", marker = "extra == 'mcp'", specifier = ">=0.20" },
     { name = "av", marker = "extra == 'camera'", specifier = ">=12.0" },
     { name = "bcrypt", marker = "extra == 'api'", specifier = ">=4.2" },
+    { name = "bcrypt", marker = "extra == 'mcp'", specifier = ">=4.2" },
     { name = "dynaconf", specifier = ">=3.2" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.111" },
     { name = "h5py", marker = "extra == 'storage'", specifier = ">=3.11" },
@@ -540,10 +546,12 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'detection'", specifier = ">=10.3" },
     { name = "pydantic", specifier = ">=2.7" },
     { name = "pyjwt", marker = "extra == 'api'", specifier = ">=2.9" },
+    { name = "pyjwt", marker = "extra == 'mcp'", specifier = ">=2.9" },
     { name = "pypylon", marker = "extra == 'camera'", specifier = ">=4.0" },
     { name = "python-multipart", marker = "extra == 'api'", specifier = ">=0.0.9" },
     { name = "scikit-image", marker = "extra == 'detection'", specifier = ">=0.23" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.30" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'mcp'", specifier = ">=0.30" },
     { name = "watchdog", marker = "extra == 'pascal'", specifier = ">=4.0" },
 ]
 provides-extras = ["camera", "pascal", "storage", "api", "detection", "experiment", "mcp"]
