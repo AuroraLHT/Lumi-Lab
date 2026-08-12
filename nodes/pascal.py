@@ -1,6 +1,8 @@
 """The Pascal chamber node: growth log, chamber config, MI mode, chamber camera.
 
-    python -m nodes.pascal --src test          # simulated chamber
+    python -m nodes.pascal --src sim           # simulated chamber (state model)
+    python -m nodes.pascal --src sim --speed 30
+    python -m nodes.pascal --src test          # replay of a recorded log
     python -m nodes.pascal --src path --log ... --mi ...
 
 Was 316 lines.
@@ -22,6 +24,7 @@ from lumi.pascal.hardware import (
     build_jpeg_encoder,
     build_log_reader,
     build_mi_mode,
+    build_simulated_chamber,
 )
 
 log = logging.getLogger(__name__)
@@ -30,7 +33,18 @@ log = logging.getLogger(__name__)
 def build(args: argparse.Namespace) -> EquipmentNode:
     log_reader = build_log_reader(args.src, args.log)
     config_reader = build_config_reader(args.src)
-    mi_server, mi_simulator = build_mi_mode(args.src, args.mi)
+    sim_workers: list = []
+    if args.src == "sim":
+        # One chamber model, shared: the MI backend drives it and the log writer
+        # renders it. The log *reader* above is the production one, tailing the CSV the
+        # writer produces -- it has no idea a simulator is on the other end.
+        _model, log_writer, mi_server, mi_backend = build_simulated_chamber(
+            args.log, args.mi, time_scale=args.speed
+        )
+        sim_workers = [log_writer, mi_backend]
+        mi_simulator = None
+    else:
+        mi_server, mi_simulator = build_mi_mode(args.src, args.mi)
     camera, _, _ = build_camera(args.src)
 
     # The camera's in-process fan-out: one grab feeds every consumer. The stream is
@@ -50,7 +64,9 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     node.mount("mi_mode", MIModeHandler(mi_server))
     node.mount("camera", JpegCameraHandler(camera, jpeg_encoder))
 
-    workers = [log_reader, config_reader, mi_server, camera, jpeg_encoder]
+    # The simulator's writer goes first: it creates the CSV the log reader is waiting
+    # for a watchdog event on.
+    workers = [*sim_workers, log_reader, config_reader, mi_server, camera, jpeg_encoder]
     if mi_simulator is not None:
         workers.append(mi_simulator)
     for worker in workers:
@@ -61,10 +77,15 @@ def build(args: argparse.Namespace) -> EquipmentNode:
 
 def cli() -> None:
     parser = argparse.ArgumentParser(prog="lumi-pascal", description="Pascal chamber node")
-    parser.add_argument("--src", choices=("path", "test"), default="test",
-                        help="'path' for the real chamber, 'test' for the simulator")
-    parser.add_argument("--log", default=None, help="chamber log file (with --src=path)")
-    parser.add_argument("--mi", default=None, help="MI mode folder (with --src=path)")
+    parser.add_argument("--src", choices=("path", "sim", "test"), default="sim",
+                        help="'path' for the real chamber, 'sim' for the state-model "
+                             "simulator, 'test' to replay a recorded log")
+    parser.add_argument("--log", default=None,
+                        help="chamber log file (--src=path) or output directory (--src=sim)")
+    parser.add_argument("--mi", default=None, help="MI mode folder (--src=path or sim)")
+    parser.add_argument("--speed", type=float, default=1.0,
+                        help="simulated-time multiplier for --src=sim; 1.0 is real time, "
+                             "30 makes a 300s deposition take 10s")
     parser.add_argument("--host", default=settings.rabbitmq.host)
     parser.add_argument("--user", default="guest")
     parser.add_argument("--password", default="guest")

@@ -47,6 +47,15 @@ class ChamberLogHandler:
         self.stream_queue = stream_queue
 
     async def log(self, req: Empty) -> LogBatch:
+        # A dead reader thread is worse than no reader: get_log() goes on returning the
+        # last row it managed to read, so every consumer sees a plausible but frozen
+        # chamber -- `Motor free` stuck, the temperature stuck -- and drives on. Fail
+        # loudly instead, since a caller can retry or give up but cannot detect this.
+        if not self.log_reader.is_alive():
+            raise RuntimeError(
+                "the chamber log reader thread is not running; the last row it read is "
+                "stale and must not be trusted. Restart the chamber node."
+            )
         row, header = self.log_reader.get_log()
         if row is None:
             raise RuntimeError("could not read the chamber log file")
@@ -72,6 +81,11 @@ class ChamberLogHandler:
         except Exception:
             log.debug("could not read log columns", exc_info=True)
 
+        # Deliberately not reporting reader_alive/skipped_rows here: both would be
+        # useful on the monitor, but ChamberLogReadout is part of the contract and new
+        # fields bump the hash, which forces a frontend redeploy. The `log` op raises
+        # when the reader is dead, which is what actually protects a growth. See
+        # docs/TODO.md.
         return ChamberLogReadout(
             log_file=str(getattr(self.log_reader.config, "log_path", "") or ""),
             columns=columns,

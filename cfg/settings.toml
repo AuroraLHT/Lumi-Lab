@@ -242,6 +242,78 @@ idle_time = 0.01
 assist_file_name = "assist.txt"
 name = "mi_mode_server"
 
+# `--src sim`: the state-model chamber (src/lumi/pascal/sim). MI commands mutate a
+# chamber model and the log is rendered from that model, so a `Trigger Laser` really
+# does advance `LaserPuls` and a `Temperature Set` really does ramp `HT Temp moni`.
+[pascal.sim]
+# A directory, not a file: LogReader watches a folder and is told about the current
+# file by a watchdog event, the same way it discovers PASCAL's own rotated logs.
+log_dir = "run/simulation/chamber_log"
+mi_folder = "run/simulation/mi_mode"
+# Wall-clock seconds between log rows. The real controller defaults to 60; 1s here
+# because nothing in a test wants to wait a minute to see a change land.
+log_interval = 1.0
+# Wall-clock seconds between physics steps. The model uses exact first-order lags, so
+# this only sets resolution, never stability.
+tick_interval = 0.05
+# Simulated seconds per wall second. Overridden per run by `nodes/pascal.py --speed`.
+# Note this accelerates the chamber, not the client: `MiCommandRunner.execute` still
+# times out after 30s of *wall* time, so a 3000-pulse deposition at 10Hz needs a scale
+# of roughly 15 or more to fit inside it.
+time_scale = 1.0
+# Abort a blocking MI command after this many simulated seconds rather than pinning
+# the backend thread forever.
+command_timeout = 3600.0
+# Fault injection. `perform_preablation` fails the growth if MissedPuls moves, so this
+# is how you test that path; 0 is the healthy laser.
+missed_pulse_rate = 0.0
+# Pyrometer noise, degC RMS. 0 makes the log exactly reproducible.
+temperature_noise = 0.4
+
+# Measured chamber calibration. These are the numbers to change after a re-measure --
+# everything else in the model is shape, this is scale.
+#
+# Heater: the laser diode does not lase below ld_min, and substrate temperature is
+# linear in drive current between the two points below. 8.5 A -- PLDconfig's
+# [PIDsettings] LDmin, which `_warm_up_to_pid_limit` ramps to -- lands at ~271 degC,
+# clear of experiment.bounds.temperature_pid_engage_threshold = 220, so a growth from
+# a cold chamber gets past the warm-up.
+#
+# temperature_min is the calibration anchor at current_at_temperature_min, not a floor:
+# the pyrometer floor is pyro_min (160). The coldest the diode can hold is the line
+# extended to ld_min, ~203 degC; ask for less and it switches off and the substrate
+# coasts down to the floor.
+ld_min = 6.5
+current_at_temperature_min = 7.0
+current_at_temperature_max = 30.0
+temperature_min = 220.0
+temperature_max = 1000.0
+
+# Measured axis speeds. The carousel angles come from PLDconfig's [TGsettings] (the
+# shipped file has the slots 51.5 degrees apart), so at 10 deg/s a slot-to-slot move
+# is ~5s. The shutter is pneumatic and takes about a second end to end -- long enough
+# that a script can be caught firing into a blade that has not finished opening.
+target_rotation_speed = 10.0   # deg/s
+sample_rotation_speed = 10.0   # deg/s, absolute and relative sample moves
+sample_spin_speed = 10.0       # deg/s while free-spinning under `Sample Rotation ON`
+mask_speed = 10.0              # mm/s
+rheed_gun_speed = 1.0          # mm/s, and its whole travel is +/-3
+shutter_travel_time = 1.0      # seconds, fully closed to fully open
+gate_travel_time = 1.0         # seconds -- assumed equal to the shutter, not measured
+
+# Pumping. Constant pump speed (constant conductance), so the chamber is first-order
+# with the same time constant up and down. 26s puts a 1e-7 -> 1e-1 Torr change ~99% of
+# the way there in about 120s, which is what the chamber does.
+pressure_tau = 26.0
+
+# Gas line: chamber pressure is linear in total MFC flow between these two points.
+# Below flow_at_pressure_min the line is continued down to the base pressure at zero
+# flow, which the calibration does not cover.
+flow_at_pressure_min = 0.5
+flow_at_pressure_max = 30.0
+pressure_at_flow_min = 1.0e-3
+pressure_at_flow_max = 200.0e-3
+
 [pascal.webcam]
 fps = 25
 height = 480
@@ -398,6 +470,25 @@ name = "Storage"
 exchange = "EXPERIMENT"
 exchange_type = "topic"
 growth_db_path = "cfg/growth.db"
+
+# How long to wait for an MI script to report completion, in seconds. **0 means wait
+# indefinitely**, and that is the default because it is what the controller actually
+# does: a command without an explicit `(Nowait)` stays RUNNING until the firmware
+# confirms the *physical* goal. `Temperature Set 700` completes when the substrate is at
+# 700 -- 24 minutes at 20 degC/min -- and a superlattice loop can run for hours. There is
+# no deadline that is both generous enough for those and short enough to be worth having,
+# and a bounded one made every `to_temperature()` fail.
+#
+# What that gives up, so it is a choice and not an accident: the completion update is a
+# single lossy message, and neither the firmware nor this codebase can cancel a running
+# script (see docs/TODO.md), so a lost update parks the waiting op until the node is
+# restarted. `MiCommandRunner` logs every 5 minutes while an unbounded wait is
+# outstanding, which is the only signal that this has happened.
+#
+# Set a number here (or `nodes/experiment.py --mi-timeout N`) to bound it again. Note a
+# timeout does not *stop* anything: on expiry the script keeps running on the chamber and
+# the node merely stops listening.
+mi_command_timeout = 0
 
 # PLDChamberConfiguration -- the chamber geometry a growth is planned against.
 # Previously copy-pasted into each notebook run and drifted with every physical

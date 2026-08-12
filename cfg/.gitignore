@@ -8,3 +8,12 @@ users.db
 users.db-journal
 users.db-wal
 users.db-shm
+
+# Growth provenance database: substrates, projects and experiment records for
+# whoever ran the experiment node on this machine. `experiment.growth_db_path`
+# points here by default, so it appears on any local run and is local history,
+# not shared state.
+growth.db
+growth.db-journal
+growth.db-wal
+growth.db-shm

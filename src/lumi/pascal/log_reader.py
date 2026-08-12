@@ -52,6 +52,9 @@ class LogReader(threading.Thread):
         self.config =  config
         self.queue = queue.Queue(maxsize=config.queue_size)
         self.peek_queue = collections.deque(maxlen=config.queue_size) # this queue for component that need to get the latest image
+        #: Rows skipped because they would not parse. Reported by the capability's
+        #: readout so a rising count is visible rather than silent.
+        self._bad_rows = 0
 
         self._stop_event = threading.Event()
         self._hold_event = threading.Event()
@@ -128,7 +131,27 @@ class LogReader(threading.Thread):
                 with self._reader_lock:
                     # st = time.time()
                     for row in self._csv_reader:
-                        row = process_row(row)
+                        try:
+                            row = process_row(row)
+                        except Exception:
+                            # One bad row must not end the tail. This is a *live* file:
+                            # the reader routinely catches a line the controller has not
+                            # finished writing, DictReader pads the missing columns with
+                            # None, and process_row's ast.literal_eval(None) raises. That
+                            # used to kill this thread outright -- and nothing noticed,
+                            # because get_log() keeps serving the last row it did read
+                            # and the capability's state still says is_running. Every
+                            # consumer then read an unchanging snapshot forever:
+                            # `Motor free` frozen at whatever it was, so is_motor_free()
+                            # answered the same thing until the node was restarted.
+                            self._bad_rows += 1
+                            if self._bad_rows in (1, 10) or self._bad_rows % 100 == 0:
+                                logging.warning(
+                                    "skipping an unparseable chamber-log row (%d so far); "
+                                    "a partially written line is normal, a rising count is not",
+                                    self._bad_rows, exc_info=self._bad_rows == 1,
+                                )
+                            continue
                         self._entries = list(row.keys())
                         headers : LogContentHeader = {}
 
