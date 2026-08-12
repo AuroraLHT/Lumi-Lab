@@ -149,3 +149,22 @@ Most of the chamber model is now anchored to a measurement. These are not:
 Control verbs (`start`/`stop` streaming) are global and reachable by any connected
 viewer, so a read-only user can toggle a feed off for everyone. Nuisance-level, but it is
 an authorization gap in the direct-to-broker model.
+
+## Put TLS in front of the API bridge and the MCP server
+
+Both `nodes/api.py` (the FastAPI/websocket bridge, incl. `POST /auth/login`) and
+`python -m lumi.mcp --transport http` (`lumi.mcp.server.ExperimentMCPServer.build_http_app`)
+serve plain HTTP with nothing in front of them. Fine on localhost/a trusted private
+network, but not safe for a remote MCP agent:
+
+- `/auth/login` hands back a password (in the request) and a JWT (in the response) in
+  cleartext over plain HTTP.
+- The MCP HTTP transport requires an operator/admin bearer token, but that token also
+  travels in cleartext without TLS.
+
+Plan: put a reverse proxy (nginx or Caddy) in front of both, terminating HTTPS with a
+real cert, proxying to `127.0.0.1:8000` (api) and `127.0.0.1:8100` (mcp) — e.g.
+`https://lumi.example.com/auth/login` and `https://lumi.example.com/mcp`. One cert can
+cover both if they're on the same domain/subpaths. Open decisions: nginx vs. Caddy, the
+domain name, and the cert approach (Caddy auto-TLS via Let's Encrypt vs. an existing
+cert).
