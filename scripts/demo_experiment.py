@@ -370,8 +370,8 @@ def cli() -> argparse.Namespace:
     parser.add_argument("--ramp-rate", type=float, default=20.0, help="degC/min")
     parser.add_argument("--pressure", type=float, default=2.0e-2, help="Torr")
     parser.add_argument("--laser-power", type=float, default=1.2, help="W, reported back to the gate")
-    parser.add_argument("--pulses", type=int, default=600)
-    parser.add_argument("--rate", type=float, default=10.0, help="laser Hz")
+    parser.add_argument("--pulses", type=int, default=300)
+    parser.add_argument("--rate", type=float, default=1.0, help="laser Hz")
     parser.add_argument("--preablation-pulses", type=int, default=300, help="0 to skip")
     parser.add_argument("--interval", type=float, default=2.0, help="seconds between printed samples")
     parser.add_argument("--dryrun", action="store_true",
