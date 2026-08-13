@@ -98,6 +98,20 @@ async def main(args: argparse.Namespace) -> None:
         log.warning("could not start the RHEED camera stream (%s); is the rheed node up?", exc)
 
     node.on_drain(camera.stop)
+
+    # Same reasoning as the RHEED subscription above: detection runs continuously off
+    # whatever RHEED pushes, not on demand from a viewer opening a panel, so its own
+    # `detection`/`overlay` streams start out on too -- otherwise both silently sit at
+    # `is_streaming=False` (the default for any stream capability, see
+    # CapabilityServer._ctl_start) until a browser happens to call `start`, and a growth
+    # recorded before that first click gets no AI frames even though detection is "up".
+    # This is in-process (dispatch_control, not an AMQP round trip) because it is the
+    # same node turning on its own streams.
+    for cap_name in ("detection", "overlay"):
+        res = await node.servers[cap_name].dispatch_control("start", b"", {})
+        if not res.succ:
+            log.warning("could not auto-start %s stream: %s", cap_name, res.error_message)
+
     log.info("detection node up; consuming rheed.camera")
 
     try:
