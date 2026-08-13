@@ -1,5 +1,9 @@
 [rabbitmq]
-host = "10.229.54.16"
+# localhost, so nothing reaches real equipment by default. The lab broker is a
+# machine-local fact, not a project-wide one: point at it with `--host` (every node
+# and the MCP server take one) or override this in cfg/.secrets.toml on the host
+# that actually talks to the chamber.
+host = "localhost"
 
 [api]
 host = "0.0.0.0"

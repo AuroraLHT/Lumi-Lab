@@ -3,6 +3,16 @@
     python -m lumi.mcp                                   # stdio, for a local MCP host
     python -m lumi.mcp --transport http --port 8100       # streamable HTTP, for a remote agent
 
+Which broker: `--host` defaults to `settings.rabbitmq.host`, the same as every node --
+localhost in the tracked config, so nothing here reaches real equipment unless you say
+so. Pass `--host` (or override rabbitmq.host in cfg/.secrets.toml) for the lab broker.
+A broker still holding the pre-refactor `direct` exchanges fails at startup with
+
+    PRECONDITION_FAILED - inequivalent arg 'type' for exchange 'RHEED': received 'topic'
+    but current is 'direct'
+
+which is that broker needing its old exchanges cleared, not a fault in this server.
+
 stdio is a local subprocess only you can spawn -- no auth needed, same trust level
 as any other local tool. HTTP is for a remote agent and always requires a valid
 operator-or-admin bearer token (the same JWT `POST /auth/login` on the browser
@@ -56,7 +66,15 @@ async def main(args: argparse.Namespace) -> None:
 
 def cli() -> None:
     parser = argparse.ArgumentParser(prog="lumi-mcp", description="MCP server for the experiment node")
-    parser.add_argument("--host", default=settings.rabbitmq.host, help="AMQP broker host")
+    parser.add_argument(
+        "--host",
+        default=settings.rabbitmq.host,
+        help=(
+            f"AMQP broker host (default {settings.rabbitmq.host}, from settings.rabbitmq.host). "
+            "Point it at the lab broker to drive real equipment; that broker must already "
+            "be serving the contract-era topic exchanges"
+        ),
+    )
     parser.add_argument("--user", default="guest", help="AMQP user")
     parser.add_argument("--password", default="guest", help="AMQP password")
     parser.add_argument("--transport", choices=["stdio", "http"], default="stdio")
