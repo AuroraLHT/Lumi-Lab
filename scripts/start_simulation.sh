@@ -16,10 +16,11 @@
 #                               [--no-reset-broker] [--chamber-speed N]
 #                               [--experiment-speed N]
 #
-# --chamber-speed compresses the chamber's own clock. --experiment-speed (defaults to
-# the same value) compresses the experiment node's wall-clock warm-up pacing, which the
-# chamber's clock cannot reach -- without it a growth waits ~280s before it starts, no
-# matter how fast the chamber is.
+# --chamber-speed compresses the chamber's own clock. --experiment-speed compresses the
+# experiment node's wall-clock warm-up pacing, which the chamber's clock cannot reach --
+# without it a growth waits ~280s before it starts, no matter how fast the chamber is.
+# Pass either alone and both move together (each defaults from the other); pass both to
+# run them at different rates on purpose.
 #
 # On a localhost broker it first deletes any contract exchange whose type has
 # drifted (the old stack left RHEED/CHAMBER/STORAGE as `direct`; the contract now
@@ -56,7 +57,7 @@ WITH_AUTH=0
 WITH_EXPERIMENT=0
 KEEP_DATABASE=0
 RESET_BROKER=1
-CHAMBER_SPEED=1
+CHAMBER_SPEED=
 EXPERIMENT_SPEED=
 
 while [[ $# -gt 0 ]]; do
@@ -74,6 +75,12 @@ while [[ $# -gt 0 ]]; do
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
+
+# The two speeds default from each other: pass either alone and both move together,
+# which is what "run the whole sim faster" usually means. Pass both explicitly to
+# run them at different rates on purpose (e.g. a slow chamber with a fast-forwarded
+# warm-up wait).
+: "${CHAMBER_SPEED:=${EXPERIMENT_SPEED:-1}}"
 
 RUN_DIR="$PROJECT_ROOT/run/simulation"
 LOG_DIR="$RUN_DIR/logs"
