@@ -53,7 +53,9 @@ overrides use the `DYNACONF_` prefix, e.g. `DYNACONF_API__WORKERS=1`.
 
 Two settings worth knowing about before you start anything:
 
-- `rabbitmq.host` — the lab broker. Override with `--host` on any node.
+- `rabbitmq.host` — `localhost` in the tracked file, so nothing reaches real equipment by
+  default. The lab broker's address is machine-local: put it in `cfg/.secrets.toml`, or
+  pass `--host` (every node and the MCP server take one).
 - `auth.enabled` — keep it `true` in the tracked file. Turn it off for local work in
   `cfg/.secrets.toml`, not here.
 
@@ -237,6 +239,104 @@ Two behaviours worth knowing before you Ctrl-C it: killing the client does not s
 node — a `to_temperature` you abandon keeps ramping, and its stale `current_task` will
 still be there on your next run. And nothing stops the chamber: a script already handed to
 the controller runs to the last pulse (`docs/TODO.md`).
+
+## The MCP server — driving a growth from an LLM agent
+
+`src/lumi/mcp/` exposes the experiment node's ops as MCP tools, so an agent (Claude Code,
+Claude Desktop, anything speaking MCP) can run a deposition. There is no console script;
+it's a module:
+
+```bash
+uv run python -m lumi.mcp                              # stdio, for a local MCP host
+uv run python -m lumi.mcp --transport http --port 8100 # streamable HTTP, for a remote agent
+```
+
+It needs the `mcp` extra (`uv sync --extra mcp`) and a reachable broker. The experiment
+node does **not** have to be up to start it — tools are built from the contract, not from
+who is on the bus — but every call will time out until it is.
+
+### Which broker to point it at
+
+`--host` defaults to `settings.rabbitmq.host`, the same as every node — `localhost` in
+the tracked config, so nothing reaches real equipment unless you ask it to:
+
+```bash
+uv run python -m lumi.mcp                         # the simulator on this machine
+uv run python -m lumi.mcp --host some-other-box   # a simulator, or the lab broker, elsewhere
+```
+
+`--user` / `--password` go with it if that broker isn't using `guest`/`guest`. On the
+host that really does talk to the chamber, set `rabbitmq.host` in `cfg/.secrets.toml`
+rather than editing the tracked `settings.toml` — the broker address is a machine-local
+fact, and having it in the shared file is what made `python -m lumi.mcp` reach for the
+lab by default.
+
+> **The lab broker is not ready for this yet.** It still holds the pre-refactor
+> messaging layer's exchanges — `CHAMBER`, `RHEED` and `STORAGE` exist there as
+> non-durable **`direct`** exchanges, with live bindings from the old-style nodes. Any
+> contract-era client that declares them as `topic` is refused at startup:
+>
+> ```
+> PRECONDITION_FAILED - inequivalent arg 'type' for exchange 'RHEED' in vhost '/':
+> received 'topic' but current is 'direct'
+> ```
+>
+> This is not specific to the MCP server — it will happen to any refactored node pointed
+> at that broker. Clearing it means deleting those three exchanges (they are non-durable,
+> so a broker restart drops them anyway) once the old nodes are no longer using them.
+> Until then, use a local broker.
+
+The tools are generated, one per `(contract, capability, op)`, named
+`experiment.driver.to_temperature` and so on — 49 of them today. Adding an op to
+`contracts/experiment.py` makes it a tool with no change here. The surface is
+deliberately narrower than the browser bridge's: all of `experiment`, plus read-only
+`rheed.camera` and `chamber.log` for situational awareness, and nothing else — an agent
+has no business reaching `system.supervisor.spawn` or raw MI script execution.
+
+### Adding it to Claude Code
+
+From the project you want to drive it from:
+
+```bash
+claude mcp add lumi-experiment -- \
+  uv run --project /path/to/Autonomous-Servers python -m lumi.mcp
+```
+
+`--project` matters: without it `uv run` resolves against whatever directory the MCP host
+launched from, which is usually not this repo. Then `claude mcp list` should show
+`✔ Connected`. Use `--scope project` instead of the default if you want the registration
+written to a `.mcp.json` that travels with the repo; `claude mcp remove lumi-experiment`
+undoes it. For Claude Desktop the same command line goes in `claude_desktop_config.json`
+under `mcpServers`.
+
+stdio needs no auth — it's a subprocess only you can spawn, the same trust level as any
+other local tool.
+
+### The HTTP transport
+
+For a remote agent. It always requires an **operator or admin** bearer token — the same
+JWT `POST /auth/login` issues for the browser — and unlike the browser side this is *not*
+gated by `auth.enabled`, so a dev-mode bypass never opens real equipment control to the
+network. Viewer tokens are refused at the door.
+
+```bash
+uv run python -m lumi.api.manage create-user agent --role operator
+```
+
+It serves plain HTTP; put nginx/Caddy in front for TLS (`docs/TODO.md`). `--bind-host`
+defaults to `127.0.0.1` — anything else means your firewall is the only thing between the
+internet and the chamber.
+
+### Before you let an agent run a growth
+
+`to_temperature`, `cool_down`, `perform_preablation`, `perform_deposition` and `anneal`
+return a `task_id` immediately. The server's instructions tell the agent to watch
+`current_task` clear before continuing, but nothing enforces it, and `current_task`
+clearing does not mean the step *succeeded* — so an agent that skips the check will
+happily deposit at whatever temperature the substrate actually reached. Same failure mode
+as the recipe issue in `docs/TODO.md`, with an LLM driving. Ops needing a human (laser
+power, mask alignment, RHEED gain) come back with `pending_confirmation` and block until
+the matching `confirm_*` tool resolves them.
 
 ## Tests
 
