@@ -76,11 +76,16 @@ async def _identity_from_token(websocket: WebSocket, token: str) -> Identity | N
         log.debug("rejected websocket token: %s", exc)
         return None
 
+    # `sub` is the user id as a string; anything else is an invalid credential, not a
+    # crash. Unguarded, int() raises into the websocket accept path.
     subject = payload.get("sub")
-    if subject is None:
+    try:
+        user_id = int(subject)
+    except (TypeError, ValueError):
+        log.debug("rejected websocket token: sub %r is not a user id", subject)
         return None
 
-    user = await store.get_user_by_id(int(subject))
+    user = await store.get_user_by_id(user_id)
     if user is None or not user["is_active"]:
         return None
 

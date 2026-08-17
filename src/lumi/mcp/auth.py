@@ -48,11 +48,19 @@ class LumiTokenVerifier(TokenVerifier):
             log.debug("rejected MCP bearer token: %s", exc)
             return None
 
+        # `sub` is the user id as a string (routes/auth.py mints it as str(user["id"])).
+        # A correctly-signed token carrying anything else -- a username, an older
+        # format -- must be rejected like any other bad token: an unguarded int() here
+        # raises ValueError out through the auth middleware, which answers 500 with a
+        # stack trace instead of 401.
         subject = payload.get("sub")
-        if subject is None:
+        try:
+            user_id = int(subject)
+        except (TypeError, ValueError):
+            log.debug("rejected MCP bearer token: sub %r is not a user id", subject)
             return None
 
-        user = await self.user_store.get_user_by_id(int(subject))
+        user = await self.user_store.get_user_by_id(user_id)
         if user is None or not user["is_active"]:
             return None
 
