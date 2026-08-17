@@ -9,11 +9,18 @@ shows up as a tool with no code change here, the same guarantee `lumi-codegen
 framed instead of websocket-framed.
 
 Deliberately narrower than the browser bridge's fully generic REGISTRY iteration:
-only the `experiment` contract's ops, plus two read-only capabilities (RHEED's
-camera, the chamber's log) for situational awareness. An LLM agent operating real
-lab equipment is a more dangerous surface than a browser viewer behind a role check;
+only the `experiment` contract's ops, plus a few capabilities for situational
+awareness -- RHEED's camera, the chamber's log, and the chamber's own webcam --
+rather than every capability on those contracts. An LLM agent operating real lab
+equipment is a more dangerous surface than a browser viewer behind a role check;
 there is no reason to hand it e.g. system.supervisor.spawn/kill just because the
 generic pattern would technically allow it.
+
+Note `chamber.camera` is not read-only like `log` -- it includes
+`update_camera_config`, so an agent with this tool set can change the chamber
+webcam's settings, not just view it. That is a deliberate tradeoff for a simpler
+per-capability (not per-op) EXPOSED list; split it out here if that op ever needs
+to be withheld.
 """
 
 from __future__ import annotations
@@ -50,7 +57,7 @@ log = logging.getLogger(__name__)
 EXPOSED: tuple[tuple[EquipmentContract, tuple[str, ...] | None], ...] = (
     (EXPERIMENT, None),
     (RHEED, ("camera",)),
-    (CHAMBER, ("log",)),
+    (CHAMBER, ("log", "camera")),
 )
 
 
