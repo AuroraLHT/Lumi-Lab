@@ -77,11 +77,17 @@ async def _user_from_token(token: str, store: UserStore) -> User:
         logging.debug(f"Rejected token: {exc}")
         raise CREDENTIALS_EXCEPTION from exc
 
+    # `sub` is the user id as a string. A signed token carrying anything else is just
+    # an invalid credential -- without the guard, int() raises past CREDENTIALS_EXCEPTION
+    # and the caller gets a 500 instead of a 401.
     subject = payload.get("sub")
-    if subject is None:
-        raise CREDENTIALS_EXCEPTION
+    try:
+        user_id = int(subject)
+    except (TypeError, ValueError):
+        logging.debug(f"Rejected token: sub {subject!r} is not a user id")
+        raise CREDENTIALS_EXCEPTION from None
 
-    user = await store.get_user_by_id(int(subject))
+    user = await store.get_user_by_id(user_id)
     if user is None or not user["is_active"]:
         raise CREDENTIALS_EXCEPTION
 
