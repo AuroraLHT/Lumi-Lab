@@ -37,6 +37,7 @@ from lumi.contracts.experiment import EXPERIMENT
 from lumi.contracts.rheed import RHEED
 from lumi.contracts.spec import Capability, EquipmentContract, Op
 from lumi.mcp.auth import REQUIRED_SCOPE, LumiTokenVerifier
+from lumi.mcp.frames import binary_content
 
 log = logging.getLogger(__name__)
 
@@ -187,5 +188,14 @@ class ExperimentMCPServer:
                 content=[types.TextContent(type="text", text=f"{type(exc).__name__}: {exc}")], is_error=True,
             )
 
-        model = result[0] if isinstance(result, tuple) else result
-        return types.CallToolResult(content=[types.TextContent(type="text", text=model.model_dump_json())])
+        # A binary-codec op answers `(headers, body)`: the model describes the frame
+        # and the pixels are the body. Returning only `result[0]` -- which is what this
+        # did -- meant `rheed.camera.image` handed the agent a shape and a dtype and
+        # threw the image away, and nothing in the reply said a body had existed.
+        if isinstance(result, tuple):
+            model, payload = result
+            content, note = binary_content(payload, str(op.response_codec))
+            return types.CallToolResult(
+                content=[*content, types.TextContent(type="text", text=f"{note}\n{model.model_dump_json()}")]
+            )
+        return types.CallToolResult(content=[types.TextContent(type="text", text=result.model_dump_json())])
