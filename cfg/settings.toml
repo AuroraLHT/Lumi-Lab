@@ -44,6 +44,14 @@ database_path = "cfg/users.db"
 default_admin_username = "admin"
 default_admin_password = ""
 
+[mcp]
+# Registered MCP clients and their refresh tokens, for the HTTP transport's login
+# flow (lumi.mcp.oauth). Its own file rather than extra tables in the user
+# database, so the MCP server and the api node never contend for SQLite's
+# database-wide write lock. Unset means "next to auth.database_path", which keeps
+# a simulation stack's grants inside run/simulation/ with the rest of its state.
+# oauth_database_path = "cfg/mcp_oauth.db"
+
 [suffix]
 state_monitior = "State Monitor"
 

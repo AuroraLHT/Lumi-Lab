@@ -25,8 +25,9 @@ from aio_pika.abc import AbstractChannel, AbstractConnection
 from mcp import types
 from mcp.server import Server
 from mcp.server.auth.middleware.auth_context import get_access_token
-from mcp.server.auth.settings import AuthSettings
+from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from starlette.applications import Starlette
+from starlette.routing import Route
 
 from lumi.api.db import UserStore
 from lumi.base.mq.client import CapabilityClient, RemoteError
@@ -36,8 +37,10 @@ from lumi.contracts.chamber import CHAMBER
 from lumi.contracts.experiment import EXPERIMENT
 from lumi.contracts.rheed import RHEED
 from lumi.contracts.spec import Capability, EquipmentContract, Op
-from lumi.mcp.auth import REQUIRED_SCOPE, LumiTokenVerifier
+from lumi.mcp.auth import REQUIRED_SCOPE, ROLE_SCOPES, LumiTokenVerifier
 from lumi.mcp.frames import binary_content
+from lumi.mcp.oauth import LOGIN_PATH, LumiAuthorizationServer
+from lumi.mcp.store import OAuthStore
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +75,7 @@ class ExperimentMCPServer:
         self._tools: dict[str, tuple[EquipmentContract, Capability, Op, CapabilityClient]] = {}
         # Only created for the HTTP transport (build_http_app) -- stdio needs no auth.
         self._user_store: UserStore | None = None
+        self._oauth_store: OAuthStore | None = None
 
         self.server: Server = Server(
             "lumi-experiment",
@@ -111,28 +115,80 @@ class ExperimentMCPServer:
 
         log.info("mcp server connected; %d tools from %s", len(self._tools), ", ".join(self._clients))
 
-    async def build_http_app(self, *, bind_host: str = "127.0.0.1") -> Starlette:
+    async def build_http_app(
+        self, *, bind_host: str = "127.0.0.1", public_url: str | None = None, oauth: bool = True
+    ) -> Starlette:
         """The Starlette app for the streamable-HTTP transport, with bearer-token
         auth wired to the same JWT/user store the browser bridge uses. Always
         requires a valid operator-or-admin token -- unlike the browser side, this
         is not gated by settings.auth.enabled, since the whole point of this
         transport is letting a remote agent reach real equipment control. Run it
         behind a reverse proxy that terminates TLS; this returns a plain-HTTP app.
+
+        With `oauth` on (the default) it is also its own authorization server: an
+        unauthenticated client is told where to log in and walks the browser flow
+        in `lumi.mcp.oauth`, instead of needing a token minted out of band. Both
+        routes end at the same JWT, so `LumiTokenVerifier` below is unchanged and
+        a hand-minted token keeps working.
+
+        `public_url` is the address clients reach this server on, and it has to be
+        the *external* one -- it is published as the OAuth issuer and baked into
+        every URL a client is redirected to, so behind a TLS proxy it is the
+        proxy's https:// address, not this process's bind address.
         """
         self._user_store = UserStore()
         await self._user_store.connect()
         verifier = LumiTokenVerifier(self._user_store)
 
+        if not oauth:
+            auth_settings = AuthSettings(
+                # Not a real OAuth issuer -- we verify pre-issued JWTs from lumi's own
+                # login (POST /auth/login), and there is no authorization server here to
+                # name. This is only required by AuthSettings' schema; with no
+                # auth_server_provider and no resource_server_url, nothing advertises it.
+                issuer_url="https://lumi.internal/",
+                resource_server_url=None,
+                required_scopes=[REQUIRED_SCOPE],
+            )
+            return self.server.streamable_http_app(
+                host=bind_host, auth=auth_settings, token_verifier=verifier
+            )
+
+        base = (public_url or f"http://{bind_host}:8100").rstrip("/")
+        self._oauth_store = OAuthStore()
+        await self._oauth_store.connect()
+        provider = LumiAuthorizationServer(user_store=self._user_store, store=self._oauth_store)
+
         auth_settings = AuthSettings(
-            # Not a real OAuth issuer -- we verify pre-issued JWTs from lumi's own
-            # login (POST /auth/login), not an OAuth authorization-code flow. This
-            # is only required by AuthSettings' schema; no auth_server_provider is
-            # configured, so no /authorize or /token routes are ever created for it.
-            issuer_url="https://lumi.internal/",
-            resource_server_url=None,
+            # This server is both the resource server and the authorization server,
+            # so both URLs are its own. The issuer is compared as an exact string by
+            # RFC 8414 clients -- if a client reports an issuer mismatch, --public-url
+            # does not match the address it actually used.
+            issuer_url=base,
+            resource_server_url=f"{base}/mcp",
             required_scopes=[REQUIRED_SCOPE],
+            client_registration_options=ClientRegistrationOptions(
+                # MCP hosts register themselves; there is no console here to hand out
+                # client ids in advance. Registration alone grants nothing -- a token
+                # still requires somebody to log in, and carries their role, not the
+                # client's.
+                enabled=True,
+                valid_scopes=list(ROLE_SCOPES["admin"]),
+                default_scopes=[REQUIRED_SCOPE],
+            ),
+            # Revoking drops the refresh token, which stops silent renewal. The access
+            # token is a stateless JWT and expires on its own; see oauth.revoke_token.
+            revocation_options=RevocationOptions(enabled=True),
         )
-        return self.server.streamable_http_app(host=bind_host, auth=auth_settings, token_verifier=verifier)
+        return self.server.streamable_http_app(
+            host=bind_host,
+            auth=auth_settings,
+            token_verifier=verifier,
+            auth_server_provider=provider,
+            custom_starlette_routes=[
+                Route(LOGIN_PATH, endpoint=provider.handle_login, methods=["GET", "POST"]),
+            ],
+        )
 
     async def close(self) -> None:
         for client in self._clients.values():
@@ -143,6 +199,8 @@ class ExperimentMCPServer:
             await self._connection.close()
         if self._user_store is not None:
             await self._user_store.close()
+        if self._oauth_store is not None:
+            await self._oauth_store.close()
 
     # --- MCP handlers --------------------------------------------------------
 
