@@ -9,6 +9,14 @@ users.db-journal
 users.db-wal
 users.db-shm
 
+# MCP OAuth database: which MCP clients registered themselves and the refresh
+# tokens keeping them logged in. Machine-local grants, and a refresh token is a
+# live credential -- never shared. Created by lumi.mcp's HTTP transport.
+mcp_oauth.db
+mcp_oauth.db-journal
+mcp_oauth.db-wal
+mcp_oauth.db-shm
+
 # Growth provenance database: substrates, projects and experiment records for
 # whoever ran the experiment node on this machine. `experiment.growth_db_path`
 # points here by default, so it appears on any local run and is local history,

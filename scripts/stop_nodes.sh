@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Kill any lumi node processes (monitor, storage, pascal, rheed, detection, api,
-# agent) still running, whether they belong to a live start_simulation.sh session or
+# agent, experiment) still running, whether they belong to a live start_simulation.sh session or
 # are orphans left behind by one that got killed without cleanup (e.g. it was
 # `source`d into an interactive shell -- see the comment in start_simulation.sh
 # about why that breaks its Ctrl-C handler).
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-PATTERN='nodes/(monitor|storage|pascal|rheed|detection|api|agent)\.py'
+PATTERN='nodes/(monitor|storage|pascal|rheed|detection|api|agent|experiment)\.py'
 
 mapfile -t MATCHES < <(pgrep -af "$PATTERN" || true)
 

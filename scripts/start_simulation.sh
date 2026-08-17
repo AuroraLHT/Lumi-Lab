@@ -119,6 +119,28 @@ else
     AUTH_NOTE="auth OFF (wide open) -- pass --with-auth to require login"
 fi
 
+# Everything above is exported into *this* process, so only the nodes started below
+# inherit it. Anything run alongside the stack from another terminal --
+# scripts/start_mcp_http.sh, a manage command, a notebook -- gets none of it, and
+# silently talks to the settings.toml defaults instead: the wrong user database, the
+# lab broker. Write the choices down so those callers can adopt them rather than
+# each re-deriving (or re-inventing) them.
+#
+# Deliberately not the admin credentials: only the api node needs those, at bootstrap.
+{
+    echo "# Written by scripts/start_simulation.sh -- source this to talk to the running"
+    echo "# simulation stack from another terminal. Regenerated on every start."
+    echo "export LUMI_SIM_RUN_DIR=$(printf '%q' "$RUN_DIR")"
+    echo "export LUMI_SIM_BROKER_HOST=$(printf '%q' "$RABBITMQ_HOST")"
+    echo "export LUMI_AMQP_URL=$(printf '%q' "$LUMI_AMQP_URL")"
+    echo "export DYNACONF_AUTH__ENABLED=${DYNACONF_AUTH__ENABLED}"
+    # Only set when the stack redirected it; with --keep-database the settings.toml
+    # default applies and saying nothing here is what keeps the two agreeing.
+    if [[ -n "${DYNACONF_AUTH__DATABASE_PATH:-}" ]]; then
+        echo "export DYNACONF_AUTH__DATABASE_PATH=$(printf '%q' "$DYNACONF_AUTH__DATABASE_PATH")"
+    fi
+} > "$RUN_DIR/env.sh"
+
 # HDF5 recorder output. The checked-in `database` symlink points at the lab share
 # (/mnt/FastTerp), which is not mounted outside the lab, and we do not want
 # simulated runs landing in the real records anyway -- send it at a scratch dir.
@@ -300,9 +322,24 @@ echo "to make the chamber actually do something, run a growth alongside this:"
 echo "  uv run scripts/demo_growth.py --speed $CHAMBER_SPEED       # chamber node, raw MI"
 if [[ $WITH_EXPERIMENT -eq 1 ]]; then
     echo "  uv run scripts/demo_experiment.py --speed $CHAMBER_SPEED   # experiment node, as a notebook would"
+    echo "  uv run scripts/demo_mcp.py                     # experiment node, as an LLM agent would"
+    echo "                                                 # (spawns its own MCP server; PASS/FAIL checks,"
+    echo "                                                 #  add --skip-ramp to leave the chamber cold)"
+    echo
+    echo "to point a real MCP client (Claude Code, Codex) at this chamber:"
+    echo "  claude mcp add lumi-experiment -- uv run --project $PROJECT_ROOT python -m lumi.mcp"
+    echo "                                                 # stdio: local subprocess, no login needed"
+    echo "  scripts/start_mcp_http.sh                      # or serve HTTP and sign in through the browser:"
+    echo "  claude mcp add --transport http lumi-experiment http://127.0.0.1:8100/mcp"
+    if [[ "${DYNACONF_AUTH__ENABLED:-}" != "true" ]]; then
+        echo "                                                 # (the HTTP login checks passwords whatever"
+        echo "                                                 #  --with-auth says, so it needs a real account:"
+        echo "                                                 #  python -m lumi.api.manage create-user NAME --role operator)"
+    fi
 else
-    echo "  (restart with --with-experiment for scripts/demo_experiment.py, which drives"
-    echo "   the same growth through the experiment node instead)"
+    echo "  (restart with --with-experiment for scripts/demo_experiment.py and"
+    echo "   scripts/demo_mcp.py, which drive the same chamber through the experiment"
+    echo "   node and through the MCP server respectively)"
 fi
 
 # Exit as soon as any node dies, rather than sitting on a half-dead stack.
