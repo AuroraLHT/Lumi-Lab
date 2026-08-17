@@ -16,10 +16,16 @@ from lumi.contracts.payloads.camera import CameraConfig
 from lumi.contracts.payloads.chamber import AllConfigs, ConfigSection, LogBatch, LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.experiment import (
+    Anneal,
+    AnnealStep,
     BeginSetLaserPower,
     ConfirmLaserPower,
     MoveTo,
     RegisterSubstrate,
+    SetMfcControl,
+    SetMfcFlow,
+    SetPressure,
+    SetPressureControl,
     ToTemperature,
 )
 from lumi.contracts.payloads.storage import StorageStatus
@@ -42,6 +48,9 @@ LOG_VALUES = {
     "DP1 (Main)": "TRUE", "DP2 (2nd RHEED)": "TRUE", "DP3 (L/L)": "TRUE",
     "TMP1 (Main)": "TRUE", "TMP2 (RHEED)": "TRUE", "TMP3 (L/L)": "TRUE", "TMP4 (2nd RHEED)": "TRUE",
     "MFC1 set": "1.0", "MFC1 moni": "1.0",
+    # `Heat Stat` bit 3 -- the heater's own ON/OFF monitor. to_temperature refuses to
+    # ramp without it, so the default fixture has the laser already running.
+    "ON/OFF monitor in PS": "TRUE",
 }
 
 
@@ -186,6 +195,32 @@ async def test_move_mask_to_position_requires_motor_free(handler):
         await handler.move_mask_to_position(MoveTo(position=50))
 
 
+# --- gas: setpoints and their gates are separate ops ---------------------------
+
+
+async def test_set_mfc_flow_only_sets_the_setpoint(handler):
+    # The gate is a separate op on purpose. Asserting the *absence* of `MFC Control`
+    # here is the point: an op that quietly opened the gas line would pass a test that
+    # only checked the flow command.
+    await handler.set_mfc_flow(SetMfcFlow(mfc_id="1", flow=5.0))
+    assert handler.sources["chamber_mi"].calls == ["MFC1 Flow Set= 5.00\n"]
+
+
+async def test_set_mfc_control_opens_and_closes_the_master_gate(handler):
+    await handler.set_mfc_control(SetMfcControl(enabled=True))
+    await handler.set_mfc_control(SetMfcControl(enabled=False))
+    assert handler.sources["chamber_mi"].calls == ["MFC Control Enable\n", "MFC Control Disable\n"]
+
+
+async def test_set_pressure_and_pressure_control_are_separate(handler):
+    await handler.set_pressure(SetPressure(pressure=20.0e-3))
+    await handler.set_pressure_control(SetPressureControl(on=True))
+    await handler.set_pressure_control(SetPressureControl(on=False))
+    assert handler.sources["chamber_mi"].calls == [
+        "Set Pressure= 2.00E-2\n", "Pressure Control ON\n", "Pressure Control OFF\n",
+    ]
+
+
 # --- pending-confirmation gate --------------------------------------------------
 
 
@@ -229,4 +264,27 @@ async def test_long_running_task_tracked_and_cleared(handler):
     else:
         pytest.fail("task never reported completion")
 
+    assert handler.readout().current_task is None
+
+
+async def test_to_temperature_refuses_with_the_heating_laser_off(handler):
+    # PID with the diode off drives nothing: the setpoint climbs, the current stays at
+    # zero and the pyrometer sits at Pyro_min. Worse, TemperatureSet goes out
+    # nowait=False, so the MI command blocks until it times out rather than erroring.
+    handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
+    with pytest.raises(RuntimeError, match="initiate_heating_laser"):
+        await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20))
+
+    # Raised by the op, not reported on the update channel: a caller that only has ops
+    # (the MCP server) cannot read current_task, so a refusal buried in the task would
+    # look to it like a ramp that started fine.
+    assert handler.readout().current_task is None
+    # And nothing reached the chamber -- no setpoint left behind to act on later.
+    assert handler.sources["chamber_mi"].calls == []
+
+
+async def test_anneal_refuses_with_the_heating_laser_off(handler):
+    handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
+    with pytest.raises(RuntimeError, match="initiate_heating_laser"):
+        await handler.anneal(Anneal(steps=[AnnealStep(temperature=700, ramp_rate=20, wait_time=0)]))
     assert handler.readout().current_task is None

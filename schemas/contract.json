@@ -2970,6 +2970,96 @@
             "response_codec": "json"
           },
           {
+            "name": "set_mfc_control",
+            "request": {
+              "properties": {
+                "enabled": {
+                  "title": "Enabled",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "enabled"
+              ],
+              "title": "SetMfcControl",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pressure",
+            "request": {
+              "properties": {
+                "pressure": {
+                  "title": "Pressure",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "pressure"
+              ],
+              "title": "SetPressure",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pressure_control",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "SetPressureControl",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "initiate_heating_laser",
             "request": {
               "description": "No payload. Used for ops that take or return nothing.",
@@ -4067,7 +4157,10 @@
             "register_substrate": "experiment.driver.req.register_substrate",
             "resolve_pixel_check": "experiment.driver.req.resolve_pixel_check",
             "resume_substrate": "experiment.driver.req.resume_substrate",
+            "set_mfc_control": "experiment.driver.req.set_mfc_control",
             "set_mfc_flow": "experiment.driver.req.set_mfc_flow",
+            "set_pressure": "experiment.driver.req.set_pressure",
+            "set_pressure_control": "experiment.driver.req.set_pressure_control",
             "set_rheed_gain": "experiment.driver.req.set_rheed_gain",
             "set_target": "experiment.driver.req.set_target",
             "show_available_targets": "experiment.driver.req.show_available_targets",
