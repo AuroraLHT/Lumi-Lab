@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 573e8d3fd5a840bc
+# contract_hash: 7e7d5e6d72531bde
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import Anneal, BeginSetLaserPower, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, MaskPosition, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectInfo, PumpStatus, RegisterProject, RegisterSubstrate, ResolvePixelCheck, ResumeSubstrate, SetMfcFlow, SetRheedGain, SetTarget, StartStorage, StorageResult, SubstrateInfo, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, ValveStatus
+from lumi.contracts.payloads.experiment import Anneal, BeginSetLaserPower, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, MaskPosition, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectInfo, PumpStatus, RegisterProject, RegisterSubstrate, ResolvePixelCheck, ResumeSubstrate, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartStorage, StorageResult, SubstrateInfo, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -127,8 +127,20 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("to_current_pixel")  # type: ignore[return-value]
 
     async def set_mfc_flow(self, req: SetMfcFlow) -> Ack:
-        """Call driver.set_mfc_flow."""
+        """Set an MFC's flow setpoint in sccm. The gas does NOT flow until set_mfc_control(enabled=True) opens the master gate -- until then get_mfc_status shows `set` at your value and `monitor` at zero, and the chamber pressure does not move."""
         return await self.call("set_mfc_flow", req)  # type: ignore[return-value]
+
+    async def set_mfc_control(self, req: SetMfcControl) -> Ack:
+        """Open or close the MFC master gate (PASCAL's `MFC Control`). One gate for every channel, so disabling it stops all MFCs at once, leaving their flow setpoints untouched. Not needed under pressure control, which drives the control MFC itself."""
+        return await self.call("set_mfc_control", req)  # type: ignore[return-value]
+
+    async def set_pressure(self, req: SetPressure) -> Ack:
+        """Set the closed-loop pressure setpoint in Torr. Takes effect only once set_pressure_control(on=True) is on; the controller then trims the control MFC's flow to hold it, overriding set_mfc_flow on that channel."""
+        return await self.call("set_pressure", req)  # type: ignore[return-value]
+
+    async def set_pressure_control(self, req: SetPressureControl) -> Ack:
+        """Turn closed-loop pressure control on or off. On: the controller owns the control MFC and holds set_pressure's setpoint. Off: flow reverts to whatever set_mfc_flow last set, gated by set_mfc_control."""
+        return await self.call("set_pressure_control", req)  # type: ignore[return-value]
 
     async def initiate_heating_laser(self) -> Ack:
         """Call driver.initiate_heating_laser."""
@@ -151,7 +163,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("finish_experiment_record", req)  # type: ignore[return-value]
 
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
-        """Call driver.to_temperature."""
+        """Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach."""
         return await self.call("to_temperature", req)  # type: ignore[return-value]
 
     async def cool_down(self, req: CoolDown) -> TaskAck:

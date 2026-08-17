@@ -72,7 +72,10 @@ from lumi.contracts.payloads.experiment import (
     RegisterSubstrate,
     ResolvePixelCheck,
     ResumeSubstrate,
+    SetMfcControl,
     SetMfcFlow,
+    SetPressure,
+    SetPressureControl,
     SetRheedGain,
     SetTarget,
     StartStorage,
@@ -224,7 +227,25 @@ class ExperimentHandler:
         asyncio.create_task(runner(), name=f"experiment-task-{kind}")
         return TaskAck(task_id=task_id)
 
+    async def _require_heating_laser(self) -> None:
+        """The same refusal `manager.to_temperature` makes, hoisted ahead of
+        `_start_task`.
+
+        A long-running op reports failure on the update channel, not to its caller --
+        `_start_task` returns a TaskAck the moment it spawns the runner. That is fine
+        for a client subscribed to `driver.update`, but the MCP server exposes ops and
+        nothing else: an agent has no way to read `current_task`, so a refusal raised
+        inside the task is invisible to it and the ramp looks like it started. Checked
+        here, it comes back as an error on the tool call itself.
+        """
+        if not await self.manager.is_heating_laser_on():
+            raise RuntimeError(
+                "heating laser is off -- call initiate_heating_laser first; ramping "
+                "with it off sets a setpoint no current can reach"
+            )
+
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
+        await self._require_heating_laser()
         return await self._start_task(
             "to_temperature", self.manager.to_temperature(req.temperature, req.ramp_rate),
             {"temperature": req.temperature, "ramp_rate": req.ramp_rate},
@@ -250,6 +271,7 @@ class ExperimentHandler:
         )
 
     async def anneal(self, req: Anneal) -> TaskAck:
+        await self._require_heating_laser()  # every step is a to_temperature
         steps = [(s.temperature, s.ramp_rate, s.wait_time) for s in req.steps]
         return await self._start_task("anneal", self.manager.anneal(steps), {"n_steps": len(steps)})
 
@@ -385,6 +407,18 @@ class ExperimentHandler:
 
     async def set_mfc_flow(self, req: SetMfcFlow) -> Ack:
         await self.manager.set_mfc_flow(req.mfc_id, req.flow)
+        return Ack()
+
+    async def set_mfc_control(self, req: SetMfcControl) -> Ack:
+        await self.manager.set_mfc_control(req.enabled)
+        return Ack()
+
+    async def set_pressure(self, req: SetPressure) -> Ack:
+        await self.manager.set_pressure(req.pressure)
+        return Ack()
+
+    async def set_pressure_control(self, req: SetPressureControl) -> Ack:
+        await self.manager.set_pressure_control(req.on)
         return Ack()
 
     async def initiate_heating_laser(self, req: Empty) -> Ack:

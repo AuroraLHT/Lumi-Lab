@@ -447,7 +447,13 @@ class ChamberModel:
             self.mask2.move_to(0.0)
 
     def set_mfc_flow(self, mfc_id: int, flow: float) -> None:
+        # Only MFC1/MFC2 are plumbed -- 3..5 log as -1.00 like the recorded asset. The
+        # script grammar accepts `MFC(\d) Flow Set=`, though, so an MI script asking for
+        # MFC3 used to add a key here that `_tick_gas` then hit a KeyError on, killing
+        # the log-writer thread. Ignore what the chamber does not have.
         with self._lock:
+            if int(mfc_id) not in self.mfc_set:
+                return
             self.mfc_set[int(mfc_id)] = float(flow)
 
     def set_mfc_control(self, enabled: bool) -> None:

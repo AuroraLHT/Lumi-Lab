@@ -215,6 +215,18 @@ class SetMfcFlow(BaseModel):
     flow: float
 
 
+class SetMfcControl(BaseModel):
+    enabled: bool
+
+
+class SetPressure(BaseModel):
+    pressure: float
+
+
+class SetPressureControl(BaseModel):
+    on: bool
+
+
 class StartStorage(BaseModel):
     project_name: str
     is_dryrun: bool = False
@@ -417,7 +429,10 @@ __all__ = [
     "RegisterSubstrate",
     "ResolvePixelCheck",
     "ResumeSubstrate",
+    "SetMfcControl",
     "SetMfcFlow",
+    "SetPressure",
+    "SetPressureControl",
     "SetRheedGain",
     "SetTarget",
     "StartStorage",

@@ -353,6 +353,31 @@ def test_pressure_control_settles_at_the_requested_pressure(model):
     assert values["MFC1 moni"] == pytest.approx(3.32, abs=0.05)
 
 
+def test_a_flow_setpoint_alone_does_not_open_the_gas_line(model):
+    # The mirror of the test below. `MFC1 Flow Set=` moves the setpoint and nothing
+    # else -- PASCAL's `MFC Control` is what actually lets gas through, which is why
+    # experiment.driver has a separate set_mfc_control op.
+    base = model.snapshot()["Vac Pres Main"]
+    run(model, text(pcmd.SetMFC1Flow(5.0), pcmd.Wait(300)))
+    values = model.snapshot()
+    assert values["MFC1 set"] == pytest.approx(5.0)
+    assert values["MFC1 moni"] == pytest.approx(0.0)
+    assert values["Vac Pres Main"] == pytest.approx(base)
+
+
+def test_a_flow_for_an_mfc_the_chamber_lacks_is_ignored(model):
+    # The script grammar accepts `MFC(\d) Flow Set=`, but only 1 and 2 are plumbed --
+    # 3..5 log as -1.00. An MFC3 line used to add a key the gas tick then raised
+    # KeyError on, which kills the log-writer thread rather than the script.
+    run(model, text(pcmd.SetMFC1Flow(5.0), pcmd.SetMFCControl(enable=True)))
+    model.set_mfc_flow(3, 5.0)
+    run(model, text(pcmd.Wait(300)))
+    values = model.snapshot()
+    assert values["MFC3 set"] == pytest.approx(-1.0)
+    assert values["MFC1 moni"] == pytest.approx(5.0, abs=0.1)
+    assert values["Vac Pres Main"] == pytest.approx(31.4e-3, rel=0.02)
+
+
 def test_pressure_follows_the_gas_flow(model):
     base = model.snapshot()["Vac Pres Main"]
     # 300s: the chamber's time constant is ~26s (constant pump speed), so a settled

@@ -55,7 +55,10 @@ from .payloads.experiment import (
     RegisterSubstrate,
     ResolvePixelCheck,
     ResumeSubstrate,
+    SetMfcControl,
     SetMfcFlow,
+    SetPressure,
+    SetPressureControl,
     SetRheedGain,
     SetTarget,
     StartStorage,
@@ -108,7 +111,31 @@ DRIVER = Capability(
         Op("move_rheed_to_position", MoveTo, Ack),
         Op("to_pixel", PixelIndex, PixelMoveResult),
         Op("to_current_pixel", Empty, PixelMoveResult),
-        Op("set_mfc_flow", SetMfcFlow, Ack),
+        # --- gas. The setpoint ops and the gates are deliberately separate, because
+        # `MFC Control` is a single master enable with no channel argument: folding it
+        # into set_mfc_flow would mean set_mfc_flow(2, 0) silently shuts MFC1 too.
+        # Nothing in the chamber log reports either gate back (there is no bit for
+        # them in PARSE_DICT), so the requirement is stated here, in the tool
+        # descriptions an agent actually reads, rather than left to be discovered.
+        Op("set_mfc_flow", SetMfcFlow, Ack,
+           doc="Set an MFC's flow setpoint in sccm. The gas does NOT flow until "
+               "set_mfc_control(enabled=True) opens the master gate -- until then "
+               "get_mfc_status shows `set` at your value and `monitor` at zero, and "
+               "the chamber pressure does not move."),
+        Op("set_mfc_control", SetMfcControl, Ack,
+           doc="Open or close the MFC master gate (PASCAL's `MFC Control`). One gate "
+               "for every channel, so disabling it stops all MFCs at once, leaving "
+               "their flow setpoints untouched. Not needed under pressure control, "
+               "which drives the control MFC itself."),
+        Op("set_pressure", SetPressure, Ack,
+           doc="Set the closed-loop pressure setpoint in Torr. Takes effect only "
+               "once set_pressure_control(on=True) is on; the controller then trims "
+               "the control MFC's flow to hold it, overriding set_mfc_flow on that "
+               "channel."),
+        Op("set_pressure_control", SetPressureControl, Ack,
+           doc="Turn closed-loop pressure control on or off. On: the controller owns "
+               "the control MFC and holds set_pressure's setpoint. Off: flow reverts "
+               "to whatever set_mfc_flow last set, gated by set_mfc_control."),
         Op("initiate_heating_laser", Empty, Ack),
         Op("turn_off_heating_laser", Empty, Ack),
         Op("start_storage", StartStorage, StorageResult),
@@ -117,7 +144,10 @@ DRIVER = Capability(
 
         # --- long-running automatic ops: return immediately, tracked via
         # state.current_task (see TaskEvent on the update channel).
-        Op("to_temperature", ToTemperature, TaskAck),
+        Op("to_temperature", ToTemperature, TaskAck,
+           doc="Ramp to a temperature and engage PID. Requires the heating laser to "
+               "be on already -- call initiate_heating_laser first, or this fails "
+               "immediately rather than setting a setpoint no current can reach."),
         Op("cool_down", CoolDown, TaskAck),
         Op("perform_preablation", PerformPreablation, TaskAck),
         Op("perform_deposition", PerformDeposition, TaskAck),

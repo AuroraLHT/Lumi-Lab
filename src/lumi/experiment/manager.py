@@ -368,6 +368,18 @@ class BaseExperimentManager:
         else:
             raise ValueError(f"invalid MFC id: {mfc_id!r}")
 
+    async def set_mfc_control(self, enabled: bool) -> None:
+        """PASCAL's `MFC Control` -- the master gate every MFC's flow passes through.
+        Separate from set_mfc_flow because the command takes no channel argument: it
+        is one switch for the whole gas line."""
+        await self.chamber_mi.execute(pcmd.SetMFCControl(enable=enabled))
+
+    async def set_pressure(self, pressure: float) -> None:
+        await self.chamber_mi.execute(pcmd.SetPressure(pressure))
+
+    async def set_pressure_control(self, on: bool) -> None:
+        await self.chamber_mi.execute(pcmd.PressureControl(state=pcmd.PascalState(on)))
+
     async def initiate_heating_laser(self) -> None:
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=False, nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False))
@@ -461,9 +473,25 @@ class BaseExperimentManager:
             )
         return True
 
+    async def is_heating_laser_on(self) -> bool:
+        """`Heat Stat` bit 3, the power supply's own ON/OFF monitor -- what the heater
+        is actually doing, not what it was last told."""
+        values = await self._log_values()
+        return _truthy(values["ON/OFF monitor in PS"])
+
     async def to_temperature(self, temperature: float, ramp_rate: float = 20.0) -> float:
         b = self.bounds
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
+
+        # With the laser off, PID has nothing to drive: the setpoint climbs, the diode
+        # current stays at zero and the pyrometer sits at Pyro_min. The failure is
+        # silent on the log and, because TemperatureSet is issued nowait=False, shows
+        # up only as an MI command that blocks until it times out. Refuse up front.
+        if not await self.is_heating_laser_on():
+            raise RuntimeError(
+                "heating laser is off -- call initiate_heating_laser first; ramping "
+                "with it off sets a setpoint no current can reach"
+            )
 
         current_temperature = await self.get_current_temperature()
         if current_temperature < b.temperature_pid_engage_threshold <= temperature:
