@@ -1,4 +1,4 @@
-# Autonomous-Servers
+# Lumi-Lab
 
 `lumi` — the contract-driven control stack for the PLD lab. Each piece of equipment runs
 as a **node** (a process in `nodes/`) that talks to the others over RabbitMQ. What a node
@@ -299,7 +299,7 @@ From the project you want to drive it from:
 
 ```bash
 claude mcp add lumi-experiment -- \
-  uv run --project /path/to/Autonomous-Servers python -m lumi.mcp
+  uv run --project /path/to/Lumi-Lab python -m lumi.mcp
 ```
 
 `--project` matters: without it `uv run` resolves against whatever directory the MCP host
