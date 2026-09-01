@@ -18,9 +18,18 @@ would stub out.
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 import pytest
+
+# --- Machine-local settings ------------------------------------------------
+# cfg/settings.toml is not tracked (each checkout copies it from the template).
+# Seed it for a fresh clone so the suite configures against the simulated
+# hardware instead of tripping the missing-file guard in lumi.config.
+_CFG = Path(__file__).resolve().parent.parent / "cfg"
+if not (_CFG / "settings.toml").exists() and (_CFG / "settings.example.toml").exists():
+    shutil.copyfile(_CFG / "settings.example.toml", _CFG / "settings.toml")
 
 # --- Legacy quarantine ------------------------------------------------------
 # The pre-refactor tests/ tree is a collection of `if __name__ == "__main__"`

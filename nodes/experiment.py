@@ -100,7 +100,7 @@ async def main(args: argparse.Namespace) -> None:
 
     chamber_mi_client = ChamberMiModeClient(channel, chamber_x)
     # 0 (or negative) means "no deadline": the script finishes when it finishes. See the
-    # setting's comment in cfg/settings.toml for what that gives up.
+    # setting's comment in cfg/settings.example.toml for what that gives up.
     mi_timeout = args.mi_timeout if args.mi_timeout is not None else float(settings.experiment.mi_command_timeout)
     if mi_timeout <= 0:
         mi_timeout = None

@@ -2,6 +2,11 @@
 # Ignore dynaconf secret files
 .secrets.*
 
+# Machine-local settings. Copy settings.example.toml here on first checkout and
+# edit your copy -- broker address, auth toggles, hardware paths are all
+# host-specific and must not go back into the tracked file.
+settings.toml
+
 # Local user database: account rows and bcrypt password hashes. Created on
 # first run by UserStore.connect(), never meant to be shared.
 users.db

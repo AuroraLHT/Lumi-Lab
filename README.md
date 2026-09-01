@@ -47,17 +47,25 @@ this script after every sync on that host.**
 
 ### Configuration
 
-All settings live in `cfg/settings.toml`, loaded by `dynaconf`. Machine-local overrides
-(and anything secret) go in `cfg/.secrets.toml`, which is git-ignored. Environment
-overrides use the `DYNACONF_` prefix, e.g. `DYNACONF_API__WORKERS=1`.
+Settings are loaded by `dynaconf` from `cfg/settings.toml`, which is **not** tracked.
+Copy the template on first checkout and edit your copy:
+
+```bash
+cp cfg/settings.example.toml cfg/settings.toml
+```
+
+`cfg/settings.example.toml` is the tracked template — carrying the safe defaults, and
+where a genuinely shared config change belongs. Machine-local overrides (and anything
+secret) go in `cfg/.secrets.toml`, which is also git-ignored. Environment overrides use
+the `DYNACONF_` prefix, e.g. `DYNACONF_API__WORKERS=1`.
 
 Two settings worth knowing about before you start anything:
 
-- `rabbitmq.host` — `localhost` in the tracked file, so nothing reaches real equipment by
-  default. The lab broker's address is machine-local: put it in `cfg/.secrets.toml`, or
-  pass `--host` (every node and the MCP server take one).
-- `auth.enabled` — keep it `true` in the tracked file. Turn it off for local work in
-  `cfg/.secrets.toml`, not here.
+- `rabbitmq.host` — `localhost` in the template, so nothing reaches real equipment by
+  default. The lab broker's address is machine-local: put it in `cfg/settings.toml` or
+  `cfg/.secrets.toml`, or pass `--host` (every node and the MCP server take one).
+- `auth.enabled` — keep it `true` in the template. Turn it off for local work in your own
+  `cfg/settings.toml` or `cfg/.secrets.toml`.
 
 ## Running the stack
 
@@ -286,7 +294,7 @@ who is on the bus — but every call will time out until it is.
 ### Which broker to point it at
 
 `--host` defaults to `settings.rabbitmq.host`, the same as every node — `localhost` in
-the tracked config, so nothing reaches real equipment unless you ask it to:
+the template config, so nothing reaches real equipment unless you ask it to:
 
 ```bash
 uv run python -m lumi.mcp                         # the simulator on this machine
@@ -294,10 +302,10 @@ uv run python -m lumi.mcp --host some-other-box   # a simulator, or the lab brok
 ```
 
 `--user` / `--password` go with it if that broker isn't using `guest`/`guest`. On the
-host that really does talk to the chamber, set `rabbitmq.host` in `cfg/.secrets.toml`
-rather than editing the tracked `settings.toml` — the broker address is a machine-local
-fact, and having it in the shared file is what made `python -m lumi.mcp` reach for the
-lab by default.
+host that really does talk to the chamber, set `rabbitmq.host` in your own
+`cfg/settings.toml` or `cfg/.secrets.toml` — never in the tracked
+`cfg/settings.example.toml`. The broker address is a machine-local fact, and having it in
+the shared template is what made `python -m lumi.mcp` reach for the lab by default.
 
 > **The lab broker is not ready for this yet.** It still holds the pre-refactor
 > messaging layer's exchanges — `CHAMBER`, `RHEED` and `STORAGE` exist there as
