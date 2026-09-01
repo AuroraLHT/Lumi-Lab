@@ -12,14 +12,18 @@
     machine -- scripts/start_server_host.sh. Start that one FIRST: its storage node
     declares the exchanges these two publish into.
 
-    The broker is NOT on this machine, so -BrokerHost is required.
+    The broker is NOT on this machine, so a broker host is required: pass
+    -BrokerHost, or set [rabbitmq] host in cfg/.secrets.toml. A loopback value
+    (the tracked settings.toml default) counts as "unset" here.
 
     This is the PowerShell port of scripts/start_instrument_host.sh. On Windows there
     is no SIGTERM, so Ctrl-C (and a node dying) stops the children with a hard kill
     rather than the graceful drain the bash version gets.
 
 .PARAMETER BrokerHost
-    Broker host (required -- it lives on the server machine). Alias: -Host.
+    Broker host -- it lives on the server machine. Alias: -Host. If omitted, falls
+    back to settings.rabbitmq.host (cfg/settings.toml, overridden by
+    cfg/.secrets.toml); a loopback value there is rejected.
 
 .PARAMETER User
     Broker user. RabbitMQ refuses 'guest' off loopback, so a real account is
@@ -105,13 +109,6 @@ $WithRheed  = -not $NoRheed
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $ProjectRoot
 
-if (-not $BrokerHost) {
-    Write-Host "error: -BrokerHost is required -- the broker runs on the server machine, not here." -ForegroundColor Red
-    Write-Host "  scripts\start_instrument_host.ps1 -BrokerHost <server ip> -User <node user> -Password <pw> ``"
-    Write-Host "      -Log <chamber log folder> -Mi <MI mode folder>"
-    exit 1
-}
-
 $RunDir = Join-Path $ProjectRoot 'run\production'
 $LogDir = Join-Path $RunDir 'logs'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
@@ -123,9 +120,21 @@ function Fail($msg) { Write-Host "  FAIL  $msg" -ForegroundColor Red; $script:Fa
 function Ok($msg)   { Write-Host "  ok    $msg" }
 function Warn($msg) { Write-Host "  warn  $msg" -ForegroundColor Yellow }
 
+# Windows PowerShell 5.1 has no $PSNativeCommandUseErrorActionPreference, so under
+# $ErrorActionPreference = 'Stop' any bytes a child writes to stderr are turned into
+# a terminating NativeCommandError -- and 2>$null does not reliably stop that. Every
+# `python -c ...` probe goes through here: stderr is dropped and the caller gets back
+# stdout (trimmed) plus the process exit code, with no chance of a stray traceback
+# aborting the preflight.
+function Invoke-Py {
+    param([Parameter(Mandatory)][string[]]$PyArgs)
+    $ErrorActionPreference = 'SilentlyContinue'
+    $out = & $Python @PyArgs 2>$null
+    return [pscustomobject]@{ Out = (($out | Out-String).Trim()); Code = $LASTEXITCODE }
+}
+
 function Test-PyImport($module) {
-    & $Python -c "import $module" 2>$null
-    return ($LASTEXITCODE -eq 0)
+    return ((Invoke-Py @('-c', "import $module")).Code -eq 0)
 }
 
 function Check-Import($module, $what, $fix) {
@@ -140,7 +149,44 @@ if (-not (Test-Path $Python)) {
     Write-Host "        uv sync --extra pascal --extra camera"
     exit 1
 }
-Ok ("venv at .venv (" + (& $Python -V 2>&1) + ")")
+Ok ("venv at .venv (" + (Invoke-Py @('-V')).Out + ")")
+
+# ---- broker host -------------------------------------------------------------
+# -BrokerHost wins; otherwise fall back to settings.rabbitmq.host, which an
+# override in cfg/.secrets.toml ([rabbitmq] host = "...") flows into. The broker
+# is not on this machine, so a loopback value (the tracked settings.toml default)
+# is treated as "unset" -- publishing to localhost here silently reaches nothing.
+$BrokerHostFromSettings = $false
+if (-not $BrokerHost) {
+    $probe = Invoke-Py @('-c', 'from lumi.config import settings; print(settings.rabbitmq.host)')
+    $BrokerHost = if ($probe.Code -eq 0) { $probe.Out } else { '' }
+    $BrokerHostFromSettings = $true
+}
+
+# An explicit -BrokerHost of loopback still falls through to the softer warning
+# below (single-machine test setups do that on purpose); only the settings-derived
+# default -- empty, or the tracked localhost -- is a hard stop here.
+$brokerUnset = (-not $BrokerHost) -or ($BrokerHostFromSettings -and $BrokerHost -in @('localhost', '127.0.0.1', '::1'))
+if ($brokerUnset) {
+    Write-Host ""
+    Write-Host "error: no usable broker host -- it runs on the server machine, not here." -ForegroundColor Red
+    if ($BrokerHostFromSettings) {
+        $shown = if ($BrokerHost) { "'$BrokerHost'" } else { "unset" }
+        Write-Host "  settings.rabbitmq.host is $shown. Set the lab broker address in cfg\.secrets.toml:"
+        Write-Host ""
+        Write-Host "      [rabbitmq]"
+        Write-Host '      host = "<server ip>"'
+        Write-Host ""
+        Write-Host "  or pass it explicitly:"
+    }
+    Write-Host "  scripts\start_instrument_host.ps1 -BrokerHost <server ip> -User <node user> -Password <pw> ``"
+    Write-Host "      -Log <chamber log folder> -Mi <MI mode folder>"
+    exit 1
+}
+
+if ($BrokerHostFromSettings) {
+    Ok "broker host ${BrokerHost} (from settings.rabbitmq.host -- pass -BrokerHost to override)"
+}
 
 if ($WithPascal) {
     Check-Import 'watchdog' 'pascal extra (watchdog)' 'uv sync --extra pascal'
@@ -154,8 +200,8 @@ if ($WithRheed -or $WithPascal) {
 # ---- contract hash -----------------------------------------------------------
 # Both halves must be built from the same contract; a drift here shows up as ops
 # the server host does not recognise, not as a startup error.
-$ContractHash = (& $Python -c 'from lumi.contracts import contract_hash; print(contract_hash())' 2>$null)
-if ($LASTEXITCODE -ne 0 -or -not $ContractHash) { $ContractHash = '?' }
+$probe = Invoke-Py @('-c', 'from lumi.contracts import contract_hash; print(contract_hash())')
+$ContractHash = if ($probe.Code -eq 0 -and $probe.Out) { $probe.Out } else { '?' }
 Ok "contract hash $ContractHash (must match the server host)"
 
 # ---- broker ----------------------------------------------------------------
@@ -221,8 +267,8 @@ if ($WithPascal) {
         # an angle. Its default lives in cfg/settings.toml.
         $resolvedPld = $PldConfig
         if (-not $resolvedPld) {
-            $resolvedPld = (& $Python -c 'from lumi.config import settings; print(settings.pascal.config_reader.config_path)' 2>$null)
-            if ($LASTEXITCODE -ne 0) { $resolvedPld = '' }
+            $probe = Invoke-Py @('-c', 'from lumi.config import settings; print(settings.pascal.config_reader.config_path)')
+            $resolvedPld = if ($probe.Code -eq 0) { $probe.Out } else { '' }
         }
         if (-not $resolvedPld) {
             Fail "could not resolve the PLDconfig.ini path"
@@ -233,7 +279,7 @@ if ($WithPascal) {
             Ok "PLDconfig.ini $resolvedPld"
         }
     } else {
-        Warn "-Src $Src: this is NOT the real chamber (use -Src path on the instrument)"
+        Warn "-Src ${Src}: this is NOT the real chamber (use -Src path on the instrument)"
     }
 }
 
@@ -246,8 +292,8 @@ if ($WithRheed) {
             } else {
                 # The node raises "no Basler camera found" at startup; enumerating
                 # here turns that into a preflight line instead of a crashed node.
-                $devices = (& $Python -c 'from lumi.base.camera.pylon_camera import list_devices; print(len(list_devices()))' 2>$null)
-                if ($LASTEXITCODE -ne 0) { $devices = 'error' }
+                $probe = Invoke-Py @('-c', 'from lumi.base.camera.pylon_camera import list_devices; print(len(list_devices()))')
+                $devices = if ($probe.Code -eq 0) { $probe.Out } else { 'error' }
                 if ($devices -eq 'error') {
                     Fail "could not enumerate Basler devices"
                 } elseif ($devices -eq '0') {
@@ -258,7 +304,7 @@ if ($WithRheed) {
             }
         }
         default {
-            Warn "-RheedSrc $RheedSrc: not the Basler camera (use pylon on the instrument)"
+            Warn "-RheedSrc ${RheedSrc}: not the Basler camera (use pylon on the instrument)"
         }
     }
 }
