@@ -20,7 +20,7 @@ from lumi.config import settings
 
 ALGORITHM = "HS256"
 
-# Sentinel value shipped in cfg/settings.toml. Never allow this in production.
+# Sentinel value shipped in cfg/settings.example.toml. Never allow this in production.
 DEV_SECRET_KEY = "dev-only-insecure-key-change-me"
 
 
