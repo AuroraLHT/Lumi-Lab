@@ -1,6 +1,7 @@
 
-# Ignore dynaconf secret files
+# Ignore dynaconf secret files, but keep the tracked template.
 .secrets.*
+!.secrets.example.toml
 
 # Machine-local settings. Copy settings.example.toml here on first checkout and
 # edit your copy -- broker address, auth toggles, hardware paths are all

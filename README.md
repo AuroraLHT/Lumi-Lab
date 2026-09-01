@@ -55,9 +55,18 @@ cp cfg/settings.example.toml cfg/settings.toml
 ```
 
 `cfg/settings.example.toml` is the tracked template — carrying the safe defaults, and
-where a genuinely shared config change belongs. Machine-local overrides (and anything
-secret) go in `cfg/.secrets.toml`, which is also git-ignored. Environment overrides use
-the `DYNACONF_` prefix, e.g. `DYNACONF_API__WORKERS=1`.
+where a genuinely shared config change belongs.
+
+Machine-local overrides (and anything secret — the JWT signing key, a local `auth`
+toggle, the lab broker address) go in `cfg/.secrets.toml`, which is git-ignored.
+`dynaconf` loads it after `settings.toml`, so every key there wins. Start from its
+template too:
+
+```bash
+cp cfg/.secrets.example.toml cfg/.secrets.toml
+```
+
+Environment overrides use the `DYNACONF_` prefix, e.g. `DYNACONF_API__WORKERS=1`.
 
 Two settings worth knowing about before you start anything:
 
