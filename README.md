@@ -107,8 +107,36 @@ scripts/start_simulation.sh --chamber-speed 30
 
 ### Against real hardware
 
-There is no single start script for production — nodes run on different machines. Start
-them in this order, so consumers exist before the producers they feed:
+Nodes run on different machines, so there are two launchers — one per host. Both run a
+preflight first (`--check` runs only the preflight) and refuse to start anything if it
+fails, rather than leaving a half-dead stack behind:
+
+```bash
+# On the server machine -- monitor, storage, detection, api. The broker lives here.
+uv sync --extra api --extra storage --extra detection
+scripts/install_detection_deps.sh          # detection host only
+scripts/start_server_host.sh
+
+# On the instrument machine -- pascal and rheed. --host is required: the broker is
+# on the other machine, and RabbitMQ refuses `guest` off loopback.
+uv sync --extra pascal --extra camera
+scripts/start_instrument_host.sh --host <server ip> --user <node user> --password <pw> \
+    --log "C:/.../chamber_log" --mi "C:/.../mi_mode"
+```
+
+Start the **server host first**: its storage node declares the exchanges the instrument
+host's producers publish into. Give the instrument host a real broker account:
+
+```bash
+uv run python scripts/apply_broker_permissions.py --host <broker> \
+    --user lumi-node --role node --password <pw>
+```
+
+`start_server_host.sh` writes to the real HDF5 root and the real user database, and
+refuses to start with `auth.enabled = false` or the placeholder signing key
+(`--allow-insecure-auth` overrides, for an isolated bench network).
+
+To run a node by hand instead, in the order consumers-before-producers:
 
 ```bash
 python nodes/monitor.py  --host <broker>
