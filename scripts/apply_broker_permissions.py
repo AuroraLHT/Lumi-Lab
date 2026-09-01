@@ -101,24 +101,37 @@ def main() -> int:
     # Resource permissions, which are about *names* -- topic permissions (below) are
     # about routing keys, and both have to be right.
     #
-    #   configure  which queues it may declare      -> only its own anonymous ones
-    #   write      publish to exchange / bind queue -> our exchanges + its own queues
-    #   read       bind to exchange / consume queue -> our exchanges + its own queues
+    #   configure  which queues/exchanges it may declare -> depends on the role
+    #   write      publish to exchange / bind queue      -> our exchanges + its queues
+    #   read       bind to exchange / consume queue      -> our exchanges + its queues
     #
-    # `read` must NOT be ".*": that would let a viewer consume from `q.rheed.camera.req`
-    # -- the servers' shared work queue -- and quietly steal requests off the bus, which
-    # is both an information leak and a denial of service. Anonymous queues are
-    # `amq_<hex>` (aio_pika) or `amq.gen-<...>` (broker-generated), hence `amq[._]`.
-    own_queues = r"amq[._].*"
-    exchanges = "|".join(
-        re.escape(x) for x in sorted({c.exchange for c in REGISTRY.values()})
-    )
-    call("PUT", f"/permissions/{vhost}/{args.user}", {
-        "configure": f"^({own_queues})$",
-        "write": f"^({own_queues}|{exchanges})$",
-        "read": f"^({own_queues}|{exchanges})$",
-    })
-    print("resource permissions set (own queues + lumi exchanges only)")
+    # A node is not the threat model (see policy.node_permissions): it declares its
+    # own durable work queue `q.<cap>.req`, redeclares its exchange on every start,
+    # then binds and consumes that queue -- all four need the name in scope. The same
+    # goes for admin, which policy also grants ".*". So those two get ".*" here, in
+    # step with their topic permissions below.
+    #
+    # viewer/operator (browsers) do NOT: `read` must NOT be ".*" for them, or a viewer
+    # could consume from `q.rheed.camera.req` -- the servers' shared work queue -- and
+    # quietly steal requests off the bus, an information leak and a denial of service.
+    # Their anonymous queues are `amq_<hex>` (aio_pika) or `amq.gen-<...>` (broker),
+    # hence `amq[._]`.
+    if args.role in ("node", "admin"):
+        resource_perms = {"configure": ".*", "write": ".*", "read": ".*"}
+        summary = "unrestricted (trusted role)"
+    else:
+        own_queues = r"amq[._].*"
+        exchanges = "|".join(
+            re.escape(x) for x in sorted({c.exchange for c in REGISTRY.values()})
+        )
+        resource_perms = {
+            "configure": f"^({own_queues})$",
+            "write": f"^({own_queues}|{exchanges})$",
+            "read": f"^({own_queues}|{exchanges})$",
+        }
+        summary = "own queues + lumi exchanges only"
+    call("PUT", f"/permissions/{vhost}/{args.user}", resource_perms)
+    print(f"resource permissions set ({summary})")
 
     for exchange, perm in sorted(permissions.items()):
         call("PUT", f"/topic-permissions/{vhost}/{args.user}", {
