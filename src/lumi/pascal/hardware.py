@@ -238,6 +238,7 @@ def build_camera(src: str):
                 queue_size=cfg.queue_size,
                 idle_time=cfg.idle_time,
                 frame_dims=(cfg.height, cfg.width),
+                device=cfg.device,
             ),
             name=cfg.name,
             daemon=True,
