@@ -18,7 +18,12 @@ if not _SETTINGS_FILE.exists():
 settings = Dynaconf(
     envvar_prefix="DYNACONF",
     settings_files=[str(_SETTINGS_FILE), str(CONFIG_PATH / ".secrets.toml")],
+    merge_enabled=True,
 )
 
 # `envvar_prefix` = export envvars with `export DYNACONF_FOO=bar`.
 # `settings_files` = Load these files in the order.
+# `merge_enabled` = a later file overlays the earlier one key by key. Without it a
+# `[section]` in .secrets.toml *replaces* that whole table from settings.toml, so
+# opening `[rabbitmq]` there just to note the lab address wipes `host = "localhost"`
+# and every node dies on `settings.rabbitmq.host`.
