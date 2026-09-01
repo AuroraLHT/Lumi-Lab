@@ -32,6 +32,11 @@ jobs:
       - name: Install
         run: uv sync --all-extras
 
+      - name: Provide machine-local settings
+        # cfg/settings.toml is no longer tracked; every checkout starts from the
+        # template. The broker tests run against the simulated hardware it configures.
+        run: cp cfg/settings.example.toml cfg/settings.toml
+
       - name: Generated code is in sync with the contract
         # Must run before the tests: a stale client would otherwise be tested
         # against, and pass, while describing a wire format that no longer exists.
