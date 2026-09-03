@@ -257,9 +257,8 @@ async def perform_pixel_deposition(
 
     # current_substrate() above already confirmed a valid current position exists,
     # so unlike the original's to_current_pixel() returning False for "no pixels
-    # left", a failure here is a genuine hardware fault (motor not free, an
-    # out-of-bounds position) and is left to raise rather than being folded into
-    # is_terminated.
+    # left", a failure here is a genuine hardware fault (an out-of-bounds position)
+    # and is left to raise rather than being folded into is_terminated.
     await exp.driver.to_current_pixel()
 
     await input_provider(f"[Manual] Set Pressure to {pressure:.2e} Torr.")

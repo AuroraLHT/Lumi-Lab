@@ -457,22 +457,47 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("OFF"), nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=True, nowait=False))
 
+    async def _await_motor_free(self, timeout: float = 60.0, poll: float = 0.5) -> None:
+        """Wait for the motors, rather than refusing the moment they are busy.
+
+        The safety property is unchanged -- nothing moves while another move is
+        running -- but the check now waits for that to become true instead of raising
+        immediately. Two things made refusing wrong in practice:
+
+        `to_pixel` issues a mask move and a RHEED move back to back. The mask move
+        waits for MI completion, but "Motor free" comes from the *chamber log*, which
+        PASCAL rewrites about once a second, so for up to a log tick after the
+        controller says the move finished the log still reports the motor busy. The
+        second move landed in that window and was refused, which made
+        `to_current_pixel` fail roughly every time it was called unattended.
+
+        And a caller that gets "motor is not free" can only retry, which is this loop
+        written at the client instead -- one round trip per poll rather than none.
+
+        Still bounded: a motor that is genuinely stuck raises rather than hanging,
+        unlike the MI completion wait (see docs/TODO.md).
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if await self.is_motor_free():
+                return
+            await asyncio.sleep(poll)
+        raise RuntimeError(f"motor still not free after {timeout:.0f}s")
+
     async def move_mask_to_position(self, position: float) -> None:
         if not (0 <= position < self.bounds.mask_travel_max):
             raise ValueError(f"mask position must be in [0, {self.bounds.mask_travel_max}), got {position}")
         # The original asserted `not is_motor_free()` here -- backwards from what the
         # assertion message ("Motor is not free") says, and from what a pre-move
         # safety check should require. Fixed to require the motor free before moving.
-        if not await self.is_motor_free():
-            raise RuntimeError("motor is not free")
+        await self._await_motor_free()
         await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=position, sync=False, nowait=False))
 
     async def move_rheed_to_position(self, position: float) -> None:
         lo, hi = min(self.pld_config.rheed_limit), max(self.pld_config.rheed_limit)
         if not (lo <= position <= hi):
             raise ValueError(f"RHEED gun position must be in [{lo}, {hi}], got {position}")
-        if not await self.is_motor_free():
-            raise RuntimeError("motor is not free")
+        await self._await_motor_free()
         await self.chamber_mi.execute(pcmd.SetRHEEDGunX(position))
 
     async def set_target(self, target_id: str, rotation_mode: str = "AUTO", twist_mode: str = "AUTO") -> None:

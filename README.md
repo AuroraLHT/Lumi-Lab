@@ -401,6 +401,32 @@ column schema against a recorded asset, the MI script decoder, and the physics
 (temperature ramps, pressure control, carousel rotation, laser pulse counting, mask
 travel limits). It runs entirely in-process with simulated time, so it's fast.
 
+## Notebooks
+
+`notebooks/` holds the two operator notebooks, ported from the v1.0 ones and written to
+run against the simulator as-is:
+
+| notebook | what it does |
+| --- | --- |
+| `SingleDeposition.ipynb` | a layered growth on one position -- bottom electrode, interface, functional layer |
+| `BODeposition.ipynb` | closed-loop Bayesian optimisation over growth conditions (needs `--extra opt`) |
+
+Edit the `.py` source beside each one and run `uv run notebooks/build_notebooks.py`,
+not the `.ipynb` -- see `notebooks/README.md`.
+
+## Sample tracking
+
+Every growth records itself. `sample` rows are created per growable position when a
+substrate is registered, and every world-changing op writes a `step` row -- what was
+asked, what happened, how long it took and who asked for it -- with no bookkeeping by
+hand. A sample's layer stack is derived from the deposition steps that actually
+succeeded, and results (RHEED metric, XRD, AFM, transport) attach to the sample rather
+than to a CSV beside a notebook.
+
+Reachable over the contract: `list_samples`, `get_sample`, `sample_history`,
+`add_measurement`, `list_measurements`. Design notes, the decisions behind it and the
+open to-do are in `docs/SAMPLE_TRACKING.md`.
+
 ## Contracts and generated code
 
 `src/lumi/contracts/` is the single source of truth. After changing it, regenerate:

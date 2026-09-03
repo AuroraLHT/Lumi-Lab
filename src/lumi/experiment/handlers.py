@@ -330,6 +330,24 @@ class ExperimentHandler:
     async def cool_down(self, req: CoolDown) -> TaskAck:
         return await self._start_task("cool_down", self.manager.cool_down(req.ramp_rate), {"ramp_rate": req.ramp_rate})
 
+    async def _chamber_conditions(self) -> dict:
+        """The chamber state a deposition is actually running at.
+
+        Temperature and pressure are not fields of PerformDeposition -- they are set
+        by earlier steps and by hand at the gauge -- so a deposition step that records
+        only its request does not say what conditions the film was grown at. That is
+        precisely what a GP regresses on, and relying on `finish_experiment_record` to
+        supply it later means a growth that was never finalised (a dryrun, an aborted
+        run) contributes nothing. Read here so the step stands on its own.
+        """
+        conditions: dict = {}
+        try:
+            conditions["temperature"] = (await self.manager.get_current_temperature())
+            conditions["pressure"] = (await self.manager.get_current_pressure())[0]
+        except Exception:
+            log.warning("could not read chamber conditions for the journal", exc_info=True)
+        return conditions
+
     async def _target_material(self, target_id: str) -> str | None:
         """The material in a carousel slot, resolved now rather than at read time.
 
@@ -370,6 +388,7 @@ class ExperimentHandler:
                 # get_layer_stack filters on this -- without it a rehearsal would show
                 # up as film on the sample.
                 "is_dryrun": req.is_dryrun,
+                **await self._chamber_conditions(),
             },
         )
 
