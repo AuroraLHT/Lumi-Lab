@@ -4086,6 +4086,713 @@
             "response_codec": "json"
           },
           {
+            "name": "list_samples",
+            "request": {
+              "properties": {
+                "substrate_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Id"
+                }
+              },
+              "title": "ListSamples",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "SampleInfo": {
+                  "properties": {
+                    "kind": {
+                      "default": "position",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "parent_sample_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Parent Sample Id"
+                    },
+                    "pixel_index": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Index"
+                    },
+                    "position_mm": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Position Mm"
+                    },
+                    "sample_id": {
+                      "title": "Sample Id",
+                      "type": "integer"
+                    },
+                    "sample_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Sample Name"
+                    },
+                    "sample_uuid": {
+                      "default": "",
+                      "title": "Sample Uuid",
+                      "type": "string"
+                    },
+                    "state": {
+                      "default": "planned",
+                      "title": "State",
+                      "type": "string"
+                    },
+                    "substrate_id": {
+                      "title": "Substrate Id",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sample_id",
+                    "substrate_id"
+                  ],
+                  "title": "SampleInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "samples": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/SampleInfo"
+                  },
+                  "title": "Samples",
+                  "type": "array"
+                }
+              },
+              "title": "SampleList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_sample",
+            "request": {
+              "properties": {
+                "sample_id": {
+                  "title": "Sample Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sample_id"
+              ],
+              "title": "SampleId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "LayerInfo": {
+                  "description": "One layer of the stack. Derived from the deposition steps that succeeded on\nthis sample, never stored -- see GrowthDB.get_layer_stack.",
+                  "properties": {
+                    "material": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Material"
+                    },
+                    "num_pulse": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Num Pulse"
+                    },
+                    "seq": {
+                      "title": "Seq",
+                      "type": "integer"
+                    },
+                    "started_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Started At"
+                    },
+                    "step_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Step Id"
+                    }
+                  },
+                  "required": [
+                    "seq"
+                  ],
+                  "title": "LayerInfo",
+                  "type": "object"
+                },
+                "SampleInfo": {
+                  "properties": {
+                    "kind": {
+                      "default": "position",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "parent_sample_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Parent Sample Id"
+                    },
+                    "pixel_index": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Index"
+                    },
+                    "position_mm": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Position Mm"
+                    },
+                    "sample_id": {
+                      "title": "Sample Id",
+                      "type": "integer"
+                    },
+                    "sample_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Sample Name"
+                    },
+                    "sample_uuid": {
+                      "default": "",
+                      "title": "Sample Uuid",
+                      "type": "string"
+                    },
+                    "state": {
+                      "default": "planned",
+                      "title": "State",
+                      "type": "string"
+                    },
+                    "substrate_id": {
+                      "title": "Substrate Id",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sample_id",
+                    "substrate_id"
+                  ],
+                  "title": "SampleInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "layers": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/LayerInfo"
+                  },
+                  "title": "Layers",
+                  "type": "array"
+                },
+                "sample": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/SampleInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                }
+              },
+              "title": "SampleDetail",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "sample_history",
+            "request": {
+              "properties": {
+                "limit": {
+                  "default": 500,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Id"
+                },
+                "session_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Session Id"
+                }
+              },
+              "title": "ListSteps",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "StepInfo": {
+                  "properties": {
+                    "actor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Actor"
+                    },
+                    "ended_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Ended At"
+                    },
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Error"
+                    },
+                    "kind": {
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "ok": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Ok"
+                    },
+                    "params": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Params",
+                      "type": "object"
+                    },
+                    "parent_step_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Parent Step Id"
+                    },
+                    "result": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Result",
+                      "type": "object"
+                    },
+                    "sample_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Sample Id"
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Source"
+                    },
+                    "started_at": {
+                      "default": 0.0,
+                      "title": "Started At",
+                      "type": "number"
+                    },
+                    "step_id": {
+                      "title": "Step Id",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "step_id",
+                    "kind"
+                  ],
+                  "title": "StepInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "steps": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/StepInfo"
+                  },
+                  "title": "Steps",
+                  "type": "array"
+                }
+              },
+              "title": "StepList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "add_measurement",
+            "request": {
+              "properties": {
+                "detail": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Detail",
+                  "type": "object"
+                },
+                "kind": {
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "record_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Id"
+                },
+                "sample_id": {
+                  "title": "Sample Id",
+                  "type": "integer"
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Source"
+                },
+                "step_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Step Id"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Value"
+                }
+              },
+              "required": [
+                "sample_id",
+                "kind"
+              ],
+              "title": "AddMeasurement",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "measurement_id"
+              ],
+              "title": "MeasurementId",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_measurements",
+            "request": {
+              "properties": {
+                "kind": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Kind"
+                },
+                "sample_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Id"
+                },
+                "substrate_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Id"
+                }
+              },
+              "title": "ListMeasurements",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "MeasurementInfo": {
+                  "properties": {
+                    "conditions": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Conditions",
+                      "type": "object"
+                    },
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "detail": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Detail",
+                      "type": "object"
+                    },
+                    "kind": {
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "measurement_id": {
+                      "title": "Measurement Id",
+                      "type": "integer"
+                    },
+                    "sample_id": {
+                      "title": "Sample Id",
+                      "type": "integer"
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Source"
+                    },
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Value"
+                    }
+                  },
+                  "required": [
+                    "measurement_id",
+                    "sample_id",
+                    "kind"
+                  ],
+                  "title": "MeasurementInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "measurements": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MeasurementInfo"
+                  },
+                  "title": "Measurements",
+                  "type": "array"
+                }
+              },
+              "title": "MeasurementList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "confirm",
             "request": {
               "properties": {
@@ -4121,6 +4828,7 @@
           "publish": "experiment.driver.pub",
           "request_pattern": "experiment.driver.req.*",
           "requests": {
+            "add_measurement": "experiment.driver.req.add_measurement",
             "anneal": "experiment.driver.req.anneal",
             "begin_adjust_rheed_gain": "experiment.driver.req.begin_adjust_rheed_gain",
             "begin_align_center_mask": "experiment.driver.req.begin_align_center_mask",
@@ -4144,11 +4852,14 @@
             "get_current_temperature": "experiment.driver.req.get_current_temperature",
             "get_mfc_status": "experiment.driver.req.get_mfc_status",
             "get_pump_status": "experiment.driver.req.get_pump_status",
+            "get_sample": "experiment.driver.req.get_sample",
             "get_target_id_by_name": "experiment.driver.req.get_target_id_by_name",
             "get_target_name_by_id": "experiment.driver.req.get_target_name_by_id",
             "get_valve_status": "experiment.driver.req.get_valve_status",
             "initiate_heating_laser": "experiment.driver.req.initiate_heating_laser",
             "is_motor_free": "experiment.driver.req.is_motor_free",
+            "list_measurements": "experiment.driver.req.list_measurements",
+            "list_samples": "experiment.driver.req.list_samples",
             "move_mask_to_position": "experiment.driver.req.move_mask_to_position",
             "move_rheed_to_position": "experiment.driver.req.move_rheed_to_position",
             "perform_deposition": "experiment.driver.req.perform_deposition",
@@ -4157,6 +4868,7 @@
             "register_substrate": "experiment.driver.req.register_substrate",
             "resolve_pixel_check": "experiment.driver.req.resolve_pixel_check",
             "resume_substrate": "experiment.driver.req.resume_substrate",
+            "sample_history": "experiment.driver.req.sample_history",
             "set_mfc_control": "experiment.driver.req.set_mfc_control",
             "set_mfc_flow": "experiment.driver.req.set_mfc_flow",
             "set_pressure": "experiment.driver.req.set_pressure",

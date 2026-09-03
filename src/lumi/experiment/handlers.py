@@ -28,6 +28,7 @@ connected client does not have to poll state in a loop to notice a transition.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -71,8 +72,22 @@ from lumi.contracts.payloads.experiment import (
     PumpStatus,
     RegisterProject,
     RegisterSubstrate,
+    AddMeasurement,
+    LayerInfo,
+    ListMeasurements,
+    ListSamples,
+    ListSteps,
+    MeasurementId,
+    MeasurementInfo,
+    MeasurementList,
     ResolvePixelCheck,
     ResumeSubstrate,
+    SampleDetail,
+    SampleId,
+    SampleInfo,
+    SampleList,
+    StepInfo,
+    StepList,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
@@ -101,6 +116,20 @@ log = logging.getLogger(__name__)
 #: storage's DEPENDENCIES -- "the monitor did not answer" is deliberately not the
 #: same as "the source is down" (see refresh_deps()).
 DEPENDENCY_EQUIPMENT = ("chamber", "rheed", "storage")
+
+
+def _loads(raw) -> dict:
+    """A step's params/result and a measurement's detail are stored as JSON text.
+    A row written before a column existed, or by an older version, reads back as
+    NULL or as something that is not an object -- neither is worth failing a
+    listing over."""
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {"value": value}
 
 
 def _jsonable(value: Any) -> dict:
@@ -301,20 +330,47 @@ class ExperimentHandler:
     async def cool_down(self, req: CoolDown) -> TaskAck:
         return await self._start_task("cool_down", self.manager.cool_down(req.ramp_rate), {"ramp_rate": req.ramp_rate})
 
+    async def _target_material(self, target_id: str) -> str | None:
+        """The material in a carousel slot, resolved now rather than at read time.
+
+        The slot-to-material map is chamber config, and it changes whenever targets
+        are swapped. A step that recorded only `target_id: "C"` is therefore not a
+        durable record of what was deposited -- read back after the next target
+        change it names a different material. Resolving here freezes the answer into
+        the journal row.
+        """
+        try:
+            return await self.manager.get_target_name_by_id(target_id)
+        except Exception:
+            log.warning("could not resolve target %r to a material for the journal", target_id)
+            return None
+
     async def perform_preablation(self, req: PerformPreablation) -> TaskAck:
         return await self._start_task(
             "perform_preablation",
             self.manager.perform_preablation(
                 req.target_id, req.num_pulse, req.frequency, req.is_dryrun, req.move_mask_to_block_position,
             ),
-            {"target_id": req.target_id, "num_pulse": req.num_pulse},
+            {
+                "target_id": req.target_id, "num_pulse": req.num_pulse,
+                "target_material": await self._target_material(req.target_id),
+                "frequency": req.frequency, "is_dryrun": req.is_dryrun,
+            },
         )
 
     async def perform_deposition(self, req: PerformDeposition) -> TaskAck:
         return await self._start_task(
             "perform_deposition",
             self.manager.perform_deposition(req.num_pulse, req.laser_repetition_rate, req.target_id, req.is_dryrun),
-            {"target_id": req.target_id, "num_pulse": req.num_pulse},
+            {
+                "target_id": req.target_id, "num_pulse": req.num_pulse,
+                "target_material": await self._target_material(req.target_id),
+                "laser_repetition_rate": req.laser_repetition_rate,
+                # A dryrun fires no laser, so the step happened but the layer did not.
+                # get_layer_stack filters on this -- without it a rehearsal would show
+                # up as film on the sample.
+                "is_dryrun": req.is_dryrun,
+            },
         )
 
     async def anneal(self, req: Anneal) -> TaskAck:
@@ -493,6 +549,84 @@ class ExperimentHandler:
             storage_name=req.storage_name, record_uuid=req.record_uuid,
         )
         return ExperimentRecordId(experiment_id=experiment_id)
+
+    # --- sample tracking -----------------------------------------------------------
+
+    @staticmethod
+    def _sample_info(row) -> SampleInfo:
+        # sample_id, sample_uuid, parent_sample_id, substrate_id, kind, pixel_index,
+        # position_mm, sample_name, state, notes, created_at
+        return SampleInfo(
+            sample_id=row[0], sample_uuid=row[1] or "", parent_sample_id=row[2],
+            substrate_id=row[3], kind=row[4], pixel_index=row[5], position_mm=row[6],
+            sample_name=row[7], state=row[8],
+        )
+
+    async def list_samples(self, req: ListSamples) -> SampleList:
+        substrate_id = req.substrate_id
+        if substrate_id is None:
+            substrate = self.manager.current_substrate if self.manager else None
+            substrate_id = substrate.db_id if substrate else None
+        if substrate_id is None:
+            return SampleList(samples=[])
+        rows = await self.growth_db.get_samples_for_substrate(substrate_id)
+        return SampleList(samples=[self._sample_info(r) for r in rows])
+
+    async def get_sample(self, req: SampleId) -> SampleDetail:
+        row = await self.growth_db.get_sample(req.sample_id)
+        if row is None:
+            return SampleDetail(sample=None, layers=[])
+        layers = await self.growth_db.get_layer_stack(req.sample_id)
+        return SampleDetail(
+            sample=self._sample_info(row),
+            layers=[
+                LayerInfo(
+                    seq=l["seq"], material=l["material"], num_pulse=l["num_pulse"],
+                    step_id=l["step_id"], started_at=l["started_at"],
+                )
+                for l in layers
+            ],
+        )
+
+    async def sample_history(self, req: ListSteps) -> StepList:
+        rows = await self.growth_db.get_steps(
+            session_id=req.session_id, sample_id=req.sample_id
+        )
+        steps = [
+            StepInfo(
+                step_id=r[0], parent_step_id=r[3], sample_id=r[4], kind=r[5],
+                params=_loads(r[6]), result=_loads(r[7]),
+                ok=None if r[8] is None else bool(r[8]), error=r[9],
+                actor=r[10], source=r[11], started_at=r[12] or 0.0, ended_at=r[13],
+            )
+            for r in rows
+        ]
+        # Newest last, but bounded -- a long campaign's journal is not something to
+        # push through one RPC by accident.
+        return StepList(steps=steps[-req.limit:] if req.limit else steps)
+
+    async def add_measurement(self, req: AddMeasurement) -> MeasurementId:
+        measurement_id = await self.growth_db.add_measurement(
+            req.sample_id, req.kind, value=req.value,
+            detail=json.dumps(req.detail) if req.detail else None,
+            source=req.source, step_id=req.step_id, record_id=req.record_id,
+        )
+        return MeasurementId(measurement_id=measurement_id)
+
+    async def list_measurements(self, req: ListMeasurements) -> MeasurementList:
+        rows = await self.growth_db.query_measurements(
+            sample_id=req.sample_id, kind=req.kind, substrate_id=req.substrate_id
+        )
+        out = []
+        for r in rows:
+            # measurement_id, sample_id, step_id, experiment_id, kind, value, detail,
+            # source, record_id, created_at
+            out.append(MeasurementInfo(
+                measurement_id=r[0], sample_id=r[1], kind=r[4], value=r[5],
+                detail=_loads(r[6]), source=r[7], created_at=r[9],
+                conditions=await self.growth_db.growth_conditions(r[1]),
+            ))
+        return MeasurementList(measurements=out)
 
     # --- gated: laser power --------------------------------------------------------
 

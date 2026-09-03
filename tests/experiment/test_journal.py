@@ -179,3 +179,63 @@ async def test_actor_reaches_a_task_started_inside_a_handler(db):
     await dispatch()
     row = (await db.get_steps())[0]
     assert row[10] == "hliang16"
+
+
+# --- what a live run against the simulator caught -------------------------------
+
+
+async def test_a_dryrun_deposition_is_not_a_layer(db):
+    """A dryrun fires no laser: the step happened, the film did not. Counting it would
+    put a layer on a sample that is still bare."""
+    substrate_id = await db.add_substrate("SrTiO3", "(001)", 10, 10, 0.5, None, "[0.0]")
+    sample_id = await db.add_sample(substrate_id, pixel_index=0)
+    journal = StepJournal(db, sample_resolver=lambda: sample_id)
+    await journal.open_session()
+
+    for material, dry in [("SrRuO3", True), ("La0.7Sr0.3MnO3", False)]:
+        await journal.end(
+            await journal.begin("perform_deposition", params={
+                "target_material": material, "num_pulse": 100, "is_dryrun": dry,
+            }),
+            ok=True,
+        )
+
+    stack = await db.get_layer_stack(sample_id)
+    assert [l["material"] for l in stack] == ["La0.7Sr0.3MnO3"]
+
+
+async def test_growth_conditions_merge_the_measured_row_and_the_step(db):
+    """Neither source is sufficient. The experiment row has the *measured* pressure and
+    laser power a GP regresses on, which the deposition request never carried; the step
+    has the material resolved at the time. The row is the base, the step overlays it."""
+    substrate_id = await db.add_substrate("SrTiO3", "(001)", 10, 10, 0.5, None, "[0.0]")
+    sample_id = await db.add_sample(substrate_id, pixel_index=0)
+    await db.add_experiment(
+        substrate_id=substrate_id, is_pixel=False, temperature=700.0,
+        pressure=0.1, laser_power=88.0,
+    )
+    journal = StepJournal(db, sample_resolver=lambda: sample_id)
+    await journal.open_session()
+    await journal.end(
+        await journal.begin("perform_deposition", params={
+            "target_material": "Hf0.5Zr0.5O2", "num_pulse": 500,
+            "laser_repetition_rate": 2.78, "is_dryrun": False,
+        }),
+        ok=True,
+    )
+
+    c = await db.growth_conditions(sample_id)
+    assert c["temperature"] == pytest.approx(700.0)      # measured, from the row
+    assert c["pressure"] == pytest.approx(0.1)
+    assert c["laser_power"] == pytest.approx(88.0)
+    assert c["target_material"] == "Hf0.5Zr0.5O2"        # resolved, from the step
+    assert c["laser_repetition_rate"] == pytest.approx(2.78)
+    assert c["num_pulse"] == 500
+
+
+async def test_growth_conditions_work_without_a_journal(db):
+    """A sample grown before the journal existed still has an experiment row."""
+    substrate_id = await db.add_substrate("SrTiO3", "(001)", 10, 10, 0.5, None, "[0.0]")
+    sample_id = await db.add_sample(substrate_id, pixel_index=0)
+    await db.add_experiment(substrate_id=substrate_id, is_pixel=False, temperature=650.0)
+    assert (await db.growth_conditions(sample_id))["temperature"] == pytest.approx(650.0)
