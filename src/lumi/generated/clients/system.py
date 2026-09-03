@@ -31,10 +31,12 @@ class SystemRegistryClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             REGISTRY, 'system',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def list_nodes(self) -> NodeList:
@@ -74,10 +76,12 @@ class SystemSupervisorClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             SUPERVISOR, 'system',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def list_hosts(self) -> HostList:
@@ -109,9 +113,9 @@ class SystemClient:
     """
 
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange,
-                 *, timeout: float = 10.0) -> None:
-        self.registry = SystemRegistryClient(channel, exchange, timeout=timeout)
-        self.supervisor = SystemSupervisorClient(channel, exchange, timeout=timeout)
+                 *, timeout: float = 10.0, actor: str | None = None) -> None:
+        self.registry = SystemRegistryClient(channel, exchange, timeout=timeout, actor=actor)
+        self.supervisor = SystemSupervisorClient(channel, exchange, timeout=timeout, actor=actor)
 
     @property
     def capabilities(self) -> dict:

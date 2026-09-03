@@ -35,12 +35,16 @@ def base(message_type: MessageType, source: str) -> dict[str, Any]:
     }
 
 
-def request(source: str, op: str, codec: str, meta: str | None = None) -> dict[str, Any]:
+def request(
+    source: str, op: str, codec: str, meta: str | None = None, actor: str | None = None
+) -> dict[str, Any]:
     h = base(MessageType.REQUEST, source)
     h["op"] = op
     h["codec"] = codec
     if meta is not None:
         h["meta"] = meta
+    if actor is not None:
+        h["actor"] = actor
     return h
 
 

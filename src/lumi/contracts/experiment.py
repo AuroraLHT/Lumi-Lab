@@ -84,15 +84,15 @@ DRIVER = Capability(
     ops=(
         # --- bookkeeping: the old `manual_input=True` prompts are just typed
         # request fields now -- no gating, the caller already has the value.
-        Op("register_project", RegisterProject, ProjectInfo),
-        Op("register_substrate", RegisterSubstrate, SubstrateInfo),
-        Op("resume_substrate", ResumeSubstrate, SubstrateInfo),
+        Op("register_project", RegisterProject, ProjectInfo, journal=True),
+        Op("register_substrate", RegisterSubstrate, SubstrateInfo, journal=True),
+        Op("resume_substrate", ResumeSubstrate, SubstrateInfo, journal=True),
         Op("show_available_targets", Empty, TargetMap),
         Op("get_target_name_by_id", TargetId, TargetName),
         Op("get_target_id_by_name", TargetName, TargetId),
         Op("current_substrate", Empty, CurrentSubstrateResponse),
-        Op("finish_substrate", Empty, Ack),
-        Op("finish_current_pixel", FinishCurrentPixel, Ack),
+        Op("finish_substrate", Empty, Ack, journal=True),
+        Op("finish_current_pixel", FinishCurrentPixel, Ack, journal=True),
 
         # --- chamber reads: domain interpretation of the raw log row (gauge
         # fallback, field-name mapping) that today only exists in manager.py.
@@ -106,11 +106,11 @@ DRIVER = Capability(
         Op("get_current_mask_position", Empty, MaskPosition),
 
         # --- fast hardware control
-        Op("set_target", SetTarget, Ack),
-        Op("move_mask_to_position", MoveTo, Ack),
-        Op("move_rheed_to_position", MoveTo, Ack),
-        Op("to_pixel", PixelIndex, PixelMoveResult),
-        Op("to_current_pixel", Empty, PixelMoveResult),
+        Op("set_target", SetTarget, Ack, journal=True),
+        Op("move_mask_to_position", MoveTo, Ack, journal=True),
+        Op("move_rheed_to_position", MoveTo, Ack, journal=True),
+        Op("to_pixel", PixelIndex, PixelMoveResult, journal=True),
+        Op("to_current_pixel", Empty, PixelMoveResult, journal=True),
         # --- gas. The setpoint ops and the gates are deliberately separate, because
         # `MFC Control` is a single master enable with no channel argument: folding it
         # into set_mfc_flow would mean set_mfc_flow(2, 0) silently shuts MFC1 too.
@@ -121,61 +121,61 @@ DRIVER = Capability(
            doc="Set an MFC's flow setpoint in sccm. The gas does NOT flow until "
                "set_mfc_control(enabled=True) opens the master gate -- until then "
                "get_mfc_status shows `set` at your value and `monitor` at zero, and "
-               "the chamber pressure does not move."),
+               "the chamber pressure does not move.", journal=True),
         Op("set_mfc_control", SetMfcControl, Ack,
            doc="Open or close the MFC master gate (PASCAL's `MFC Control`). One gate "
                "for every channel, so disabling it stops all MFCs at once, leaving "
                "their flow setpoints untouched. Not needed under pressure control, "
-               "which drives the control MFC itself."),
+               "which drives the control MFC itself.", journal=True),
         Op("set_pressure", SetPressure, Ack,
            doc="Set the closed-loop pressure setpoint in Torr. Takes effect only "
                "once set_pressure_control(on=True) is on; the controller then trims "
                "the control MFC's flow to hold it, overriding set_mfc_flow on that "
-               "channel."),
+               "channel.", journal=True),
         Op("set_pressure_control", SetPressureControl, Ack,
            doc="Turn closed-loop pressure control on or off. On: the controller owns "
                "the control MFC and holds set_pressure's setpoint. Off: flow reverts "
-               "to whatever set_mfc_flow last set, gated by set_mfc_control."),
-        Op("initiate_heating_laser", Empty, Ack),
-        Op("turn_off_heating_laser", Empty, Ack),
-        Op("start_storage", StartStorage, StorageResult),
-        Op("end_storage", EndStorage, StorageResult),
-        Op("finish_experiment_record", FinishExperimentRecord, ExperimentRecordId),
+               "to whatever set_mfc_flow last set, gated by set_mfc_control.", journal=True),
+        Op("initiate_heating_laser", Empty, Ack, journal=True),
+        Op("turn_off_heating_laser", Empty, Ack, journal=True),
+        Op("start_storage", StartStorage, StorageResult, journal=True),
+        Op("end_storage", EndStorage, StorageResult, journal=True),
+        Op("finish_experiment_record", FinishExperimentRecord, ExperimentRecordId, journal=True),
 
         # --- long-running automatic ops: return immediately, tracked via
         # state.current_task (see TaskEvent on the update channel).
         Op("to_temperature", ToTemperature, TaskAck,
            doc="Ramp to a temperature and engage PID. Requires the heating laser to "
                "be on already -- call initiate_heating_laser first, or this fails "
-               "immediately rather than setting a setpoint no current can reach."),
-        Op("cool_down", CoolDown, TaskAck),
-        Op("perform_preablation", PerformPreablation, TaskAck),
-        Op("perform_deposition", PerformDeposition, TaskAck),
-        Op("anneal", Anneal, TaskAck),
+               "immediately rather than setting a setpoint no current can reach.", journal=True),
+        Op("cool_down", CoolDown, TaskAck, journal=True),
+        Op("perform_preablation", PerformPreablation, TaskAck, journal=True),
+        Op("perform_deposition", PerformDeposition, TaskAck, journal=True),
+        Op("anneal", Anneal, TaskAck, journal=True),
 
         # --- gated: laser power (unread physical meter)
-        Op("begin_set_laser_power", BeginSetLaserPower, Ack),
-        Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult),
+        Op("begin_set_laser_power", BeginSetLaserPower, Ack, journal=True),
+        Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult, journal=True),
 
         # --- gated: mask-center calibration / check (visual judgement)
-        Op("begin_align_center_mask", Empty, Ack),
-        Op("confirm_center_mask", ConfirmCenterMask, Ack),
-        Op("begin_check_mask_center", Empty, Ack),
-        Op("confirm_mask_center", ConfirmMaskCenter, PendingStatus),
+        Op("begin_align_center_mask", Empty, Ack, journal=True),
+        Op("confirm_center_mask", ConfirmCenterMask, Ack, journal=True),
+        Op("begin_check_mask_center", Empty, Ack, journal=True),
+        Op("confirm_mask_center", ConfirmMaskCenter, PendingStatus, journal=True),
 
         # --- gated: RHEED gain tuning (live view, iterative)
-        Op("begin_adjust_rheed_gain", Empty, Ack),
-        Op("set_rheed_gain", SetRheedGain, Ack),
-        Op("confirm_rheed_gain", Empty, Ack),
+        Op("begin_adjust_rheed_gain", Empty, Ack, journal=True),
+        Op("set_rheed_gain", SetRheedGain, Ack, journal=True),
+        Op("confirm_rheed_gain", Empty, Ack, journal=True),
 
         # --- gated: per-pixel keep/drop (visual judgement per position)
-        Op("begin_check_rheed_pixels", Empty, PixelCheckStatus),
-        Op("resolve_pixel_check", ResolvePixelCheck, PixelCheckStatus),
+        Op("begin_check_rheed_pixels", Empty, PixelCheckStatus, journal=True),
+        Op("resolve_pixel_check", ResolvePixelCheck, PixelCheckStatus, journal=True),
 
         # --- generic "just confirm, no captured value" gate -- everything else
         # that was an ainput with no return value (flip the laser to ON/Standby,
         # "substrate replaced, press enter", etc).
-        Op("confirm", ConfirmProceed, Ack),
+        Op("confirm", ConfirmProceed, Ack, journal=True),
     ),
     update=StreamSpec("pending", TaskEvent),
 )

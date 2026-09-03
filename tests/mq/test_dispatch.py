@@ -105,3 +105,120 @@ def test_routing_keys_come_from_the_contract():
     # ...and the server binds the wildcard, so it still serves them all from one queue.
     assert server.keys.request_pattern == "test.thing.req.*"
     assert server.keys.control_pattern == "test.thing.ctrl.*"
+
+
+# --- the step journal hook -----------------------------------------------------
+
+
+class FakeJournal:
+    """Records what the dispatch asked it to write, in order."""
+
+    def __init__(self) -> None:
+        self.rows: list[dict] = []
+
+    async def begin(self, kind, *, params=None, actor=None, source=None, **_):
+        self.rows.append({"kind": kind, "params": params, "actor": actor,
+                          "source": source, "ok": None, "error": None})
+        return len(self.rows) - 1
+
+    async def end(self, step_id, *, ok, result=None, error=None):
+        if step_id is None:
+            return
+        self.rows[step_id].update(ok=ok, error=error)
+
+
+def _message(op: str, *, actor: str | None = None):
+    from unittest.mock import AsyncMock
+
+    msg = MagicMock()
+    msg.routing_key = f"test.thing.req.{op}"
+    msg.body = b"{}"
+    msg.reply_to = "reply-q"
+    msg.correlation_id = "cid"
+    headers = {"codec": "json", "message_source": "notebook"}
+    if actor is not None:
+        headers["actor"] = actor
+    msg.headers = headers
+    return msg
+
+
+JOURNAL_CAP = Capability(
+    name="thing",
+    kind=Kind.RPC,
+    state=Empty,
+    ops=(
+        Op("alpha", Empty, Ack, journal=True),      # journaled by the dispatch
+        Op("beta", Empty, Ack),                     # a read: never journaled
+        Op("slow", Empty, Ack, journal=True),       # journaled by the handler itself
+    ),
+)
+
+
+def _journal_server(handler, journal):
+    from unittest.mock import AsyncMock
+
+    channel = MagicMock()
+    channel.default_exchange.publish = AsyncMock()
+    return CapabilityServer(
+        JOURNAL_CAP, "test", handler, channel=channel, exchange=MagicMock(), journal=journal
+    )
+
+
+class Journalled:
+    journals_own = frozenset({"slow"})
+
+    async def alpha(self, req): return Ack()
+    async def beta(self, req): return Ack()
+    async def slow(self, req): raise RuntimeError("heating laser is off")
+
+
+async def test_dispatch_journals_a_world_changing_op():
+    journal = FakeJournal()
+    server = _journal_server(Journalled(), journal)
+    await server._handle_request(_message("alpha", actor="hliang16"))
+
+    assert len(journal.rows) == 1
+    assert journal.rows[0]["kind"] == "alpha"
+    assert journal.rows[0]["ok"] is True
+    assert journal.rows[0]["actor"] == "hliang16"
+    assert journal.rows[0]["source"] == "notebook"
+
+
+async def test_dispatch_does_not_journal_a_read():
+    journal = FakeJournal()
+    server = _journal_server(Journalled(), journal)
+    await server._handle_request(_message("beta"))
+    assert journal.rows == []
+
+
+async def test_dispatch_leaves_handler_owned_ops_alone_when_they_succeed():
+    """A long-running op opens its own row when its task starts, so the dispatch must
+    not open a second one -- that would record a 27-minute ramp as the milliseconds it
+    took to hand back a TaskAck."""
+    journal = FakeJournal()
+
+    class Ok(Journalled):
+        async def slow(self, req): return Ack()
+
+    server = _journal_server(Ok(), journal)
+    await server._handle_request(_message("slow"))
+    assert journal.rows == []
+
+
+async def test_dispatch_journals_a_handler_owned_op_that_refuses():
+    """...but if it raises before its task starts, the handler journaled nothing, and
+    a refused ramp would otherwise leave no trace at all."""
+    journal = FakeJournal()
+    server = _journal_server(Journalled(), journal)
+    await server._handle_request(_message("slow", actor="hliang16"))
+
+    assert len(journal.rows) == 1
+    assert journal.rows[0]["kind"] == "slow"
+    assert journal.rows[0]["ok"] is False
+    assert "heating laser is off" in journal.rows[0]["error"]
+    assert journal.rows[0]["actor"] == "hliang16"
+
+
+async def test_a_server_with_no_journal_still_dispatches():
+    server = _journal_server(Journalled(), None)
+    await server._handle_request(_message("alpha"))  # must not raise
