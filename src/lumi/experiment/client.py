@@ -3,7 +3,7 @@
     async with ExperimentSession.connect(host="localhost") as exp:
         await exp.driver.register_project(RegisterProject(project_name="demo"))
         await exp.driver.to_temperature(ToTemperature(temperature=650))
-        img, meta = await exp.rheed.image()
+        meta, frame = await exp.rheed.image()
 
 `.driver` is the full generated `ExperimentDriverClient` -- every op on the
 `experiment` contract, typed. `.rheed`/`.chamber_log` are held directly (there is no

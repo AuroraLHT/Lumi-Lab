@@ -66,6 +66,17 @@ detection = [
 experiment = [
     "aiosqlite>=0.20",
 ]
+# Bayesian optimisation over growth conditions, for the closed-loop notebooks.
+# Split out because torch + gpytorch are a heavy install that only whichever machine
+# runs the BO notebook needs -- the chamber and camera hosts never import this.
+# Deliberately not pinned alongside `detection`: that extra's torch comes from
+# scripts/install_detection_deps.sh with a CUDA build, and pinning one here would
+# fight it on a host that has both.
+opt = [
+    "torch>=2.2",
+    "gpytorch>=1.11",
+    "pandas>=2.2",
+]
 # The MCP server that exposes the experiment node's ops as tools for an LLM agent.
 # A separate extra from `experiment` itself: the node needs aiosqlite, the MCP
 # server (a distinct process) needs the SDK, and neither host has to install both.
