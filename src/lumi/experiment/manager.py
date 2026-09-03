@@ -159,6 +159,21 @@ class Substrate:
         self._accessed_position_ids.add(self.current_position_id)
         self.current_position_id += 1
 
+    def restore_progress(self, used_indices: set[int]) -> None:
+        """Re-apply growth history to a substrate rebuilt from the database.
+
+        A fresh Substrate starts at position 0 with nothing accessed, which is correct
+        for `register_substrate` and wrong for `resume_substrate` -- see
+        GrowthDB.get_used_pixel_indices. `current_position_id` lands on the first index
+        that has not been grown on, so `get_current_position` and
+        `accessible_positions` agree with each other and with the history.
+        """
+        self._accessed_position_ids = {i for i in used_indices if 0 <= i < len(self.positions)}
+        self.current_position_id = next(
+            (i for i in range(len(self.positions)) if i not in self._accessed_position_ids),
+            len(self.positions),
+        )
+
 
 class BaseExperimentManager:
     """Shared hardware/DB primitives for driving a PLD growth."""
@@ -254,8 +269,29 @@ class BaseExperimentManager:
             substrate_uuid=substrate.uuid, manufacture=manufacturer,
             manufacture_date=manufacture_date, substrate_name=substrate_name,
         )
+        await self._materialise_samples(substrate)
         self.substrates.append(substrate)
         return substrate
+
+    async def _materialise_samples(self, substrate: Substrate) -> None:
+        """One `sample` row per growable position, created with the substrate.
+
+        A position becomes a specimen the moment the substrate is registered, not when
+        it is first grown on -- that is what lets "which positions are spent" be a
+        query instead of in-memory state, and what gives a step somewhere to attach
+        before any deposition has happened.
+        """
+        root = await self.growth_db.add_sample(
+            substrate.db_id, kind="substrate", pixel_index=None,
+            sample_name=substrate.name, state="active", sample_uuid=substrate.uuid,
+        )
+        base = substrate.name or substrate.materials
+        for index, position in enumerate(substrate.positions):
+            await self.growth_db.add_sample(
+                substrate.db_id, kind="position", pixel_index=index,
+                position_mm=position, parent_sample_id=root,
+                sample_name=f"{base}-p{index}",
+            )
 
     async def resume_substrate(self, substrate_id: int) -> Substrate:
         row = await self.growth_db.get_substrate(substrate_id)
@@ -267,16 +303,45 @@ class BaseExperimentManager:
             db_id=row[0], substrate_uuid=row[1], manufacture=row[9], manufacture_date=row[10],
             name=row[11] if len(row) > 11 else None,
         )
+        substrate.restore_progress(await self.growth_db.get_used_pixel_indices(substrate_id))
+        # A substrate registered before the sample table existed has no rows; make
+        # them now so resuming an old campaign journals against a real sample rather
+        # than silently against None.
+        if not await self.growth_db.get_samples_for_substrate(substrate_id):
+            await self._materialise_samples(substrate)
+        await self._mark_grown_samples(substrate)
         self.substrates.append(substrate)
         return substrate
 
+    async def _mark_grown_samples(self, substrate: Substrate) -> None:
+        for index in substrate._accessed_position_ids:
+            row = await self.growth_db.find_sample(substrate.db_id, index)
+            if row is not None:
+                await self.growth_db.set_sample_state(row[0], "grown")
+
     async def finish_substrate(self) -> None:
-        if self.current_substrate is not None:
-            self.current_substrate.finish_current_position()
+        await self._finish_position()
 
     async def finish_current_pixel(self) -> None:
-        if self.current_substrate is not None:
-            self.current_substrate.finish_current_position()
+        await self._finish_position()
+
+    async def _finish_position(self) -> None:
+        """Retire the current position and mark its sample grown.
+
+        Both ops did the same thing already; the only difference was which contract op
+        the caller reached for. Sharing one implementation means the sample state can
+        never be updated on one path and not the other.
+        """
+        substrate = self.current_substrate
+        if substrate is None:
+            return
+        index = substrate.current_position_id
+        substrate.finish_current_position()
+        if substrate.db_id is None:
+            return
+        row = await self.growth_db.find_sample(substrate.db_id, index)
+        if row is not None:
+            await self.growth_db.set_sample_state(row[0], "grown")
 
     async def get_target_name_by_id(self, target_id: str) -> str:
         field = self.target_mapper.get(target_id)

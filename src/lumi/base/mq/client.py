@@ -52,12 +52,23 @@ class CapabilityClient:
         exchange: AbstractExchange,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         self.cap = capability
         self.equipment = equipment
         self.channel = channel
         self.exchange = exchange
         self.timeout = timeout
+        # Who is responsible for what this client does, for the step journal --
+        # "notebook", "mcp:agent", "ui:hliang16". Distinct from `name`, which
+        # identifies the client *instance* and is generated.
+        #
+        # Self-asserted, so it is only as trustworthy as the caller. That is fine for
+        # a notebook on the lab machine, and it is why the two authenticated front
+        # doors -- the websocket bridge and the MCP HTTP transport -- set it from the
+        # verified JWT subject when they construct their clients, rather than
+        # forwarding anything a remote caller supplied.
+        self.actor = actor
         self.keys = capability.keys(equipment)
         self.target = f"{equipment}.{capability.name}"
         self.name = name or f"{self.target}.client.{uuid.uuid4().hex[:6]}"
@@ -128,7 +139,7 @@ class CapabilityClient:
         # round, so a fast reply could arrive before its own future existed.
         self._futures[cid] = fut
 
-        headers = envelope.request(self.name, op.name, str(op.request_codec), **extra)
+        headers = envelope.request(self.name, op.name, str(op.request_codec), actor=self.actor, **extra)
         try:
             await self.exchange.publish(
                 Message(

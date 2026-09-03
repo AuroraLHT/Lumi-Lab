@@ -32,10 +32,12 @@ class RheedCameraClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             CAMERA, 'rheed',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def image(self) -> tuple[ImageMeta, np.ndarray]:
@@ -76,10 +78,12 @@ class RheedVideoClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             VIDEO, 'rheed',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def initial_fragments(self) -> tuple[InitialFragmentsMeta, bytes]:
@@ -121,10 +125,12 @@ class RheedIntegratorClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             INTEGRATOR, 'rheed',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def register(self, req: RegisterBBox) -> Ack:
@@ -168,10 +174,12 @@ class RheedStftClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             STFT, 'rheed',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def register(self, req: RegisterBBox) -> Ack:
@@ -213,11 +221,11 @@ class RheedClient:
     """
 
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange,
-                 *, timeout: float = 10.0) -> None:
-        self.camera = RheedCameraClient(channel, exchange, timeout=timeout)
-        self.video = RheedVideoClient(channel, exchange, timeout=timeout)
-        self.integrator = RheedIntegratorClient(channel, exchange, timeout=timeout)
-        self.stft = RheedStftClient(channel, exchange, timeout=timeout)
+                 *, timeout: float = 10.0, actor: str | None = None) -> None:
+        self.camera = RheedCameraClient(channel, exchange, timeout=timeout, actor=actor)
+        self.video = RheedVideoClient(channel, exchange, timeout=timeout, actor=actor)
+        self.integrator = RheedIntegratorClient(channel, exchange, timeout=timeout, actor=actor)
+        self.stft = RheedStftClient(channel, exchange, timeout=timeout, actor=actor)
 
     @property
     def capabilities(self) -> dict:

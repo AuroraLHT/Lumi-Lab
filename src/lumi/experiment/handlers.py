@@ -33,6 +33,7 @@ import time
 import uuid
 from typing import Any
 
+from lumi.base.mq.context import current_actor, current_source
 from lumi.contracts.payloads.camera import CameraConfig
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
@@ -91,6 +92,7 @@ from lumi.contracts.payloads.experiment import (
     ValveStatus,
 )
 from lumi.experiment.db import GrowthDB
+from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration, PixelExperimentManager, Substrate
 
 log = logging.getLogger(__name__)
@@ -141,6 +143,33 @@ class ExperimentHandler:
         self._pending: PendingConfirmation | None = None
         self._current_task: CurrentTask | None = None
         self._updates: asyncio.Queue[TaskEvent] = asyncio.Queue()
+
+        # Set by nodes/experiment.py once the growth database is open. None in tests
+        # and anywhere the journal is not wanted; every call site tolerates that.
+        self.journal: StepJournal | None = None
+
+    #: Ops this handler journals itself, so MqServer's dispatch leaves them alone.
+    #: These return a TaskAck immediately and finish minutes or hours later --
+    #: `_start_task`'s runner is the only place that knows when they really ended.
+    journals_own = frozenset({
+        "to_temperature", "cool_down", "perform_preablation", "perform_deposition", "anneal",
+    })
+
+    async def current_sample_id(self) -> int | None:
+        """The sample the chamber is working on, for StepJournal.sample_resolver.
+
+        Queried rather than cached: register/resume/finish_pixel all move the current
+        position, and a cache would be one more thing to keep in step with the
+        substrate. None whenever nothing is loaded, which is a normal state --
+        alignment, a gas change and a warm-up are real steps that belong to the
+        session and to no specimen.
+        """
+        m = self.manager
+        substrate = m.current_substrate if m else None
+        if substrate is None or substrate.db_id is None:
+            return None
+        row = await self.growth_db.find_sample(substrate.db_id, substrate.current_position_id)
+        return row[0] if row else None
 
     def build_manager(self) -> None:
         """Called once `sources` is filled in."""
@@ -211,8 +240,21 @@ class ExperimentHandler:
 
     async def _start_task(self, kind: str, coro, detail: dict | None = None) -> TaskAck:
         task_id = uuid.uuid4().hex
-        self._current_task = CurrentTask(id=task_id, kind=kind, started_at=time.time(), detail=detail or {})
+        started_at = time.time()
+        self._current_task = CurrentTask(id=task_id, kind=kind, started_at=started_at, detail=detail or {})
         await self._push(current_task=self._current_task)
+
+        # The journal row is opened here and closed by the runner below, so its
+        # duration is the ramp's, not the ack's. `detail` is already the typed
+        # request's fields and `task_result` is already the outcome -- the journal
+        # stores what this method was computing and discarding anyway.
+        step_id = None
+        if self.journal is not None:
+            step_id = await self.journal.begin(
+                kind, params=detail or {}, step_uuid=task_id, started_at=started_at,
+                actor=current_actor.get(),
+                source=current_source.get() or "experiment.driver",
+            )
 
         async def runner() -> None:
             try:
@@ -222,6 +264,11 @@ class ExperimentHandler:
                 log.exception("experiment task %s (%s) failed", kind, task_id)
                 task_result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
             self._current_task = None
+            if self.journal is not None:
+                await self.journal.end(
+                    step_id, ok=bool(task_result.get("ok")),
+                    result=task_result, error=task_result.get("error"),
+                )
             await self._push(current_task=None, task_result=task_result)
 
         asyncio.create_task(runner(), name=f"experiment-task-{kind}")

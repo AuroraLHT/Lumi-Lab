@@ -32,10 +32,12 @@ class ExperimentDriverClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             DRIVER, 'experiment',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def register_project(self, req: RegisterProject) -> ProjectInfo:
@@ -249,8 +251,8 @@ class ExperimentClient:
     """
 
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange,
-                 *, timeout: float = 10.0) -> None:
-        self.driver = ExperimentDriverClient(channel, exchange, timeout=timeout)
+                 *, timeout: float = 10.0, actor: str | None = None) -> None:
+        self.driver = ExperimentDriverClient(channel, exchange, timeout=timeout, actor=actor)
 
     @property
     def capabilities(self) -> dict:

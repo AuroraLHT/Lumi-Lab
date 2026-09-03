@@ -23,6 +23,7 @@ from lumi.contracts.storage import STORAGE_NODE
 from lumi.contracts.system import SYSTEM
 from lumi.experiment.db import GrowthDB
 from lumi.experiment.handlers import ExperimentHandler
+from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 from lumi.experiment.mi import MiCommandRunner
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberLogClient, ChamberMiModeClient
@@ -79,6 +80,17 @@ async def main(args: argparse.Namespace) -> None:
         sources={}, growth_db=growth_db, pld_config=_pld_config(), bounds=_bounds(),
         target_mapper=dict(settings.experiment.target_mapper), registry_client=None,
     )
+
+    # The step journal has to exist before node.start(), which is where the capability
+    # servers are built and where each one picks up its handler's journal. Opening the
+    # session here is what makes "this chamber run" a thing steps can chain within.
+    handler.journal = StepJournal(
+        growth_db,
+        node_instance=node.instance_id,
+        sample_resolver=handler.current_sample_id,
+    )
+    await handler.journal.open_session()
+
     node.mount("driver", handler)
     await node.start()
 
@@ -135,6 +147,7 @@ async def main(args: argparse.Namespace) -> None:
         deps_task.cancel()
         for client in (*startable, registry):
             await client.stop()
+        await handler.journal.close_session()
         await growth_db.close()
 
     node.on_drain(stop_clients)

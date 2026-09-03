@@ -31,10 +31,12 @@ class DetectionDetectionClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             DETECTION, 'detection',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def detection(self) -> tuple[DetectionResult, dict[str, np.ndarray]]:
@@ -71,10 +73,12 @@ class DetectionOverlayClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             OVERLAY, 'detection',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def on_overlay(
@@ -100,9 +104,9 @@ class DetectionClient:
     """
 
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange,
-                 *, timeout: float = 10.0) -> None:
-        self.detection = DetectionDetectionClient(channel, exchange, timeout=timeout)
-        self.overlay = DetectionOverlayClient(channel, exchange, timeout=timeout)
+                 *, timeout: float = 10.0, actor: str | None = None) -> None:
+        self.detection = DetectionDetectionClient(channel, exchange, timeout=timeout, actor=actor)
+        self.overlay = DetectionOverlayClient(channel, exchange, timeout=timeout, actor=actor)
 
     @property
     def capabilities(self) -> dict:
