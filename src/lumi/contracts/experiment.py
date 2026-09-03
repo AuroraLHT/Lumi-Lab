@@ -55,6 +55,17 @@ from .payloads.experiment import (
     RegisterSubstrate,
     ResolvePixelCheck,
     ResumeSubstrate,
+    SampleDetail,
+    SampleId,
+    SampleList,
+    ListSamples,
+    ListSteps,
+    StepList,
+    AddMeasurement,
+    MeasurementId,
+    MeasurementInfo,
+    MeasurementList,
+    ListMeasurements,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
@@ -171,6 +182,28 @@ DRIVER = Capability(
         # --- gated: per-pixel keep/drop (visual judgement per position)
         Op("begin_check_rheed_pixels", Empty, PixelCheckStatus, journal=True),
         Op("resolve_pixel_check", ResolvePixelCheck, PixelCheckStatus, journal=True),
+
+        # --- sample tracking. Reads of what the journal and the sample tree already
+        # hold, plus the one write a client needs: attaching a measurement. growth.db
+        # is on this node's host, so these are how a notebook elsewhere reaches it.
+        Op("list_samples", ListSamples, SampleList,
+           doc="Every sample on a substrate (or all of them), with its position and "
+               "state. A sample exists per growable position from registration, so "
+               "this answers 'which positions are left' without any in-memory state."),
+        Op("get_sample", SampleId, SampleDetail,
+           doc="One sample plus its layer stack, bottom-up. The stack is derived from "
+               "the deposition steps that succeeded on it, so it reflects what was "
+               "actually grown rather than what was planned."),
+        Op("sample_history", ListSteps, StepList,
+           doc="The step journal: what happened, in order, with parameters, outcome, "
+               "duration and who asked for it. Filter by sample or by chamber session."),
+        Op("add_measurement", AddMeasurement, MeasurementId, journal=True,
+           doc="Attach a result to a sample -- a RHEED growth metric, or an ex-situ "
+               "XRD/AFM/PFM/transport measurement. `value` is the scalar an optimiser "
+               "sorts on; `detail` carries the full result."),
+        Op("list_measurements", ListMeasurements, MeasurementList,
+           doc="Measurements, with the growth conditions that produced each sample "
+               "resolved alongside them -- one call for a GP training set."),
 
         # --- generic "just confirm, no captured value" gate -- everything else
         # that was an ainput with no return value (flip the laser to ON/Standby,

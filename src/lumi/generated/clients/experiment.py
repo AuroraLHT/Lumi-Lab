@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 7e7d5e6d72531bde
+# contract_hash: 983c936b3e71f4fb
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import Anneal, BeginSetLaserPower, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, MaskPosition, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectInfo, PumpStatus, RegisterProject, RegisterSubstrate, ResolvePixelCheck, ResumeSubstrate, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartStorage, StorageResult, SubstrateInfo, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, BeginSetLaserPower, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListMeasurements, ListSamples, ListSteps, MaskPosition, MeasurementId, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectInfo, PumpStatus, RegisterProject, RegisterSubstrate, ResolvePixelCheck, ResumeSubstrate, SampleDetail, SampleId, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartStorage, StepList, StorageResult, SubstrateInfo, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -227,6 +227,26 @@ class ExperimentDriverClient(CapabilityClient):
     async def resolve_pixel_check(self, req: ResolvePixelCheck) -> PixelCheckStatus:
         """Call driver.resolve_pixel_check."""
         return await self.call("resolve_pixel_check", req)  # type: ignore[return-value]
+
+    async def list_samples(self, req: ListSamples) -> SampleList:
+        """Every sample on a substrate (or all of them), with its position and state. A sample exists per growable position from registration, so this answers 'which positions are left' without any in-memory state."""
+        return await self.call("list_samples", req)  # type: ignore[return-value]
+
+    async def get_sample(self, req: SampleId) -> SampleDetail:
+        """One sample plus its layer stack, bottom-up. The stack is derived from the deposition steps that succeeded on it, so it reflects what was actually grown rather than what was planned."""
+        return await self.call("get_sample", req)  # type: ignore[return-value]
+
+    async def sample_history(self, req: ListSteps) -> StepList:
+        """The step journal: what happened, in order, with parameters, outcome, duration and who asked for it. Filter by sample or by chamber session."""
+        return await self.call("sample_history", req)  # type: ignore[return-value]
+
+    async def add_measurement(self, req: AddMeasurement) -> MeasurementId:
+        """Attach a result to a sample -- a RHEED growth metric, or an ex-situ XRD/AFM/PFM/transport measurement. `value` is the scalar an optimiser sorts on; `detail` carries the full result."""
+        return await self.call("add_measurement", req)  # type: ignore[return-value]
+
+    async def list_measurements(self, req: ListMeasurements) -> MeasurementList:
+        """Measurements, with the growth conditions that produced each sample resolved alongside them -- one call for a GP training set."""
+        return await self.call("list_measurements", req)  # type: ignore[return-value]
 
     async def confirm(self, req: ConfirmProceed) -> Ack:
         """Call driver.confirm."""

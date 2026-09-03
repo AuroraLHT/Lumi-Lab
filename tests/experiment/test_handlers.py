@@ -353,3 +353,29 @@ async def test_finishing_a_pixel_marks_its_sample_grown(handler):
     still_planned = await handler.growth_db.find_sample(info.substrate_id, 1)
     assert grown[8] == "grown"
     assert still_planned[8] == "planned"
+
+
+async def test_deposition_records_the_material_not_just_the_slot(handler):
+    """The carousel's slot-to-material map is chamber config and changes when targets
+    are swapped, so a step that recorded only `target_id: "A"` names a different
+    material after the next swap. The name is resolved at journal time instead."""
+    from lumi.contracts.payloads.experiment import PerformDeposition
+
+    captured: list[dict] = []
+
+    class Recorder:
+        async def begin(self, kind, *, params=None, **_):
+            captured.append(params or {})
+            return 0
+
+        async def end(self, *a, **k):
+            pass
+
+    handler.journal = Recorder()
+    await handler.perform_deposition(PerformDeposition(
+        target_id="A", num_pulse=500, laser_repetition_rate=2.78, is_dryrun=True,
+    ))
+
+    assert captured[0]["target_material"] == "SRO"   # FakeChamberConfig's TG1name
+    assert captured[0]["target_id"] == "A"
+    assert captured[0]["is_dryrun"] is True

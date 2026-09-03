@@ -11,6 +11,7 @@ exists rather than failing on a path like "cfg/growth.db" in a fresh checkout.
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from uuid import uuid4
@@ -461,6 +462,7 @@ class GrowthDB:
                       step_id, started_at
                FROM step
                WHERE sample_id = ? AND kind = 'perform_deposition' AND ok = 1
+                 AND COALESCE(json_extract(params, '$.is_dryrun'), 0) = 0
                ORDER BY started_at""",
             (sample_id,),
         ) as cursor:
@@ -572,6 +574,74 @@ class GrowthDB:
             args = (sample_id, kind)
         async with self.conn.execute(sql + " ORDER BY created_at", args) as cursor:
             return await cursor.fetchall()
+
+    async def query_measurements(
+        self,
+        *,
+        sample_id: int | None = None,
+        kind: str | None = None,
+        substrate_id: int | None = None,
+    ):
+        where, args = [], []
+        if sample_id is not None:
+            where.append("m.sample_id = ?")
+            args.append(sample_id)
+        if kind is not None:
+            where.append("m.kind = ?")
+            args.append(kind)
+        if substrate_id is not None:
+            where.append("s.substrate_id = ?")
+            args.append(substrate_id)
+        sql = "SELECT m.* FROM measurement m JOIN sample s ON s.sample_id = m.sample_id"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        async with self.conn.execute(sql + " ORDER BY m.created_at", tuple(args)) as cursor:
+            return await cursor.fetchall()
+
+    async def growth_conditions(self, sample_id: int) -> dict:
+        """The conditions that produced a sample, for a GP training set.
+
+        Both sources are needed and neither is sufficient. The `experiment` row holds
+        the *measured* values a GP is actually regressing on -- the pressure read off
+        the gauge, the laser power read off the meter -- which the deposition request
+        never carried. The journal step holds what was asked of the hardware, plus the
+        material resolved at the time. So the row is the base and the step overlays it;
+        a sample grown before the journal existed still gets the row alone.
+        """
+        conditions: dict = {}
+
+        async with self.conn.execute(
+            """SELECT e.temperature, e.pressure, e.laser_power, e.laser_pulse_rate,
+                      e.target_material, e.num_pulse
+               FROM experiment e
+               JOIN sample s ON s.substrate_id = e.substrate_id
+               WHERE s.sample_id = ?
+                 AND (e.pixel_location IS s.pixel_index OR e.is_pixel = 0)
+               ORDER BY e.experiment_created_at DESC LIMIT 1""",
+            (sample_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is not None:
+            keys = ("temperature", "pressure", "laser_power", "laser_repetition_rate",
+                    "target_material", "num_pulse")
+            conditions.update({k: v for k, v in zip(keys, row) if v is not None})
+
+        async with self.conn.execute(
+            """SELECT params FROM step
+               WHERE sample_id = ? AND kind = 'perform_deposition' AND ok = 1
+               ORDER BY started_at DESC LIMIT 1""",
+            (sample_id,),
+        ) as cursor:
+            step_row = await cursor.fetchone()
+        if step_row and step_row[0]:
+            try:
+                value = json.loads(step_row[0])
+            except (TypeError, ValueError):
+                value = None
+            if isinstance(value, dict):
+                conditions.update({k: v for k, v in value.items() if v is not None})
+
+        return conditions
 
     async def list_tables(self):
         async with self.conn.execute(
