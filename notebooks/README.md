@@ -23,7 +23,13 @@ needs the detection node (`--with-detection`): `start_storage` always requests
 `save_ai`, and the storage node refuses to record when a requested source is off the
 bus.
 
-`BODeposition.ipynb` needs the `opt` extra:
+Both notebooks plot with matplotlib, so either one needs the `notebooks` extra:
+
+```bash
+uv sync --extra notebooks          # matplotlib
+```
+
+`BODeposition.ipynb` additionally needs the `opt` extra:
 
 ```bash
 uv sync --extra opt          # torch, gpytorch
@@ -57,10 +63,13 @@ diff of its source and nothing else.
 `SingleDeposition.ipynb` has been executed end to end against the simulator: three
 layers grown, every step journaled with its actor, the derived layer stack read back.
 
-`BODeposition.ipynb` has **not** been observed to completion. It has been seen to get
-past the random-seed phase into GP-proposed conditions, which is the part that
-matters, but the run was interrupted. See `docs/SAMPLE_TRACKING.md` for the detail and
-the remaining to-do.
+`BODeposition.ipynb` has also been executed end to end: 2 random-seed growths then 5
+GP-proposed ones, all positions on the substrate used, no exception. That confirms the
+loop's mechanics (bookkeeping, gates, journaling, GP wiring) but **not** its
+optimisation behaviour under `DRYRUN = True` -- `to_temperature` is skipped outright in
+dryrun and pressure is always a printed manual instruction with nothing to act on it in
+the simulator, so the conditions the GP trains on don't match what was proposed. See
+`docs/SAMPLE_TRACKING.md` for the detail and the remaining to-do.
 
 ## `analyze_rheed_video`
 

@@ -1,7 +1,8 @@
 # Sample tracking
 
-Status as of 2026-09-03. Branch `sample-tracking`. Paused mid-verification — see
-[Where this stopped](#where-this-stopped) before picking it up.
+Status as of 2026-09-03. Branch `sample-tracking`. Both notebooks are now confirmed
+end to end against the simulator — see [Where this stopped](#where-this-stopped) for
+what that run found and the remaining to-do.
 
 ---
 
@@ -193,12 +194,46 @@ Verification status:
 | The five new contract ops over the bus | ✅ verified live |
 | `SingleDeposition.ipynb` end to end | ✅ executed cleanly — 3 layers, all steps journaled |
 | Motor fix across six consecutive pixel moves | ✅ verified — ~0.2 s each, previously failed on the first |
-| `BODeposition.ipynb` end to end | ⚠️ **not confirmed.** Reached iteration 2 with the GP proposing (`exploitation, GP mean 0.500 ± 0.049`), which is past the random-seed phase — so the loop works. Never observed to completion. |
+| `BODeposition.ipynb` end to end | ✅ **confirmed 2026-09-03**, on a different machine. All 7 positions on a `pixel_spacing=1.0` substrate grown, journaled and measured; session closed cleanly. See caveat below. |
+
+### `BODeposition.ipynb` completion run (2026-09-03)
+
+Executed headlessly (`jupyter nbconvert --execute`) against the simulator, `DRYRUN =
+True` as shipped. 2 random-seed growths then 5 GP-proposed ones, all 7 of the
+substrate's positions used, no exception, `session closed` printed. Uncovered one
+real gap on the way (fixed, see below) and one thing to know before trusting the
+proposals it made:
+
+- **`matplotlib` was an undeclared dependency.** Both notebooks `import
+  matplotlib.pyplot` but nothing in `pyproject.toml` installed it — the previous
+  run only worked because a stale environment had it transitively. Fixed: new
+  `notebooks` extra (`uv sync --extra notebooks`), `notebooks/README.md` updated.
+- **Caveat, not a bug: under `DRYRUN = True`, the GP's x and the score's x are
+  different points.** `score_growth` computes the metric from the *proposed*
+  conditions. But `to_temperature` is skipped outright when `is_dryrun` (by
+  design — see `notebooks/README.md`), and pressure is *always* a printed
+  `"[Manual] Set Pressure..."` instruction with no simulator-side actuation (the
+  contract has a real `set_pressure` op; `recipes.perform_pixel_deposition` never
+  calls it — on real hardware a human enacts the printed instruction, in the
+  simulator nothing does). So `growth_conditions()` — which is what
+  `list_measurements` feeds the GP — records the chamber's undisturbed idle state
+  (~160 °C, ~5e-9 Torr in this run) for every point, regardless of what was
+  proposed. The run in the executed notebook shows exactly this: `campaign.db`'s
+  recorded `temperature`/`pressure` columns are nearly constant and far outside
+  `AXES`'s configured range, while the metric varies with what was actually
+  proposed. The loop's proposals after seeding collapsed toward one corner of the
+  search box — consistent with the GP fitting a near-single training point in
+  x-space with scattered y, not with a fitting bug.
+  This means **the run confirms the loop's mechanics (bookkeeping, gates,
+  journaling, GP wiring, convergence check) but not its optimization behaviour**
+  — that needs either `DRYRUN = False` (which drives temperature for real; pressure
+  would still need a human, or an `auto_input` hook added to call `set_pressure`
+  for an unattended simulator run) or accepting dryrun's x/y decoupling as
+  out of scope for judging the proposals themselves.
 
 ### To do
 
-- [ ] **Run `BODeposition.ipynb` to completion** on a machine that is not this WSL
-      instance. Everything below is downstream of that.
+- [x] ~~Run `BODeposition.ipynb` to completion~~ — done 2026-09-03, see above.
 - [ ] Decide whether the BO loop should catch a per-iteration failure and stop
       cleanly rather than raising. Measurements are already durable in the database,
       so nothing is lost either way — but an autonomous loop that dies on iteration 7
