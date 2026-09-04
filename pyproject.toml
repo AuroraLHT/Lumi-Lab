@@ -91,6 +91,12 @@ mcp = [
     "bcrypt>=4.2",
     "pyjwt>=2.9",
 ]
+# Plotting for notebooks/*.ipynb -- both SingleDeposition and BODeposition import
+# matplotlib.pyplot directly. Split out because no node process needs it; only
+# whichever machine runs a notebook does.
+notebooks = [
+    "matplotlib>=3.8",
+]
 
 [project.scripts]
 lumi-codegen = "lumi.codegen.__main__:main"
