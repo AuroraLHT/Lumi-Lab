@@ -249,7 +249,7 @@ if [[ -z "$RESOLVED_ROOT" ]]; then
     fail "could not resolve the HDF5 output directory"
 elif [[ ! -d "$RESOLVED_ROOT" ]]; then
     fail "HDF5 root does not exist: $RESOLVED_ROOT"
-    echo "        The tracked 'database' symlink points at the lab share; mount it," >&2
+    echo "        Create a 'database' symlink (or dir) pointing at your storage share," >&2
     echo "        or pass --root <dir>. Recordings are lost silently without it." >&2
 elif [[ ! -w "$RESOLVED_ROOT" ]]; then
     fail "HDF5 root is not writable: $RESOLVED_ROOT"
