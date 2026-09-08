@@ -184,9 +184,10 @@ async def test_actor_reaches_a_task_started_inside_a_handler(db):
 # --- what a live run against the simulator caught -------------------------------
 
 
-async def test_a_dryrun_deposition_is_not_a_layer(db):
-    """A dryrun fires no laser: the step happened, the film did not. Counting it would
-    put a layer on a sample that is still bare."""
+async def test_a_dryrun_deposition_is_still_a_layer_but_tagged(db):
+    """A dryrun fires no laser: the step happened, the film did not. It stays on the
+    stack -- a rehearsed layer silently vanishing looked like the run itself had gone
+    missing -- but `is_dryrun` says it deposited nothing."""
     substrate_id = await db.add_substrate("SrTiO3", "(001)", 10, 10, 0.5, None, "[0.0]")
     sample_id = await db.add_sample(substrate_id, pixel_index=0)
     journal = StepJournal(db, sample_resolver=lambda: sample_id)
@@ -201,7 +202,8 @@ async def test_a_dryrun_deposition_is_not_a_layer(db):
         )
 
     stack = await db.get_layer_stack(sample_id)
-    assert [l["material"] for l in stack] == ["La0.7Sr0.3MnO3"]
+    assert [l["material"] for l in stack] == ["SrRuO3", "La0.7Sr0.3MnO3"]
+    assert [l["is_dryrun"] for l in stack] == [True, False]
 
 
 async def test_growth_conditions_merge_the_measured_row_and_the_step(db):

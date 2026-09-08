@@ -432,6 +432,7 @@ class LayerInfo(BaseModel):
     num_pulse: int | None = None
     step_id: int | None = None
     started_at: float | None = None
+    is_dryrun: bool = False
 
 
 class SampleDetail(BaseModel):
