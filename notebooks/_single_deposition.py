@@ -12,19 +12,10 @@ def cells() -> list[tuple[str, str]]:
 # Single Deposition
 
 A layered growth on one substrate position: **bottom electrode &rarr; interface &rarr;
-functional layer**. Ported from `UMDSingleDepoExperiment.ipynb`, which drove the real
-HZO stack (SRO / LSMO / HZO) against the v1.0 API.
-
-What changed in the port:
-
-| v1.0 | now |
-| --- | --- |
-| `MQCommunication()` + eleven clients | `ExperimentSession` |
-| `SingleDepoExperimentManager.perform_experiment` | `recipes.perform_single_deposition` |
-| `ainput("...")` blocking the kernel | `input_provider` / `value_provider` hooks |
-| `src.db.GrowthDB` opened locally | the experiment node owns it; reached over the contract |
-| `collector` pickle + `local_experiment_counter` | `list_samples` / `sample_history` |
-| conditions typed into a dict | recorded automatically as `step` rows |
+functional layer**. One `ExperimentSession` opens the bus; `recipes.perform_single_deposition`
+runs each layer end to end, pausing at every point a person has to do or read something
+physical; and every world-changing op is recorded as a `step` row, so the sample's
+history is written by the system rather than kept in a notebook variable.
 
 **This notebook runs against the simulator as written.** Bring the stack up first:
 
@@ -59,16 +50,15 @@ from lumi.experiment.client import ExperimentSession
 ## Connect
 
 `ExperimentSession` spans the three exchanges a growth needs (EXPERIMENT + RHEED +
-CHAMBER) and owns the connection. It replaces the eleven separate clients the v1.0
-notebook opened by hand.
+CHAMBER) and owns the connection.
 
 `actor` is who to credit in the step journal. Every op you run below is recorded
 against this name, so the history says *who* ramped the chamber rather than just that
 a notebook did.
 """),
         (CODE, """
-HOST = "localhost"     # the lab broker's address on the instrument machine
-ACTOR = "hliang16"     # your name, for the step journal
+HOST = "localhost"     # the broker's address; the instrument machine in the lab
+ACTOR = "operator"     # your name, for the step journal
 DRYRUN = True          # True: bookkeeping and gates, no laser and no ramp
 
 exp = await ExperimentSession.open(host=HOST, actor=ACTOR)
@@ -90,8 +80,7 @@ print("targets:", (await exp.driver.show_available_targets()).targets)
         (MD, """
 ## Look at the RHEED pattern
 
-The v1.0 notebook reached for `comm.camera_client.get_image()`. The session holds the
-RHEED camera directly, for exactly this.
+The session holds the RHEED camera directly, for exactly this.
 """),
         (CODE, """
 # NB: (meta, frame), not (frame, meta) -- the array never passes through JSON,
@@ -107,7 +96,7 @@ plt.show()
 ## Growth parameters
 
 **&larr; This is the cell to edit for a real run.** The values below are the
-simulator's; the real HZO stack's numbers from the production notebook are in the
+simulator's; representative real numbers for an HZO stack (SRO / LSMO / HZO) are in the
 comment on each line.
 """),
         (CODE, """
@@ -138,14 +127,14 @@ LAYERS = [
 ## Answering the recipe's prompts
 
 `perform_single_deposition` pauses at every point a person has to do or read something
-physical. The v1.0 notebook used `ainput`, which blocks the kernel on stdin -- awkward
-in Jupyter and impossible to leave unattended.
+physical. It takes two hooks for this -- an `input_provider` for "do X now" messages and
+a `value_provider` for questions that need an answer back.
 
-The recipe takes two hooks instead. Below they answer themselves so the notebook runs
-end to end against the simulator with nobody at the keyboard. A real run needs an
-actual person reading the laser power meter and the RHEED screen, so it gets
-`recipes.default_input_provider` / `default_value_provider` -- the same terminal-input
-functions everyone in the lab actually uses -- selected the moment `DRYRUN` is off.
+Below they answer themselves so the notebook runs end to end against the simulator with
+nobody at the keyboard. A real run needs an actual person reading the laser power meter
+and the RHEED screen, so it gets `recipes.default_input_provider` /
+`default_value_provider` -- terminal-input functions -- selected the moment `DRYRUN` is
+off.
 """),
         (CODE, """
 async def auto_input(message: str) -> None:
@@ -170,9 +159,9 @@ else:
         (MD, """
 ## Register the project and substrate
 
-`register_substrate` now also materialises one **sample** row per growable position,
-so "which positions are spent" is a query rather than something the notebook has to
-remember. The v1.0 notebook kept that in a pickle.
+`register_substrate` also materialises one **sample** row per growable position, so
+"which positions are spent" is a query rather than something the notebook has to
+remember.
 """),
         (CODE, """
 project = await exp.driver.register_project(RegisterProject(
@@ -195,8 +184,7 @@ for s in samples.samples:
 ### Resuming instead
 
 If the node restarted mid-campaign, resume rather than register -- `resume_substrate`
-now restores which positions are already grown on, so it will not hand you a spent
-one. (It used to rewind to position 0 and deposit on top of an existing film.)
+restores which positions are already grown on, so it will not hand you a spent one.
 
 ```python
 substrate = await exp.driver.resume_substrate(ResumeSubstrate(substrate_id=<id>))
@@ -223,9 +211,8 @@ else:
         (MD, """
 ## Grow the stack
 
-One `perform_single_deposition` per layer. The v1.0 notebook had this copy-pasted
-three times with a `collector` dict assembled by hand after each; the loop below is the
-same sequence, and the bookkeeping it was doing manually is now the journal's job.
+One `perform_single_deposition` per layer, in a loop -- the per-layer bookkeeping is the
+journal's job, not something to assemble by hand after each call.
 
 `finish_substrate=False` on every layer but the last: all three go on the *same*
 position, and retiring it after the first would leave nothing to grow on.

@@ -1,8 +1,12 @@
 # project-wise generated files
 run/
 database/
+/database
 database_archive
 database_archive/
+
+# Third-party equipment manuals -- vendor-copyrighted, not redistributable here.
+pascal_manuals/
 pascal/storage
 pascal/data
 old/pascal/data
