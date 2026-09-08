@@ -3,7 +3,9 @@
 `lumi` — the contract-driven control stack for a pulsed-laser-deposition (PLD) lab. Each
 piece of equipment runs as a **node** (a process in `nodes/`) that talks to the others
 over RabbitMQ. What a node can do is declared once in `src/lumi/contracts/`, and both the
-Python clients and the frontend's TypeScript client are generated from that declaration.
+Python clients and the TypeScript client for the web console
+([Lumi-Deck](https://github.com/AuroraLHT/Lumi-Deck)) are generated from that
+declaration.
 
 This is the platform behind
 [*Autonomous epitaxial atomic-layer synthesis via real-time computer vision of electron
@@ -97,8 +99,8 @@ scripts/start_simulation.sh
 
 The API comes up on <http://localhost:8000> — `GET /health` for liveness and the
 capability list, `WS /ws` for everything else. It serves no HTML: the browser UI lives in
-the sister frontend repo and is pointed at this host. Ctrl-C shuts every node down; logs
-land in `run/simulation/logs/`.
+[Lumi-Deck](https://github.com/AuroraLHT/Lumi-Deck), the operator console, and is pointed
+at this host. Ctrl-C shuts every node down; logs land in `run/simulation/logs/`.
 
 Options:
 
