@@ -4226,6 +4226,11 @@
                 "LayerInfo": {
                   "description": "One layer of the stack. Derived from the deposition steps that succeeded on\nthis sample, never stored -- see GrowthDB.get_layer_stack.",
                   "properties": {
+                    "is_dryrun": {
+                      "default": false,
+                      "title": "Is Dryrun",
+                      "type": "boolean"
+                    },
                     "material": {
                       "anyOf": [
                         {
