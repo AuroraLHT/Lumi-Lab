@@ -101,10 +101,12 @@ def _client(contract: EquipmentContract, cap: Capability) -> str:
         "        *,",
         "        timeout: float = 10.0,",
         "        name: str | None = None,",
+        "        actor: str | None = None,",
         "    ) -> None:",
         "        super().__init__(",
         f"            {cap_const}, {contract.name!r},",
         "            channel=channel, exchange=exchange, timeout=timeout, name=name,",
+        "            actor=actor,",
         "        )",
         "",
     ]
@@ -135,11 +137,11 @@ def _aggregate(contract: EquipmentContract) -> str:
         '    """',
         "",
         "    def __init__(self, channel: AbstractChannel, exchange: AbstractExchange,",
-        "                 *, timeout: float = 10.0) -> None:",
+        "                 *, timeout: float = 10.0, actor: str | None = None) -> None:",
     ]
     for cap in contract.capabilities:
         cls = client_class(contract.name, cap.name)
-        lines.append(f"        self.{cap.name} = {cls}(channel, exchange, timeout=timeout)")
+        lines.append(f"        self.{cap.name} = {cls}(channel, exchange, timeout=timeout, actor=actor)")
     lines += [
         "",
         "    @property",

@@ -111,6 +111,17 @@ class Op:
     request_codec: Codec = Codec.JSON
     response_codec: Codec = Codec.JSON
     doc: str = ""
+    #: Whether this op is worth a row in the step journal -- "when did the heater go
+    #: on, and who turned it on". Declared, never inferred: `get_current_log` is polled
+    #: about once a second, so journaling every op would bury the handful of rows that
+    #: actually describe the growth under ~86k reads a day. Set it on the ops that
+    #: change the world (heat, gas, targets, deposition, alignment, human answers) and
+    #: leave every read alone.
+    #:
+    #: Deliberately *not* part of the wire surface: `_op_json` in contracts/registry.py
+    #: does not include it, so toggling it leaves the contract hash -- and therefore the
+    #: generated frontend client -- untouched. It is server-side policy, not protocol.
+    journal: bool = False
 
 
 @dataclass(frozen=True, slots=True)

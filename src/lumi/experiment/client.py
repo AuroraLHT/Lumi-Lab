@@ -3,7 +3,7 @@
     async with ExperimentSession.connect(host="localhost") as exp:
         await exp.driver.register_project(RegisterProject(project_name="demo"))
         await exp.driver.to_temperature(ToTemperature(temperature=650))
-        img, meta = await exp.rheed.image()
+        meta, frame = await exp.rheed.image()
 
 `.driver` is the full generated `ExperimentDriverClient` -- every op on the
 `experiment` contract, typed. `.rheed`/`.chamber_log` are held directly (there is no
@@ -60,11 +60,18 @@ class ExperimentSession:
 
     @classmethod
     async def open(
-        cls, *, host: str | None = None, user: str = "guest", password: str = "guest", timeout: float = 120.0,
+        cls, *, host: str | None = None, user: str = "guest", password: str = "guest",
+        timeout: float = 120.0, actor: str | None = None,
     ) -> "ExperimentSession":
         """Connect and return a ready session. Prefer `.connect()` as an `async
         with` block so the connection is always closed; use this directly only when
-        you need the session to outlive one cell."""
+        you need the session to outlive one cell.
+
+        `actor` is who to credit in the step journal -- pass your own name from a
+        notebook ("hliang16") so the recorded history says who ramped the chamber, not
+        just that a notebook did. Self-asserted and only as trustworthy as whoever is
+        at the keyboard, which is the right level for a session you started yourself.
+        """
         host = host or settings.rabbitmq.host
         connection = await connect_robust(f"amqp://{user}:{password}@{host}/")
         channel = await connection.channel()
@@ -79,9 +86,9 @@ class ExperimentSession:
             CHAMBER.exchange, ExchangeType(CHAMBER.exchange_type), durable=True
         )
 
-        driver = ExperimentDriverClient(channel, experiment_x, timeout=timeout)
-        rheed = RheedCameraClient(channel, rheed_x, timeout=timeout)
-        chamber_log = ChamberLogClient(channel, chamber_x, timeout=timeout)
+        driver = ExperimentDriverClient(channel, experiment_x, timeout=timeout, actor=actor)
+        rheed = RheedCameraClient(channel, rheed_x, timeout=timeout, actor=actor)
+        chamber_log = ChamberLogClient(channel, chamber_x, timeout=timeout, actor=actor)
         for client in (driver, rheed, chamber_log):
             await client.start()
 
