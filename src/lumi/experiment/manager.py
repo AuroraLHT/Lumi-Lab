@@ -445,11 +445,24 @@ class BaseExperimentManager:
     async def set_pressure_control(self, on: bool) -> None:
         await self.chamber_mi.execute(pcmd.PressureControl(state=pcmd.PascalState(on)))
 
-    async def initiate_heating_laser(self) -> None:
+    async def initiate_heating_laser(self, timeout: float = 30.0, poll: float = 0.5) -> None:
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=False, nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaserThreshold(state=pcmd.PascalState("ON")))
         await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID))
+
+        # The MI commands complete when the controller accepts them, but
+        # `is_heating_laser_on` reads `Heat Stat` bit 3 from the *chamber log*, which
+        # PASCAL rewrites about once a second. Return only once that bit has actually
+        # flipped, so a `to_temperature` call right after this one does not read a
+        # pre-laser log row and refuse. Bounded like `_await_motor_free`: a laser that
+        # never reports on raises rather than hanging.
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if await self.is_heating_laser_on():
+                return
+            await asyncio.sleep(poll)
+        raise RuntimeError(f"heating laser did not report on within {timeout:.0f}s of initiate_heating_laser")
 
     async def turn_off_heating_laser(self) -> None:
         await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL))
@@ -611,9 +624,30 @@ class BaseExperimentManager:
 
     # --- storage / provenance ----------------------------------------------------
 
+    async def _current_sample_name(self) -> str | None:
+        """The sample the chamber is loaded on right now, e.g. `STO-a1b2c3-p0`.
+
+        `_materialise_samples` already bakes the position into `sample_name`, so
+        pulling it from the DB (rather than re-deriving it here) is what makes the
+        recording's name carry the position "if any" without this function having to
+        know the substrate's numbering scheme.
+        """
+        substrate = self.current_substrate
+        if substrate is None or substrate.db_id is None:
+            return None
+        row = await self.growth_db.find_sample(substrate.db_id, substrate.current_position_id)
+        return row[7] if row else None
+
     async def start_storage(self, project_name: str, is_dryrun: bool = False) -> dict:
         record_uuid = str(uuid.uuid4())
-        storage_name = f"{project_name}_{record_uuid}"
+        sample_name = await self._current_sample_name()
+        # Sample leads: it's the piece of physical film someone is going to go look
+        # for on disk, so it belongs first, human-readable, ahead of the uuid. Without
+        # a sample the recording is not tied to a specimen (a notebook could call this
+        # before registering a substrate); fall back to the project alone rather than
+        # raising, since start_storage has no other way to refuse cleanly.
+        slug = f"{sample_name}_{project_name}" if sample_name else project_name
+        storage_name = f"{slug}_{record_uuid}"
         if is_dryrun:
             return {"ok": True, "record_uuid": record_uuid, "storage_name": storage_name, "path": None, "message": ""}
 

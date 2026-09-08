@@ -449,27 +449,35 @@ class GrowthDB:
         await self.conn.commit()
 
     async def get_layer_stack(self, sample_id: int):
-        """The stack on a sample, bottom-up: (seq, material, num_pulse, step_id, at).
+        """The stack on a sample, bottom-up: (seq, material, num_pulse, step_id, at,
+        is_dryrun).
 
         Deliberately a query and not a `layer` table. A stored stack is a second copy
         of something the journal already knows, and the two drift the first time a
         growth fails halfway -- here a layer exists exactly when a deposition step
         succeeded on this sample.
+
+        Dryrun layers are included, not dropped: a dryrun deposits nothing onto the
+        physical sample, but it is still a step someone ran and needs to see -- a
+        rehearsed recipe silently vanishing from the stack looked like the run itself
+        had gone missing. Each layer carries `is_dryrun` so a caller can grey those out
+        instead of pretending they never happened.
         """
         async with self.conn.execute(
             """SELECT json_extract(params, '$.target_material'),
                       json_extract(params, '$.num_pulse'),
-                      step_id, started_at
+                      step_id, started_at,
+                      COALESCE(json_extract(params, '$.is_dryrun'), 0)
                FROM step
                WHERE sample_id = ? AND kind = 'perform_deposition' AND ok = 1
-                 AND COALESCE(json_extract(params, '$.is_dryrun'), 0) = 0
                ORDER BY started_at""",
             (sample_id,),
         ) as cursor:
             rows = await cursor.fetchall()
         return [
-            {"seq": i, "material": m, "num_pulse": n, "step_id": sid, "started_at": at}
-            for i, (m, n, sid, at) in enumerate(rows)
+            {"seq": i, "material": m, "num_pulse": n, "step_id": sid, "started_at": at,
+             "is_dryrun": bool(dry)}
+            for i, (m, n, sid, at, dry) in enumerate(rows)
         ]
 
     # --- chamber session + step journal: what happened -------------------------

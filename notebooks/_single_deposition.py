@@ -111,7 +111,7 @@ simulator's; the real HZO stack's numbers from the production notebook are in th
 comment on each line.
 """),
         (CODE, """
-PROJECT = "UMD_AI_HZO_SingleDepo"
+PROJECT = "single_deposition_demo"
 
 # Substrate
 SUBSTRATE = dict(
@@ -142,8 +142,10 @@ physical. The v1.0 notebook used `ainput`, which blocks the kernel on stdin -- a
 in Jupyter and impossible to leave unattended.
 
 The recipe takes two hooks instead. Below they answer themselves so the notebook runs
-end to end against the simulator; swap in `recipes.default_input_provider` and
-`recipes.default_value_provider` to be prompted for real.
+end to end against the simulator with nobody at the keyboard. A real run needs an
+actual person reading the laser power meter and the RHEED screen, so it gets
+`recipes.default_input_provider` / `default_value_provider` -- the same terminal-input
+functions everyone in the lab actually uses -- selected the moment `DRYRUN` is off.
 """),
         (CODE, """
 async def auto_input(message: str) -> None:
@@ -158,8 +160,12 @@ async def auto_value(prompt: str) -> str:
     return answer
 
 
-# For a real run, hand the prompts back to yourself:
-# auto_input, auto_value = recipes.default_input_provider, recipes.default_value_provider
+if DRYRUN:
+    input_provider, value_provider = auto_input, auto_value
+else:
+    # Blocks on real stdin -- this is what turning DRYRUN off actually hands you.
+    input_provider = recipes.default_input_provider
+    value_provider = recipes.default_value_provider
 """),
         (MD, """
 ## Register the project and substrate
@@ -253,8 +259,8 @@ for i, layer in enumerate(LAYERS):
         is_dryrun=DRYRUN,
         # Only the last layer retires the position -- all three share it.
         finish_substrate=(i == len(LAYERS) - 1),
-        input_provider=auto_input,
-        value_provider=auto_value,
+        input_provider=input_provider,
+        value_provider=value_provider,
     )
 
     results.append({"layer": layer["name"], "ok": ok, "storage": storage_name,
@@ -269,8 +275,9 @@ for i, layer in enumerate(LAYERS):
 ## What the system recorded
 
 Nothing below was typed by hand. `sample_history` is the step journal; the layer stack
-is derived from the deposition steps that actually succeeded, so a failed or dryrun
-layer is not on the sample.
+is derived from the deposition steps that succeeded, so a step that errored out is not
+on the sample. A dryrun *is* -- it deposited no film, but the recipe still ran, and
+`layer.is_dryrun` says so rather than the layer just disappearing.
 """),
         (CODE, """
 samples = await exp.driver.list_samples(ListSamples(substrate_id=substrate.substrate_id))
@@ -281,9 +288,10 @@ print(f"sample {grown.sample_id} ({grown.sample_name}) -- state {detail.sample.s
 print("\\nlayer stack, bottom-up:")
 if detail.layers:
     for layer in detail.layers:
-        print(f"  {layer.seq}: {layer.material} x{layer.num_pulse} pulses (step {layer.step_id})")
+        tag = " [DRYRUN]" if layer.is_dryrun else ""
+        print(f"  {layer.seq}: {layer.material} x{layer.num_pulse} pulses (step {layer.step_id}){tag}")
 else:
-    print("  (empty -- a dryrun deposits nothing, so it is not a layer)")
+    print("  (empty -- no deposition step has succeeded on this sample yet)")
 """),
         (CODE, """
 history = await exp.driver.sample_history(ListSteps(sample_id=grown.sample_id))

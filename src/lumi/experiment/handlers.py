@@ -384,9 +384,10 @@ class ExperimentHandler:
                 "target_id": req.target_id, "num_pulse": req.num_pulse,
                 "target_material": await self._target_material(req.target_id),
                 "laser_repetition_rate": req.laser_repetition_rate,
-                # A dryrun fires no laser, so the step happened but the layer did not.
-                # get_layer_stack filters on this -- without it a rehearsal would show
-                # up as film on the sample.
+                # A dryrun fires no laser, so the step happened but no film was
+                # deposited. get_layer_stack still surfaces it (a rehearsal should not
+                # vanish from the record) but tags it with this, so a caller can tell
+                # a real layer from a rehearsed one.
                 "is_dryrun": req.is_dryrun,
                 **await self._chamber_conditions(),
             },
@@ -601,7 +602,7 @@ class ExperimentHandler:
             layers=[
                 LayerInfo(
                     seq=l["seq"], material=l["material"], num_pulse=l["num_pulse"],
-                    step_id=l["step_id"], started_at=l["started_at"],
+                    step_id=l["step_id"], started_at=l["started_at"], is_dryrun=l["is_dryrun"],
                 )
                 for l in layers
             ],

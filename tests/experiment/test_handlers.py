@@ -379,3 +379,28 @@ async def test_deposition_records_the_material_not_just_the_slot(handler):
     assert captured[0]["target_material"] == "SRO"   # FakeChamberConfig's TG1name
     assert captured[0]["target_id"] == "A"
     assert captured[0]["is_dryrun"] is True
+
+
+async def test_start_storage_names_the_recording_after_the_sample(handler):
+    """A record UUID alone doesn't say what was grown. The recording is named after
+    the sample actually loaded -- which already carries its position, if it has one
+    -- so a stray .hdf5 in storage can be traced back without opening it."""
+    from lumi.contracts.payloads.experiment import StartStorage
+
+    await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+        substrate_name="STO-42",
+    ))
+
+    result = await handler.start_storage(StartStorage(project_name="demo"))
+
+    assert result.storage_name.startswith("STO-42-p0_demo_")
+    assert result.storage_name.endswith(result.record_uuid)
+
+
+async def test_start_storage_falls_back_to_project_name_with_no_sample_loaded(handler):
+    from lumi.contracts.payloads.experiment import StartStorage
+
+    result = await handler.start_storage(StartStorage(project_name="demo"))
+
+    assert result.storage_name == f"demo_{result.record_uuid}"
