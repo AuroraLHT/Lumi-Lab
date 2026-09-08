@@ -60,7 +60,7 @@
     Run the preflight checks and exit without starting anything.
 
 .EXAMPLE
-    scripts\start_instrument_host.ps1 -BrokerHost 192.168.1.10 -User lumi-node -Password pw `
+    scripts\start_instrument_host.ps1 -BrokerHost <broker-ip> -User lumi-node -Password pw `
         -Log 'D:\PASCAL\logs\growth.csv' -Mi 'D:\PASCAL\MI'
 #>
 

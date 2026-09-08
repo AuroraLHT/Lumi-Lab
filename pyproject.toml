@@ -5,6 +5,10 @@ description = "Autonomous PLD and RHEED equipment control"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [
+    { name = "Haotong Liang", email = "auroralht@gmail.com" },
+    { name = "Haotong Liang", email = "hliang16@umd.edu" },
+]
 # Floor of 3.11: real code uses datetime.UTC and enum.StrEnum (both added in 3.11).
 # Capped below 3.12: mmdet hard-requires mmcv<2.2.0, but OpenMMLab only publishes
 # prebuilt mmcv<2.2.0 wheels up to cp311 -- see the `detection` extra below and
