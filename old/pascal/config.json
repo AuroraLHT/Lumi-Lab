@@ -1,4 +1,4 @@
 {
     "LogFolder" : "C:\\data\\log",
-    "RabbitmqHost" : "10.229.54.118"
+    "RabbitmqHost" : "localhost"
 }

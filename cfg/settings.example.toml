@@ -193,12 +193,12 @@ exchange_type = "direct"
 input_queue_size = 10
 output_queue_size = 10
 detector_model_device = "cuda:0"
-detector_model_path = "/home/aurora/nn/cascade_maskrcnn_exps/epoch_12.pth"
-detector_model_config_path = "/home/aurora/nn/cascade_maskrcnn_exps/config_predict.py"
+detector_model_path = "/path/to/models/cascade_maskrcnn/epoch_12.pth"
+detector_model_config_path = "/path/to/models/cascade_maskrcnn/config_predict.py"
 classifier_model_device = "cuda:0"
-classifier_model_path = "/home/aurora/nn/efficientnet_v2_m_binary_classifier/model.pth"
-classifier_label_mapper_path = "/home/aurora/nn/efficientnet_v2_m_binary_classifier/label_mapper.json"
-classifier_transforms_path = "/home/aurora/nn/efficientnet_v2_m_binary_classifier/test_transforms.pth"
+classifier_model_path = "/path/to/models/efficientnet_v2_m_binary_classifier/model.pth"
+classifier_label_mapper_path = "/path/to/models/efficientnet_v2_m_binary_classifier/label_mapper.json"
+classifier_transforms_path = "/path/to/models/efficientnet_v2_m_binary_classifier/test_transforms.pth"
 name = "Detector"
 
 [detection.detector.crop_setup]
