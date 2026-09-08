@@ -12,24 +12,13 @@ def cells() -> list[tuple[str, str]]:
 # BO Deposition
 
 Closed-loop Bayesian optimisation over growth conditions: propose &rarr; grow &rarr;
-measure &rarr; refit, one substrate position per iteration. Ported from
-`UMDAutonomousExperiment.ipynb`.
+measure &rarr; refit, one substrate position per iteration. This is the loop from
+[arXiv:2602.20432](https://arxiv.org/abs/2602.20432) -- the GP, the UCB /
+max-uncertainty acquisition functions and the convergence check live in `lumi.opt`.
 
-The loop itself is unchanged -- same GP, same UCB/max-uncertainty acquisition
-functions, same convergence check, ported in `lumi.opt` from the code that ran the real
-campaigns. What changed is where the campaign's memory lives:
-
-| v1.0 | now |
-| --- | --- |
-| `GPManager` + `gp_db/<project>.csv` | `GrowthCampaign`, reading `list_measurements` |
-| `collector` pickle, `local_experiment_counter` | `list_samples` -- positions are rows |
-| `substrate.has_lsmo` monkeypatched on | the derived layer stack |
-| metric kept beside the notebook | a `measurement` row on the sample |
-| `PixelExperimentManager.perform_experiment` | `recipes.perform_pixel_deposition` |
-
-That the training set comes from the growth database and not a local CSV is the
-substantive change: a campaign can now be resumed from a different machine, and the GP
-is fitted on what the lab actually recorded.
+The campaign's memory is the growth database, not a local CSV: `GrowthCampaign` reads
+its training set back through `list_measurements` each iteration, so a campaign can be
+resumed from a different machine and the GP is fitted on what the lab actually recorded.
 
 **Runs against the simulator as written:**
 
@@ -72,7 +61,7 @@ from lumi.opt import (
 """),
         (CODE, """
 HOST = "localhost"
-ACTOR = "hliang16"
+ACTOR = "operator"
 DRYRUN = True          # True: the loop runs, the laser does not
 
 exp = await ExperimentSession.open(host=HOST, actor=ACTOR)
@@ -90,7 +79,7 @@ apart.
 gives a length scale dominated by the top of the range.
 """),
         (CODE, """
-PROJECT = "UMD_AI_HZO_BO"
+PROJECT = "hzo_bo_demo"
 TARGET_SLOT = "D"          # the functional layer's carousel slot
 N_RANDOM = 2               # random seed points before the GP takes over
 NUM_PULSE = 120            # real: 500 (~9 nm of HZO)
@@ -110,10 +99,10 @@ RAMP_RATE = 20.0
         (MD, """
 ## The optimiser
 
-Two acquisition functions, exactly as the production campaign ran them: UCB with
-`beta=3` to exploit, and maximum-uncertainty to break out when UCB converges on a local
-maximum. The constant mean at 0.5 and the length-scale interval are the values those
-runs used -- a shorter length scale under-fits and yields no useful uncertainty.
+Two acquisition functions: UCB with `beta=3` to exploit, and maximum-uncertainty to
+break out when UCB converges on a local maximum. The constant mean at 0.5 and the
+length-scale interval are the values the published campaigns used -- a shorter length
+scale under-fits and yields no useful uncertainty.
 """),
         (CODE, """
 import gpytorch
@@ -148,8 +137,8 @@ converged = ConvergenceChecker(
 print(f"search grid: {len(campaign._test_x_raw)} points over {campaign.x_columns}")
 """),
         (MD, """
-A band of one axis can be excluded -- the production campaign ruled out a pressure
-window the chamber could not hold stably.
+A band of one axis can be excluded -- e.g. a pressure window the chamber cannot hold
+stably.
 """),
         (CODE, """
 removed = campaign.forbid("pressure", 1e-4, 2e-3)
@@ -219,9 +208,8 @@ async def wait_for_motor(timeout: float = 120.0) -> None:
     \"\"\"Block until the chamber's motors report free.
 
     `to_current_pixel` moves the mask and the RHEED gun, and refuses outright while a
-    previous move is still running. The production notebook covered this with a manual
-    "check motor free" gate before each growth; an unattended loop has to wait for it
-    itself.
+    previous move is still running. An unattended loop has to wait for it rather than
+    relying on a person to check "motor free" before each growth.
     \"\"\"
     deadline = asyncio.get_running_loop().time() + timeout
     while asyncio.get_running_loop().time() < deadline:
@@ -244,20 +232,18 @@ def random_conditions() -> pd.Series:
         (MD, """
 ## Scoring a growth
 
-In the lab this is `analyze_rheed_video` from the RHEED analysis stack, which needs the
-detection host's `rhana`/`mmdet` install and a real recorded HDF5. It returns growth,
-speed, quality and roughness components plus the combined `metric`.
+In the lab this is a RHEED-video analysis that reads the recorded HDF5 and returns
+growth, speed, quality and roughness components plus the combined `metric`. It needs the
+detection host's model stack (`rhana` / `mmdet`) and a real recording.
 
 Against the simulator there is no film to score, so the fallback below stands in a
-smooth synthetic landscape -- enough to watch the loop converge on something. Swap
-`score_growth` for the real analysis on the detection host.
+smooth synthetic landscape -- enough to watch the loop converge on something. Point
+`score_growth` at the real analysis on the detection host.
 """),
         (CODE, """
-try:
-    from src.analysis import analyze_rheed_video   # the lab's RHEED analysis stack
-    HAVE_ANALYSIS = True
-except ImportError:
-    HAVE_ANALYSIS = False
+# Set this True on the detection host, where the RHEED-video analysis is importable,
+# and fill in the call below.
+HAVE_ANALYSIS = False
 
 print("real RHEED analysis available:", HAVE_ANALYSIS)
 
@@ -265,7 +251,7 @@ print("real RHEED analysis available:", HAVE_ANALYSIS)
 async def score_growth(storage_name: str, conditions: pd.Series) -> dict:
     \"\"\"Return the metric dict for a finished growth.
 
-    Replace the fallback with analyze_rheed_video(...) on the detection host:
+    On the detection host, replace the fallback with the real analysis, e.g.:
 
         metrics, _ = await to_async(
             analyze_rheed_video,
@@ -276,8 +262,8 @@ async def score_growth(storage_name: str, conditions: pd.Series) -> dict:
     \"\"\"
     if HAVE_ANALYSIS:
         raise NotImplementedError(
-            "wire analyze_rheed_video in here -- it needs the recorded HDF5 and the "
-            "crop/periodicity setup from the production notebook"
+            "wire the RHEED-video analysis in here -- it needs the recorded HDF5 and "
+            "the crop / periodicity setup for your chamber"
         )
 
     # Synthetic stand-in: a smooth optimum inside the search box, plus noise.
@@ -294,11 +280,11 @@ async def score_growth(storage_name: str, conditions: pd.Series) -> dict:
 Propose &rarr; grow &rarr; score &rarr; record &rarr; refit, until the substrate runs
 out of positions or the GP converges.
 
-Two differences from the v1.0 loop worth pointing at. `campaign.refresh(exp.driver)`
-reloads the training set from the growth database each iteration, so the GP sees every
-measurement the lab has -- including ones added from another machine, or from a
-re-analysis. And there is no `collector` to keep in step: the position that was grown,
-what went on it and what it scored are all rows the system wrote itself.
+One thing worth pointing at: `campaign.refresh(exp.driver)` reloads the training set
+from the growth database each iteration, so the GP sees every measurement the lab has --
+including ones added from another machine, or from a re-analysis. There is no separate
+bookkeeping to keep in step: the position that was grown, what went on it and what it
+scored are all rows the system wrote itself.
 """),
         (CODE, """
 history = []
@@ -318,8 +304,7 @@ for iteration in range(len(substrate.positions)):
             print(f"\\nconverged after {iteration} growths -- stopping")
             break
         if is_converged:
-            # A local maximum: one round of pure exploration to break out. Same
-            # escape the production campaign used.
+            # A local maximum: one round of pure exploration to break out.
             conditions = campaign.propose("exploration")
             mode = "exploration (escaping a local maximum)"
         else:

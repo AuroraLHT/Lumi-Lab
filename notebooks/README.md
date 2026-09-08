@@ -1,14 +1,16 @@
 # Notebooks
 
-Ported from the v1.0 notebooks in `~/HZO_PLD/OpCode/`, onto the current contract-driven
-API. Both are written **sim-first**: they run end to end against
+Two operator notebooks, written **sim-first**: they run end to end against
 `scripts/start_simulation.sh` as written, with the real-hardware numbers kept in one
 clearly marked config cell each.
 
-| notebook | what it does | ported from |
-| --- | --- | --- |
-| `SingleDeposition.ipynb` | a layered growth on one position — bottom electrode → interface → functional layer | `UMDSingleDepoExperiment.ipynb` |
-| `BODeposition.ipynb` | closed-loop Bayesian optimisation over growth conditions, one position per iteration | `UMDAutonomousExperiment.ipynb` |
+| notebook | what it does |
+| --- | --- |
+| `SingleDeposition.ipynb` | a layered growth on one position — bottom electrode → interface → functional layer |
+| `BODeposition.ipynb` | closed-loop Bayesian optimisation over growth conditions, one position per iteration |
+
+`BODeposition.ipynb` runs the loop from
+[arXiv:2602.20432](https://arxiv.org/abs/2602.20432).
 
 ## Running them
 
@@ -36,8 +38,8 @@ uv sync --extra opt          # torch, gpytorch
 ```
 
 To switch either notebook to real hardware, edit `HOST`, set `DRYRUN = False`, and
-replace the values in the marked parameters cell — the production numbers are in the
-comment on each line.
+replace the values in the marked parameters cell — representative real numbers are in
+the comment on each line.
 
 ## Editing them
 
@@ -66,14 +68,14 @@ layers grown, every step journaled with its actor, the derived layer stack read 
 `BODeposition.ipynb` has also been executed end to end: 2 random-seed growths then 5
 GP-proposed ones, all positions on the substrate used, no exception. That confirms the
 loop's mechanics (bookkeeping, gates, journaling, GP wiring) but **not** its
-optimisation behaviour under `DRYRUN = True` -- `to_temperature` is skipped outright in
+optimisation behaviour under `DRYRUN = True` — `to_temperature` is skipped outright in
 dryrun and pressure is always a printed manual instruction with nothing to act on it in
 the simulator, so the conditions the GP trains on don't match what was proposed. See
 `docs/SAMPLE_TRACKING.md` for the detail and the remaining to-do.
 
-## `analyze_rheed_video`
+## Scoring a growth
 
-The BO notebook's `score_growth` is where the real RHEED analysis goes. It needs the
-detection host's `rhana`/`mmdet` install and a recorded HDF5, neither of which the
-simulator has, so against the simulator it falls back to a synthetic landscape and
-says so in its output. Swap it for `analyze_rheed_video(...)` on the detection host.
+The BO notebook's `score_growth` is where the real RHEED-video analysis goes. It needs
+the detection host's `rhana`/`mmdet` install and a recorded HDF5, neither of which the
+simulator has, so against the simulator it falls back to a synthetic landscape and says
+so in its output. Point it at the real analysis on the detection host.

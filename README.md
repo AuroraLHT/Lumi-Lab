@@ -1,9 +1,15 @@
 # Lumi-Lab
 
-`lumi` — the contract-driven control stack for the PLD lab. Each piece of equipment runs
-as a **node** (a process in `nodes/`) that talks to the others over RabbitMQ. What a node
-can do is declared once in `src/lumi/contracts/`, and both the Python clients and the
-frontend's TypeScript client are generated from that declaration.
+`lumi` — the contract-driven control stack for a pulsed-laser-deposition (PLD) lab. Each
+piece of equipment runs as a **node** (a process in `nodes/`) that talks to the others
+over RabbitMQ. What a node can do is declared once in `src/lumi/contracts/`, and both the
+Python clients and the frontend's TypeScript client are generated from that declaration.
+
+This is the platform behind
+[*Autonomous epitaxial atomic-layer synthesis via real-time computer vision of electron
+diffraction*](https://arxiv.org/abs/2602.20432): the growth driver, chamber and RHEED
+nodes, and the closed-loop Bayesian-optimisation notebook here are the ones that ran the
+campaigns in that paper. See [Citation](#citation) below.
 
 Nodes:
 
@@ -316,20 +322,18 @@ host that really does talk to the chamber, set `rabbitmq.host` in your own
 `cfg/settings.example.toml`. The broker address is a machine-local fact, and having it in
 the shared template is what made `python -m lumi.mcp` reach for the lab by default.
 
-> **The lab broker is not ready for this yet.** It still holds the pre-refactor
-> messaging layer's exchanges — `CHAMBER`, `RHEED` and `STORAGE` exist there as
-> non-durable **`direct`** exchanges, with live bindings from the old-style nodes. Any
-> contract-era client that declares them as `topic` is refused at startup:
+> **Point it at a broker only this stack uses.** Every node declares its exchanges as
+> durable `topic` exchanges at startup. If the broker already carries exchanges of the
+> same name with different settings — e.g. non-durable `direct` ones left by another
+> messaging layer — RabbitMQ refuses the declaration:
 >
 > ```
 > PRECONDITION_FAILED - inequivalent arg 'type' for exchange 'RHEED' in vhost '/':
 > received 'topic' but current is 'direct'
 > ```
 >
-> This is not specific to the MCP server — it will happen to any refactored node pointed
-> at that broker. Clearing it means deleting those three exchanges (they are non-durable,
-> so a broker restart drops them anyway) once the old nodes are no longer using them.
-> Until then, use a local broker.
+> Use a dedicated vhost or a fresh broker, and delete any conflicting exchanges first
+> (non-durable ones are dropped by a broker restart anyway).
 
 The tools are generated, one per `(contract, capability, op)`, named
 `experiment.driver.to_temperature` and so on — 49 of them today. Adding an op to
@@ -403,8 +407,8 @@ travel limits). It runs entirely in-process with simulated time, so it's fast.
 
 ## Notebooks
 
-`notebooks/` holds the two operator notebooks, ported from the v1.0 ones and written to
-run against the simulator as-is:
+`notebooks/` holds the two operator notebooks, written to run against the simulator
+as-is:
 
 | notebook | what it does |
 | --- | --- |
@@ -439,3 +443,24 @@ uv run lumi-codegen --check      # CI gate: fails if anything on disk has drifte
 The contract hash printed by those commands gates backend/frontend compatibility — if it
 changes, the frontend needs the regenerated `lumi.ts`. See `docs/FRONTEND_MIGRATION.md`
 for how the browser-side API maps onto the bridge.
+
+## Citation
+
+If this software is useful in your research, please cite:
+
+```bibtex
+@article{liang2026autonomous,
+  title   = {Autonomous epitaxial atomic-layer synthesis via real-time computer
+             vision of electron diffraction},
+  author  = {Liang, Haotong and Sun, Yunlong and Paxson, Ryan and Lee, Chih-Yu and
+             Hall, Alex T. and Warecki, Zoey and Cumings, John and Koinuma, Hideomi and
+             Kusne, Aaron Gilad and Lippmaa, Mikk and Takeuchi, Ichiro},
+  journal = {arXiv preprint arXiv:2602.20432},
+  year    = {2026},
+  url     = {https://arxiv.org/abs/2602.20432}
+}
+```
+
+## License
+
+[MIT](LICENSE) © 2026 Haotong Liang and the Lumi-Lab contributors.
