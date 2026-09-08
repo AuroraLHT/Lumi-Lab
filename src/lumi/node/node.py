@@ -120,6 +120,10 @@ class EquipmentNode:
                 cap, self.contract.name, self._handlers[cap.name],
                 channel=self.channel, exchange=self.exchange,
                 instance_id=self.instance_id,
+                # A handler that wants its ops journaled exposes the writer; nothing
+                # else has to know. Only the experiment node sets one -- growth.db is
+                # on the server host, and pascal/rheed run on the instrument PC.
+                journal=getattr(self._handlers[cap.name], "journal", None),
             )
             server.node = self  # so the `shutdown` verb can reach us
             await server.start()

@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 7e7d5e6d72531bde
+# contract_hash: 983c936b3e71f4fb
 
 """Generated clients for the storage node."""
 
@@ -31,10 +31,12 @@ class StorageStorageClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             STORAGE, 'storage',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def start_recording(self, req: StorageRequest) -> StorageStatus:
@@ -58,8 +60,8 @@ class StorageClient:
     """
 
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange,
-                 *, timeout: float = 10.0) -> None:
-        self.storage = StorageStorageClient(channel, exchange, timeout=timeout)
+                 *, timeout: float = 10.0, actor: str | None = None) -> None:
+        self.storage = StorageStorageClient(channel, exchange, timeout=timeout, actor=actor)
 
     @property
     def capabilities(self) -> dict:

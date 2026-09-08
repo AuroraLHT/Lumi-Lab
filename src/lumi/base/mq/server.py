@@ -27,6 +27,8 @@ from .control import ControlPlane, ControlResponse, control
 from .queues import ControlQueue, WorkQueue
 from .state import StatePublisher
 
+from lumi.base.mq.context import current_actor, current_source
+
 log = logging.getLogger(__name__)
 
 # A handler op returns either a model (JSON) or (model, payload) for a binary codec.
@@ -44,6 +46,7 @@ class CapabilityServer(ControlPlane):
         exchange: AbstractExchange,
         instance_id: str = "",
         stream_idle_s: float = 0.005,
+        journal: Any = None,
     ) -> None:
         self.cap = capability
         self.equipment = equipment
@@ -51,6 +54,19 @@ class CapabilityServer(ControlPlane):
         self.channel = channel
         self.exchange = exchange
         self.instance_id = instance_id
+        # Optional StepJournal. Only the experiment node passes one: the journal writes
+        # to growth.db, which lives on the server host, while pascal and rheed run on
+        # the instrument PC and have no access to it. A node with no journal pays a
+        # single `is None` per request. Journaling the other nodes would mean shipping
+        # step events over the bus to a collector -- worth doing, not needed for the
+        # ops a growth is actually driven by, which all pass through this node.
+        self.journal = journal
+        # Ops the handler journals itself, and which this dispatch must therefore not
+        # journal a second time. The long-running ones return a TaskAck immediately and
+        # finish minutes later, so only the handler knows when they actually ended --
+        # a row opened and closed here would record a 27-minute ramp as the two
+        # milliseconds it took to hand back the ack.
+        self._handler_journaled = frozenset(getattr(handler, "journals_own", ()))
         self.keys = capability.keys(equipment)
         self.source = f"{equipment}.{capability.name}"
         self.stream_idle_s = stream_idle_s
@@ -260,12 +276,54 @@ class CapabilityServer(ControlPlane):
             await self._reply_error(message, op.name, "BadRequest", str(exc))
             return
 
+        # Journal only what the contract marks as worth journaling -- see Op.journal.
+        # Long-running ops open their own row in ExperimentHandler._start_task, which
+        # closes it when the task actually finishes; opening a second one here would
+        # record a 27-minute ramp as the few milliseconds it took to return a TaskAck.
+        journaling = self.journal is not None and op.journal
+        handler_owns = op.name in self._handler_journaled
+        params = req.model_dump() if hasattr(req, "model_dump") else None
+
+        # Visible to the handler and to anything it spawns, so a task that opens its
+        # own journal row can still say who asked for it.
+        current_actor.set(headers.get("actor"))
+        current_source.set(headers.get("message_source"))
+
+        step_id = None
+        if journaling and not handler_owns:
+            step_id = await self.journal.begin(
+                op.name, params=params,
+                actor=headers.get("actor"), source=headers.get("message_source"),
+            )
+
         try:
             result = await fn(req)
         except Exception as exc:
             log.exception("%s.%s failed", self.source, op.name)
+            error = f"{type(exc).__name__}: {exc}"
+            if step_id is not None:
+                await self.journal.end(step_id, ok=False, error=error)
+            elif journaling and handler_owns:
+                # A long-running op that raised here never reached _start_task, so the
+                # handler opened no row for it -- a `to_temperature` refused because
+                # the heating laser is off would otherwise leave no trace at all, which
+                # is exactly the kind of thing the journal exists to remember.
+                await self.journal.end(
+                    await self.journal.begin(
+                        op.name, params=params,
+                        actor=headers.get("actor"), source=headers.get("message_source"),
+                    ),
+                    ok=False, error=error,
+                )
             await self._reply_error(message, op.name, type(exc).__name__, str(exc))
             return
+
+        if step_id is not None:
+            model_out = result[0] if isinstance(result, tuple) else result
+            await self.journal.end(
+                step_id, ok=True,
+                result=model_out.model_dump() if hasattr(model_out, "model_dump") else None,
+            )
 
         try:
             model, payload = result if isinstance(result, tuple) else (result, None)

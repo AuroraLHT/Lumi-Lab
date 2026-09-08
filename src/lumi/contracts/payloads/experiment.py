@@ -390,7 +390,121 @@ class ExperimentState(ExperimentReadout, ServerStateBase):
     pass
 
 
+
+# --- sample tracking: what exists, what happened, what it measured ---------------
+#
+# growth.db lives with the experiment node on the server host, so a notebook on any
+# other machine reaches it the same way it reaches the chamber -- through the
+# contract. These are the ops that replace the CSV and the pickled `collector` the
+# pre-refactor notebooks kept beside the database.
+
+
+class SampleId(BaseModel):
+    sample_id: int
+
+
+class ListSamples(BaseModel):
+    substrate_id: int | None = None
+
+
+class SampleInfo(BaseModel):
+    sample_id: int
+    sample_uuid: str = ""
+    parent_sample_id: int | None = None
+    substrate_id: int
+    kind: str = "position"
+    pixel_index: int | None = None
+    position_mm: float | None = None
+    sample_name: str | None = None
+    state: str = "planned"
+
+
+class SampleList(BaseModel):
+    samples: list[SampleInfo] = []
+
+
+class LayerInfo(BaseModel):
+    """One layer of the stack. Derived from the deposition steps that succeeded on
+    this sample, never stored -- see GrowthDB.get_layer_stack."""
+
+    seq: int
+    material: str | None = None
+    num_pulse: int | None = None
+    step_id: int | None = None
+    started_at: float | None = None
+    is_dryrun: bool = False
+
+
+class SampleDetail(BaseModel):
+    sample: SampleInfo | None = None
+    layers: list[LayerInfo] = []
+
+
+class ListSteps(BaseModel):
+    sample_id: int | None = None
+    session_id: int | None = None
+    limit: int = 500
+
+
+class StepInfo(BaseModel):
+    step_id: int
+    parent_step_id: int | None = None
+    sample_id: int | None = None
+    kind: str
+    params: dict = {}
+    result: dict = {}
+    ok: bool | None = None
+    error: str | None = None
+    actor: str | None = None
+    source: str | None = None
+    started_at: float = 0.0
+    ended_at: float | None = None
+
+
+class StepList(BaseModel):
+    steps: list[StepInfo] = []
+
+
+class AddMeasurement(BaseModel):
+    sample_id: int
+    kind: str
+    value: float | None = None
+    detail: dict = {}
+    source: str | None = None
+    step_id: int | None = None
+    record_id: int | None = None
+
+
+class MeasurementId(BaseModel):
+    measurement_id: int
+
+
+class MeasurementInfo(BaseModel):
+    measurement_id: int
+    sample_id: int
+    kind: str
+    value: float | None = None
+    detail: dict = {}
+    source: str | None = None
+    created_at: str | None = None
+    #: The growth conditions that produced the sample this measures, resolved
+    #: server-side from the linked deposition step. Carried here so assembling a GP
+    #: training set is one call rather than one round trip per point.
+    conditions: dict = {}
+
+
+class ListMeasurements(BaseModel):
+    sample_id: int | None = None
+    kind: str | None = None
+    substrate_id: int | None = None
+
+
+class MeasurementList(BaseModel):
+    measurements: list[MeasurementInfo] = []
+
+
 __all__ = [
+    "AddMeasurement",
     "Anneal",
     "AnnealStep",
     "BeginSetLaserPower",
@@ -408,8 +522,15 @@ __all__ = [
     "FinishCurrentPixel",
     "FinishExperimentRecord",
     "LaserPowerResult",
+    "LayerInfo",
+    "ListMeasurements",
+    "ListSamples",
+    "ListSteps",
     "LogEntry",
     "MaskPosition",
+    "MeasurementId",
+    "MeasurementInfo",
+    "MeasurementList",
     "MfcQuery",
     "MfcStatus",
     "MotorFree",
@@ -429,6 +550,10 @@ __all__ = [
     "RegisterSubstrate",
     "ResolvePixelCheck",
     "ResumeSubstrate",
+    "SampleDetail",
+    "SampleId",
+    "SampleInfo",
+    "SampleList",
     "SetMfcControl",
     "SetMfcFlow",
     "SetPressure",
@@ -436,6 +561,8 @@ __all__ = [
     "SetRheedGain",
     "SetTarget",
     "StartStorage",
+    "StepInfo",
+    "StepList",
     "StorageResult",
     "SubstrateInfo",
     "TargetId",

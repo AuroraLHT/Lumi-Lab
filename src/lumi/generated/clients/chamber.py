@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 7e7d5e6d72531bde
+# contract_hash: 983c936b3e71f4fb
 
 """Generated clients for the chamber node."""
 
@@ -32,10 +32,12 @@ class ChamberLogClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             LOG, 'chamber',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def log(self) -> LogBatch:
@@ -67,10 +69,12 @@ class ChamberConfigClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             CONFIG, 'chamber',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def get_all_config(self) -> AllConfigs:
@@ -104,10 +108,12 @@ class ChamberMiModeClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             MI_MODE, 'chamber',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def register_commands(self, req: MICommands) -> MIExecution:
@@ -139,10 +145,12 @@ class ChamberCameraClient(CapabilityClient):
         *,
         timeout: float = 10.0,
         name: str | None = None,
+        actor: str | None = None,
     ) -> None:
         super().__init__(
             CAMERA, 'chamber',
             channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
         )
 
     async def image(self) -> tuple[ImageMeta, np.ndarray]:
@@ -181,11 +189,11 @@ class ChamberClient:
     """
 
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange,
-                 *, timeout: float = 10.0) -> None:
-        self.log = ChamberLogClient(channel, exchange, timeout=timeout)
-        self.config = ChamberConfigClient(channel, exchange, timeout=timeout)
-        self.mi_mode = ChamberMiModeClient(channel, exchange, timeout=timeout)
-        self.camera = ChamberCameraClient(channel, exchange, timeout=timeout)
+                 *, timeout: float = 10.0, actor: str | None = None) -> None:
+        self.log = ChamberLogClient(channel, exchange, timeout=timeout, actor=actor)
+        self.config = ChamberConfigClient(channel, exchange, timeout=timeout, actor=actor)
+        self.mi_mode = ChamberMiModeClient(channel, exchange, timeout=timeout, actor=actor)
+        self.camera = ChamberCameraClient(channel, exchange, timeout=timeout, actor=actor)
 
     @property
     def capabilities(self) -> dict:

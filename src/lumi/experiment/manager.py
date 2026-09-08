@@ -159,6 +159,21 @@ class Substrate:
         self._accessed_position_ids.add(self.current_position_id)
         self.current_position_id += 1
 
+    def restore_progress(self, used_indices: set[int]) -> None:
+        """Re-apply growth history to a substrate rebuilt from the database.
+
+        A fresh Substrate starts at position 0 with nothing accessed, which is correct
+        for `register_substrate` and wrong for `resume_substrate` -- see
+        GrowthDB.get_used_pixel_indices. `current_position_id` lands on the first index
+        that has not been grown on, so `get_current_position` and
+        `accessible_positions` agree with each other and with the history.
+        """
+        self._accessed_position_ids = {i for i in used_indices if 0 <= i < len(self.positions)}
+        self.current_position_id = next(
+            (i for i in range(len(self.positions)) if i not in self._accessed_position_ids),
+            len(self.positions),
+        )
+
 
 class BaseExperimentManager:
     """Shared hardware/DB primitives for driving a PLD growth."""
@@ -254,8 +269,29 @@ class BaseExperimentManager:
             substrate_uuid=substrate.uuid, manufacture=manufacturer,
             manufacture_date=manufacture_date, substrate_name=substrate_name,
         )
+        await self._materialise_samples(substrate)
         self.substrates.append(substrate)
         return substrate
+
+    async def _materialise_samples(self, substrate: Substrate) -> None:
+        """One `sample` row per growable position, created with the substrate.
+
+        A position becomes a specimen the moment the substrate is registered, not when
+        it is first grown on -- that is what lets "which positions are spent" be a
+        query instead of in-memory state, and what gives a step somewhere to attach
+        before any deposition has happened.
+        """
+        root = await self.growth_db.add_sample(
+            substrate.db_id, kind="substrate", pixel_index=None,
+            sample_name=substrate.name, state="active", sample_uuid=substrate.uuid,
+        )
+        base = substrate.name or substrate.materials
+        for index, position in enumerate(substrate.positions):
+            await self.growth_db.add_sample(
+                substrate.db_id, kind="position", pixel_index=index,
+                position_mm=position, parent_sample_id=root,
+                sample_name=f"{base}-p{index}",
+            )
 
     async def resume_substrate(self, substrate_id: int) -> Substrate:
         row = await self.growth_db.get_substrate(substrate_id)
@@ -267,16 +303,45 @@ class BaseExperimentManager:
             db_id=row[0], substrate_uuid=row[1], manufacture=row[9], manufacture_date=row[10],
             name=row[11] if len(row) > 11 else None,
         )
+        substrate.restore_progress(await self.growth_db.get_used_pixel_indices(substrate_id))
+        # A substrate registered before the sample table existed has no rows; make
+        # them now so resuming an old campaign journals against a real sample rather
+        # than silently against None.
+        if not await self.growth_db.get_samples_for_substrate(substrate_id):
+            await self._materialise_samples(substrate)
+        await self._mark_grown_samples(substrate)
         self.substrates.append(substrate)
         return substrate
 
+    async def _mark_grown_samples(self, substrate: Substrate) -> None:
+        for index in substrate._accessed_position_ids:
+            row = await self.growth_db.find_sample(substrate.db_id, index)
+            if row is not None:
+                await self.growth_db.set_sample_state(row[0], "grown")
+
     async def finish_substrate(self) -> None:
-        if self.current_substrate is not None:
-            self.current_substrate.finish_current_position()
+        await self._finish_position()
 
     async def finish_current_pixel(self) -> None:
-        if self.current_substrate is not None:
-            self.current_substrate.finish_current_position()
+        await self._finish_position()
+
+    async def _finish_position(self) -> None:
+        """Retire the current position and mark its sample grown.
+
+        Both ops did the same thing already; the only difference was which contract op
+        the caller reached for. Sharing one implementation means the sample state can
+        never be updated on one path and not the other.
+        """
+        substrate = self.current_substrate
+        if substrate is None:
+            return
+        index = substrate.current_position_id
+        substrate.finish_current_position()
+        if substrate.db_id is None:
+            return
+        row = await self.growth_db.find_sample(substrate.db_id, index)
+        if row is not None:
+            await self.growth_db.set_sample_state(row[0], "grown")
 
     async def get_target_name_by_id(self, target_id: str) -> str:
         field = self.target_mapper.get(target_id)
@@ -380,11 +445,24 @@ class BaseExperimentManager:
     async def set_pressure_control(self, on: bool) -> None:
         await self.chamber_mi.execute(pcmd.PressureControl(state=pcmd.PascalState(on)))
 
-    async def initiate_heating_laser(self) -> None:
+    async def initiate_heating_laser(self, timeout: float = 30.0, poll: float = 0.5) -> None:
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=False, nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaserThreshold(state=pcmd.PascalState("ON")))
         await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID))
+
+        # The MI commands complete when the controller accepts them, but
+        # `is_heating_laser_on` reads `Heat Stat` bit 3 from the *chamber log*, which
+        # PASCAL rewrites about once a second. Return only once that bit has actually
+        # flipped, so a `to_temperature` call right after this one does not read a
+        # pre-laser log row and refuse. Bounded like `_await_motor_free`: a laser that
+        # never reports on raises rather than hanging.
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if await self.is_heating_laser_on():
+                return
+            await asyncio.sleep(poll)
+        raise RuntimeError(f"heating laser did not report on within {timeout:.0f}s of initiate_heating_laser")
 
     async def turn_off_heating_laser(self) -> None:
         await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL))
@@ -392,22 +470,47 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("OFF"), nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=True, nowait=False))
 
+    async def _await_motor_free(self, timeout: float = 60.0, poll: float = 0.5) -> None:
+        """Wait for the motors, rather than refusing the moment they are busy.
+
+        The safety property is unchanged -- nothing moves while another move is
+        running -- but the check now waits for that to become true instead of raising
+        immediately. Two things made refusing wrong in practice:
+
+        `to_pixel` issues a mask move and a RHEED move back to back. The mask move
+        waits for MI completion, but "Motor free" comes from the *chamber log*, which
+        PASCAL rewrites about once a second, so for up to a log tick after the
+        controller says the move finished the log still reports the motor busy. The
+        second move landed in that window and was refused, which made
+        `to_current_pixel` fail roughly every time it was called unattended.
+
+        And a caller that gets "motor is not free" can only retry, which is this loop
+        written at the client instead -- one round trip per poll rather than none.
+
+        Still bounded: a motor that is genuinely stuck raises rather than hanging,
+        unlike the MI completion wait (see docs/TODO.md).
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if await self.is_motor_free():
+                return
+            await asyncio.sleep(poll)
+        raise RuntimeError(f"motor still not free after {timeout:.0f}s")
+
     async def move_mask_to_position(self, position: float) -> None:
         if not (0 <= position < self.bounds.mask_travel_max):
             raise ValueError(f"mask position must be in [0, {self.bounds.mask_travel_max}), got {position}")
         # The original asserted `not is_motor_free()` here -- backwards from what the
         # assertion message ("Motor is not free") says, and from what a pre-move
         # safety check should require. Fixed to require the motor free before moving.
-        if not await self.is_motor_free():
-            raise RuntimeError("motor is not free")
+        await self._await_motor_free()
         await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=position, sync=False, nowait=False))
 
     async def move_rheed_to_position(self, position: float) -> None:
         lo, hi = min(self.pld_config.rheed_limit), max(self.pld_config.rheed_limit)
         if not (lo <= position <= hi):
             raise ValueError(f"RHEED gun position must be in [{lo}, {hi}], got {position}")
-        if not await self.is_motor_free():
-            raise RuntimeError("motor is not free")
+        await self._await_motor_free()
         await self.chamber_mi.execute(pcmd.SetRHEEDGunX(position))
 
     async def set_target(self, target_id: str, rotation_mode: str = "AUTO", twist_mode: str = "AUTO") -> None:
@@ -521,9 +624,30 @@ class BaseExperimentManager:
 
     # --- storage / provenance ----------------------------------------------------
 
+    async def _current_sample_name(self) -> str | None:
+        """The sample the chamber is loaded on right now, e.g. `STO-a1b2c3-p0`.
+
+        `_materialise_samples` already bakes the position into `sample_name`, so
+        pulling it from the DB (rather than re-deriving it here) is what makes the
+        recording's name carry the position "if any" without this function having to
+        know the substrate's numbering scheme.
+        """
+        substrate = self.current_substrate
+        if substrate is None or substrate.db_id is None:
+            return None
+        row = await self.growth_db.find_sample(substrate.db_id, substrate.current_position_id)
+        return row[7] if row else None
+
     async def start_storage(self, project_name: str, is_dryrun: bool = False) -> dict:
         record_uuid = str(uuid.uuid4())
-        storage_name = f"{project_name}_{record_uuid}"
+        sample_name = await self._current_sample_name()
+        # Sample leads: it's the piece of physical film someone is going to go look
+        # for on disk, so it belongs first, human-readable, ahead of the uuid. Without
+        # a sample the recording is not tied to a specimen (a notebook could call this
+        # before registering a substrate); fall back to the project alone rather than
+        # raising, since start_storage has no other way to refuse cleanly.
+        slug = f"{sample_name}_{project_name}" if sample_name else project_name
+        storage_name = f"{slug}_{record_uuid}"
         if is_dryrun:
             return {"ok": True, "record_uuid": record_uuid, "storage_name": storage_name, "path": None, "message": ""}
 
