@@ -502,6 +502,16 @@ growth_db_path = "cfg/growth.db"
 # the node merely stops listening.
 mi_command_timeout = 0
 
+# Fail an op when the chamber reports its MI script `aborted`? Default true. The PASCAL
+# firmware writes the `Aborted_*` assist file for some scripts that actually ran to
+# completion (a known bug), so an op like `to_temperature` -- which issues several MI
+# commands in sequence -- can raise on a spurious abort of an early command and never
+# send the rest. Set this true only when the caller verifies the physical result another
+# way (the chamber log); an aborted script then looks like it succeeded. A deliberate
+# `$stop` still fails the op regardless. Override per run with
+# `nodes/experiment.py --ignore-mi-abort`.
+mi_ignore_abort = false
+
 # PLDChamberConfiguration -- the chamber geometry a growth is planned against.
 # Previously copy-pasted into each notebook run and drifted with every physical
 # realignment; one source of truth now.
