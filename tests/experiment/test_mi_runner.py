@@ -141,6 +141,46 @@ async def test_an_unbounded_wait_still_fails_on_an_aborted_execution() -> None:
         await asyncio.wait_for(task, 1.0)
 
 
+async def test_raise_on_abort_false_returns_the_aborted_execution(caplog) -> None:
+    """PASCAL reports spurious aborts; a caller that verifies the result another way can
+    opt out per call and get the execution back instead of an exception."""
+    client = FakeMiClient()
+    runner = MiCommandRunner(client, timeout=None)
+
+    task = asyncio.create_task(runner.execute("Temperature Ramp 20.0\n", raise_on_abort=False))
+    await asyncio.sleep(0.01)
+    with caplog.at_level(logging.WARNING, logger="lumi.experiment.mi"):
+        await client.complete(aborted=True)
+        execution = await asyncio.wait_for(task, 1.0)
+
+    assert execution.is_aborted
+    assert any("reported aborted" in r.getMessage() for r in caplog.records)
+
+
+async def test_raise_on_abort_can_be_off_runner_wide() -> None:
+    client = FakeMiClient()
+    runner = MiCommandRunner(client, timeout=None, raise_on_abort=False)
+
+    task = asyncio.create_task(runner.execute("Temperature Ramp 20.0\n"))
+    await asyncio.sleep(0.01)
+    await client.complete(aborted=True)
+    assert (await asyncio.wait_for(task, 1.0)).is_aborted
+    assert runner._pending == {}
+
+
+async def test_a_stopped_execution_still_raises_with_raise_on_abort_off() -> None:
+    """`raise_on_abort=False` covers spurious aborts only -- a deliberate `$stop` is a
+    real cancellation and must still fail the op."""
+    client = FakeMiClient()
+    runner = MiCommandRunner(client, timeout=None, raise_on_abort=False)
+
+    task = asyncio.create_task(runner.execute("Trigger Laser N=3000 (0) F=10.0\n"))
+    await asyncio.sleep(0.01)
+    await client.complete(stopped=True)
+    with pytest.raises(MIExecutionFailed):
+        await asyncio.wait_for(task, 1.0)
+
+
 async def test_a_special_command_never_waits() -> None:
     """`$stop`/`$clean` register no execution, so there is nothing to wait for -- with
     or without a deadline."""

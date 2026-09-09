@@ -5,6 +5,7 @@
 #   monitor    presence registry (see --no-monitor)
 #   storage    HDF5 recorder, and the node that declares the exchanges
 #   detection  RHEED spot detection (see --no-detection)
+#   experiment PLD growth driver -- off by default (see --with-experiment)
 #   api        FastAPI + the /ws bridge the browser connects to
 #
 # The instrument-side half (pascal, rheed) runs on the other machine --
@@ -14,7 +15,7 @@
 # Usage:
 #   scripts/start_server_host.sh [--host HOST] [--user U] [--password P]
 #                                [--root DIR] [--workers N]
-#                                [--no-detection] [--no-monitor]
+#                                [--no-detection] [--no-monitor] [--with-experiment]
 #                                [--allow-insecure-auth] [--check]
 #
 #   --host        broker host (default localhost -- the broker runs here)
@@ -22,6 +23,10 @@
 #                 over loopback, which is exactly the case this script defaults to)
 #   --root        HDF5 output directory (default storage.hdf5_recorder.database_path)
 #   --workers     uvicorn workers for the api node (default: api.workers in settings)
+#   --with-experiment
+#                 also start the experiment node -- the PLD growth driver the
+#                 notebooks and the MCP server talk to. Off by default: the browser
+#                 stack does not need it.
 #   --check       run the preflight checks and exit without starting anything
 #
 # Unlike start_simulation.sh this writes to the REAL HDF5 root and the REAL user
@@ -50,6 +55,7 @@ STORAGE_ROOT=""
 API_WORKERS=""
 WITH_DETECTION=1
 WITH_MONITOR=1
+WITH_EXPERIMENT=0
 ALLOW_INSECURE_AUTH=0
 CHECK_ONLY=0
 
@@ -62,9 +68,10 @@ while [[ $# -gt 0 ]]; do
         --workers) API_WORKERS="$2"; shift 2 ;;
         --no-detection) WITH_DETECTION=0; shift ;;
         --no-monitor) WITH_MONITOR=0; shift ;;
+        --with-experiment) WITH_EXPERIMENT=1; shift ;;
         --allow-insecure-auth) ALLOW_INSECURE_AUTH=1; shift ;;
         --check) CHECK_ONLY=1; shift ;;
-        -h|--help) sed -n '3,29p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '3,34p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -291,6 +298,20 @@ PY
     fi
 fi
 
+# ---- experiment -----------------------------------------------------------
+# The node's only extra dep is aiosqlite, already checked above. What is worth
+# surfacing here is a config file with no [experiment] block: the node would
+# otherwise die on a KeyError deep in its own log.
+if [[ $WITH_EXPERIMENT -eq 1 ]]; then
+    if "$PYTHON" -c 'from lumi.config import settings; settings.experiment.pld_config; settings.experiment.bounds' 2>/dev/null; then
+        ok "experiment config present ([experiment] in cfg/settings.toml)"
+    else
+        fail "experiment: no usable [experiment] block in the config -- cannot start the node."
+        echo "        Copy the [experiment] section from cfg/settings.example.toml, or drop" >&2
+        echo "        --with-experiment." >&2
+    fi
+fi
+
 if [[ $FAILED -ne 0 ]]; then
     echo >&2
     echo "preflight failed -- nothing started." >&2
@@ -361,6 +382,13 @@ if [[ $WITH_DETECTION -eq 1 ]]; then
     start_node detection --host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS"
 fi
 
+# The growth driver the notebooks and the MCP server talk to. A consumer of
+# chamber/rheed/storage, like storage is of rheed/chamber -- it needs them already
+# up, which they are by here. Off unless asked for: the browser stack does not use it.
+if [[ $WITH_EXPERIMENT -eq 1 ]]; then
+    start_node experiment --host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS"
+fi
+
 # The bridge last, so the browser only reaches a stack whose consumers are up.
 sleep 2
 start_node api
@@ -370,8 +398,9 @@ echo "nodes running (Ctrl-C to stop):"
 for i in "${!NAMES[@]}"; do
     printf "  %-10s pid %s\n" "${NAMES[$i]}" "${PIDS[$i]}"
 done
-[[ $WITH_MONITOR   -eq 0 ]] && echo "  monitor    skipped (--no-monitor: the UI's presence panel stays empty)"
-[[ $WITH_DETECTION -eq 0 ]] && echo "  detection  skipped (--no-detection)"
+[[ $WITH_MONITOR    -eq 0 ]] && echo "  monitor    skipped (--no-monitor: the UI's presence panel stays empty)"
+[[ $WITH_DETECTION  -eq 0 ]] && echo "  detection  skipped (--no-detection)"
+[[ $WITH_EXPERIMENT -eq 0 ]] && echo "  experiment skipped (pass --with-experiment for the notebook / MCP driver)"
 echo
 API_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo "API on http://${API_IP:-<this host>}:8000 -- contract $CONTRACT_HASH"

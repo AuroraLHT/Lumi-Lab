@@ -73,9 +73,22 @@ class MiCommandRunner:
     So it is left bounded by default, and the caller opts in. See docs/TODO.md.
     """
 
-    def __init__(self, client: ChamberMiModeClient, *, timeout: float | None = 30.0) -> None:
+    def __init__(
+        self,
+        client: ChamberMiModeClient,
+        *,
+        timeout: float | None = 30.0,
+        raise_on_abort: bool = True,
+    ) -> None:
         self.client = client
         self.timeout = timeout
+        #: Whether an execution the chamber reports as `is_aborted` raises
+        #: MIExecutionFailed. Default on. The PASCAL firmware writes the
+        #: `Aborted_*` assist file for scripts that actually ran to completion
+        #: (a known firmware bug), so a caller that verifies the physical result
+        #: another way -- the chamber log -- can turn this off, runner-wide here
+        #: or per call. `is_stopped` (a deliberate `$stop`) always raises.
+        self.raise_on_abort = raise_on_abort
         self._pending: dict[str, asyncio.Future[MIExecution]] = {}
         self._subscribed = False
 
@@ -117,16 +130,22 @@ class MiCommandRunner:
         commands: str | PascalCommand | PascalScope,
         *,
         timeout: float | None | object = _DEFAULT,
+        raise_on_abort: bool | object = _DEFAULT,
     ) -> MIExecution:
         """Submit a command script and wait for it to finish.
 
         `timeout` defaults to this runner's; pass a number to override it for one call,
         or `None` to wait indefinitely (see the class docstring for what that gives up).
+        `raise_on_abort` defaults to this runner's; pass `False` to accept an execution
+        the chamber reports as aborted (PASCAL raises spurious aborts -- verify the
+        physical result against the chamber log when you do this).
         Raises TimeoutError if the chamber does not report completion in time,
-        MIExecutionFailed if it reports one that was aborted or stopped.
+        MIExecutionFailed if it reports one that was stopped, or aborted while
+        `raise_on_abort` is on.
         """
         deadline = self.timeout if timeout is _DEFAULT else timeout
         assert deadline is None or isinstance(deadline, (int, float))
+        check_abort = self.raise_on_abort if raise_on_abort is _DEFAULT else bool(raise_on_abort)
         await self.start()
 
         text = commands.to_text() if hasattr(commands, "to_text") else str(commands)
@@ -148,6 +167,15 @@ class MiCommandRunner:
         finally:
             self._pending.pop(commands_uuid, None)
 
-        if execution.is_aborted or execution.is_stopped:
+        if execution.is_stopped:
             raise MIExecutionFailed(execution)
+        if execution.is_aborted:
+            if check_abort:
+                raise MIExecutionFailed(execution)
+            log.warning(
+                "MI execution %s reported aborted; continuing because raise_on_abort is "
+                "off -- PASCAL reports spurious aborts for scripts that ran, so confirm "
+                "the physical result against the chamber log: %s",
+                execution.commands_uuid, brief(text),
+            )
         return execution

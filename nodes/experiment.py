@@ -117,8 +117,14 @@ async def main(args: argparse.Namespace) -> None:
     if mi_timeout <= 0:
         mi_timeout = None
         log.warning("MI completion waits are unbounded -- a lost update will hang the op that is waiting")
+    raise_on_abort = not (args.ignore_mi_abort or bool(settings.get("experiment.mi_ignore_abort", False)))
+    if not raise_on_abort:
+        log.warning(
+            "MI abort reports are being ignored (--ignore-mi-abort / experiment.mi_ignore_abort) -- "
+            "an aborted script will not fail its op; confirm the physical result against the chamber log"
+        )
     sources = {
-        "chamber_mi": MiCommandRunner(chamber_mi_client, timeout=mi_timeout),
+        "chamber_mi": MiCommandRunner(chamber_mi_client, timeout=mi_timeout, raise_on_abort=raise_on_abort),
         "chamber_log": ChamberLogClient(channel, chamber_x),
         "chamber_config": ChamberConfigClient(channel, chamber_x),
         "rheed_camera": RheedCameraClient(channel, rheed_x),
@@ -170,6 +176,11 @@ def cli() -> None:
     parser.add_argument("--mi-timeout", type=float, default=None,
                         help="seconds to wait for an MI script to finish; 0 = wait forever "
                              "(defaults to experiment.mi_command_timeout)")
+    parser.add_argument("--ignore-mi-abort", action="store_true",
+                        help="do not fail an op when the chamber reports its MI script "
+                             "aborted -- PASCAL raises spurious aborts for scripts that "
+                             "ran. Verify results against the chamber log. Defaults from "
+                             "experiment.mi_ignore_abort.")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
