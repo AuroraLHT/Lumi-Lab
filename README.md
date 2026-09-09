@@ -140,7 +140,7 @@ fails, rather than leaving a half-dead stack behind:
 # On the server machine -- monitor, storage, detection, api. The broker lives here.
 uv sync --extra api --extra storage --extra detection
 scripts/install_detection_deps.sh          # detection host only
-scripts/start_server_host.sh
+scripts/start_server_host.sh               # add --with-experiment for the notebook / MCP driver
 
 # On the instrument machine -- pascal and rheed. --host is required: the broker is
 # on the other machine, and RabbitMQ refuses `guest` off loopback.
@@ -150,12 +150,8 @@ scripts/start_instrument_host.sh --host <server ip> --user <node user> --passwor
 ```
 
 Start the **server host first**: its storage node declares the exchanges the instrument
-host's producers publish into. Give the instrument host a real broker account:
-
-```bash
-uv run python scripts/apply_broker_permissions.py --host <broker> \
-    --user lumi-node --role node --password <pw>
-```
+host's producers publish into. Give the instrument host a real broker account (see
+[Accounts](#accounts) below).
 
 `start_server_host.sh` writes to the real HDF5 root and the real user database, and
 refuses to start with `auth.enabled = false` or the placeholder signing key
@@ -195,6 +191,62 @@ The API server reads its broker URL from `LUMI_AMQP_URL` first, falling back to
 ```bash
 LUMI_AMQP_URL="amqp://guest:guest@<broker>:5672/" python nodes/api.py
 ```
+
+### Accounts
+
+There are **two separate credential systems**, and one does not imply the other:
+
+| | who authenticates | where it lives | created with |
+| --- | --- | --- | --- |
+| **API account** | the browser console, and anything hitting `POST /auth/login` (which mints the JWT the `/ws` bridge and the MCP HTTP transport check) | SQLite at `auth.database_path` (default `cfg/users.db`) | `python -m lumi.api.manage` (or `scripts/create_api_user.py`) |
+| **Broker account** | every node, and a notebook that calls `ExperimentSession.open()` (it connects straight to RabbitMQ, no API in the path) | RabbitMQ's own user list | `scripts/apply_broker_permissions.py` |
+
+Both take a role of `viewer` / `operator` / `admin` (the broker script also has `node`,
+for equipment processes), and the same `lumi.contracts.policy` predicate gates the broker
+and the `/ws` bridge, so a role means the same thing on either side. But the accounts are
+independent: an `hliang16` in `cfg/users.db` is not an `hliang16` on the broker, and the
+passwords need not match.
+
+**API account** — for logging into the web console, or for the notebook when it goes
+through the API rather than the bus. `python -m lumi.api.manage` is the account CLI, and
+covers the whole lifecycle:
+
+```bash
+python -m lumi.api.manage create-user hliang16 --role admin   # prompts for a password
+python -m lumi.api.manage list-users
+python -m lumi.api.manage set-password <username>
+python -m lumi.api.manage gen-secret                          # a fresh JWT signing key
+```
+
+`scripts/create_api_user.py` is a thin wrapper over the same `create-user`, kept next to
+`apply_broker_permissions.py` so the two account types are found together. It adds one
+thing the module CLI lacks — `--database <path>`, to target a users.db other than the
+configured one (the simulation stack's is under `run/simulation/`):
+
+```bash
+uv run python scripts/create_api_user.py agent --role operator --password <pw>
+uv run python scripts/create_api_user.py alice --admin --database run/simulation/users.db
+```
+
+**Broker account** — for a node, or a notebook/MCP session that talks to the bus
+directly. The permissions are derived from `src/lumi/contracts`, so re-run it after any
+contract change:
+
+```bash
+# a node account for the instrument host
+uv run python scripts/apply_broker_permissions.py --host <broker> \
+    --user lumi-node --role node --password <pw>
+
+# an operator account for a notebook driving a growth
+uv run python scripts/apply_broker_permissions.py --host <broker> \
+    --user hliang16 --role operator --password <pw>
+```
+
+It needs the management plugin (`rabbitmq-plugins enable rabbitmq_management`) and an
+admin broker login to authenticate with (`--admin-user` / `--admin-pass`, default
+`guest`/`guest`, which only works from the broker host itself). `--dry-run` prints the
+permissions the role would get without applying them. Once real accounts exist, delete
+`guest`.
 
 ## Driving the simulated chamber
 
@@ -371,7 +423,7 @@ gated by `auth.enabled`, so a dev-mode bypass never opens real equipment control
 network. Viewer tokens are refused at the door.
 
 ```bash
-uv run python -m lumi.api.manage create-user agent --role operator
+uv run python scripts/create_api_user.py agent --role operator      # an API account; see Accounts
 ```
 
 It serves plain HTTP; put nginx/Caddy in front for TLS (`docs/TODO.md`). `--bind-host`
