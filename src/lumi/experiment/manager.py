@@ -638,7 +638,17 @@ class BaseExperimentManager:
         row = await self.growth_db.find_sample(substrate.db_id, substrate.current_position_id)
         return row[7] if row else None
 
-    async def start_storage(self, project_name: str, is_dryrun: bool = False) -> dict:
+    async def start_storage(
+        self,
+        project_name: str,
+        is_dryrun: bool = False,
+        *,
+        save_frame: bool = True,
+        save_ai: bool = True,
+        save_log: bool = True,
+        save_integration: bool = True,
+        force_rewrite: bool = False,
+    ) -> dict:
         record_uuid = str(uuid.uuid4())
         sample_name = await self._current_sample_name()
         # Sample leads: it's the piece of physical film someone is going to go look
@@ -652,7 +662,8 @@ class BaseExperimentManager:
             return {"ok": True, "record_uuid": record_uuid, "storage_name": storage_name, "path": None, "message": ""}
 
         status = await self.storage.start_recording(StorageRequest(
-            project_name=storage_name, save_frame=True, save_ai=True, save_log=True, force_rewrite=False,
+            project_name=storage_name, save_frame=save_frame, save_ai=save_ai, save_log=save_log,
+            save_integration=save_integration, force_rewrite=force_rewrite,
         ))
         return {
             "ok": status.ok, "record_uuid": record_uuid, "storage_name": storage_name,

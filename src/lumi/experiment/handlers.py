@@ -553,7 +553,11 @@ class ExperimentHandler:
         return Ack()
 
     async def start_storage(self, req: StartStorage) -> StorageResult:
-        result = await self.manager.start_storage(req.project_name, req.is_dryrun)
+        result = await self.manager.start_storage(
+            req.project_name, req.is_dryrun,
+            save_frame=req.save_frame, save_ai=req.save_ai, save_log=req.save_log,
+            save_integration=req.save_integration, force_rewrite=req.force_rewrite,
+        )
         return StorageResult(**result)
 
     async def end_storage(self, req: EndStorage) -> StorageResult:

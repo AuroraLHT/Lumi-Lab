@@ -230,6 +230,14 @@ class SetPressureControl(BaseModel):
 class StartStorage(BaseModel):
     project_name: str
     is_dryrun: bool = False
+    # What to record. These map 1:1 onto storage.StorageRequest; the recipe used to
+    # hardcode them, which meant a client could not ask for RHEED integrations
+    # (save_integration) or overwrite an existing .hdf5 (force_rewrite).
+    save_frame: bool = True
+    save_ai: bool = True
+    save_log: bool = True
+    save_integration: bool = True
+    force_rewrite: bool = False
 
 
 class StorageResult(BaseModel):

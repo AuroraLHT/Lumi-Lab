@@ -3109,6 +3109,11 @@
             "name": "start_storage",
             "request": {
               "properties": {
+                "force_rewrite": {
+                  "default": false,
+                  "title": "Force Rewrite",
+                  "type": "boolean"
+                },
                 "is_dryrun": {
                   "default": false,
                   "title": "Is Dryrun",
@@ -3117,6 +3122,26 @@
                 "project_name": {
                   "title": "Project Name",
                   "type": "string"
+                },
+                "save_ai": {
+                  "default": true,
+                  "title": "Save Ai",
+                  "type": "boolean"
+                },
+                "save_frame": {
+                  "default": true,
+                  "title": "Save Frame",
+                  "type": "boolean"
+                },
+                "save_integration": {
+                  "default": true,
+                  "title": "Save Integration",
+                  "type": "boolean"
+                },
+                "save_log": {
+                  "default": true,
+                  "title": "Save Log",
+                  "type": "boolean"
                 }
               },
               "required": [
