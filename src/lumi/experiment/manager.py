@@ -140,7 +140,7 @@ class Substrate:
 
     def _compute_positions(self) -> list[float]:
         if self.pixel_spacing is None:
-            return [self.width / 2]
+            return [0.0]
         positions = [0.0]
         for i in range(1, floor(self.width / 2 / self.pixel_spacing) + 1):
             positions.append(i * self.pixel_spacing)
