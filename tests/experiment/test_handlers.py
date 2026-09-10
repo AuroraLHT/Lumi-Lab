@@ -288,6 +288,11 @@ async def test_start_mi_logging_rejects_a_sub_second_interval(handler):
     assert handler.sources["chamber_mi"].calls == []
 
 
+async def test_stop_mi_logging_turns_the_logger_off(handler):
+    await handler.stop_mi_logging(Empty())
+    assert handler.sources["chamber_mi"].calls == ["Data Logging OFF\n"]
+
+
 def test_start_mi_logging_rejects_an_unknown_field_instead_of_dropping_it():
     # A mistyped `filename` (for `file_name`) used to be silently ignored, so the op
     # ran with the auto-generated name and no error. The strict model catches it.

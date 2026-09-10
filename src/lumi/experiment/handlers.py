@@ -525,6 +525,10 @@ class ExperimentHandler:
         file_name, interval_s = await self.manager.start_mi_logging(req.interval_s, req.file_name or None)
         return LoggingStatus(file_name=file_name, interval_s=interval_s)
 
+    async def stop_mi_logging(self, req: Empty) -> Ack:
+        await self.manager.stop_mi_logging()
+        return Ack()
+
     async def move_mask_to_position(self, req: MoveTo) -> Ack:
         await self.manager.move_mask_to_position(req.position)
         return Ack()

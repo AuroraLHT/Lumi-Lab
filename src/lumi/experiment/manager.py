@@ -517,6 +517,15 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.DataLogging(file_name, pcmd.PascalState("ON")))
         return file_name, interval_s
 
+    async def stop_mi_logging(self) -> None:
+        """`Data Logging OFF`.
+
+        PASCAL will not switch to a new log file while one is already open --
+        `start_mi_logging` then acks over MI mode but the file never changes. Call
+        this first to close the running logger, then start the one you want.
+        """
+        await self.chamber_mi.execute(pcmd.DataLogging("", pcmd.PascalState("OFF")))
+
     async def initiate_heating_laser(self, timeout: float = 30.0, poll: float = 0.5) -> None:
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=False, nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False))

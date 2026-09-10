@@ -2880,6 +2880,29 @@
             "response_codec": "json"
           },
           {
+            "name": "stop_mi_logging",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "move_mask_to_position",
             "request": {
               "properties": {
@@ -5053,6 +5076,7 @@
             "show_available_targets": "experiment.driver.req.show_available_targets",
             "start_mi_logging": "experiment.driver.req.start_mi_logging",
             "start_storage": "experiment.driver.req.start_storage",
+            "stop_mi_logging": "experiment.driver.req.stop_mi_logging",
             "to_current_pixel": "experiment.driver.req.to_current_pixel",
             "to_pixel": "experiment.driver.req.to_pixel",
             "to_temperature": "experiment.driver.req.to_temperature",

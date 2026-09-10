@@ -135,7 +135,14 @@ DRIVER = Capability(
            doc="Start PASCAL data logging at a fixed whole-second row interval "
                "(`Log Interval` + `Data Logging File=`). The controller powers up "
                "at 60s; pass interval_s=1 for a growth. Empty file_name lets the "
-               "driver name the file. Returns the file name and interval in use.",
+               "driver name the file. Returns the file name and interval in use. "
+               "PASCAL will not switch files while a logger is already open -- call "
+               "stop_mi_logging first if one might be running.",
+           journal=True),
+        Op("stop_mi_logging", Empty, Ack,
+           doc="Close PASCAL's currently open data-logging file (`Data Logging "
+               "OFF`). Needed before start_mi_logging can point at a new file: an "
+               "already-running logger makes start_mi_logging ack without switching.",
            journal=True),
         Op("move_mask_to_position", MoveTo, Ack, journal=True),
         Op("move_rheed_to_position", MoveTo, Ack, journal=True),

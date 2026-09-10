@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: d752ce1d7f504cd5
+# contract_hash: ea89870cfa77fa75
 
 """Generated clients for the experiment node."""
 
@@ -117,8 +117,12 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("set_target", req)  # type: ignore[return-value]
 
     async def start_mi_logging(self, req: StartMiLogging) -> LoggingStatus:
-        """Start PASCAL data logging at a fixed whole-second row interval (`Log Interval` + `Data Logging File=`). The controller powers up at 60s; pass interval_s=1 for a growth. Empty file_name lets the driver name the file. Returns the file name and interval in use."""
+        """Start PASCAL data logging at a fixed whole-second row interval (`Log Interval` + `Data Logging File=`). The controller powers up at 60s; pass interval_s=1 for a growth. Empty file_name lets the driver name the file. Returns the file name and interval in use. PASCAL will not switch files while a logger is already open -- call stop_mi_logging first if one might be running."""
         return await self.call("start_mi_logging", req)  # type: ignore[return-value]
+
+    async def stop_mi_logging(self) -> Ack:
+        """Close PASCAL's currently open data-logging file (`Data Logging OFF`). Needed before start_mi_logging can point at a new file: an already-running logger makes start_mi_logging ack without switching."""
+        return await self.call("stop_mi_logging")  # type: ignore[return-value]
 
     async def move_mask_to_position(self, req: MoveTo) -> Ack:
         """Call driver.move_mask_to_position."""
