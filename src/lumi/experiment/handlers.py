@@ -303,7 +303,7 @@ class ExperimentHandler:
         asyncio.create_task(runner(), name=f"experiment-task-{kind}")
         return TaskAck(task_id=task_id)
 
-    async def _require_heating_laser(self) -> None:
+    async def _require_heating_laser(self, target_temperature: float | None = None) -> None:
         """The same refusal `manager.to_temperature` makes, hoisted ahead of
         `_start_task`.
 
@@ -313,7 +313,16 @@ class ExperimentHandler:
         nothing else: an agent has no way to read `current_task`, so a refusal raised
         inside the task is invisible to it and the ramp looks like it started. Checked
         here, it comes back as an error on the tool call itself.
+
+        `target_temperature` mirrors `manager.to_temperature`'s room-temperature
+        bypass: a setpoint below the PID-engage threshold is an RT growth with the
+        diode deliberately off, so there is nothing to refuse.
         """
+        if (
+            target_temperature is not None
+            and target_temperature < self.manager.bounds.temperature_pid_engage_threshold
+        ):
+            return
         if not await self.manager.is_heating_laser_on():
             raise RuntimeError(
                 "heating laser is off -- call initiate_heating_laser first; ramping "
@@ -321,7 +330,7 @@ class ExperimentHandler:
             )
 
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
-        await self._require_heating_laser()
+        await self._require_heating_laser(req.temperature)
         return await self._start_task(
             "to_temperature", self.manager.to_temperature(req.temperature, req.ramp_rate),
             {"temperature": req.temperature, "ramp_rate": req.ramp_rate},

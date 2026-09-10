@@ -292,6 +292,27 @@ async def test_anneal_refuses_with_the_heating_laser_off(handler):
     assert handler.readout().current_task is None
 
 
+async def test_to_temperature_below_the_pid_threshold_skips_the_heating_laser_check(handler):
+    # A room-temperature growth runs with the diode deliberately off. A setpoint below
+    # temperature_pid_engage_threshold has no ramp to perform, so it must not refuse --
+    # and it must not leave a setpoint on the controller either.
+    handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
+    ack = await handler.to_temperature(ToTemperature(temperature=25, ramp_rate=20))
+
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            assert event.task_result["ok"] is True
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("task never reported completion")
+
+    assert handler.readout().current_task is None
+    assert handler.sources["chamber_mi"].calls == []
+    assert ack.task_id
+
+
 # --- resuming a substrate ------------------------------------------------------
 
 

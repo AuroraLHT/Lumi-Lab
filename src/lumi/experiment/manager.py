@@ -586,6 +586,14 @@ class BaseExperimentManager:
         b = self.bounds
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
 
+        # A setpoint below the PID-engage threshold is a room-temperature growth: the
+        # heating diode is deliberately off, PID has nothing to hold and there is no
+        # ramp to run. Don't check the diode and don't touch the temperature
+        # controller -- issuing TemperatureSet(nowait=False) at a target no current
+        # can reach just blocks the MI command until it times out.
+        if temperature < b.temperature_pid_engage_threshold:
+            return temperature
+
         # With the laser off, PID has nothing to drive: the setpoint climbs, the diode
         # current stays at zero and the pyrometer sits at Pyro_min. The failure is
         # silent on the log and, because TemperatureSet is issued nowait=False, shows
