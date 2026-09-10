@@ -659,6 +659,22 @@ def test_the_log_op_refuses_to_serve_a_dead_readers_last_row(tmp_path: Path):
         asyncio.run(handler.log(Empty()))
 
 
+def test_log_entry_carries_the_clock_when_the_reader_sends_an_empty_header():
+    """The production LogReader hands `(row, {})` with the parsed clock inside the
+    row. `_entry` must surface it on `LogEntry.time` / `.time_stamp` rather than
+    leaving them at 0.0 / "" -- otherwise anything watching those fields for
+    progress sees a frozen log on a perfectly healthy chamber."""
+    from lumi.pascal.handlers import _entry
+
+    row = {"time": 1_700_000_123.0, "time_stamp": "2026-09-10T15:47:53",
+           "Time": "2026-09-10T15:47:53", "Motor free": False}
+    entry = _entry(row, {})
+    assert entry.time == 1_700_000_123.0
+    assert entry.time_stamp == "2026-09-10T15:47:53"
+    # An explicit header still wins.
+    assert _entry(row, {"time": 42.0, "time_stamp": "hdr"}).time == 42.0
+
+
 def test_every_written_row_is_a_whole_line(tmp_path: Path):
     """The writer's half of the fix: a row reaches the file in one write, so a reader
     can never observe half of it."""
