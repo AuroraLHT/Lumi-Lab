@@ -166,11 +166,13 @@ fixed:
    the BO loop silently never left its random-seed phase. Read from the chamber when
    the step is journaled now, so the step stands on its own.
 8. **`to_current_pixel` failed almost every time it was called unattended.** It issues
-   a mask move and a RHEED move back to back. The mask move waits for MI completion,
-   but `Motor free` comes from the *chamber log*, which PASCAL rewrites about once a
-   second — so for up to a log tick after the controller says the move finished, the
-   log still reports the motor busy, and the second move was refused.
-   `BaseExperimentManager._await_motor_free` waits (bounded) instead of refusing.
+   a mask move and a RHEED move back to back, and the pre-move check read the chamber
+   log's `Motor free` bit as an "axis idle" flag — which it is not. `Motor free` is the
+   electromagnet holding lock *released* (a power-loss / manual state); a commanded move
+   must only go out while it is **clear**, and move *sequencing* is the MI completion
+   wait's job (`nowait=False`). `BaseExperimentManager._await_motor_ready` now gates on
+   the lock (bounded by `bounds.motor_ready_timeout`) and no longer waits for the wrong
+   signal.
 9. **`ExperimentSession`'s docstring had `image()`'s return backwards** — it is
    `(meta, frame)`, not `(frame, meta)`. A pre-existing doc bug in the example
    written for notebook authors.

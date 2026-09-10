@@ -535,6 +535,10 @@ warm_up_step = 0.1
 warm_up_current_ramp_rate = 0.015
 warm_up_wait_interval = 0.2
 warm_up_max_waittime = 180.0
+# How long a commanded mask/RHEED move waits for the motor holding lock to re-engage
+# ("Motor free" -> false in the chamber log) before giving up. A chamber left on manual
+# or unpowered raises after this instead of hanging.
+motor_ready_timeout = 60.0
 
 # PASCAL target-carousel slot -> chamber-log field name. Chamber-specific; was a
 # hardcoded dict (_target_id_mapper) inside BaseExperimentManager.__init__.

@@ -139,9 +139,10 @@ class ChamberSimConfig:
 class _Axis:
     """A motor axis that takes time to get somewhere.
 
-    `Motor free` (bit 0 of `Motor Stat`) is the AND of every axis being idle, and
-    `ExperimentManager.move_mask_to_position` refuses to move unless it is set -- so an
-    axis that arrives instantly would make the interlock untestable.
+    `ChamberModel.motor_free` is the AND of every axis being idle, and the MI backend
+    waits on it to know a commanded move has finished -- so an axis that arrived
+    instantly would make that wait, and the scripts that depend on it, untestable.
+    (This is not `Motor Stat` bit 0, the chamber log's "Motor free" holding-lock flag.)
 
     `rotary` axes take the shorter way round. The target carousel is one: without it,
     `Select Target F` -> `Select Target Clear` is 308.5 degrees of travel instead of
@@ -265,13 +266,20 @@ class ChamberModel:
         # Positioned by `Rotate Sample`, which takes time like any other axis, and spun
         # continuously by `Sample Rotation ON`. The two are separate: the spin advances
         # the angle without the axis being "busy", so a spinning sample does not hold
-        # `Motor free` low forever the way an unfinished move does.
+        # `motor_free` low forever the way an unfinished move does.
         self.sample_rot = _Axis(261.60, c.sample_rotation_speed, rotary=True)
-        #: Every positioning axis, in one place: `Motor free` is the AND of them all and
-        #: `motion_eta` the max, so a new axis must never be added to one and not the
-        #: other.
+        #: Every positioning axis, in one place: `motor_free` (all axes idle) is the AND
+        #: of them all and `motion_eta` the max, so a new axis must never be added to one
+        #: and not the other.
         self._axes = (self.rotation, self.mask1, self.mask2, self.tg_z,
                       self.rheed_gun_x, self.sample_rot)
+        #: The `Motor Stat` bit 0 "Motor free" flag -- the electromagnet holding lock
+        #: released, i.e. axes back-driveable by hand and not under servo authority. A
+        #: healthy powered chamber never sets it (the recorded asset is 0x0000
+        #: throughout), and the sim has no power-loss path, so it stays False unless a
+        #: test flips it to exercise `ExperimentManager._await_motor_ready`. Distinct
+        #: from `motor_free` below, which is "no axis mid-move".
+        self.motor_lock_released = False
         self.shutter_open = False
         self._shutter_target = False
         self._shutter_travel = 0.0
@@ -484,6 +492,11 @@ class ChamberModel:
 
     @property
     def motor_free(self) -> bool:
+        """No axis is mid-move. This is what the MI backend blocks on to know a
+        commanded move has completed -- distinct from `Motor Stat` bit 0 ("Motor
+        free" = holding lock released), which `_motor_stat` renders from
+        `motor_lock_released`.
+        """
         with self._lock:
             return not any(a.busy for a in self._axes)
 
@@ -735,9 +748,11 @@ class ChamberModel:
         return word
 
     def _motor_stat(self) -> int:
-        # bit 0 "Motor free", bit 1 "Target spin". This is the bit the recorded asset
-        # never sets, which is why `is_motor_free()` is False forever when replaying it.
-        word = 0x0001 if self.motor_free else 0x0000
+        # bit 0 "Motor free" (holding lock released -- see `motor_lock_released`), bit 1
+        # "Target spin". A healthy powered chamber holds bit 0 clear at rest and while
+        # moving alike, which is why the recorded asset is 0x0000 for all 5944 rows --
+        # not, as once assumed, a bit the recording forgot to set.
+        word = 0x0001 if self.motor_lock_released else 0x0000
         if self.target_rotation_mode in ("ON", "AUTO"):
             word |= 0x0002
         return word

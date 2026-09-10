@@ -59,6 +59,7 @@ def _bounds() -> ExperimentBounds:
         warm_up_current_ramp_rate=b.warm_up_current_ramp_rate,
         warm_up_wait_interval=b.warm_up_wait_interval,
         warm_up_max_waittime=b.warm_up_max_waittime,
+        motor_ready_timeout=b.get("motor_ready_timeout", 60.0),
     )
 
 

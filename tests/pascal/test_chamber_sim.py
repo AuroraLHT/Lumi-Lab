@@ -91,21 +91,35 @@ def test_pressures_use_the_controllers_exponent_form():
     assert format_scientific(6.7e-9) == "6.70E-9"
 
 
-# --- the interlock the recorded log can never satisfy -----------------------
+# --- the motor interlocks ---------------------------------------------------
 
 
-def test_motor_free_is_set_at_rest_and_cleared_while_moving(model):
-    # The recorded asset holds Motor Stat at 0x0000 for all 5944 rows, so bit 0
-    # ("Motor free") is never set and ExperimentManager.move_mask_to_position() raises
-    # unconditionally when replaying it. That is the behaviour this mode exists to fix.
+def test_motor_free_property_tracks_axis_motion(model):
+    # `model.motor_free` is "no axis mid-move" -- what the MI backend blocks on to call
+    # a commanded move complete. Not the chamber-log "Motor free" bit (see below).
     assert model.motor_free
-    assert process_row(dict(zip(LOG_COLUMNS, render_row(model.snapshot(), datetime.datetime.now()))))["Motor free"]
-
     model.move_mask(1, 75.0)
     assert not model.motor_free
     model.tick(100.0)
     assert model.motor_free
     assert model.mask1.position == pytest.approx(75.0)
+
+
+def test_chamber_log_motor_free_bit_follows_the_holding_lock(model):
+    # `Motor Stat` bit 0 "Motor free" is the electromagnet holding lock *released*, not
+    # an idle flag. A healthy powered chamber holds it clear -- which is why the
+    # recorded asset is 0x0000 for all 5944 rows, not a bit the recording forgot.
+    def parsed_bit():
+        row = render_row(model.snapshot(), datetime.datetime.now())
+        return process_row(dict(zip(LOG_COLUMNS, row)))["Motor free"]
+
+    assert parsed_bit() is False
+    model.move_mask(1, 75.0)
+    model.tick(1.0)
+    assert parsed_bit() is False  # still clear while an axis is moving
+
+    model.motor_lock_released = True
+    assert parsed_bit() is True
 
 
 # --- the script decoder mirrors the encoder ---------------------------------
@@ -500,7 +514,7 @@ def test_the_production_log_reader_tails_what_the_simulator_writes(tmp_path: Pat
         assert row is not None, "the log reader never picked up the simulator's file"
         assert float(row["Laser moni"]) > 0, "the tailed row does not show the laser firing"
         assert row["Sample Shutter"] is True
-        assert row["Motor free"] is True
+        assert row["Motor free"] is False  # holding lock engaged -- normal powered run
         assert writer.log_file is not None and writer.log_file.exists()
     finally:
         reader.stop()
@@ -554,9 +568,9 @@ def test_a_script_the_chamber_cannot_run_is_reported_aborted(tmp_path: Path):
 # Regression tests for the failure that froze a running chamber for 1h46m: the reader
 # caught a partially written line, DictReader padded the missing columns with None,
 # process_row's ast.literal_eval(None) raised, and the exception killed the thread.
-# get_log() then served the same row forever -- `Motor free` included, so
-# is_motor_free() answered "busy" until the node was restarted -- while the
-# capability's state still reported is_running with no error.
+# get_log() then served the same row forever -- every field frozen, including the ones
+# is_motor_free() and the temperature gate read -- until the node was restarted, while
+# the capability's state still reported is_running with no error.
 
 
 def test_a_partial_row_does_not_kill_the_reader(tmp_path: Path):
@@ -611,7 +625,7 @@ def test_a_partial_row_does_not_kill_the_reader(tmp_path: Path):
         # And the good row before it is still being served.
         row, _ = reader.get_log()
         assert row is not None
-        assert row["Motor free"] is True
+        assert row["Motor free"] is False
 
         # The reader keeps up after the bad row: append a fresh one and see it arrive.
         # This is the assertion that would have caught the original bug -- the thread

@@ -44,6 +44,13 @@ PARSE_DICT["Valve Stat1"] = {
 PARSE_DICT["Shut Stat"] = {0: "Sample Shutter"}
 
 
+# Bit 0 "Motor free" is the electromagnet holding lock *released* -- the axes are
+# back-driveable by hand and not under servo authority (a power cut drops the lock).
+# It is NOT an "axis idle" flag: a healthy powered chamber reports it clear at rest and
+# while moving alike (the recorded idle asset is 0x0000 for all 5944 rows). The
+# experiment driver only issues a commanded move while this is False
+# (ExperimentManager._await_motor_ready). Re-verify this polarity against any PASCAL
+# firmware update before trusting the interlock.
 PARSE_DICT["Motor Stat"] = {
     0: "Motor free",
     1: "Target spin",

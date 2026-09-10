@@ -138,8 +138,8 @@ class ScriptExecutor:
             pass  # no logged consequence
 
         # --- targets and motion. These block until the axis arrives unless the script
-        # said (Nowait) -- `Motor free` is an interlock the manager checks before every
-        # move, so overlapping motions have to be visible.
+        # said (Nowait) -- `model.motor_free` (all axes idle) is what the MI backend
+        # waits on to call a move complete, so overlapping motions have to be visible.
         elif kind == "select_target":
             try:
                 model.select_target(args["target"])

@@ -100,6 +100,9 @@ class ExperimentBounds:
     warm_up_current_ramp_rate: float
     warm_up_wait_interval: float
     warm_up_max_waittime: float
+    # How long to wait for the motor holding lock to re-engage before a commanded
+    # move. Bounded so a chamber left on manual/unpowered raises instead of hanging.
+    motor_ready_timeout: float = 60.0
 
 
 class Substrate:
@@ -379,6 +382,13 @@ class BaseExperimentManager:
         return batch.entries[-1]
 
     async def is_motor_free(self) -> bool:
+        """`Motor Stat` bit 0. "Free" here means the electromagnet holding lock is
+        *released* -- the axes are back-driveable by hand and not under servo
+        authority (a power cut drops the lock). It is not an "idle" flag: a healthy
+        powered chamber reports this clear at rest and while moving alike, which is
+        why the recorded idle asset holds `Motor Stat` at 0x0000 throughout. A
+        commanded move must only go out while this is False; see `_await_motor_ready`.
+        """
         values = await self._log_values()
         return _truthy(values["Motor free"])
 
@@ -455,7 +465,7 @@ class BaseExperimentManager:
         # `is_heating_laser_on` reads `Heat Stat` bit 3 from the *chamber log*, which
         # PASCAL rewrites about once a second. Return only once that bit has actually
         # flipped, so a `to_temperature` call right after this one does not read a
-        # pre-laser log row and refuse. Bounded like `_await_motor_free`: a laser that
+        # pre-laser log row and refuse. Bounded like `_await_motor_ready`: a laser that
         # never reports on raises rather than hanging.
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -470,47 +480,49 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("OFF"), nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=True, nowait=False))
 
-    async def _await_motor_free(self, timeout: float = 60.0, poll: float = 0.5) -> None:
-        """Wait for the motors, rather than refusing the moment they are busy.
+    async def _await_motor_ready(self, poll: float = 0.5) -> None:
+        """Block until the motor holding lock is engaged, so a commanded move has
+        somewhere to land.
 
-        The safety property is unchanged -- nothing moves while another move is
-        running -- but the check now waits for that to become true instead of raising
-        immediately. Two things made refusing wrong in practice:
+        `is_motor_free()` is True when the electromagnet lock is *released* -- the
+        axes are back-driveable by hand and a `Set Mask Position` would push against
+        nothing (a power cut is the usual cause). A move waits for that to clear
+        rather than, as this check once did, for it to be set.
 
-        `to_pixel` issues a mask move and a RHEED move back to back. The mask move
-        waits for MI completion, but "Motor free" comes from the *chamber log*, which
-        PASCAL rewrites about once a second, so for up to a log tick after the
-        controller says the move finished the log still reports the motor busy. The
-        second move landed in that window and was refused, which made
-        `to_current_pixel` fail roughly every time it was called unattended.
+        Move *sequencing* -- not starting the next axis until the last one arrived --
+        is the MI completion wait's job (`nowait=False`), not this gate's. Polling
+        rather than a one-shot read only covers the lock taking a log tick or two to
+        re-engage after power is restored.
 
-        And a caller that gets "motor is not free" can only retry, which is this loop
-        written at the client instead -- one round trip per poll rather than none.
-
-        Still bounded: a motor that is genuinely stuck raises rather than hanging,
-        unlike the MI completion wait (see docs/TODO.md).
+        Bounded by `bounds.motor_ready_timeout`: a chamber left unpowered or on manual
+        raises rather than hanging, unlike the MI completion wait (see docs/TODO.md).
         """
+        timeout = self.bounds.motor_ready_timeout
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if await self.is_motor_free():
+            if not await self.is_motor_free():
                 return
             await asyncio.sleep(poll)
-        raise RuntimeError(f"motor still not free after {timeout:.0f}s")
+        raise RuntimeError(
+            f"motor still reports free (holding lock released) after {timeout:.0f}s -- "
+            "check chamber power; a commanded move cannot drive an unlocked axis"
+        )
 
     async def move_mask_to_position(self, position: float) -> None:
         if not (0 <= position < self.bounds.mask_travel_max):
             raise ValueError(f"mask position must be in [0, {self.bounds.mask_travel_max}), got {position}")
-        # The original asserted `not is_motor_free()` here -- backwards from what the
-        # assertion message ("Motor is not free") says, and from what a pre-move
-        # safety check should require. Fixed to require the motor free before moving.
-        await self._await_motor_free()
+        # The original asserted `not is_motor_free()` here, with the message "Motor is
+        # not free". That assertion was right and the later "fix" to require the motor
+        # *free* was the bug: "Motor free" is the holding lock released, not an idle
+        # flag, so an axis can only be driven while it is NOT free.
+        await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=position, sync=False, nowait=False))
 
     async def move_rheed_to_position(self, position: float) -> None:
         lo, hi = min(self.pld_config.rheed_limit), max(self.pld_config.rheed_limit)
         if not (lo <= position <= hi):
             raise ValueError(f"RHEED gun position must be in [{lo}, {hi}], got {position}")
-        await self._await_motor_free()
+        await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SetRHEEDGunX(position))
 
     async def set_target(self, target_id: str, rotation_mode: str = "AUTO", twist_mode: str = "AUTO") -> None:

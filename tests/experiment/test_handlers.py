@@ -36,7 +36,6 @@ from lumi.experiment.handlers import ExperimentHandler
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 
 LOG_VALUES = {
-    "Motor free": "TRUE",
     "HT Temp moni": "160.0",
     "HT set": "160.0",
     "Vac Pres Main": "1.00E-4",
@@ -53,6 +52,10 @@ LOG_VALUES = {
     # `Heat Stat` bit 3 -- the heater's own ON/OFF monitor. to_temperature refuses to
     # ramp without it, so the default fixture has the laser already running.
     "ON/OFF monitor in PS": "TRUE",
+    # `Motor Stat` bit 0 "Motor free" -- the holding lock *released*. A healthy powered
+    # chamber holds it clear, so the default fixture is FALSE and a commanded move goes
+    # straight through; a move only waits while this is TRUE.
+    "Motor free": "FALSE",
 }
 
 
@@ -123,6 +126,7 @@ async def handler(tmp_path):
         mask_travel_max=160.0, temperature_min=160.0, temperature_max=1000.0,
         temperature_pid_engage_threshold=220.0, warm_up_step=0.1,
         warm_up_current_ramp_rate=0.015, warm_up_wait_interval=0.01, warm_up_max_waittime=1.0,
+        motor_ready_timeout=0.5,
     )
     h = ExperimentHandler(
         sources=sources, growth_db=db, pld_config=pld_config, bounds=bounds,
@@ -163,6 +167,9 @@ async def test_register_substrate_single_position_is_mode_single(handler):
 
 
 async def test_is_motor_free_reads_the_log(handler):
+    # FALSE in the default fixture: holding lock engaged, motor under command authority.
+    assert (await handler.is_motor_free(Empty())).free is False
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
     assert (await handler.is_motor_free(Empty())).free is True
 
 
@@ -191,9 +198,12 @@ async def test_move_mask_to_position_rejects_out_of_bounds(handler):
         await handler.move_mask_to_position(MoveTo(position=200))
 
 
-async def test_move_mask_to_position_requires_motor_free(handler):
-    handler.sources["chamber_log"].values["Motor free"] = "FALSE"
-    with pytest.raises(RuntimeError):
+async def test_move_mask_to_position_refuses_while_the_holding_lock_is_released(handler):
+    # "Motor free" TRUE == electromagnet lock released, axis back-driveable by hand
+    # (a power cut is the usual cause). A commanded move has nothing to drive, so it
+    # waits for the lock to re-engage and raises once bounds.motor_ready_timeout is up.
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
+    with pytest.raises(RuntimeError, match="holding lock released"):
         await handler.move_mask_to_position(MoveTo(position=50))
 
 
