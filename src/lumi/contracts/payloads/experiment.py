@@ -27,10 +27,16 @@ with one fixed server-side sequence.
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .chamber import LogEntry
 from .common import ServerStateBase
+
+# Request payloads reject unknown fields: a mistyped argument
+# (`start_mi_logging(filename=...)` for `file_name`) is silently dropped by
+# pydantic's default and the op then runs with the default value and no error.
+# Forbidding extras turns that into a ValidationError at the call site.
+_STRICT = ConfigDict(extra="forbid")
 
 # Ack/Empty are reused from .common, not redefined here -- every other contract
 # (chamber, storage, rheed) imports the same two models rather than growing its own.
@@ -187,6 +193,23 @@ class MaskPosition(BaseModel):
     position: float
 
 
+class CheckLogging(BaseModel):
+    model_config = _STRICT
+    # How long to wait for the newest chamber-log row to advance before calling
+    # the log stale. Must exceed the controller's `Log Interval` (powers up at
+    # 60s; start_mi_logging(1) drops it to 1s).
+    timeout_s: float = 5.0
+
+
+class LoggingAlive(BaseModel):
+    alive: bool
+    # Seconds waited before the newest row advanced -- the full timeout if it
+    # never did.
+    waited_s: float
+    # The last row timestamp seen, for diagnosing a false "not alive".
+    last_stamp: str = ""
+
+
 # --- fast hardware control ---------------------------------------------------
 
 
@@ -198,6 +221,26 @@ class SetTarget(BaseModel):
 
 class MoveTo(BaseModel):
     position: float
+
+
+class SampleAngle(BaseModel):
+    model_config = _STRICT
+    # Degrees. For rotate_sample_to this is an absolute stage angle; for
+    # rotate_sample_by it is a signed delta from the current angle.
+    angle: float
+
+
+class StartMiLogging(BaseModel):
+    model_config = _STRICT
+    # Whole seconds between chamber-log rows. The controller powers up at 60; a
+    # growth wants 1. An empty file_name lets the driver name the file.
+    interval_s: int = 1
+    file_name: str = ""
+
+
+class LoggingStatus(BaseModel):
+    file_name: str
+    interval_s: int
 
 
 class PixelIndex(BaseModel):
@@ -519,6 +562,7 @@ __all__ = [
     "ConfirmCenterMask",
     "ConfirmLaserPower",
     "ConfirmMaskCenter",
+    "CheckLogging",
     "ConfirmProceed",
     "CoolDown",
     "CurrentSubstrateResponse",
@@ -535,6 +579,8 @@ __all__ = [
     "ListSamples",
     "ListSteps",
     "LogEntry",
+    "LoggingAlive",
+    "LoggingStatus",
     "MaskPosition",
     "MeasurementId",
     "MeasurementInfo",
@@ -558,6 +604,7 @@ __all__ = [
     "RegisterSubstrate",
     "ResolvePixelCheck",
     "ResumeSubstrate",
+    "SampleAngle",
     "SampleDetail",
     "SampleId",
     "SampleInfo",
@@ -568,6 +615,7 @@ __all__ = [
     "SetPressureControl",
     "SetRheedGain",
     "SetTarget",
+    "StartMiLogging",
     "StartStorage",
     "StepInfo",
     "StepList",

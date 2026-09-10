@@ -144,8 +144,14 @@ async def run_ensure_motor_ready(
     "Motor free" in the chamber log means the electromagnet lock is *released* -- the
     axes are back-driveable by hand and a commanded move drives nothing (a power cut
     is the usual cause). Re-engaging it is a physical button on the chamber
-    controller, so ask for it here rather than letting the next mask move sit in
-    `_await_motor_ready` until it times out. A no-op on a healthy chamber.
+    controller.
+
+    Every driver movement primitive already gates itself on this
+    (`ExperimentManager._await_motor_ready`), so a growth is safe without calling
+    this. What it adds is an *interactive* prompt through `input_provider`: drop it
+    at the top of an unattended batch so an operator gets asked to press MOTOR
+    ENABLE, instead of each stalled move logging and then raising after
+    `bounds.motor_ready_timeout`. A no-op on a healthy chamber.
     """
     while (await exp.driver.is_motor_free()).free:
         await input_provider(
@@ -225,10 +231,6 @@ async def perform_single_deposition(
             len(current.substrate.positions) if current.substrate else 0,
         )
         return False, (None, None)
-
-    # The steps below drive the mask and carousel; make sure the motor is enabled
-    # before the first one so it does not stall in `_await_motor_ready`.
-    await run_ensure_motor_ready(exp, input_provider)
 
     if do_preablation:
         ack = await exp.driver.perform_preablation(PerformPreablation(
@@ -315,7 +317,6 @@ async def perform_pixel_deposition(
     # so unlike the original's to_current_pixel() returning False for "no pixels
     # left", a failure here is a genuine hardware fault (an out-of-bounds position)
     # and is left to raise rather than being folded into is_terminated.
-    await run_ensure_motor_ready(exp, input_provider)
     await exp.driver.to_current_pixel()
 
     await input_provider(f"[Manual] Set Pressure to {pressure:.2e} Torr.")

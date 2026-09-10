@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pydantic
 import pytest
 
 from lumi.contracts.payloads.camera import CameraConfig
@@ -24,10 +25,14 @@ from lumi.contracts.payloads.experiment import (
     FinishCurrentPixel,
     RegisterSubstrate,
     ResumeSubstrate,
+    CheckLogging,
+    SampleAngle,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
     SetPressureControl,
+    SetTarget,
+    StartMiLogging,
     ToTemperature,
 )
 from lumi.contracts.payloads.storage import StorageStatus
@@ -62,9 +67,19 @@ LOG_VALUES = {
 class FakeChamberLog:
     def __init__(self, values: dict) -> None:
         self.values = dict(values)
+        # 0.0 => every log() returns the same timestamp (a frozen log). A positive
+        # value advances the clock by that much per call, standing in for PASCAL
+        # writing a fresh row. Like production, the clock rides in `values` and the
+        # top-level LogEntry.time / .time_stamp stay 0.0 / "".
+        self.tick = 0.0
+        self._t = 1000.0
 
     async def log(self) -> LogBatch:
-        return LogBatch(entries=[LogEntry(time=0.0, time_stamp="t0", values=self.values)])
+        self._t += self.tick
+        values = dict(self.values)
+        values["time"] = self._t
+        values["time_stamp"] = f"2026-09-10T00:00:{self._t:09.3f}"
+        return LogBatch(entries=[LogEntry(time=0.0, time_stamp="", values=values)])
 
 
 class FakeChamberConfig:
@@ -205,6 +220,97 @@ async def test_move_mask_to_position_refuses_while_the_holding_lock_is_released(
     handler.sources["chamber_log"].values["Motor free"] = "TRUE"
     with pytest.raises(RuntimeError, match="holding lock released"):
         await handler.move_mask_to_position(MoveTo(position=50))
+
+
+async def test_set_target_refuses_while_the_holding_lock_is_released(handler):
+    # The holding lock frees the target motor too, so SelectTarget / the spin-mode
+    # commands are gated exactly like a mask move -- this is the early-stage carousel
+    # move that used to go out unguarded.
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
+    with pytest.raises(RuntimeError, match="holding lock released"):
+        await handler.set_target(SetTarget(target_id="A"))
+    assert handler.sources["chamber_mi"].calls == []
+
+
+async def test_begin_check_mask_center_refuses_while_the_holding_lock_is_released(handler):
+    # The gated calibration ops drive the mask/carousel too; they front their moves
+    # with the same interlock.
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
+    with pytest.raises(RuntimeError, match="holding lock released"):
+        await handler.begin_check_mask_center(Empty())
+    assert handler.sources["chamber_mi"].calls == []
+
+
+async def test_rotate_sample_to_is_absolute_and_rotate_sample_by_is_relative(handler):
+    await handler.rotate_sample_to(SampleAngle(angle=30.0))
+    await handler.rotate_sample_by(SampleAngle(angle=-45.0))
+    assert handler.sources["chamber_mi"].calls == [
+        "Set Sample Position 30.00\n",
+        "Rotate Sample -45.00\n",
+    ]
+
+
+async def test_sample_rotation_refuses_while_the_holding_lock_is_released(handler):
+    # The holding lock frees the sample-rotation motor too.
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
+    with pytest.raises(RuntimeError, match="holding lock released"):
+        await handler.rotate_sample_to(SampleAngle(angle=30.0))
+    with pytest.raises(RuntimeError, match="holding lock released"):
+        await handler.rotate_sample_by(SampleAngle(angle=10.0))
+    assert handler.sources["chamber_mi"].calls == []
+
+
+# --- MI-mode logging ---------------------------------------------------------
+
+
+async def test_start_mi_logging_sets_the_interval_then_turns_logging_on(handler):
+    status = await handler.start_mi_logging(StartMiLogging(interval_s=1, file_name="run42.csv"))
+    assert status.file_name == "run42.csv"
+    assert status.interval_s == 1
+    assert handler.sources["chamber_mi"].calls == [
+        "Log Interval 1\n",
+        "Data Logging File=run42.csv\n",
+    ]
+
+
+async def test_start_mi_logging_names_the_file_when_none_is_given(handler):
+    status = await handler.start_mi_logging(StartMiLogging())
+    assert status.file_name.startswith("chamber_log_") and status.file_name.endswith(".csv")
+    assert handler.sources["chamber_mi"].calls == [
+        "Log Interval 1\n",
+        f"Data Logging File={status.file_name}\n",
+    ]
+
+
+async def test_start_mi_logging_rejects_a_sub_second_interval(handler):
+    with pytest.raises(ValueError):
+        await handler.start_mi_logging(StartMiLogging(interval_s=0))
+    assert handler.sources["chamber_mi"].calls == []
+
+
+def test_start_mi_logging_rejects_an_unknown_field_instead_of_dropping_it():
+    # A mistyped `filename` (for `file_name`) used to be silently ignored, so the op
+    # ran with the auto-generated name and no error. The strict model catches it.
+    with pytest.raises(pydantic.ValidationError, match="filename"):
+        StartMiLogging(interval_s=1, filename="Auto_MI_20260910.csv")
+    assert StartMiLogging(file_name="Auto_MI_20260910.csv").file_name == "Auto_MI_20260910.csv"
+
+
+async def test_check_logging_alive_is_true_when_the_newest_row_advances(handler):
+    # The clock rides in `values` and top-level LogEntry.time stays 0.0, exactly as
+    # the production log reader delivers it -- the check must not compare .time.
+    handler.sources["chamber_log"].tick = 1.0  # every log() read returns a fresh timestamp
+    result = await handler.check_logging_alive(CheckLogging(timeout_s=2.0))
+    assert result.alive is True
+    assert result.waited_s < 2.0
+    assert result.last_stamp  # echoes what it saw, for diagnosing a false negative
+
+
+async def test_check_logging_alive_is_false_when_the_timestamp_is_frozen(handler):
+    # tick stays 0.0: the fake serves the same row forever, like a dead log reader.
+    result = await handler.check_logging_alive(CheckLogging(timeout_s=0.2))
+    assert result.alive is False
+    assert result.waited_s >= 0.2
 
 
 # --- gas: setpoints and their gates are separate ops ---------------------------

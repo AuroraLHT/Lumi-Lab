@@ -172,7 +172,12 @@ fixed:
    must only go out while it is **clear**, and move *sequencing* is the MI completion
    wait's job (`nowait=False`). `BaseExperimentManager._await_motor_ready` now gates on
    the lock (bounded by `bounds.motor_ready_timeout`) and no longer waits for the wrong
-   signal.
+   signal. Every driver primitive that drives an axis — mask, RHEED-X, target
+   revolution/spin (`set_target`), and the gated mask-calibration ops — fronts its move
+   with that gate, since the holding lock frees the target motor as well and PASCAL
+   raises no interlock of its own. `recipes.run_ensure_motor_ready` is the optional
+   interactive front-run (prompts an operator to press MOTOR ENABLE) rather than the
+   interlock itself.
 9. **`ExperimentSession`'s docstring had `image()`'s return backwards** — it is
    `(meta, frame)`, not `(frame, meta)`. A pre-existing doc bug in the example
    written for notebook authors.

@@ -80,8 +80,12 @@ from lumi.contracts.payloads.experiment import (
     MeasurementId,
     MeasurementInfo,
     MeasurementList,
+    CheckLogging,
+    LoggingAlive,
+    LoggingStatus,
     ResolvePixelCheck,
     ResumeSubstrate,
+    SampleAngle,
     SampleDetail,
     SampleId,
     SampleInfo,
@@ -94,6 +98,7 @@ from lumi.contracts.payloads.experiment import (
     SetPressureControl,
     SetRheedGain,
     SetTarget,
+    StartMiLogging,
     StartStorage,
     StorageResult,
     SubstrateInfo,
@@ -506,11 +511,19 @@ class ExperimentHandler:
     async def get_current_mask_position(self, req: Empty) -> MaskPosition:
         return MaskPosition(position=await self.manager.get_current_mask_position())
 
+    async def check_logging_alive(self, req: CheckLogging) -> LoggingAlive:
+        alive, waited, last_stamp = await self.manager.check_logging_alive(req.timeout_s)
+        return LoggingAlive(alive=alive, waited_s=waited, last_stamp=last_stamp)
+
     # --- fast hardware control ---------------------------------------------------
 
     async def set_target(self, req: SetTarget) -> Ack:
         await self.manager.set_target(req.target_id, req.rotation_mode, req.twist_mode)
         return Ack()
+
+    async def start_mi_logging(self, req: StartMiLogging) -> LoggingStatus:
+        file_name, interval_s = await self.manager.start_mi_logging(req.interval_s, req.file_name or None)
+        return LoggingStatus(file_name=file_name, interval_s=interval_s)
 
     async def move_mask_to_position(self, req: MoveTo) -> Ack:
         await self.manager.move_mask_to_position(req.position)
@@ -518,6 +531,14 @@ class ExperimentHandler:
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
         await self.manager.move_rheed_to_position(req.position)
+        return Ack()
+
+    async def rotate_sample_to(self, req: SampleAngle) -> Ack:
+        await self.manager.rotate_sample_to(req.angle)
+        return Ack()
+
+    async def rotate_sample_by(self, req: SampleAngle) -> Ack:
+        await self.manager.rotate_sample_by(req.angle)
         return Ack()
 
     async def to_pixel(self, req: PixelIndex) -> PixelMoveResult:

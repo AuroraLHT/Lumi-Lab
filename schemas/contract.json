@@ -2760,6 +2760,46 @@
             "response_codec": "json"
           },
           {
+            "name": "check_logging_alive",
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "timeout_s": {
+                  "default": 5.0,
+                  "title": "Timeout S",
+                  "type": "number"
+                }
+              },
+              "title": "CheckLogging",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "alive": {
+                  "title": "Alive",
+                  "type": "boolean"
+                },
+                "last_stamp": {
+                  "default": "",
+                  "title": "Last Stamp",
+                  "type": "string"
+                },
+                "waited_s": {
+                  "title": "Waited S",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "alive",
+                "waited_s"
+              ],
+              "title": "LoggingAlive",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "set_target",
             "request": {
               "properties": {
@@ -2795,6 +2835,46 @@
                 }
               },
               "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "start_mi_logging",
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "file_name": {
+                  "default": "",
+                  "title": "File Name",
+                  "type": "string"
+                },
+                "interval_s": {
+                  "default": 1,
+                  "title": "Interval S",
+                  "type": "integer"
+                }
+              },
+              "title": "StartMiLogging",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "file_name": {
+                  "title": "File Name",
+                  "type": "string"
+                },
+                "interval_s": {
+                  "title": "Interval S",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "file_name",
+                "interval_s"
+              ],
+              "title": "LoggingStatus",
               "type": "object"
             },
             "response_codec": "json"
@@ -2842,6 +2922,68 @@
                 "position"
               ],
               "title": "MoveTo",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rotate_sample_to",
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "angle": {
+                  "title": "Angle",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "angle"
+              ],
+              "title": "SampleAngle",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rotate_sample_by",
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "angle": {
+                  "title": "Angle",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "angle"
+              ],
+              "title": "SampleAngle",
               "type": "object"
             },
             "request_codec": "json",
@@ -4865,6 +5007,7 @@
             "begin_check_mask_center": "experiment.driver.req.begin_check_mask_center",
             "begin_check_rheed_pixels": "experiment.driver.req.begin_check_rheed_pixels",
             "begin_set_laser_power": "experiment.driver.req.begin_set_laser_power",
+            "check_logging_alive": "experiment.driver.req.check_logging_alive",
             "confirm": "experiment.driver.req.confirm",
             "confirm_center_mask": "experiment.driver.req.confirm_center_mask",
             "confirm_laser_power": "experiment.driver.req.confirm_laser_power",
@@ -4898,6 +5041,8 @@
             "register_substrate": "experiment.driver.req.register_substrate",
             "resolve_pixel_check": "experiment.driver.req.resolve_pixel_check",
             "resume_substrate": "experiment.driver.req.resume_substrate",
+            "rotate_sample_by": "experiment.driver.req.rotate_sample_by",
+            "rotate_sample_to": "experiment.driver.req.rotate_sample_to",
             "sample_history": "experiment.driver.req.sample_history",
             "set_mfc_control": "experiment.driver.req.set_mfc_control",
             "set_mfc_flow": "experiment.driver.req.set_mfc_flow",
@@ -4906,6 +5051,7 @@
             "set_rheed_gain": "experiment.driver.req.set_rheed_gain",
             "set_target": "experiment.driver.req.set_target",
             "show_available_targets": "experiment.driver.req.show_available_targets",
+            "start_mi_logging": "experiment.driver.req.start_mi_logging",
             "start_storage": "experiment.driver.req.start_storage",
             "to_current_pixel": "experiment.driver.req.to_current_pixel",
             "to_pixel": "experiment.driver.req.to_pixel",
