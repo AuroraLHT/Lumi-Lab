@@ -63,6 +63,38 @@ async def default_value_provider(prompt: str) -> str:
     return await _blocking_input(prompt)
 
 
+async def _ask_float(
+    value_provider: ValueProvider,
+    prompt: str,
+    *,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    """Collect a number from a human, re-prompting on anything unparseable or out of
+    range rather than letting `float()` raise straight through the recipe and drop
+    the session.
+
+    A person answering these prompts can fat-finger a value -- an empty line, a
+    stray unit, a "y" typed in the wrong box. The complaint is folded into the next
+    prompt string so this behaves the same for a terminal user and for an
+    agent-supplied provider (which just sees the corrected prompt).
+    """
+    ask = prompt
+    while True:
+        raw = (await value_provider(ask) or "").strip()
+        try:
+            value = float(raw)
+        except ValueError:
+            ask = f"{raw!r} is not a number -- {prompt}" if raw else f"a value is required -- {prompt}"
+            continue
+        if (minimum is not None and value < minimum) or (maximum is not None and value > maximum):
+            lo = "-inf" if minimum is None else f"{minimum:g}"
+            hi = "inf" if maximum is None else f"{maximum:g}"
+            ask = f"{value:g} is outside [{lo}, {hi}] -- {prompt}"
+            continue
+        return value
+
+
 async def _wait_for_task(exp: ExperimentSession, task_id: str, poll_interval: float = 0.5) -> dict | None:
     """Poll the server's authoritative state (not the locally cached subscription
     value) until the given task is no longer current -- avoids a race between the
@@ -86,7 +118,7 @@ async def run_check_mask_center(exp: ExperimentSession, value_provider: ValuePro
         aligned = answer.strip().lower() == "y"
         corrected = None
         if not aligned:
-            corrected = float(await value_provider("Enter a new center mask position: "))
+            corrected = await _ask_float(value_provider, "Enter a new center mask position: ")
         status = await exp.driver.confirm_mask_center(ConfirmMaskCenter(aligned=aligned, corrected_position=corrected))
         if status.pending is None:
             return
@@ -96,7 +128,7 @@ async def run_adjust_rheed_gain(exp: ExperimentSession, value_provider: ValuePro
     """Port of BaseExperimentManager.adjust_rheed_gain's loop."""
     config = await exp.driver.begin_adjust_rheed_gain()  # Ack -- the current gain is in the pending message
     while True:
-        gain = float(await value_provider("Enter the gain (0-240): "))
+        gain = await _ask_float(value_provider, "Enter the gain (0-240): ", minimum=0, maximum=240)
         await exp.driver.set_rheed_gain(SetRheedGain(gain=gain))
         good = (await value_provider("Is the RHEED image good? (y/n) ")).strip().lower() == "y"
         if good:
@@ -116,7 +148,9 @@ async def run_set_laser_power(
     if state.pending_confirmation is None or state.pending_confirmation.kind != "laser_power":
         return state.laser_power_real  # begin_set_laser_power short-circuited: already set
 
-    measured = float(await value_provider(f"[Manual] Set Laser Power to {laser_power:.2f} W. Type the measured value: "))
+    measured = await _ask_float(
+        value_provider, f"[Manual] Set Laser Power to {laser_power:.2f} W. Type the measured value: ", minimum=0,
+    )
     result = await exp.driver.confirm_laser_power(ConfirmLaserPower(measured_power=measured))
     return result.measured_power
 
