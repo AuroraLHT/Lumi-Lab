@@ -136,6 +136,24 @@ async def run_adjust_rheed_gain(exp: ExperimentSession, value_provider: ValuePro
             return
 
 
+async def run_ensure_motor_ready(
+    exp: ExperimentSession, input_provider: InputProvider = default_input_provider,
+) -> None:
+    """Pause until a person re-engages the motor holding lock.
+
+    "Motor free" in the chamber log means the electromagnet lock is *released* -- the
+    axes are back-driveable by hand and a commanded move drives nothing (a power cut
+    is the usual cause). Re-engaging it is a physical button on the chamber
+    controller, so ask for it here rather than letting the next mask move sit in
+    `_await_motor_ready` until it times out. A no-op on a healthy chamber.
+    """
+    while (await exp.driver.is_motor_free()).free:
+        await input_provider(
+            "[Manual] The motor holding lock is released -- press MOTOR ENABLE on the "
+            "chamber controller to re-engage it, then continue"
+        )
+
+
 async def run_set_laser_power(
     exp: ExperimentSession, laser_power: float, *, target_id: str | None = None, force: bool = False,
     value_provider: ValueProvider = default_value_provider,
@@ -207,6 +225,10 @@ async def perform_single_deposition(
             len(current.substrate.positions) if current.substrate else 0,
         )
         return False, (None, None)
+
+    # The steps below drive the mask and carousel; make sure the motor is enabled
+    # before the first one so it does not stall in `_await_motor_ready`.
+    await run_ensure_motor_ready(exp, input_provider)
 
     if do_preablation:
         ack = await exp.driver.perform_preablation(PerformPreablation(
@@ -293,6 +315,7 @@ async def perform_pixel_deposition(
     # so unlike the original's to_current_pixel() returning False for "no pixels
     # left", a failure here is a genuine hardware fault (an out-of-bounds position)
     # and is left to raise rather than being folded into is_terminated.
+    await run_ensure_motor_ready(exp, input_provider)
     await exp.driver.to_current_pixel()
 
     await input_provider(f"[Manual] Set Pressure to {pressure:.2e} Torr.")

@@ -494,18 +494,32 @@ class BaseExperimentManager:
         rather than a one-shot read only covers the lock taking a log tick or two to
         re-engage after power is restored.
 
-        Bounded by `bounds.motor_ready_timeout`: a chamber left unpowered or on manual
-        raises rather than hanging, unlike the MI completion wait (see docs/TODO.md).
+        Re-engaging the lock is a physical MOTOR ENABLE button on the chamber
+        controller, so if the axes are found free this logs what the operator has to
+        press and then waits, bounded by `bounds.motor_ready_timeout`: a chamber left
+        on manual raises rather than hanging, unlike the MI completion wait (see
+        docs/TODO.md). Recipe callers front-run this with `run_ensure_motor_ready`,
+        which asks through their `input_provider` instead of only logging.
         """
         timeout = self.bounds.motor_ready_timeout
         deadline = time.monotonic() + timeout
+        announced = False
         while time.monotonic() < deadline:
             if not await self.is_motor_free():
+                if announced:
+                    log.info("motor holding lock re-engaged -- continuing")
                 return
+            if not announced:
+                log.warning(
+                    "motor holding lock is released -- press the MOTOR ENABLE button on "
+                    "the chamber controller to re-engage it; waiting up to %.0fs", timeout,
+                )
+                announced = True
             await asyncio.sleep(poll)
         raise RuntimeError(
             f"motor still reports free (holding lock released) after {timeout:.0f}s -- "
-            "check chamber power; a commanded move cannot drive an unlocked axis"
+            "press the MOTOR ENABLE button on the chamber controller, then retry; "
+            "a commanded move cannot drive an unlocked axis"
         )
 
     async def move_mask_to_position(self, position: float) -> None:
