@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 23a820cfc4b3fd6a
+# contract_hash: ea89870cfa77fa75
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, BeginSetLaserPower, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListMeasurements, ListSamples, ListSteps, MaskPosition, MeasurementId, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectInfo, PumpStatus, RegisterProject, RegisterSubstrate, ResolvePixelCheck, ResumeSubstrate, SampleDetail, SampleId, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartStorage, StepList, StorageResult, SubstrateInfo, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, BeginSetLaserPower, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListMeasurements, ListSamples, ListSteps, LoggingAlive, LoggingStatus, MaskPosition, MeasurementId, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectInfo, PumpStatus, RegisterProject, RegisterSubstrate, ResolvePixelCheck, ResumeSubstrate, SampleAngle, SampleDetail, SampleId, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateInfo, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -108,9 +108,21 @@ class ExperimentDriverClient(CapabilityClient):
         """Call driver.get_current_mask_position."""
         return await self.call("get_current_mask_position")  # type: ignore[return-value]
 
+    async def check_logging_alive(self, req: CheckLogging) -> LoggingAlive:
+        """Probe whether the chamber log is still being written: read the newest row's timestamp, wait up to timeout_s, and report whether it advanced (with last_stamp, the timestamp seen). A frozen timestamp means the log-reader thread died or PASCAL stopped writing -- every downstream read is then stale. timeout_s must exceed the controller's Log Interval (60s at power-up; start_mi_logging(interval_s=1) drops it to 1s)."""
+        return await self.call("check_logging_alive", req)  # type: ignore[return-value]
+
     async def set_target(self, req: SetTarget) -> Ack:
         """Call driver.set_target."""
         return await self.call("set_target", req)  # type: ignore[return-value]
+
+    async def start_mi_logging(self, req: StartMiLogging) -> LoggingStatus:
+        """Start PASCAL data logging at a fixed whole-second row interval (`Log Interval` + `Data Logging File=`). The controller powers up at 60s; pass interval_s=1 for a growth. Empty file_name lets the driver name the file. Returns the file name and interval in use. PASCAL will not switch files while a logger is already open -- call stop_mi_logging first if one might be running."""
+        return await self.call("start_mi_logging", req)  # type: ignore[return-value]
+
+    async def stop_mi_logging(self) -> Ack:
+        """Close PASCAL's currently open data-logging file (`Data Logging OFF`). Needed before start_mi_logging can point at a new file: an already-running logger makes start_mi_logging ack without switching."""
+        return await self.call("stop_mi_logging")  # type: ignore[return-value]
 
     async def move_mask_to_position(self, req: MoveTo) -> Ack:
         """Call driver.move_mask_to_position."""
@@ -119,6 +131,14 @@ class ExperimentDriverClient(CapabilityClient):
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
         """Call driver.move_rheed_to_position."""
         return await self.call("move_rheed_to_position", req)  # type: ignore[return-value]
+
+    async def rotate_sample_to(self, req: SampleAngle) -> Ack:
+        """Rotate the sample stage to an absolute angle in degrees (PASCAL `Set Sample Position`). Blocks until the move completes. Refused while the motor holding lock is released (see is_motor_free)."""
+        return await self.call("rotate_sample_to", req)  # type: ignore[return-value]
+
+    async def rotate_sample_by(self, req: SampleAngle) -> Ack:
+        """Rotate the sample stage by a signed delta in degrees (PASCAL `Rotate Sample`); negative turns the other way. Blocks until the move completes. Refused while the motor holding lock is released."""
+        return await self.call("rotate_sample_by", req)  # type: ignore[return-value]
 
     async def to_pixel(self, req: PixelIndex) -> PixelMoveResult:
         """Call driver.to_pixel."""
@@ -165,7 +185,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("finish_experiment_record", req)  # type: ignore[return-value]
 
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
-        """Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach."""
+        """Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach. A setpoint below the PID-engage threshold is not holdable: from a hot chamber it is commanded as a cooldown (no PID), and from an already-cold one it is a no-op, since a room-temperature growth runs with the diode off."""
         return await self.call("to_temperature", req)  # type: ignore[return-value]
 
     async def cool_down(self, req: CoolDown) -> TaskAck:

@@ -3,11 +3,11 @@
 `--src test` replays a recorded CSV, which is fine for "is the transport alive?" and
 useless for anything else: the recorded session is an *idle* chamber. In
 `assets/chamber_log_test.csv` the laser never fires, `HT Temp moni` is a constant 160,
-the target never changes, and `Motor Stat` is `0x0000` for all 5944 rows -- so bit 0,
-"Motor free", is never set and `ExperimentManager.is_motor_free()` returns False
-forever, which makes `move_mask_to_position()` and `move_rheed_to_position()` raise
-unconditionally. Nothing that drives the chamber can be tested against it, and the MI
-backend simulator never even reads the script it claims to be running.
+and the target never changes, so nothing that drives the chamber can be exercised
+against it -- and the MI backend simulator never even reads the script it claims to be
+running. (`Motor Stat` is `0x0000` for all 5944 rows, which is simply a healthy idle
+chamber: bit 0 "Motor free" is the holding lock *released*, and a powered chamber
+holds it clear.)
 
 `--src sim` replaces the recording with a state model. MI commands mutate the model,
 the model integrates forward in time, and the chamber log is *rendered from the model*

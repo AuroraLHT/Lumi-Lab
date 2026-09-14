@@ -80,8 +80,12 @@ from lumi.contracts.payloads.experiment import (
     MeasurementId,
     MeasurementInfo,
     MeasurementList,
+    CheckLogging,
+    LoggingAlive,
+    LoggingStatus,
     ResolvePixelCheck,
     ResumeSubstrate,
+    SampleAngle,
     SampleDetail,
     SampleId,
     SampleInfo,
@@ -94,6 +98,7 @@ from lumi.contracts.payloads.experiment import (
     SetPressureControl,
     SetRheedGain,
     SetTarget,
+    StartMiLogging,
     StartStorage,
     StorageResult,
     SubstrateInfo,
@@ -303,7 +308,7 @@ class ExperimentHandler:
         asyncio.create_task(runner(), name=f"experiment-task-{kind}")
         return TaskAck(task_id=task_id)
 
-    async def _require_heating_laser(self) -> None:
+    async def _require_heating_laser(self, target_temperature: float | None = None) -> None:
         """The same refusal `manager.to_temperature` makes, hoisted ahead of
         `_start_task`.
 
@@ -313,7 +318,16 @@ class ExperimentHandler:
         nothing else: an agent has no way to read `current_task`, so a refusal raised
         inside the task is invisible to it and the ramp looks like it started. Checked
         here, it comes back as an error on the tool call itself.
+
+        `target_temperature` mirrors `manager.to_temperature`'s sub-threshold branch:
+        a setpoint below the PID-engage threshold is either an RT growth (diode
+        deliberately off) or a cooldown, and neither needs the diode lit.
         """
+        if (
+            target_temperature is not None
+            and target_temperature < self.manager.bounds.temperature_pid_engage_threshold
+        ):
+            return
         if not await self.manager.is_heating_laser_on():
             raise RuntimeError(
                 "heating laser is off -- call initiate_heating_laser first; ramping "
@@ -321,7 +335,7 @@ class ExperimentHandler:
             )
 
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
-        await self._require_heating_laser()
+        await self._require_heating_laser(req.temperature)
         return await self._start_task(
             "to_temperature", self.manager.to_temperature(req.temperature, req.ramp_rate),
             {"temperature": req.temperature, "ramp_rate": req.ramp_rate},
@@ -497,10 +511,22 @@ class ExperimentHandler:
     async def get_current_mask_position(self, req: Empty) -> MaskPosition:
         return MaskPosition(position=await self.manager.get_current_mask_position())
 
+    async def check_logging_alive(self, req: CheckLogging) -> LoggingAlive:
+        alive, waited, last_stamp = await self.manager.check_logging_alive(req.timeout_s)
+        return LoggingAlive(alive=alive, waited_s=waited, last_stamp=last_stamp)
+
     # --- fast hardware control ---------------------------------------------------
 
     async def set_target(self, req: SetTarget) -> Ack:
         await self.manager.set_target(req.target_id, req.rotation_mode, req.twist_mode)
+        return Ack()
+
+    async def start_mi_logging(self, req: StartMiLogging) -> LoggingStatus:
+        file_name, interval_s = await self.manager.start_mi_logging(req.interval_s, req.file_name or None)
+        return LoggingStatus(file_name=file_name, interval_s=interval_s)
+
+    async def stop_mi_logging(self, req: Empty) -> Ack:
+        await self.manager.stop_mi_logging()
         return Ack()
 
     async def move_mask_to_position(self, req: MoveTo) -> Ack:
@@ -509,6 +535,14 @@ class ExperimentHandler:
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
         await self.manager.move_rheed_to_position(req.position)
+        return Ack()
+
+    async def rotate_sample_to(self, req: SampleAngle) -> Ack:
+        await self.manager.rotate_sample_to(req.angle)
+        return Ack()
+
+    async def rotate_sample_by(self, req: SampleAngle) -> Ack:
+        await self.manager.rotate_sample_by(req.angle)
         return Ack()
 
     async def to_pixel(self, req: PixelIndex) -> PixelMoveResult:
@@ -553,7 +587,11 @@ class ExperimentHandler:
         return Ack()
 
     async def start_storage(self, req: StartStorage) -> StorageResult:
-        result = await self.manager.start_storage(req.project_name, req.is_dryrun)
+        result = await self.manager.start_storage(
+            req.project_name, req.is_dryrun,
+            save_frame=req.save_frame, save_ai=req.save_ai, save_log=req.save_log,
+            save_integration=req.save_integration, force_rewrite=req.force_rewrite,
+        )
         return StorageResult(**result)
 
     async def end_storage(self, req: EndStorage) -> StorageResult:

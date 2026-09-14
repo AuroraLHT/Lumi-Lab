@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 
+import pydantic
 import pytest
 
 from lumi.contracts.payloads.camera import CameraConfig
@@ -24,10 +25,14 @@ from lumi.contracts.payloads.experiment import (
     FinishCurrentPixel,
     RegisterSubstrate,
     ResumeSubstrate,
+    CheckLogging,
+    SampleAngle,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
     SetPressureControl,
+    SetTarget,
+    StartMiLogging,
     ToTemperature,
 )
 from lumi.contracts.payloads.storage import StorageStatus
@@ -36,7 +41,6 @@ from lumi.experiment.handlers import ExperimentHandler
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 
 LOG_VALUES = {
-    "Motor free": "TRUE",
     "HT Temp moni": "160.0",
     "HT set": "160.0",
     "Vac Pres Main": "1.00E-4",
@@ -53,15 +57,29 @@ LOG_VALUES = {
     # `Heat Stat` bit 3 -- the heater's own ON/OFF monitor. to_temperature refuses to
     # ramp without it, so the default fixture has the laser already running.
     "ON/OFF monitor in PS": "TRUE",
+    # `Motor Stat` bit 0 "Motor free" -- the holding lock *released*. A healthy powered
+    # chamber holds it clear, so the default fixture is FALSE and a commanded move goes
+    # straight through; a move only waits while this is TRUE.
+    "Motor free": "FALSE",
 }
 
 
 class FakeChamberLog:
     def __init__(self, values: dict) -> None:
         self.values = dict(values)
+        # 0.0 => every log() returns the same timestamp (a frozen log). A positive
+        # value advances the clock by that much per call, standing in for PASCAL
+        # writing a fresh row. Like production, the clock rides in `values` and the
+        # top-level LogEntry.time / .time_stamp stay 0.0 / "".
+        self.tick = 0.0
+        self._t = 1000.0
 
     async def log(self) -> LogBatch:
-        return LogBatch(entries=[LogEntry(time=0.0, time_stamp="t0", values=self.values)])
+        self._t += self.tick
+        values = dict(self.values)
+        values["time"] = self._t
+        values["time_stamp"] = f"2026-09-10T00:00:{self._t:09.3f}"
+        return LogBatch(entries=[LogEntry(time=0.0, time_stamp="", values=values)])
 
 
 class FakeChamberConfig:
@@ -123,6 +141,7 @@ async def handler(tmp_path):
         mask_travel_max=160.0, temperature_min=160.0, temperature_max=1000.0,
         temperature_pid_engage_threshold=220.0, warm_up_step=0.1,
         warm_up_current_ramp_rate=0.015, warm_up_wait_interval=0.01, warm_up_max_waittime=1.0,
+        motor_ready_timeout=0.5,
     )
     h = ExperimentHandler(
         sources=sources, growth_db=db, pld_config=pld_config, bounds=bounds,
@@ -163,6 +182,9 @@ async def test_register_substrate_single_position_is_mode_single(handler):
 
 
 async def test_is_motor_free_reads_the_log(handler):
+    # FALSE in the default fixture: holding lock engaged, motor under command authority.
+    assert (await handler.is_motor_free(Empty())).free is False
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
     assert (await handler.is_motor_free(Empty())).free is True
 
 
@@ -191,10 +213,109 @@ async def test_move_mask_to_position_rejects_out_of_bounds(handler):
         await handler.move_mask_to_position(MoveTo(position=200))
 
 
-async def test_move_mask_to_position_requires_motor_free(handler):
-    handler.sources["chamber_log"].values["Motor free"] = "FALSE"
-    with pytest.raises(RuntimeError):
+async def test_move_mask_to_position_refuses_while_the_holding_lock_is_released(handler):
+    # "Motor free" TRUE == electromagnet lock released, axis back-driveable by hand
+    # (a power cut is the usual cause). A commanded move has nothing to drive, so it
+    # waits for the lock to re-engage and raises once bounds.motor_ready_timeout is up.
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
+    with pytest.raises(RuntimeError, match="holding lock released"):
         await handler.move_mask_to_position(MoveTo(position=50))
+
+
+async def test_set_target_refuses_while_the_holding_lock_is_released(handler):
+    # The holding lock frees the target motor too, so SelectTarget / the spin-mode
+    # commands are gated exactly like a mask move -- this is the early-stage carousel
+    # move that used to go out unguarded.
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
+    with pytest.raises(RuntimeError, match="holding lock released"):
+        await handler.set_target(SetTarget(target_id="A"))
+    assert handler.sources["chamber_mi"].calls == []
+
+
+async def test_begin_check_mask_center_refuses_while_the_holding_lock_is_released(handler):
+    # The gated calibration ops drive the mask/carousel too; they front their moves
+    # with the same interlock.
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
+    with pytest.raises(RuntimeError, match="holding lock released"):
+        await handler.begin_check_mask_center(Empty())
+    assert handler.sources["chamber_mi"].calls == []
+
+
+async def test_rotate_sample_to_is_absolute_and_rotate_sample_by_is_relative(handler):
+    await handler.rotate_sample_to(SampleAngle(angle=30.0))
+    await handler.rotate_sample_by(SampleAngle(angle=-45.0))
+    assert handler.sources["chamber_mi"].calls == [
+        "Set Sample Position 30.00\n",
+        "Rotate Sample -45.00\n",
+    ]
+
+
+async def test_sample_rotation_refuses_while_the_holding_lock_is_released(handler):
+    # The holding lock frees the sample-rotation motor too.
+    handler.sources["chamber_log"].values["Motor free"] = "TRUE"
+    with pytest.raises(RuntimeError, match="holding lock released"):
+        await handler.rotate_sample_to(SampleAngle(angle=30.0))
+    with pytest.raises(RuntimeError, match="holding lock released"):
+        await handler.rotate_sample_by(SampleAngle(angle=10.0))
+    assert handler.sources["chamber_mi"].calls == []
+
+
+# --- MI-mode logging ---------------------------------------------------------
+
+
+async def test_start_mi_logging_sets_the_interval_then_turns_logging_on(handler):
+    status = await handler.start_mi_logging(StartMiLogging(interval_s=1, file_name="run42.csv"))
+    assert status.file_name == "run42.csv"
+    assert status.interval_s == 1
+    assert handler.sources["chamber_mi"].calls == [
+        "Log Interval 1\n",
+        "Data Logging File=run42.csv\n",
+    ]
+
+
+async def test_start_mi_logging_names_the_file_when_none_is_given(handler):
+    status = await handler.start_mi_logging(StartMiLogging())
+    assert status.file_name.startswith("chamber_log_") and status.file_name.endswith(".csv")
+    assert handler.sources["chamber_mi"].calls == [
+        "Log Interval 1\n",
+        f"Data Logging File={status.file_name}\n",
+    ]
+
+
+async def test_start_mi_logging_rejects_a_sub_second_interval(handler):
+    with pytest.raises(ValueError):
+        await handler.start_mi_logging(StartMiLogging(interval_s=0))
+    assert handler.sources["chamber_mi"].calls == []
+
+
+async def test_stop_mi_logging_turns_the_logger_off(handler):
+    await handler.stop_mi_logging(Empty())
+    assert handler.sources["chamber_mi"].calls == ["Data Logging OFF\n"]
+
+
+def test_start_mi_logging_rejects_an_unknown_field_instead_of_dropping_it():
+    # A mistyped `filename` (for `file_name`) used to be silently ignored, so the op
+    # ran with the auto-generated name and no error. The strict model catches it.
+    with pytest.raises(pydantic.ValidationError, match="filename"):
+        StartMiLogging(interval_s=1, filename="Auto_MI_20260910.csv")
+    assert StartMiLogging(file_name="Auto_MI_20260910.csv").file_name == "Auto_MI_20260910.csv"
+
+
+async def test_check_logging_alive_is_true_when_the_newest_row_advances(handler):
+    # The clock rides in `values` and top-level LogEntry.time stays 0.0, exactly as
+    # the production log reader delivers it -- the check must not compare .time.
+    handler.sources["chamber_log"].tick = 1.0  # every log() read returns a fresh timestamp
+    result = await handler.check_logging_alive(CheckLogging(timeout_s=2.0))
+    assert result.alive is True
+    assert result.waited_s < 2.0
+    assert result.last_stamp  # echoes what it saw, for diagnosing a false negative
+
+
+async def test_check_logging_alive_is_false_when_the_timestamp_is_frozen(handler):
+    # tick stays 0.0: the fake serves the same row forever, like a dead log reader.
+    result = await handler.check_logging_alive(CheckLogging(timeout_s=0.2))
+    assert result.alive is False
+    assert result.waited_s >= 0.2
 
 
 # --- gas: setpoints and their gates are separate ops ---------------------------
@@ -290,6 +411,52 @@ async def test_anneal_refuses_with_the_heating_laser_off(handler):
     with pytest.raises(RuntimeError, match="initiate_heating_laser"):
         await handler.anneal(Anneal(steps=[AnnealStep(temperature=700, ramp_rate=20, wait_time=0)]))
     assert handler.readout().current_task is None
+
+
+async def test_to_temperature_below_the_pid_threshold_skips_the_heating_laser_check(handler):
+    # A room-temperature growth runs with the diode deliberately off. A setpoint below
+    # temperature_pid_engage_threshold has no ramp to perform, so it must not refuse --
+    # and it must not leave a setpoint on the controller either.
+    handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
+    ack = await handler.to_temperature(ToTemperature(temperature=25, ramp_rate=20))
+
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            assert event.task_result["ok"] is True
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("task never reported completion")
+
+    assert handler.readout().current_task is None
+    assert handler.sources["chamber_mi"].calls == []
+    assert ack.task_id
+
+
+async def test_to_temperature_below_the_pid_threshold_cools_down_when_still_hot(handler):
+    # The sub-threshold branch keys off where the chamber *is*, not only what was
+    # asked for. From 700C, asking for the pyrometer floor means "come down" -- it has
+    # to go out as a real setpoint, not return a success that leaves the chamber hot.
+    handler.sources["chamber_log"].values["HT Temp moni"] = "700.0"
+    ack = await handler.to_temperature(ToTemperature(temperature=160, ramp_rate=20))
+
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            assert event.task_result["ok"] is True
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("task never reported completion")
+
+    # Ramp + setpoint, the way cool_down does it. No `Temperature Control PID`: the
+    # controller cannot hold a sub-threshold setpoint, the substrate coasts to it.
+    assert handler.sources["chamber_mi"].calls == [
+        "Temperature Ramp 20.0\n",
+        "Temperature Set 160.0\n",
+    ]
+    assert ack.task_id
 
 
 # --- resuming a substrate ------------------------------------------------------

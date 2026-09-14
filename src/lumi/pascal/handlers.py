@@ -28,10 +28,30 @@ log = logging.getLogger(__name__)
 
 def _entry(row: dict, header: dict) -> LogEntry:
     header = dict(header or {})
+    row = row or {}
+
+    # Every LogReader (path / sim / test) hands the handler `(row, {})` -- the
+    # second element is a `LogContentHeader`, an empty placeholder TypedDict that
+    # nothing ever fills. The parsed clock lives in the row instead (`process_row`
+    # writes `time`, `time_stamp` and `Time` there). Reading only the header left
+    # every wire LogEntry at time=0.0 / time_stamp="" on a live chamber -- so
+    # get_current_log, the `log` stream and check_logging_alive all saw a frozen
+    # clock. Read the header first in case a future producer starts filling it,
+    # then fall back to the row.
+    def _pick(*keys):
+        for src in (header, row):
+            for k in keys:
+                v = src.get(k)
+                if v not in (None, ""):
+                    return v
+        return None
+
+    raw_time = _pick("time")
+    raw_stamp = _pick("time_stamp", "Time")
     return LogEntry(
-        time=float(header.get("time", 0.0)),
-        time_stamp=str(header.get("time_stamp", "")),
-        values={str(k): v for k, v in (row or {}).items()},
+        time=float(raw_time) if raw_time not in (None, "") else 0.0,
+        time_stamp=str(raw_stamp) if raw_stamp is not None else "",
+        values={str(k): v for k, v in row.items()},
     )
 
 

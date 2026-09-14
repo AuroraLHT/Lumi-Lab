@@ -68,9 +68,12 @@ print("deps:", state.deps_available)
 print("mode:", state.mode, "| pending:", state.pending_confirmation)
 """),
         (MD, """
-A non-dryrun run additionally needs the **detection** node: `start_storage` always
-requests `save_ai`, and the storage node refuses to record when a requested source is
-off the bus. Start the stack with `--with-detection`, or keep `DRYRUN = True`.
+A non-dryrun run additionally needs the **detection** node: `start_storage` requests
+`save_ai` by default, and the storage node refuses to record when a requested source
+is off the bus. Start the stack with `--with-detection`, or keep `DRYRUN = True`.
+`StartStorage` exposes the individual switches (`save_frame`, `save_ai`, `save_log`,
+`save_integration`, `force_rewrite`) if you need to drop a source or overwrite an
+existing recording; `save_integration` (the RHEED intensity traces) is on by default.
 """),
         (CODE, """
 print("chamber:", (await exp.driver.get_current_temperature()).temperature, "degC")

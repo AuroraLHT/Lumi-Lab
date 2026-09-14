@@ -61,6 +61,27 @@ def _truthy(value) -> bool:
     return str(value).strip().lower() in ("true", "1", "on", "yes")
 
 
+def _log_entry_stamp(entry) -> str:
+    """A change-detectable timestamp for a chamber-log row.
+
+    The parsed clock is always in `values` (`process_row` writes `time`,
+    `time_stamp` and `Time` there). The top-level `LogEntry.time` / `.time_stamp`
+    are also populated now, but a chamber node that predates that fix still sends
+    0.0 / "" -- so read `values` first and fall back to the top-level fields,
+    rather than depending on both nodes being on the same build.
+    """
+    values = getattr(entry, "values", None) or {}
+    for key in ("time", "time_stamp", "Time"):
+        v = values.get(key)
+        if v not in (None, "", 0, 0.0):
+            return str(v)
+    ts = getattr(entry, "time_stamp", "") or ""
+    if ts:
+        return ts
+    t = getattr(entry, "time", 0.0) or 0.0
+    return str(t) if t else ""
+
+
 async def count_down(seconds: float, prefix: str = "", interval: float = 10.0) -> None:
     start = time.time()
     remaining = seconds
@@ -100,6 +121,9 @@ class ExperimentBounds:
     warm_up_current_ramp_rate: float
     warm_up_wait_interval: float
     warm_up_max_waittime: float
+    # How long to wait for the motor holding lock to re-engage before a commanded
+    # move. Bounded so a chamber left on manual/unpowered raises instead of hanging.
+    motor_ready_timeout: float = 60.0
 
 
 class Substrate:
@@ -140,7 +164,7 @@ class Substrate:
 
     def _compute_positions(self) -> list[float]:
         if self.pixel_spacing is None:
-            return [self.width / 2]
+            return [0.0]
         positions = [0.0]
         for i in range(1, floor(self.width / 2 / self.pixel_spacing) + 1):
             positions.append(i * self.pixel_spacing)
@@ -378,7 +402,38 @@ class BaseExperimentManager:
             raise RuntimeError("chamber log has no rows yet")
         return batch.entries[-1]
 
+    async def check_logging_alive(self, timeout_s: float = 5.0, poll: float = 0.25) -> tuple[bool, float, str]:
+        """Whether the chamber log's newest row advances within `timeout_s`.
+
+        Read the latest row's timestamp, then re-read until it moves or the timeout
+        is up: a timestamp that does not change means the log-reader thread has died
+        (a torn CSV row can kill it and freeze every field -- see docs/TODO.md) or
+        PASCAL has stopped writing, and every other chamber read is then serving a
+        stale row.
+
+        `timeout_s` must exceed the controller's `Log Interval`, which powers up at
+        60s -- run `start_mi_logging(interval_s=1)` first, or pass a `timeout_s`
+        longer than your interval, or this reports a healthy-but-slow log as dead.
+        Returns (alive, waited_s, last_stamp).
+        """
+        start = time.monotonic()
+        before = _log_entry_stamp(await self.get_current_log())
+        last = before
+        while time.monotonic() - start < timeout_s:
+            await asyncio.sleep(poll)
+            last = _log_entry_stamp(await self.get_current_log())
+            if last != before:
+                return True, time.monotonic() - start, last
+        return False, time.monotonic() - start, last
+
     async def is_motor_free(self) -> bool:
+        """`Motor Stat` bit 0. "Free" here means the electromagnet holding lock is
+        *released* -- the axes are back-driveable by hand and not under servo
+        authority (a power cut drops the lock). It is not an "idle" flag: a healthy
+        powered chamber reports this clear at rest and while moving alike, which is
+        why the recorded idle asset holds `Motor Stat` at 0x0000 throughout. A
+        commanded move must only go out while this is False; see `_await_motor_ready`.
+        """
         values = await self._log_values()
         return _truthy(values["Motor free"])
 
@@ -445,6 +500,32 @@ class BaseExperimentManager:
     async def set_pressure_control(self, on: bool) -> None:
         await self.chamber_mi.execute(pcmd.PressureControl(state=pcmd.PascalState(on)))
 
+    async def start_mi_logging(self, interval_s: int = 1, file_name: str | None = None) -> tuple[str, int]:
+        """Start PASCAL's data logging at a fixed row interval (default every 1s).
+
+        The controller powers up at a 60s `Log Interval`; a growth wants a row a
+        second. Issues `Log Interval` then `Data Logging File=<name>`; the log
+        reader picks the file up by watching its folder, so the name only has to be
+        unique. Returns (file_name, interval_s) actually used.
+        """
+        interval_s = int(interval_s)
+        if interval_s < 1:
+            raise ValueError(f"log interval must be a whole number of seconds >= 1, got {interval_s}")
+        if not file_name:
+            file_name = f"chamber_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+        await self.chamber_mi.execute(pcmd.SetLogInterval(interval_s))
+        await self.chamber_mi.execute(pcmd.DataLogging(file_name, pcmd.PascalState("ON")))
+        return file_name, interval_s
+
+    async def stop_mi_logging(self) -> None:
+        """`Data Logging OFF`.
+
+        PASCAL will not switch to a new log file while one is already open --
+        `start_mi_logging` then acks over MI mode but the file never changes. Call
+        this first to close the running logger, then start the one you want.
+        """
+        await self.chamber_mi.execute(pcmd.DataLogging("", pcmd.PascalState("OFF")))
+
     async def initiate_heating_laser(self, timeout: float = 30.0, poll: float = 0.5) -> None:
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=False, nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False))
@@ -455,7 +536,7 @@ class BaseExperimentManager:
         # `is_heating_laser_on` reads `Heat Stat` bit 3 from the *chamber log*, which
         # PASCAL rewrites about once a second. Return only once that bit has actually
         # flipped, so a `to_temperature` call right after this one does not read a
-        # pre-laser log row and refuse. Bounded like `_await_motor_free`: a laser that
+        # pre-laser log row and refuse. Bounded like `_await_motor_ready`: a laser that
         # never reports on raises rather than hanging.
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -470,53 +551,93 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("OFF"), nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=True, nowait=False))
 
-    async def _await_motor_free(self, timeout: float = 60.0, poll: float = 0.5) -> None:
-        """Wait for the motors, rather than refusing the moment they are busy.
+    async def _await_motor_ready(self, poll: float = 0.5) -> None:
+        """Block until the motor holding lock is engaged, so a commanded move has
+        somewhere to land.
 
-        The safety property is unchanged -- nothing moves while another move is
-        running -- but the check now waits for that to become true instead of raising
-        immediately. Two things made refusing wrong in practice:
+        `is_motor_free()` is True when the electromagnet lock is *released* -- every
+        axis (mask, RHEED-X, target revolution/spin, sample position/rotation) is
+        back-driveable by hand and a commanded move would push against nothing (a
+        power cut is the usual cause). A move waits for that to clear rather than, as
+        this check once did, for it to be set. Every driver primitive that issues an
+        axis move calls this first, so the interlock covers raw ops and MCP agents,
+        not just the recipe flows.
 
-        `to_pixel` issues a mask move and a RHEED move back to back. The mask move
-        waits for MI completion, but "Motor free" comes from the *chamber log*, which
-        PASCAL rewrites about once a second, so for up to a log tick after the
-        controller says the move finished the log still reports the motor busy. The
-        second move landed in that window and was refused, which made
-        `to_current_pixel` fail roughly every time it was called unattended.
+        Move *sequencing* -- not starting the next axis until the last one arrived --
+        is the MI completion wait's job (`nowait=False`), not this gate's. Polling
+        rather than a one-shot read only covers the lock taking a log tick or two to
+        re-engage after power is restored.
 
-        And a caller that gets "motor is not free" can only retry, which is this loop
-        written at the client instead -- one round trip per poll rather than none.
-
-        Still bounded: a motor that is genuinely stuck raises rather than hanging,
-        unlike the MI completion wait (see docs/TODO.md).
+        Re-engaging the lock is a physical MOTOR ENABLE button on the chamber
+        controller, so if the axes are found free this logs what the operator has to
+        press and then waits, bounded by `bounds.motor_ready_timeout`: a chamber left
+        on manual raises rather than hanging, unlike the MI completion wait (see
+        docs/TODO.md). An unattended batch can front-run this with the optional
+        `recipes.run_ensure_motor_ready`, which asks through an `input_provider`
+        instead of only logging.
         """
+        timeout = self.bounds.motor_ready_timeout
         deadline = time.monotonic() + timeout
+        announced = False
         while time.monotonic() < deadline:
-            if await self.is_motor_free():
+            if not await self.is_motor_free():
+                if announced:
+                    log.info("motor holding lock re-engaged -- continuing")
                 return
+            if not announced:
+                log.warning(
+                    "motor holding lock is released -- press the MOTOR ENABLE button on "
+                    "the chamber controller to re-engage it; waiting up to %.0fs", timeout,
+                )
+                announced = True
             await asyncio.sleep(poll)
-        raise RuntimeError(f"motor still not free after {timeout:.0f}s")
+        raise RuntimeError(
+            f"motor still reports free (holding lock released) after {timeout:.0f}s -- "
+            "press the MOTOR ENABLE button on the chamber controller, then retry; "
+            "a commanded move cannot drive an unlocked axis"
+        )
 
     async def move_mask_to_position(self, position: float) -> None:
         if not (0 <= position < self.bounds.mask_travel_max):
             raise ValueError(f"mask position must be in [0, {self.bounds.mask_travel_max}), got {position}")
-        # The original asserted `not is_motor_free()` here -- backwards from what the
-        # assertion message ("Motor is not free") says, and from what a pre-move
-        # safety check should require. Fixed to require the motor free before moving.
-        await self._await_motor_free()
+        # The original asserted `not is_motor_free()` here, with the message "Motor is
+        # not free". That assertion was right and the later "fix" to require the motor
+        # *free* was the bug: "Motor free" is the holding lock released, not an idle
+        # flag, so an axis can only be driven while it is NOT free.
+        await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=position, sync=False, nowait=False))
 
     async def move_rheed_to_position(self, position: float) -> None:
         lo, hi = min(self.pld_config.rheed_limit), max(self.pld_config.rheed_limit)
         if not (lo <= position <= hi):
             raise ValueError(f"RHEED gun position must be in [{lo}, {hi}], got {position}")
-        await self._await_motor_free()
+        await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SetRHEEDGunX(position))
 
     async def set_target(self, target_id: str, rotation_mode: str = "AUTO", twist_mode: str = "AUTO") -> None:
+        # SelectTarget revolves the carousel and the mode commands spin the target;
+        # the holding lock frees the target motor too, so gate this like a mask move.
+        await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SelectTarget(target_id, nowait=False))
         await self.chamber_mi.execute(pcmd.TargetRotationMode(mode=rotation_mode))
         await self.chamber_mi.execute(pcmd.TargetTwistMode(mode=twist_mode))
+
+    async def rotate_sample_to(self, angle: float) -> None:
+        """Absolute sample-stage rotation (`Set Sample Position`), in degrees.
+
+        Gated on the motor holding lock like every other axis move: the lock frees
+        the sample-rotation motor too, so a commanded turn while it is released
+        drives nothing.
+        """
+        await self._await_motor_ready()
+        await self.chamber_mi.execute(pcmd.SetSamplePosition(angle, sync=False, nowait=False))
+
+    async def rotate_sample_by(self, delta_angle: float) -> None:
+        """Relative sample-stage rotation (`Rotate Sample`): a signed delta in
+        degrees from the current angle. Same holding-lock gate as `rotate_sample_to`.
+        """
+        await self._await_motor_ready()
+        await self.chamber_mi.execute(pcmd.RotateSample(delta_angle, sync=False, nowait=False))
 
     async def perform_preablation(
         self, target_id: str, num_pulse: int = 1000, frequency: float = 10.0,
@@ -586,6 +707,24 @@ class BaseExperimentManager:
         b = self.bounds
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
 
+        # A setpoint below the PID-engage threshold has no ramp to run: nothing below
+        # it is holdable, the heating diode is deliberately off there. What to do
+        # depends on where the chamber is right now, so read it before deciding.
+        if temperature < b.temperature_pid_engage_threshold:
+            # Already cold -- a room-temperature growth. Don't check the diode and
+            # don't touch the temperature controller: issuing TemperatureSet
+            # (nowait=False) at a target no current can reach just blocks the MI
+            # command until it times out.
+            if await self.get_current_temperature() < b.temperature_pid_engage_threshold:
+                return temperature
+            # Still hot. Asking for a sub-threshold setpoint from here means "come
+            # down", so command it the way cool_down does rather than returning a
+            # success that leaves the chamber where it was. PID stays out of it --
+            # the controller cannot hold this setpoint, the substrate coasts to it.
+            await self.chamber_mi.execute(pcmd.TemperatureRamp(ramp_rate, state=pcmd.PascalState("ON")))
+            await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=False))
+            return temperature
+
         # With the laser off, PID has nothing to drive: the setpoint climbs, the diode
         # current stays at zero and the pyrometer sits at Pyro_min. The failure is
         # silent on the log and, because TemperatureSet is issued nowait=False, shows
@@ -638,7 +777,17 @@ class BaseExperimentManager:
         row = await self.growth_db.find_sample(substrate.db_id, substrate.current_position_id)
         return row[7] if row else None
 
-    async def start_storage(self, project_name: str, is_dryrun: bool = False) -> dict:
+    async def start_storage(
+        self,
+        project_name: str,
+        is_dryrun: bool = False,
+        *,
+        save_frame: bool = True,
+        save_ai: bool = True,
+        save_log: bool = True,
+        save_integration: bool = True,
+        force_rewrite: bool = False,
+    ) -> dict:
         record_uuid = str(uuid.uuid4())
         sample_name = await self._current_sample_name()
         # Sample leads: it's the piece of physical film someone is going to go look
@@ -652,7 +801,8 @@ class BaseExperimentManager:
             return {"ok": True, "record_uuid": record_uuid, "storage_name": storage_name, "path": None, "message": ""}
 
         status = await self.storage.start_recording(StorageRequest(
-            project_name=storage_name, save_frame=True, save_ai=True, save_log=True, force_rewrite=False,
+            project_name=storage_name, save_frame=save_frame, save_ai=save_ai, save_log=save_log,
+            save_integration=save_integration, force_rewrite=force_rewrite,
         ))
         return {
             "ok": status.ok, "record_uuid": record_uuid, "storage_name": storage_name,
@@ -696,6 +846,7 @@ class BaseExperimentManager:
         if target_id is not None:
             await self.set_target(target_id, "ON", "ON")
         else:
+            await self._await_motor_ready()  # SelectTarget revolves the carousel
             await self.chamber_mi.execute(pcmd.SelectTarget(pcmd.Targets("Clear"), nowait=False))
         # Stashed for confirm_laser_power, which the caller invokes with only the
         # measured value -- it has no other way to know what this begin() targeted.
@@ -713,6 +864,7 @@ class BaseExperimentManager:
     # --- gated: mask-center calibration --------------------------------------------
 
     async def begin_align_center_mask(self) -> None:
+        await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SetRHEEDGunX(0))
         await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=self.pld_config.center_mask_pos, sync=False, nowait=False))
 
@@ -722,6 +874,7 @@ class BaseExperimentManager:
     # --- gated: mask-center check loop ----------------------------------------------
 
     async def begin_check_mask_center(self) -> None:
+        await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SelectTarget(pcmd.Targets.Clear, nowait=False))
         await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("ON")))
         await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=self.pld_config.center_mask_pos, sync=False, nowait=False))
@@ -733,6 +886,7 @@ class BaseExperimentManager:
 
         if corrected_position is not None:
             self.pld_config.center_mask_pos = corrected_position
+        await self._await_motor_ready()
         # Retract-then-reapproach: a move of only a few mm can leave the mask motor
         # stuck, so back off first rather than nudging directly to the new position.
         await self.chamber_mi.execute(pcmd.SetMaskPosition(

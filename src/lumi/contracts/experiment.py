@@ -24,6 +24,7 @@ from .payloads.common import Ack, Empty
 from .payloads.experiment import (
     Anneal,
     BeginSetLaserPower,
+    CheckLogging,
     ConfirmCenterMask,
     ConfirmLaserPower,
     ConfirmMaskCenter,
@@ -37,6 +38,8 @@ from .payloads.experiment import (
     FinishExperimentRecord,
     LaserPowerResult,
     LogEntry,
+    LoggingAlive,
+    LoggingStatus,
     MaskPosition,
     MfcQuery,
     MfcStatus,
@@ -55,6 +58,7 @@ from .payloads.experiment import (
     RegisterSubstrate,
     ResolvePixelCheck,
     ResumeSubstrate,
+    SampleAngle,
     SampleDetail,
     SampleId,
     SampleList,
@@ -72,6 +76,7 @@ from .payloads.experiment import (
     SetPressureControl,
     SetRheedGain,
     SetTarget,
+    StartMiLogging,
     StartStorage,
     StorageResult,
     SubstrateInfo,
@@ -115,11 +120,42 @@ DRIVER = Capability(
         Op("get_pump_status", Empty, PumpStatus),
         Op("is_motor_free", Empty, MotorFree),
         Op("get_current_mask_position", Empty, MaskPosition),
+        Op("check_logging_alive", CheckLogging, LoggingAlive,
+           doc="Probe whether the chamber log is still being written: read the "
+               "newest row's timestamp, wait up to timeout_s, and report whether "
+               "it advanced (with last_stamp, the timestamp seen). A frozen "
+               "timestamp means the log-reader thread died or PASCAL stopped "
+               "writing -- every downstream read is then stale. timeout_s must "
+               "exceed the controller's Log Interval (60s at power-up; "
+               "start_mi_logging(interval_s=1) drops it to 1s)."),
 
         # --- fast hardware control
         Op("set_target", SetTarget, Ack, journal=True),
+        Op("start_mi_logging", StartMiLogging, LoggingStatus,
+           doc="Start PASCAL data logging at a fixed whole-second row interval "
+               "(`Log Interval` + `Data Logging File=`). The controller powers up "
+               "at 60s; pass interval_s=1 for a growth. Empty file_name lets the "
+               "driver name the file. Returns the file name and interval in use. "
+               "PASCAL will not switch files while a logger is already open -- call "
+               "stop_mi_logging first if one might be running.",
+           journal=True),
+        Op("stop_mi_logging", Empty, Ack,
+           doc="Close PASCAL's currently open data-logging file (`Data Logging "
+               "OFF`). Needed before start_mi_logging can point at a new file: an "
+               "already-running logger makes start_mi_logging ack without switching.",
+           journal=True),
         Op("move_mask_to_position", MoveTo, Ack, journal=True),
         Op("move_rheed_to_position", MoveTo, Ack, journal=True),
+        Op("rotate_sample_to", SampleAngle, Ack,
+           doc="Rotate the sample stage to an absolute angle in degrees (PASCAL "
+               "`Set Sample Position`). Blocks until the move completes. Refused "
+               "while the motor holding lock is released (see is_motor_free).",
+           journal=True),
+        Op("rotate_sample_by", SampleAngle, Ack,
+           doc="Rotate the sample stage by a signed delta in degrees (PASCAL "
+               "`Rotate Sample`); negative turns the other way. Blocks until the "
+               "move completes. Refused while the motor holding lock is released.",
+           journal=True),
         Op("to_pixel", PixelIndex, PixelMoveResult, journal=True),
         Op("to_current_pixel", Empty, PixelMoveResult, journal=True),
         # --- gas. The setpoint ops and the gates are deliberately separate, because
@@ -158,7 +194,11 @@ DRIVER = Capability(
         Op("to_temperature", ToTemperature, TaskAck,
            doc="Ramp to a temperature and engage PID. Requires the heating laser to "
                "be on already -- call initiate_heating_laser first, or this fails "
-               "immediately rather than setting a setpoint no current can reach.", journal=True),
+               "immediately rather than setting a setpoint no current can reach. "
+               "A setpoint below the PID-engage threshold is not holdable: from a hot "
+               "chamber it is commanded as a cooldown (no PID), and from an already-"
+               "cold one it is a no-op, since a room-temperature growth runs with the "
+               "diode off.", journal=True),
         Op("cool_down", CoolDown, TaskAck, journal=True),
         Op("perform_preablation", PerformPreablation, TaskAck, journal=True),
         Op("perform_deposition", PerformDeposition, TaskAck, journal=True),

@@ -106,9 +106,9 @@ redeploy on it alone.
 Background: this froze a running chamber for 1h46m. The reader caught a partially
 written line, `csv.DictReader` padded the missing columns with None,
 `ast.literal_eval(None)` raised, and the exception killed the thread. `get_log()` then
-served the same row forever — `Motor free` stuck at whatever it had been — so
-`is_motor_free()` failed every subsequent mask move with "motor is not free" while the
-node reported itself healthy.
+served the same row forever — every field stuck at whatever it had been, including the
+ones the motor gate and the temperature gate read — while the node reported itself
+healthy.
 
 ## The recipes ignore whether a long-running task succeeded
 
