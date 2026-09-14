@@ -185,7 +185,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("finish_experiment_record", req)  # type: ignore[return-value]
 
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
-        """Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach."""
+        """Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach. A setpoint below the PID-engage threshold is not holdable: from a hot chamber it is commanded as a cooldown (no PID), and from an already-cold one it is a no-op, since a room-temperature growth runs with the diode off."""
         return await self.call("to_temperature", req)  # type: ignore[return-value]
 
     async def cool_down(self, req: CoolDown) -> TaskAck:

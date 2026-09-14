@@ -707,12 +707,22 @@ class BaseExperimentManager:
         b = self.bounds
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
 
-        # A setpoint below the PID-engage threshold is a room-temperature growth: the
-        # heating diode is deliberately off, PID has nothing to hold and there is no
-        # ramp to run. Don't check the diode and don't touch the temperature
-        # controller -- issuing TemperatureSet(nowait=False) at a target no current
-        # can reach just blocks the MI command until it times out.
+        # A setpoint below the PID-engage threshold has no ramp to run: nothing below
+        # it is holdable, the heating diode is deliberately off there. What to do
+        # depends on where the chamber is right now, so read it before deciding.
         if temperature < b.temperature_pid_engage_threshold:
+            # Already cold -- a room-temperature growth. Don't check the diode and
+            # don't touch the temperature controller: issuing TemperatureSet
+            # (nowait=False) at a target no current can reach just blocks the MI
+            # command until it times out.
+            if await self.get_current_temperature() < b.temperature_pid_engage_threshold:
+                return temperature
+            # Still hot. Asking for a sub-threshold setpoint from here means "come
+            # down", so command it the way cool_down does rather than returning a
+            # success that leaves the chamber where it was. PID stays out of it --
+            # the controller cannot hold this setpoint, the substrate coasts to it.
+            await self.chamber_mi.execute(pcmd.TemperatureRamp(ramp_rate, state=pcmd.PascalState("ON")))
+            await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=False))
             return temperature
 
         # With the laser off, PID has nothing to drive: the setpoint climbs, the diode

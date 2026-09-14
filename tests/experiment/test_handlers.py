@@ -434,6 +434,31 @@ async def test_to_temperature_below_the_pid_threshold_skips_the_heating_laser_ch
     assert ack.task_id
 
 
+async def test_to_temperature_below_the_pid_threshold_cools_down_when_still_hot(handler):
+    # The sub-threshold branch keys off where the chamber *is*, not only what was
+    # asked for. From 700C, asking for the pyrometer floor means "come down" -- it has
+    # to go out as a real setpoint, not return a success that leaves the chamber hot.
+    handler.sources["chamber_log"].values["HT Temp moni"] = "700.0"
+    ack = await handler.to_temperature(ToTemperature(temperature=160, ramp_rate=20))
+
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            assert event.task_result["ok"] is True
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("task never reported completion")
+
+    # Ramp + setpoint, the way cool_down does it. No `Temperature Control PID`: the
+    # controller cannot hold a sub-threshold setpoint, the substrate coasts to it.
+    assert handler.sources["chamber_mi"].calls == [
+        "Temperature Ramp 20.0\n",
+        "Temperature Set 160.0\n",
+    ]
+    assert ack.task_id
+
+
 # --- resuming a substrate ------------------------------------------------------
 
 

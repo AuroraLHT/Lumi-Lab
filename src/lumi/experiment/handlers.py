@@ -319,9 +319,9 @@ class ExperimentHandler:
         inside the task is invisible to it and the ramp looks like it started. Checked
         here, it comes back as an error on the tool call itself.
 
-        `target_temperature` mirrors `manager.to_temperature`'s room-temperature
-        bypass: a setpoint below the PID-engage threshold is an RT growth with the
-        diode deliberately off, so there is nothing to refuse.
+        `target_temperature` mirrors `manager.to_temperature`'s sub-threshold branch:
+        a setpoint below the PID-engage threshold is either an RT growth (diode
+        deliberately off) or a cooldown, and neither needs the diode lit.
         """
         if (
             target_temperature is not None
