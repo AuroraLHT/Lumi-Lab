@@ -1827,12 +1827,53 @@
             "request_codec": "json",
             "response": {
               "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
                 "project_id": {
                   "title": "Project Id",
                   "type": "integer"
                 },
                 "project_name": {
                   "title": "Project Name",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
                   "type": "string"
                 }
               },
@@ -1986,6 +2027,30 @@
                 }
               },
               "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
                 "current_pixel_index": {
                   "anyOf": [
                     {
@@ -2002,6 +2067,30 @@
                   "default": 0.0,
                   "title": "Height",
                   "type": "number"
+                },
+                "manufacture_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacture Date"
+                },
+                "manufacturer": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacturer"
                 },
                 "materials": {
                   "default": "",
@@ -2033,9 +2122,26 @@
                   "title": "Positions",
                   "type": "array"
                 },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
                 "substrate_id": {
                   "title": "Substrate Id",
                   "type": "integer"
+                },
+                "substrate_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Name"
                 },
                 "substrate_uuid": {
                   "title": "Substrate Uuid",
@@ -2128,6 +2234,30 @@
                 }
               },
               "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
                 "current_pixel_index": {
                   "anyOf": [
                     {
@@ -2144,6 +2274,30 @@
                   "default": 0.0,
                   "title": "Height",
                   "type": "number"
+                },
+                "manufacture_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacture Date"
+                },
+                "manufacturer": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacturer"
                 },
                 "materials": {
                   "default": "",
@@ -2175,9 +2329,26 @@
                   "title": "Positions",
                   "type": "array"
                 },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
                 "substrate_id": {
                   "title": "Substrate Id",
                   "type": "integer"
+                },
+                "substrate_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Name"
                 },
                 "substrate_uuid": {
                   "title": "Substrate Uuid",
@@ -2350,6 +2521,30 @@
                 },
                 "SubstrateInfo": {
                   "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
                     "current_pixel_index": {
                       "anyOf": [
                         {
@@ -2366,6 +2561,30 @@
                       "default": 0.0,
                       "title": "Height",
                       "type": "number"
+                    },
+                    "manufacture_date": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Manufacture Date"
+                    },
+                    "manufacturer": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Manufacturer"
                     },
                     "materials": {
                       "default": "",
@@ -2397,9 +2616,26 @@
                       "title": "Positions",
                       "type": "array"
                     },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    },
                     "substrate_id": {
                       "title": "Substrate Id",
                       "type": "integer"
+                    },
+                    "substrate_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Substrate Name"
                     },
                     "substrate_uuid": {
                       "title": "Substrate Uuid",
@@ -2508,6 +2744,4197 @@
                 }
               },
               "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_substrates",
+            "request": {
+              "properties": {
+                "include_retired": {
+                  "default": false,
+                  "title": "Include Retired",
+                  "type": "boolean"
+                },
+                "limit": {
+                  "default": 100,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "materials": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Materials"
+                },
+                "offset": {
+                  "default": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "order": {
+                  "default": "desc",
+                  "title": "Order",
+                  "type": "string"
+                },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "title": "ListSubstrates",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PageInfo": {
+                  "description": "What a pager needs that the returned rows do not say: how many matched in\ntotal, and which slice of them this is.",
+                  "properties": {
+                    "has_more": {
+                      "default": false,
+                      "title": "Has More",
+                      "type": "boolean"
+                    },
+                    "limit": {
+                      "default": 100,
+                      "title": "Limit",
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "default": 0,
+                      "title": "Offset",
+                      "type": "integer"
+                    },
+                    "total": {
+                      "default": 0,
+                      "title": "Total",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "PageInfo",
+                  "type": "object"
+                },
+                "SubstrateSummary": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "materials": {
+                      "default": "",
+                      "title": "Materials",
+                      "type": "string"
+                    },
+                    "num_positions": {
+                      "default": 0,
+                      "title": "Num Positions",
+                      "type": "integer"
+                    },
+                    "num_used": {
+                      "default": 0,
+                      "title": "Num Used",
+                      "type": "integer"
+                    },
+                    "orientation": {
+                      "default": "",
+                      "title": "Orientation",
+                      "type": "string"
+                    },
+                    "pixel_spacing": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Spacing"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    },
+                    "substrate_id": {
+                      "title": "Substrate Id",
+                      "type": "integer"
+                    },
+                    "substrate_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Substrate Name"
+                    },
+                    "substrate_uuid": {
+                      "default": "",
+                      "title": "Substrate Uuid",
+                      "type": "string"
+                    },
+                    "width": {
+                      "default": 0.0,
+                      "title": "Width",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "substrate_id"
+                  ],
+                  "title": "SubstrateSummary",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "page": {
+                  "$ref": "#/$defs/PageInfo",
+                  "default": {
+                    "has_more": false,
+                    "limit": 100,
+                    "offset": 0,
+                    "total": 0
+                  }
+                },
+                "substrates": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/SubstrateSummary"
+                  },
+                  "title": "Substrates",
+                  "type": "array"
+                }
+              },
+              "title": "SubstrateList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_substrate",
+            "request": {
+              "properties": {
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "substrate_id"
+              ],
+              "title": "SubstrateId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PixelPosition": {
+                  "properties": {
+                    "accessible": {
+                      "default": true,
+                      "title": "Accessible",
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "title": "Index",
+                      "type": "integer"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "rheed_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Position"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "position"
+                  ],
+                  "title": "PixelPosition",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "current_pixel_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Current Pixel Index"
+                },
+                "height": {
+                  "default": 0.0,
+                  "title": "Height",
+                  "type": "number"
+                },
+                "manufacture_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacture Date"
+                },
+                "manufacturer": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacturer"
+                },
+                "materials": {
+                  "default": "",
+                  "title": "Materials",
+                  "type": "string"
+                },
+                "orientation": {
+                  "default": "",
+                  "title": "Orientation",
+                  "type": "string"
+                },
+                "pixel_spacing": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Spacing"
+                },
+                "positions": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/PixelPosition"
+                  },
+                  "title": "Positions",
+                  "type": "array"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                },
+                "substrate_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Name"
+                },
+                "substrate_uuid": {
+                  "title": "Substrate Uuid",
+                  "type": "string"
+                },
+                "thickness": {
+                  "default": 0.0,
+                  "title": "Thickness",
+                  "type": "number"
+                },
+                "width": {
+                  "default": 0.0,
+                  "title": "Width",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "substrate_id",
+                "substrate_uuid"
+              ],
+              "title": "SubstrateInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "update_substrate",
+            "request": {
+              "description": "Correct a registered substrate. Every field is optional; only the ones set are\nwritten, so a request carrying just `width` changes only the width.",
+              "properties": {
+                "height": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Height"
+                },
+                "manufacture_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacture Date"
+                },
+                "manufacturer": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacturer"
+                },
+                "materials": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Materials"
+                },
+                "orientation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Orientation"
+                },
+                "pixel_spacing": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Spacing"
+                },
+                "positions": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "number"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Positions"
+                },
+                "substrate_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Id"
+                },
+                "substrate_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Name"
+                },
+                "thickness": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Thickness"
+                },
+                "width": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Width"
+                }
+              },
+              "title": "UpdateSubstrate",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PixelPosition": {
+                  "properties": {
+                    "accessible": {
+                      "default": true,
+                      "title": "Accessible",
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "title": "Index",
+                      "type": "integer"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "rheed_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Position"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "position"
+                  ],
+                  "title": "PixelPosition",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "current_pixel_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Current Pixel Index"
+                },
+                "height": {
+                  "default": 0.0,
+                  "title": "Height",
+                  "type": "number"
+                },
+                "manufacture_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacture Date"
+                },
+                "manufacturer": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacturer"
+                },
+                "materials": {
+                  "default": "",
+                  "title": "Materials",
+                  "type": "string"
+                },
+                "orientation": {
+                  "default": "",
+                  "title": "Orientation",
+                  "type": "string"
+                },
+                "pixel_spacing": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Spacing"
+                },
+                "positions": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/PixelPosition"
+                  },
+                  "title": "Positions",
+                  "type": "array"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                },
+                "substrate_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Name"
+                },
+                "substrate_uuid": {
+                  "title": "Substrate Uuid",
+                  "type": "string"
+                },
+                "thickness": {
+                  "default": 0.0,
+                  "title": "Thickness",
+                  "type": "number"
+                },
+                "width": {
+                  "default": 0.0,
+                  "title": "Width",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "substrate_id",
+                "substrate_uuid"
+              ],
+              "title": "SubstrateInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "reopen_position",
+            "request": {
+              "properties": {
+                "force": {
+                  "default": false,
+                  "title": "Force",
+                  "type": "boolean"
+                },
+                "index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Index"
+                }
+              },
+              "title": "ReopenPosition",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PixelPosition": {
+                  "properties": {
+                    "accessible": {
+                      "default": true,
+                      "title": "Accessible",
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "title": "Index",
+                      "type": "integer"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "rheed_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Position"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "position"
+                  ],
+                  "title": "PixelPosition",
+                  "type": "object"
+                },
+                "SubstrateInfo": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "current_pixel_index": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Current Pixel Index"
+                    },
+                    "height": {
+                      "default": 0.0,
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "manufacture_date": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Manufacture Date"
+                    },
+                    "manufacturer": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Manufacturer"
+                    },
+                    "materials": {
+                      "default": "",
+                      "title": "Materials",
+                      "type": "string"
+                    },
+                    "orientation": {
+                      "default": "",
+                      "title": "Orientation",
+                      "type": "string"
+                    },
+                    "pixel_spacing": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Spacing"
+                    },
+                    "positions": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/PixelPosition"
+                      },
+                      "title": "Positions",
+                      "type": "array"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    },
+                    "substrate_id": {
+                      "title": "Substrate Id",
+                      "type": "integer"
+                    },
+                    "substrate_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Substrate Name"
+                    },
+                    "substrate_uuid": {
+                      "title": "Substrate Uuid",
+                      "type": "string"
+                    },
+                    "thickness": {
+                      "default": 0.0,
+                      "title": "Thickness",
+                      "type": "number"
+                    },
+                    "width": {
+                      "default": 0.0,
+                      "title": "Width",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "substrate_id",
+                    "substrate_uuid"
+                  ],
+                  "title": "SubstrateInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "index": {
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "substrate": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/SubstrateInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                }
+              },
+              "required": [
+                "index"
+              ],
+              "title": "ReopenResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "retire_substrate",
+            "request": {
+              "properties": {
+                "retire": {
+                  "default": true,
+                  "title": "Retire",
+                  "type": "boolean"
+                },
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "substrate_id"
+              ],
+              "title": "RetireSubstrate",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PixelPosition": {
+                  "properties": {
+                    "accessible": {
+                      "default": true,
+                      "title": "Accessible",
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "title": "Index",
+                      "type": "integer"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "rheed_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Position"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "position"
+                  ],
+                  "title": "PixelPosition",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "current_pixel_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Current Pixel Index"
+                },
+                "height": {
+                  "default": 0.0,
+                  "title": "Height",
+                  "type": "number"
+                },
+                "manufacture_date": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacture Date"
+                },
+                "manufacturer": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Manufacturer"
+                },
+                "materials": {
+                  "default": "",
+                  "title": "Materials",
+                  "type": "string"
+                },
+                "orientation": {
+                  "default": "",
+                  "title": "Orientation",
+                  "type": "string"
+                },
+                "pixel_spacing": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Spacing"
+                },
+                "positions": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/PixelPosition"
+                  },
+                  "title": "Positions",
+                  "type": "array"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                },
+                "substrate_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Name"
+                },
+                "substrate_uuid": {
+                  "title": "Substrate Uuid",
+                  "type": "string"
+                },
+                "thickness": {
+                  "default": 0.0,
+                  "title": "Thickness",
+                  "type": "number"
+                },
+                "width": {
+                  "default": 0.0,
+                  "title": "Width",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "substrate_id",
+                "substrate_uuid"
+              ],
+              "title": "SubstrateInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "unload_substrate",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PixelPosition": {
+                  "properties": {
+                    "accessible": {
+                      "default": true,
+                      "title": "Accessible",
+                      "type": "boolean"
+                    },
+                    "index": {
+                      "title": "Index",
+                      "type": "integer"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "rheed_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Position"
+                    }
+                  },
+                  "required": [
+                    "index",
+                    "position"
+                  ],
+                  "title": "PixelPosition",
+                  "type": "object"
+                },
+                "SubstrateInfo": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "current_pixel_index": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Current Pixel Index"
+                    },
+                    "height": {
+                      "default": 0.0,
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "manufacture_date": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Manufacture Date"
+                    },
+                    "manufacturer": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Manufacturer"
+                    },
+                    "materials": {
+                      "default": "",
+                      "title": "Materials",
+                      "type": "string"
+                    },
+                    "orientation": {
+                      "default": "",
+                      "title": "Orientation",
+                      "type": "string"
+                    },
+                    "pixel_spacing": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Spacing"
+                    },
+                    "positions": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/PixelPosition"
+                      },
+                      "title": "Positions",
+                      "type": "array"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    },
+                    "substrate_id": {
+                      "title": "Substrate Id",
+                      "type": "integer"
+                    },
+                    "substrate_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Substrate Name"
+                    },
+                    "substrate_uuid": {
+                      "title": "Substrate Uuid",
+                      "type": "string"
+                    },
+                    "thickness": {
+                      "default": 0.0,
+                      "title": "Thickness",
+                      "type": "number"
+                    },
+                    "width": {
+                      "default": 0.0,
+                      "title": "Width",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "substrate_id",
+                    "substrate_uuid"
+                  ],
+                  "title": "SubstrateInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "substrate": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/SubstrateInfo"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                }
+              },
+              "title": "CurrentSubstrateResponse",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_projects",
+            "request": {
+              "description": "Filtering and paging, shared by every list_* op.\n\n`since`/`until` are epoch seconds and bound the entity's creation time (a step's\nstart time). They are converted once, server-side, to whatever the table actually\nstores -- a caller never has to know that `step` holds epoch floats while\neverything else holds UTC text.",
+              "properties": {
+                "include_retired": {
+                  "default": false,
+                  "title": "Include Retired",
+                  "type": "boolean"
+                },
+                "limit": {
+                  "default": 100,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "offset": {
+                  "default": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "order": {
+                  "default": "desc",
+                  "title": "Order",
+                  "type": "string"
+                },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "title": "ListQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PageInfo": {
+                  "description": "What a pager needs that the returned rows do not say: how many matched in\ntotal, and which slice of them this is.",
+                  "properties": {
+                    "has_more": {
+                      "default": false,
+                      "title": "Has More",
+                      "type": "boolean"
+                    },
+                    "limit": {
+                      "default": 100,
+                      "title": "Limit",
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "default": 0,
+                      "title": "Offset",
+                      "type": "integer"
+                    },
+                    "total": {
+                      "default": 0,
+                      "title": "Total",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "PageInfo",
+                  "type": "object"
+                },
+                "ProjectInfo": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Description"
+                    },
+                    "project_id": {
+                      "title": "Project Id",
+                      "type": "integer"
+                    },
+                    "project_name": {
+                      "title": "Project Name",
+                      "type": "string"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "project_id",
+                    "project_name"
+                  ],
+                  "title": "ProjectInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "page": {
+                  "$ref": "#/$defs/PageInfo",
+                  "default": {
+                    "has_more": false,
+                    "limit": 100,
+                    "offset": 0,
+                    "total": 0
+                  }
+                },
+                "projects": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/ProjectInfo"
+                  },
+                  "title": "Projects",
+                  "type": "array"
+                }
+              },
+              "title": "ProjectList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_project",
+            "request": {
+              "properties": {
+                "project_id": {
+                  "title": "Project Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "project_id"
+              ],
+              "title": "ProjectId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "project_id": {
+                  "title": "Project Id",
+                  "type": "integer"
+                },
+                "project_name": {
+                  "title": "Project Name",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "project_id",
+                "project_name"
+              ],
+              "title": "ProjectInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "update_project",
+            "request": {
+              "properties": {
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "project_id": {
+                  "title": "Project Id",
+                  "type": "integer"
+                },
+                "project_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Name"
+                }
+              },
+              "required": [
+                "project_id"
+              ],
+              "title": "UpdateProject",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "project_id": {
+                  "title": "Project Id",
+                  "type": "integer"
+                },
+                "project_name": {
+                  "title": "Project Name",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "project_id",
+                "project_name"
+              ],
+              "title": "ProjectInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "retire_project",
+            "request": {
+              "properties": {
+                "project_id": {
+                  "title": "Project Id",
+                  "type": "integer"
+                },
+                "retire": {
+                  "default": true,
+                  "title": "Retire",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "project_id"
+              ],
+              "title": "RetireProject",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "project_id": {
+                  "title": "Project Id",
+                  "type": "integer"
+                },
+                "project_name": {
+                  "title": "Project Name",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "project_id",
+                "project_name"
+              ],
+              "title": "ProjectInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_experiments",
+            "request": {
+              "properties": {
+                "include_retired": {
+                  "default": false,
+                  "title": "Include Retired",
+                  "type": "boolean"
+                },
+                "limit": {
+                  "default": 100,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "offset": {
+                  "default": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "order": {
+                  "default": "desc",
+                  "title": "Order",
+                  "type": "string"
+                },
+                "project_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Id"
+                },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "substrate_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Id"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "title": "ListExperiments",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "ExperimentInfo": {
+                  "description": "One recorded growth. The measured values (`temperature`, `pressure`,\n`laser_power`) are what a person read off an instrument, which is exactly why\nupdate_experiment exists -- a mistyped pressure is a correction, not a rewrite of\nwhat happened.",
+                  "properties": {
+                    "after_experiment_waittime": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "After Experiment Waittime"
+                    },
+                    "before_experiment_waittime": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Before Experiment Waittime"
+                    },
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "do_preablation": {
+                      "default": false,
+                      "title": "Do Preablation",
+                      "type": "boolean"
+                    },
+                    "experiment_id": {
+                      "title": "Experiment Id",
+                      "type": "integer"
+                    },
+                    "experiment_uuid": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Experiment Uuid"
+                    },
+                    "is_pixel": {
+                      "default": false,
+                      "title": "Is Pixel",
+                      "type": "boolean"
+                    },
+                    "laser_power": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Laser Power"
+                    },
+                    "laser_pulse_rate": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Laser Pulse Rate"
+                    },
+                    "num_pulse": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Num Pulse"
+                    },
+                    "pixel_location": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Location"
+                    },
+                    "preablation_frequency": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Preablation Frequency"
+                    },
+                    "preablation_pulse": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Preablation Pulse"
+                    },
+                    "pressure": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pressure"
+                    },
+                    "project_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Project Id"
+                    },
+                    "ramp_rate": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Ramp Rate"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    },
+                    "substrate_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Substrate Id"
+                    },
+                    "target_material": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Target Material"
+                    },
+                    "temperature": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Temperature"
+                    }
+                  },
+                  "required": [
+                    "experiment_id"
+                  ],
+                  "title": "ExperimentInfo",
+                  "type": "object"
+                },
+                "PageInfo": {
+                  "description": "What a pager needs that the returned rows do not say: how many matched in\ntotal, and which slice of them this is.",
+                  "properties": {
+                    "has_more": {
+                      "default": false,
+                      "title": "Has More",
+                      "type": "boolean"
+                    },
+                    "limit": {
+                      "default": 100,
+                      "title": "Limit",
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "default": 0,
+                      "title": "Offset",
+                      "type": "integer"
+                    },
+                    "total": {
+                      "default": 0,
+                      "title": "Total",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "PageInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "experiments": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/ExperimentInfo"
+                  },
+                  "title": "Experiments",
+                  "type": "array"
+                },
+                "page": {
+                  "$ref": "#/$defs/PageInfo",
+                  "default": {
+                    "has_more": false,
+                    "limit": 100,
+                    "offset": 0,
+                    "total": 0
+                  }
+                }
+              },
+              "title": "ExperimentList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_experiment",
+            "request": {
+              "properties": {
+                "experiment_id": {
+                  "title": "Experiment Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "experiment_id"
+              ],
+              "title": "ExperimentId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "One recorded growth. The measured values (`temperature`, `pressure`,\n`laser_power`) are what a person read off an instrument, which is exactly why\nupdate_experiment exists -- a mistyped pressure is a correction, not a rewrite of\nwhat happened.",
+              "properties": {
+                "after_experiment_waittime": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "After Experiment Waittime"
+                },
+                "before_experiment_waittime": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Before Experiment Waittime"
+                },
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "do_preablation": {
+                  "default": false,
+                  "title": "Do Preablation",
+                  "type": "boolean"
+                },
+                "experiment_id": {
+                  "title": "Experiment Id",
+                  "type": "integer"
+                },
+                "experiment_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Experiment Uuid"
+                },
+                "is_pixel": {
+                  "default": false,
+                  "title": "Is Pixel",
+                  "type": "boolean"
+                },
+                "laser_power": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Laser Power"
+                },
+                "laser_pulse_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Laser Pulse Rate"
+                },
+                "num_pulse": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Num Pulse"
+                },
+                "pixel_location": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Location"
+                },
+                "preablation_frequency": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Preablation Frequency"
+                },
+                "preablation_pulse": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Preablation Pulse"
+                },
+                "pressure": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pressure"
+                },
+                "project_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Id"
+                },
+                "ramp_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Ramp Rate"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "substrate_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Id"
+                },
+                "target_material": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Target Material"
+                },
+                "temperature": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Temperature"
+                }
+              },
+              "required": [
+                "experiment_id"
+              ],
+              "title": "ExperimentInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "update_experiment",
+            "request": {
+              "properties": {
+                "experiment_id": {
+                  "title": "Experiment Id",
+                  "type": "integer"
+                },
+                "laser_power": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Laser Power"
+                },
+                "laser_pulse_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Laser Pulse Rate"
+                },
+                "num_pulse": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Num Pulse"
+                },
+                "pressure": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pressure"
+                },
+                "project_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Id"
+                },
+                "ramp_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Ramp Rate"
+                },
+                "target_material": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Target Material"
+                },
+                "temperature": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Temperature"
+                }
+              },
+              "required": [
+                "experiment_id"
+              ],
+              "title": "UpdateExperiment",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "One recorded growth. The measured values (`temperature`, `pressure`,\n`laser_power`) are what a person read off an instrument, which is exactly why\nupdate_experiment exists -- a mistyped pressure is a correction, not a rewrite of\nwhat happened.",
+              "properties": {
+                "after_experiment_waittime": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "After Experiment Waittime"
+                },
+                "before_experiment_waittime": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Before Experiment Waittime"
+                },
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "do_preablation": {
+                  "default": false,
+                  "title": "Do Preablation",
+                  "type": "boolean"
+                },
+                "experiment_id": {
+                  "title": "Experiment Id",
+                  "type": "integer"
+                },
+                "experiment_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Experiment Uuid"
+                },
+                "is_pixel": {
+                  "default": false,
+                  "title": "Is Pixel",
+                  "type": "boolean"
+                },
+                "laser_power": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Laser Power"
+                },
+                "laser_pulse_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Laser Pulse Rate"
+                },
+                "num_pulse": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Num Pulse"
+                },
+                "pixel_location": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Location"
+                },
+                "preablation_frequency": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Preablation Frequency"
+                },
+                "preablation_pulse": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Preablation Pulse"
+                },
+                "pressure": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pressure"
+                },
+                "project_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Id"
+                },
+                "ramp_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Ramp Rate"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "substrate_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Id"
+                },
+                "target_material": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Target Material"
+                },
+                "temperature": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Temperature"
+                }
+              },
+              "required": [
+                "experiment_id"
+              ],
+              "title": "ExperimentInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "retire_experiment",
+            "request": {
+              "properties": {
+                "experiment_id": {
+                  "title": "Experiment Id",
+                  "type": "integer"
+                },
+                "retire": {
+                  "default": true,
+                  "title": "Retire",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "experiment_id"
+              ],
+              "title": "RetireExperiment",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "One recorded growth. The measured values (`temperature`, `pressure`,\n`laser_power`) are what a person read off an instrument, which is exactly why\nupdate_experiment exists -- a mistyped pressure is a correction, not a rewrite of\nwhat happened.",
+              "properties": {
+                "after_experiment_waittime": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "After Experiment Waittime"
+                },
+                "before_experiment_waittime": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Before Experiment Waittime"
+                },
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "do_preablation": {
+                  "default": false,
+                  "title": "Do Preablation",
+                  "type": "boolean"
+                },
+                "experiment_id": {
+                  "title": "Experiment Id",
+                  "type": "integer"
+                },
+                "experiment_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Experiment Uuid"
+                },
+                "is_pixel": {
+                  "default": false,
+                  "title": "Is Pixel",
+                  "type": "boolean"
+                },
+                "laser_power": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Laser Power"
+                },
+                "laser_pulse_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Laser Pulse Rate"
+                },
+                "num_pulse": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Num Pulse"
+                },
+                "pixel_location": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Location"
+                },
+                "preablation_frequency": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Preablation Frequency"
+                },
+                "preablation_pulse": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Preablation Pulse"
+                },
+                "pressure": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pressure"
+                },
+                "project_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Id"
+                },
+                "ramp_rate": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Ramp Rate"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "substrate_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Id"
+                },
+                "target_material": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Target Material"
+                },
+                "temperature": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Temperature"
+                }
+              },
+              "required": [
+                "experiment_id"
+              ],
+              "title": "ExperimentInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_records",
+            "request": {
+              "properties": {
+                "experiment_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Experiment Id"
+                },
+                "include_retired": {
+                  "default": false,
+                  "title": "Include Retired",
+                  "type": "boolean"
+                },
+                "limit": {
+                  "default": 100,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "offset": {
+                  "default": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "order": {
+                  "default": "desc",
+                  "title": "Order",
+                  "type": "string"
+                },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "title": "ListRecords",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PageInfo": {
+                  "description": "What a pager needs that the returned rows do not say: how many matched in\ntotal, and which slice of them this is.",
+                  "properties": {
+                    "has_more": {
+                      "default": false,
+                      "title": "Has More",
+                      "type": "boolean"
+                    },
+                    "limit": {
+                      "default": 100,
+                      "title": "Limit",
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "default": 0,
+                      "title": "Offset",
+                      "type": "integer"
+                    },
+                    "total": {
+                      "default": 0,
+                      "title": "Total",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "PageInfo",
+                  "type": "object"
+                },
+                "RecordInfo": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "experiment_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Experiment Id"
+                    },
+                    "record_id": {
+                      "title": "Record Id",
+                      "type": "integer"
+                    },
+                    "record_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Record Name"
+                    },
+                    "record_uuid": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Record Uuid"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "record_id"
+                  ],
+                  "title": "RecordInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "page": {
+                  "$ref": "#/$defs/PageInfo",
+                  "default": {
+                    "has_more": false,
+                    "limit": 100,
+                    "offset": 0,
+                    "total": 0
+                  }
+                },
+                "records": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/RecordInfo"
+                  },
+                  "title": "Records",
+                  "type": "array"
+                }
+              },
+              "title": "RecordList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_record",
+            "request": {
+              "properties": {
+                "record_id": {
+                  "title": "Record Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "record_id"
+              ],
+              "title": "RecordId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "experiment_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Experiment Id"
+                },
+                "record_id": {
+                  "title": "Record Id",
+                  "type": "integer"
+                },
+                "record_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Name"
+                },
+                "record_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Uuid"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "record_id"
+              ],
+              "title": "RecordInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "update_record",
+            "request": {
+              "properties": {
+                "experiment_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Experiment Id"
+                },
+                "record_id": {
+                  "title": "Record Id",
+                  "type": "integer"
+                },
+                "record_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Name"
+                }
+              },
+              "required": [
+                "record_id"
+              ],
+              "title": "UpdateRecord",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "experiment_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Experiment Id"
+                },
+                "record_id": {
+                  "title": "Record Id",
+                  "type": "integer"
+                },
+                "record_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Name"
+                },
+                "record_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Uuid"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "record_id"
+              ],
+              "title": "RecordInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "retire_record",
+            "request": {
+              "properties": {
+                "record_id": {
+                  "title": "Record Id",
+                  "type": "integer"
+                },
+                "retire": {
+                  "default": true,
+                  "title": "Retire",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "record_id"
+              ],
+              "title": "RetireRecord",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "experiment_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Experiment Id"
+                },
+                "record_id": {
+                  "title": "Record Id",
+                  "type": "integer"
+                },
+                "record_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Name"
+                },
+                "record_uuid": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Record Uuid"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "record_id"
+              ],
+              "title": "RecordInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "update_sample",
+            "request": {
+              "description": "Correct a sample's label or growth state. There is no retire here on purpose:\na sample exists because the substrate's geometry says the position exists, so\nremoving one means correcting the geometry (update_substrate) or the growth that\nfilled it (retire_experiment).",
+              "properties": {
+                "notes": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Notes"
+                },
+                "position_mm": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Position Mm"
+                },
+                "sample_id": {
+                  "title": "Sample Id",
+                  "type": "integer"
+                },
+                "sample_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Name"
+                },
+                "state": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "State"
+                }
+              },
+              "required": [
+                "sample_id"
+              ],
+              "title": "UpdateSample",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "kind": {
+                  "default": "position",
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "notes": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Notes"
+                },
+                "parent_sample_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Parent Sample Id"
+                },
+                "pixel_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Index"
+                },
+                "position_mm": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Position Mm"
+                },
+                "sample_id": {
+                  "title": "Sample Id",
+                  "type": "integer"
+                },
+                "sample_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Name"
+                },
+                "sample_uuid": {
+                  "default": "",
+                  "title": "Sample Uuid",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "planned",
+                  "title": "State",
+                  "type": "string"
+                },
+                "substrate_id": {
+                  "title": "Substrate Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sample_id",
+                "substrate_id"
+              ],
+              "title": "SampleInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_measurement",
+            "request": {
+              "properties": {
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "measurement_id"
+              ],
+              "title": "MeasurementId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "conditions": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Conditions",
+                  "type": "object"
+                },
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "detail": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Detail",
+                  "type": "object"
+                },
+                "kind": {
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "title": "Sample Id",
+                  "type": "integer"
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Source"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Value"
+                }
+              },
+              "required": [
+                "measurement_id",
+                "sample_id",
+                "kind"
+              ],
+              "title": "MeasurementInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "update_measurement",
+            "request": {
+              "properties": {
+                "detail": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Detail"
+                },
+                "kind": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Kind"
+                },
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Source"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Value"
+                }
+              },
+              "required": [
+                "measurement_id"
+              ],
+              "title": "UpdateMeasurement",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "conditions": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Conditions",
+                  "type": "object"
+                },
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "detail": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Detail",
+                  "type": "object"
+                },
+                "kind": {
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "title": "Sample Id",
+                  "type": "integer"
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Source"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Value"
+                }
+              },
+              "required": [
+                "measurement_id",
+                "sample_id",
+                "kind"
+              ],
+              "title": "MeasurementInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "retire_measurement",
+            "request": {
+              "properties": {
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "retire": {
+                  "default": true,
+                  "title": "Retire",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "measurement_id"
+              ],
+              "title": "RetireMeasurement",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "conditions": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Conditions",
+                  "type": "object"
+                },
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "detail": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Detail",
+                  "type": "object"
+                },
+                "kind": {
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "title": "Sample Id",
+                  "type": "integer"
+                },
+                "source": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Source"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Value"
+                }
+              },
+              "required": [
+                "measurement_id",
+                "sample_id",
+                "kind"
+              ],
+              "title": "MeasurementInfo",
               "type": "object"
             },
             "response_codec": "json"
@@ -4279,6 +8706,74 @@
             "name": "list_samples",
             "request": {
               "properties": {
+                "include_retired": {
+                  "default": false,
+                  "title": "Include Retired",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Kind"
+                },
+                "limit": {
+                  "default": 100,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "offset": {
+                  "default": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "order": {
+                  "default": "desc",
+                  "title": "Order",
+                  "type": "string"
+                },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "state": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "State"
+                },
                 "substrate_id": {
                   "anyOf": [
                     {
@@ -4290,6 +8785,18 @@
                   ],
                   "default": null,
                   "title": "Substrate Id"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
                 }
               },
               "title": "ListSamples",
@@ -4298,12 +8805,75 @@
             "request_codec": "json",
             "response": {
               "$defs": {
+                "PageInfo": {
+                  "description": "What a pager needs that the returned rows do not say: how many matched in\ntotal, and which slice of them this is.",
+                  "properties": {
+                    "has_more": {
+                      "default": false,
+                      "title": "Has More",
+                      "type": "boolean"
+                    },
+                    "limit": {
+                      "default": 100,
+                      "title": "Limit",
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "default": 0,
+                      "title": "Offset",
+                      "type": "integer"
+                    },
+                    "total": {
+                      "default": 0,
+                      "title": "Total",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "PageInfo",
+                  "type": "object"
+                },
                 "SampleInfo": {
                   "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
                     "kind": {
                       "default": "position",
                       "title": "Kind",
                       "type": "string"
+                    },
+                    "notes": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Notes"
                     },
                     "parent_sample_id": {
                       "anyOf": [
@@ -4381,6 +8951,15 @@
                 }
               },
               "properties": {
+                "page": {
+                  "$ref": "#/$defs/PageInfo",
+                  "default": {
+                    "has_more": false,
+                    "limit": 100,
+                    "offset": 0,
+                    "total": 0
+                  }
+                },
                 "samples": {
                   "default": [],
                   "items": {
@@ -4461,6 +9040,18 @@
                       "default": null,
                       "title": "Started At"
                     },
+                    "started_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Started At Iso"
+                    },
                     "step_id": {
                       "anyOf": [
                         {
@@ -4482,10 +9073,46 @@
                 },
                 "SampleInfo": {
                   "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
                     "kind": {
                       "default": "position",
                       "title": "Kind",
                       "type": "string"
+                    },
+                    "notes": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Notes"
                     },
                     "parent_sample_id": {
                       "anyOf": [
@@ -4592,10 +9219,37 @@
             "name": "sample_history",
             "request": {
               "properties": {
+                "include_retired": {
+                  "default": false,
+                  "title": "Include Retired",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Kind"
+                },
                 "limit": {
                   "default": 500,
                   "title": "Limit",
                   "type": "integer"
+                },
+                "offset": {
+                  "default": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "order": {
+                  "default": "desc",
+                  "title": "Order",
+                  "type": "string"
                 },
                 "sample_id": {
                   "anyOf": [
@@ -4609,6 +9263,18 @@
                   "default": null,
                   "title": "Sample Id"
                 },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                },
                 "session_id": {
                   "anyOf": [
                     {
@@ -4620,6 +9286,30 @@
                   ],
                   "default": null,
                   "title": "Session Id"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
                 }
               },
               "title": "ListSteps",
@@ -4628,6 +9318,33 @@
             "request_codec": "json",
             "response": {
               "$defs": {
+                "PageInfo": {
+                  "description": "What a pager needs that the returned rows do not say: how many matched in\ntotal, and which slice of them this is.",
+                  "properties": {
+                    "has_more": {
+                      "default": false,
+                      "title": "Has More",
+                      "type": "boolean"
+                    },
+                    "limit": {
+                      "default": 100,
+                      "title": "Limit",
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "default": 0,
+                      "title": "Offset",
+                      "type": "integer"
+                    },
+                    "total": {
+                      "default": 0,
+                      "title": "Total",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "PageInfo",
+                  "type": "object"
+                },
                 "StepInfo": {
                   "properties": {
                     "actor": {
@@ -4653,6 +9370,18 @@
                       ],
                       "default": null,
                       "title": "Ended At"
+                    },
+                    "ended_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Ended At Iso"
                     },
                     "error": {
                       "anyOf": [
@@ -4735,6 +9464,18 @@
                       "title": "Started At",
                       "type": "number"
                     },
+                    "started_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Started At Iso"
+                    },
                     "step_id": {
                       "title": "Step Id",
                       "type": "integer"
@@ -4749,6 +9490,15 @@
                 }
               },
               "properties": {
+                "page": {
+                  "$ref": "#/$defs/PageInfo",
+                  "default": {
+                    "has_more": false,
+                    "limit": 100,
+                    "offset": 0,
+                    "total": 0
+                  }
+                },
                 "steps": {
                   "default": [],
                   "items": {
@@ -4857,6 +9607,11 @@
             "name": "list_measurements",
             "request": {
               "properties": {
+                "include_retired": {
+                  "default": false,
+                  "title": "Include Retired",
+                  "type": "boolean"
+                },
                 "kind": {
                   "anyOf": [
                     {
@@ -4868,6 +9623,21 @@
                   ],
                   "default": null,
                   "title": "Kind"
+                },
+                "limit": {
+                  "default": 100,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "offset": {
+                  "default": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "order": {
+                  "default": "desc",
+                  "title": "Order",
+                  "type": "string"
                 },
                 "sample_id": {
                   "anyOf": [
@@ -4881,6 +9651,30 @@
                   "default": null,
                   "title": "Sample Id"
                 },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
                 "substrate_id": {
                   "anyOf": [
                     {
@@ -4892,6 +9686,18 @@
                   ],
                   "default": null,
                   "title": "Substrate Id"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
                 }
               },
               "title": "ListMeasurements",
@@ -4911,7 +9717,7 @@
                     "created_at": {
                       "anyOf": [
                         {
-                          "type": "string"
+                          "type": "number"
                         },
                         {
                           "type": "null"
@@ -4919,6 +9725,18 @@
                       ],
                       "default": null,
                       "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
                     },
                     "detail": {
                       "additionalProperties": true,
@@ -4950,6 +9768,11 @@
                       "default": null,
                       "title": "Source"
                     },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    },
                     "value": {
                       "anyOf": [
                         {
@@ -4970,6 +9793,33 @@
                   ],
                   "title": "MeasurementInfo",
                   "type": "object"
+                },
+                "PageInfo": {
+                  "description": "What a pager needs that the returned rows do not say: how many matched in\ntotal, and which slice of them this is.",
+                  "properties": {
+                    "has_more": {
+                      "default": false,
+                      "title": "Has More",
+                      "type": "boolean"
+                    },
+                    "limit": {
+                      "default": 100,
+                      "title": "Limit",
+                      "type": "integer"
+                    },
+                    "offset": {
+                      "default": 0,
+                      "title": "Offset",
+                      "type": "integer"
+                    },
+                    "total": {
+                      "default": 0,
+                      "title": "Total",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "PageInfo",
+                  "type": "object"
                 }
               },
               "properties": {
@@ -4980,6 +9830,15 @@
                   },
                   "title": "Measurements",
                   "type": "array"
+                },
+                "page": {
+                  "$ref": "#/$defs/PageInfo",
+                  "default": {
+                    "has_more": false,
+                    "limit": 100,
+                    "offset": 0,
+                    "total": 0
+                  }
                 }
               },
               "title": "MeasurementList",
@@ -5046,24 +9905,39 @@
             "get_current_mask_position": "experiment.driver.req.get_current_mask_position",
             "get_current_pressure": "experiment.driver.req.get_current_pressure",
             "get_current_temperature": "experiment.driver.req.get_current_temperature",
+            "get_experiment": "experiment.driver.req.get_experiment",
+            "get_measurement": "experiment.driver.req.get_measurement",
             "get_mfc_status": "experiment.driver.req.get_mfc_status",
+            "get_project": "experiment.driver.req.get_project",
             "get_pump_status": "experiment.driver.req.get_pump_status",
+            "get_record": "experiment.driver.req.get_record",
             "get_sample": "experiment.driver.req.get_sample",
+            "get_substrate": "experiment.driver.req.get_substrate",
             "get_target_id_by_name": "experiment.driver.req.get_target_id_by_name",
             "get_target_name_by_id": "experiment.driver.req.get_target_name_by_id",
             "get_valve_status": "experiment.driver.req.get_valve_status",
             "initiate_heating_laser": "experiment.driver.req.initiate_heating_laser",
             "is_motor_free": "experiment.driver.req.is_motor_free",
+            "list_experiments": "experiment.driver.req.list_experiments",
             "list_measurements": "experiment.driver.req.list_measurements",
+            "list_projects": "experiment.driver.req.list_projects",
+            "list_records": "experiment.driver.req.list_records",
             "list_samples": "experiment.driver.req.list_samples",
+            "list_substrates": "experiment.driver.req.list_substrates",
             "move_mask_to_position": "experiment.driver.req.move_mask_to_position",
             "move_rheed_to_position": "experiment.driver.req.move_rheed_to_position",
             "perform_deposition": "experiment.driver.req.perform_deposition",
             "perform_preablation": "experiment.driver.req.perform_preablation",
             "register_project": "experiment.driver.req.register_project",
             "register_substrate": "experiment.driver.req.register_substrate",
+            "reopen_position": "experiment.driver.req.reopen_position",
             "resolve_pixel_check": "experiment.driver.req.resolve_pixel_check",
             "resume_substrate": "experiment.driver.req.resume_substrate",
+            "retire_experiment": "experiment.driver.req.retire_experiment",
+            "retire_measurement": "experiment.driver.req.retire_measurement",
+            "retire_project": "experiment.driver.req.retire_project",
+            "retire_record": "experiment.driver.req.retire_record",
+            "retire_substrate": "experiment.driver.req.retire_substrate",
             "rotate_sample_by": "experiment.driver.req.rotate_sample_by",
             "rotate_sample_to": "experiment.driver.req.rotate_sample_to",
             "sample_history": "experiment.driver.req.sample_history",
@@ -5080,7 +9954,14 @@
             "to_current_pixel": "experiment.driver.req.to_current_pixel",
             "to_pixel": "experiment.driver.req.to_pixel",
             "to_temperature": "experiment.driver.req.to_temperature",
-            "turn_off_heating_laser": "experiment.driver.req.turn_off_heating_laser"
+            "turn_off_heating_laser": "experiment.driver.req.turn_off_heating_laser",
+            "unload_substrate": "experiment.driver.req.unload_substrate",
+            "update_experiment": "experiment.driver.req.update_experiment",
+            "update_measurement": "experiment.driver.req.update_measurement",
+            "update_project": "experiment.driver.req.update_project",
+            "update_record": "experiment.driver.req.update_record",
+            "update_sample": "experiment.driver.req.update_sample",
+            "update_substrate": "experiment.driver.req.update_substrate"
           },
           "state": "experiment.driver.state",
           "update": "experiment.driver.update",

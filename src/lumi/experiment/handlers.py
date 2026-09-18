@@ -83,8 +83,33 @@ from lumi.contracts.payloads.experiment import (
     CheckLogging,
     LoggingAlive,
     LoggingStatus,
+    ExperimentId,
+    ExperimentInfo,
+    ExperimentList,
+    ListExperiments,
+    ListQuery,
+    ListRecords,
+    PageInfo,
+    ProjectId,
+    ProjectList,
+    RecordId,
+    RecordInfo,
+    RecordList,
+    ReopenPosition,
+    ReopenResult,
     ResolvePixelCheck,
     ResumeSubstrate,
+    RetireExperiment,
+    RetireMeasurement,
+    RetireProject,
+    RetireRecord,
+    RetireSubstrate,
+    SubstrateId,
+    UpdateExperiment,
+    UpdateMeasurement,
+    UpdateProject,
+    UpdateRecord,
+    UpdateSample,
     SampleAngle,
     SampleDetail,
     SampleId,
@@ -102,6 +127,10 @@ from lumi.contracts.payloads.experiment import (
     StartStorage,
     StorageResult,
     SubstrateInfo,
+    SubstrateList,
+    SubstrateSummary,
+    ListSubstrates,
+    UpdateSubstrate,
     TargetId,
     TargetMap,
     TargetName,
@@ -111,7 +140,7 @@ from lumi.contracts.payloads.experiment import (
     ToTemperature,
     ValveStatus,
 )
-from lumi.experiment.db import GrowthDB
+from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration, PixelExperimentManager, Substrate
 
@@ -447,6 +476,10 @@ class ExperimentHandler:
             width=substrate.width, height=substrate.height or 0.0, thickness=substrate.thickness or 0.0,
             pixel_spacing=substrate.pixel_spacing, positions=positions,
             current_pixel_index=substrate.current_position_id,
+            substrate_name=substrate.name, manufacturer=substrate.manufacture,
+            manufacture_date=substrate.manufacture_date, state=substrate.state,
+            created_at=to_epoch(substrate.created_at),
+            created_at_iso=to_iso(substrate.created_at),
         )
 
     async def register_substrate(self, req: RegisterSubstrate) -> SubstrateInfo:
@@ -482,6 +515,48 @@ class ExperimentHandler:
     async def finish_current_pixel(self, req: FinishCurrentPixel) -> Ack:
         await self.manager.finish_current_pixel()
         return Ack()
+
+    # --- bookkeeping corrections -----------------------------------------------
+
+    async def list_substrates(self, req: ListSubstrates) -> SubstrateList:
+        filters = {"materials": req.materials}
+        rows = await self.manager.list_substrates(**self._query(req, **filters))
+        return SubstrateList(
+            substrates=[SubstrateSummary(**row) for row in rows],
+            page=await self._page("substrate", req, **filters),
+        )
+
+    async def get_substrate(self, req: SubstrateId) -> SubstrateInfo:
+        row = await self._fetch("substrate", req.substrate_id)
+        return self._substrate_info(await self.manager._load_substrate(row))
+
+    async def update_substrate(self, req: UpdateSubstrate) -> SubstrateInfo:
+        substrate = await self.manager.update_substrate(
+            req.substrate_id,
+            materials=req.materials, orientation=req.orientation, thickness=req.thickness,
+            substrate_name=req.substrate_name, manufacturer=req.manufacturer,
+            manufacture_date=req.manufacture_date, width=req.width, height=req.height,
+            pixel_spacing=req.pixel_spacing, positions=req.positions or None,
+        )
+        return self._substrate_info(substrate)
+
+    async def reopen_position(self, req: ReopenPosition) -> ReopenResult:
+        index = await self.manager.reopen_position(req.index, force=req.force)
+        substrate = self.manager.current_substrate
+        return ReopenResult(
+            index=index,
+            substrate=self._substrate_info(substrate) if substrate else None,
+        )
+
+    async def retire_substrate(self, req: RetireSubstrate) -> SubstrateInfo:
+        substrate = await self.manager.retire_substrate(req.substrate_id, retire=req.retire)
+        return self._substrate_info(substrate)
+
+    async def unload_substrate(self, req: Empty) -> CurrentSubstrateResponse:
+        substrate = self.manager.unload_substrate()
+        return CurrentSubstrateResponse(
+            substrate=self._substrate_info(substrate) if substrate else None
+        )
 
     # --- chamber reads ---------------------------------------------------------
 
@@ -608,16 +683,181 @@ class ExperimentHandler:
         )
         return ExperimentRecordId(experiment_id=experiment_id)
 
+    # --- growth.db as data: list / get / update / retire ---------------------------
+    # Everything below reads and writes the database directly rather than going
+    # through the manager: none of it touches the chamber, and routing record-keeping
+    # through the object that owns the hardware is what made `substrates` a stack you
+    # could not correct. The manager still owns the substrate ops, because those move
+    # what is loaded on the chamber.
+
+    def _query(self, req: ListQuery, **filters) -> dict:
+        """A ListQuery plus this op's own filters, as kwargs for GrowthDB.list_rows."""
+        return dict(
+            filters=filters, since=req.since, until=req.until, limit=req.limit,
+            offset=req.offset, order=req.order, search=req.search,
+            include_retired=req.include_retired,
+        )
+
+    async def _page(self, table: str, req: ListQuery, **filters) -> PageInfo:
+        total = await self.growth_db.count_rows(
+            table, filters=filters, since=req.since, until=req.until,
+            search=req.search, include_retired=req.include_retired,
+        )
+        return PageInfo(
+            total=total, limit=req.limit, offset=req.offset,
+            has_more=req.offset + req.limit < total,
+        )
+
+    async def _fetch(self, table: str, row_id: int):
+        row = await self.growth_db.get_row(table, row_id)
+        if row is None:
+            raise ValueError(f"no {table} with id {row_id}")
+        return row
+
+    @staticmethod
+    def _set_fields(req, *names) -> dict:
+        """The fields a caller actually set. Every update_* payload is all-optional so
+        that a request carrying one field writes one column; None means 'leave it', not
+        'set it to null'."""
+        return {n: getattr(req, n) for n in names if getattr(req, n) is not None}
+
+    async def _retire(self, table: str, row_id: int, retire: bool):
+        await self.growth_db.set_row_state(table, row_id, "retired" if retire else "active")
+        return await self._fetch(table, row_id)
+
+    # --- project -------------------------------------------------------------------
+
+    @staticmethod
+    def _project_info(row) -> ProjectInfo:
+        at = _column(row, "project_created_at")
+        return ProjectInfo(
+            project_id=row["project_id"], project_name=row["project_name"],
+            description=_column(row, "description"),
+            created_at=to_epoch(at), created_at_iso=to_iso(at),
+            state=_column(row, "state") or "active",
+        )
+
+    async def list_projects(self, req: ListQuery) -> ProjectList:
+        rows = await self.growth_db.list_rows("project", **self._query(req))
+        return ProjectList(
+            projects=[self._project_info(r) for r in rows],
+            page=await self._page("project", req),
+        )
+
+    async def get_project(self, req: ProjectId) -> ProjectInfo:
+        return self._project_info(await self._fetch("project", req.project_id))
+
+    async def update_project(self, req: UpdateProject) -> ProjectInfo:
+        await self._fetch("project", req.project_id)
+        fields = self._set_fields(req, "project_name", "description")
+        await self.growth_db.update_row("project", req.project_id, **fields)
+        return self._project_info(await self._fetch("project", req.project_id))
+
+    async def retire_project(self, req: RetireProject) -> ProjectInfo:
+        return self._project_info(await self._retire("project", req.project_id, req.retire))
+
+    # --- experiment ----------------------------------------------------------------
+
+    @staticmethod
+    def _experiment_info(row) -> ExperimentInfo:
+        at = _column(row, "experiment_created_at")
+        return ExperimentInfo(
+            experiment_id=row["experiment_id"], experiment_uuid=_column(row, "experiment_uuid"),
+            substrate_id=_column(row, "substrate_id"), project_id=_column(row, "project_id"),
+            is_pixel=bool(_column(row, "is_pixel")),
+            pixel_location=_column(row, "pixel_location"),
+            temperature=_column(row, "temperature"), pressure=_column(row, "pressure"),
+            laser_power=_column(row, "laser_power"),
+            laser_pulse_rate=_column(row, "laser_pulse_rate"),
+            target_material=_column(row, "target_material"),
+            num_pulse=_column(row, "num_pulse"),
+            do_preablation=bool(_column(row, "do_preablation")),
+            preablation_pulse=_column(row, "preablation_pulse"),
+            preablation_frequency=_column(row, "preablation_frequency"),
+            before_experiment_waittime=_column(row, "before_experiment_waittime"),
+            after_experiment_waittime=_column(row, "after_experiment_waittime"),
+            ramp_rate=_column(row, "ramp_rate"),
+            created_at=to_epoch(at), created_at_iso=to_iso(at),
+            state=_column(row, "state") or "active",
+        )
+
+    async def list_experiments(self, req: ListExperiments) -> ExperimentList:
+        filters = {"substrate_id": req.substrate_id, "project_id": req.project_id}
+        rows = await self.growth_db.list_rows("experiment", **self._query(req, **filters))
+        return ExperimentList(
+            experiments=[self._experiment_info(r) for r in rows],
+            page=await self._page("experiment", req, **filters),
+        )
+
+    async def get_experiment(self, req: ExperimentId) -> ExperimentInfo:
+        return self._experiment_info(await self._fetch("experiment", req.experiment_id))
+
+    async def update_experiment(self, req: UpdateExperiment) -> ExperimentInfo:
+        await self._fetch("experiment", req.experiment_id)
+        fields = self._set_fields(
+            req, "project_id", "temperature", "pressure", "laser_power",
+            "laser_pulse_rate", "target_material", "num_pulse", "ramp_rate",
+        )
+        await self.growth_db.update_row("experiment", req.experiment_id, **fields)
+        return self._experiment_info(await self._fetch("experiment", req.experiment_id))
+
+    async def retire_experiment(self, req: RetireExperiment) -> ExperimentInfo:
+        row = await self._retire("experiment", req.experiment_id, req.retire)
+        # Retiring a growth hands its pixel back, but only the database knows that so
+        # far -- a substrate already loaded is holding the old progress in memory.
+        substrate = self.manager.current_substrate if self.manager else None
+        if substrate is not None and substrate.db_id == _column(row, "substrate_id"):
+            substrate.restore_progress(
+                await self.growth_db.get_used_pixel_indices(substrate.db_id)
+            )
+        return self._experiment_info(row)
+
+    # --- record --------------------------------------------------------------------
+
+    @staticmethod
+    def _record_info(row) -> RecordInfo:
+        at = _column(row, "record_created_at")
+        return RecordInfo(
+            record_id=row["record_id"], record_uuid=_column(row, "record_uuid"),
+            experiment_id=_column(row, "experiment_id"),
+            record_name=_column(row, "record_name"),
+            created_at=to_epoch(at), created_at_iso=to_iso(at),
+            state=_column(row, "state") or "active",
+        )
+
+    async def list_records(self, req: ListRecords) -> RecordList:
+        filters = {"experiment_id": req.experiment_id}
+        rows = await self.growth_db.list_rows("record", **self._query(req, **filters))
+        return RecordList(
+            records=[self._record_info(r) for r in rows],
+            page=await self._page("record", req, **filters),
+        )
+
+    async def get_record(self, req: RecordId) -> RecordInfo:
+        return self._record_info(await self._fetch("record", req.record_id))
+
+    async def update_record(self, req: UpdateRecord) -> RecordInfo:
+        await self._fetch("record", req.record_id)
+        fields = self._set_fields(req, "record_name", "experiment_id")
+        await self.growth_db.update_row("record", req.record_id, **fields)
+        return self._record_info(await self._fetch("record", req.record_id))
+
+    async def retire_record(self, req: RetireRecord) -> RecordInfo:
+        return self._record_info(await self._retire("record", req.record_id, req.retire))
+
     # --- sample tracking -----------------------------------------------------------
 
     @staticmethod
     def _sample_info(row) -> SampleInfo:
-        # sample_id, sample_uuid, parent_sample_id, substrate_id, kind, pixel_index,
-        # position_mm, sample_name, state, notes, created_at
+        at = _column(row, "created_at")
         return SampleInfo(
-            sample_id=row[0], sample_uuid=row[1] or "", parent_sample_id=row[2],
-            substrate_id=row[3], kind=row[4], pixel_index=row[5], position_mm=row[6],
-            sample_name=row[7], state=row[8],
+            sample_id=row["sample_id"], sample_uuid=_column(row, "sample_uuid") or "",
+            parent_sample_id=_column(row, "parent_sample_id"),
+            substrate_id=row["substrate_id"], kind=_column(row, "kind") or "position",
+            pixel_index=_column(row, "pixel_index"), position_mm=_column(row, "position_mm"),
+            sample_name=_column(row, "sample_name"), state=_column(row, "state") or "planned",
+            notes=_column(row, "notes"),
+            created_at=to_epoch(at), created_at_iso=to_iso(at),
         )
 
     async def list_samples(self, req: ListSamples) -> SampleList:
@@ -625,10 +865,12 @@ class ExperimentHandler:
         if substrate_id is None:
             substrate = self.manager.current_substrate if self.manager else None
             substrate_id = substrate.db_id if substrate else None
-        if substrate_id is None:
-            return SampleList(samples=[])
-        rows = await self.growth_db.get_samples_for_substrate(substrate_id)
-        return SampleList(samples=[self._sample_info(r) for r in rows])
+        filters = {"substrate_id": substrate_id, "kind": req.kind, "state": req.state}
+        rows = await self.growth_db.list_rows("sample", **self._query(req, **filters))
+        return SampleList(
+            samples=[self._sample_info(r) for r in rows],
+            page=await self._page("sample", req, **filters),
+        )
 
     async def get_sample(self, req: SampleId) -> SampleDetail:
         row = await self.growth_db.get_sample(req.sample_id)
@@ -640,28 +882,45 @@ class ExperimentHandler:
             layers=[
                 LayerInfo(
                     seq=l["seq"], material=l["material"], num_pulse=l["num_pulse"],
-                    step_id=l["step_id"], started_at=l["started_at"], is_dryrun=l["is_dryrun"],
+                    step_id=l["step_id"], started_at=l["started_at"],
+                    started_at_iso=to_iso(l["started_at"]), is_dryrun=l["is_dryrun"],
                 )
                 for l in layers
             ],
         )
 
+    async def update_sample(self, req: UpdateSample) -> SampleInfo:
+        await self._fetch("sample", req.sample_id)
+        fields = self._set_fields(req, "sample_name", "notes", "state", "position_mm")
+        await self.growth_db.update_row("sample", req.sample_id, **fields)
+        return self._sample_info(await self._fetch("sample", req.sample_id))
+
     async def sample_history(self, req: ListSteps) -> StepList:
-        rows = await self.growth_db.get_steps(
-            session_id=req.session_id, sample_id=req.sample_id
+        filters = {"sample_id": req.sample_id, "session_id": req.session_id,
+                   "kind": req.kind}
+        # The journal reads oldest-first unless asked otherwise: a step chain is a
+        # narrative, and `order` is there for a UI that wants the tail.
+        rows = await self.growth_db.list_rows(
+            "step", **{**self._query(req, **filters), "order": req.order or "asc"}
         )
-        steps = [
-            StepInfo(
-                step_id=r[0], parent_step_id=r[3], sample_id=r[4], kind=r[5],
-                params=_loads(r[6]), result=_loads(r[7]),
-                ok=None if r[8] is None else bool(r[8]), error=r[9],
-                actor=r[10], source=r[11], started_at=r[12] or 0.0, ended_at=r[13],
-            )
-            for r in rows
-        ]
-        # Newest last, but bounded -- a long campaign's journal is not something to
-        # push through one RPC by accident.
-        return StepList(steps=steps[-req.limit:] if req.limit else steps)
+        return StepList(
+            steps=[
+                StepInfo(
+                    step_id=r["step_id"], parent_step_id=_column(r, "parent_step_id"),
+                    sample_id=_column(r, "sample_id"), kind=r["kind"],
+                    params=_loads(_column(r, "params")), result=_loads(_column(r, "result")),
+                    ok=None if _column(r, "ok") is None else bool(r["ok"]),
+                    error=_column(r, "error"), actor=_column(r, "actor"),
+                    source=_column(r, "source"),
+                    started_at=_column(r, "started_at") or 0.0,
+                    started_at_iso=to_iso(_column(r, "started_at")),
+                    ended_at=_column(r, "ended_at"),
+                    ended_at_iso=to_iso(_column(r, "ended_at")),
+                )
+                for r in rows
+            ],
+            page=await self._page("step", req, **filters),
+        )
 
     async def add_measurement(self, req: AddMeasurement) -> MeasurementId:
         measurement_id = await self.growth_db.add_measurement(
@@ -671,20 +930,60 @@ class ExperimentHandler:
         )
         return MeasurementId(measurement_id=measurement_id)
 
-    async def list_measurements(self, req: ListMeasurements) -> MeasurementList:
-        rows = await self.growth_db.query_measurements(
-            sample_id=req.sample_id, kind=req.kind, substrate_id=req.substrate_id
+    async def _measurement_info(self, row) -> MeasurementInfo:
+        at = _column(row, "created_at")
+        return MeasurementInfo(
+            measurement_id=row["measurement_id"], sample_id=row["sample_id"],
+            kind=row["kind"], value=_column(row, "value"),
+            detail=_loads(_column(row, "detail")), source=_column(row, "source"),
+            created_at=to_epoch(at), created_at_iso=to_iso(at),
+            state=_column(row, "state") or "active",
+            conditions=await self.growth_db.growth_conditions(row["sample_id"]),
         )
-        out = []
-        for r in rows:
-            # measurement_id, sample_id, step_id, experiment_id, kind, value, detail,
-            # source, record_id, created_at
-            out.append(MeasurementInfo(
-                measurement_id=r[0], sample_id=r[1], kind=r[4], value=r[5],
-                detail=_loads(r[6]), source=r[7], created_at=r[9],
-                conditions=await self.growth_db.growth_conditions(r[1]),
-            ))
-        return MeasurementList(measurements=out)
+
+    async def list_measurements(self, req: ListMeasurements) -> MeasurementList:
+        # substrate_id is not a column on `measurement` -- it resolves through the
+        # sample tree, so that filter stays in query_measurements and the shared
+        # list/page path handles the rest.
+        if req.substrate_id is not None:
+            rows = await self.growth_db.query_measurements(
+                sample_id=req.sample_id, kind=req.kind, substrate_id=req.substrate_id
+            )
+            if not req.include_retired:
+                rows = [r for r in rows if (_column(r, "state") or "active") != "retired"]
+            total = len(rows)  # the whole match, before this page is cut out of it
+            page = rows[req.offset:req.offset + req.limit]
+            return MeasurementList(
+                measurements=[await self._measurement_info(r) for r in page],
+                page=PageInfo(total=total, limit=req.limit, offset=req.offset,
+                              has_more=req.offset + req.limit < total),
+            )
+        filters = {"sample_id": req.sample_id, "kind": req.kind}
+        rows = await self.growth_db.list_rows("measurement", **self._query(req, **filters))
+        return MeasurementList(
+            measurements=[await self._measurement_info(r) for r in rows],
+            page=await self._page("measurement", req, **filters),
+        )
+
+    async def get_measurement(self, req: MeasurementId) -> MeasurementInfo:
+        return await self._measurement_info(
+            await self._fetch("measurement", req.measurement_id)
+        )
+
+    async def update_measurement(self, req: UpdateMeasurement) -> MeasurementInfo:
+        await self._fetch("measurement", req.measurement_id)
+        fields = self._set_fields(req, "kind", "value", "source")
+        if req.detail is not None:
+            fields["detail"] = json.dumps(req.detail)
+        await self.growth_db.update_row("measurement", req.measurement_id, **fields)
+        return await self._measurement_info(
+            await self._fetch("measurement", req.measurement_id)
+        )
+
+    async def retire_measurement(self, req: RetireMeasurement) -> MeasurementInfo:
+        return await self._measurement_info(
+            await self._retire("measurement", req.measurement_id, req.retire)
+        )
 
     # --- gated: laser power --------------------------------------------------------
 

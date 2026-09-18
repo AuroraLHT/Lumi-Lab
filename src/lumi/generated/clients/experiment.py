@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: ea89870cfa77fa75
+# contract_hash: a57b9852c04edaac
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, BeginSetLaserPower, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListMeasurements, ListSamples, ListSteps, LoggingAlive, LoggingStatus, MaskPosition, MeasurementId, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectInfo, PumpStatus, RegisterProject, RegisterSubstrate, ResolvePixelCheck, ResumeSubstrate, SampleAngle, SampleDetail, SampleId, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateInfo, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, BeginSetLaserPower, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskPosition, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireProject, RetireRecord, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -75,6 +75,94 @@ class ExperimentDriverClient(CapabilityClient):
     async def finish_current_pixel(self, req: FinishCurrentPixel) -> Ack:
         """Call driver.finish_current_pixel."""
         return await self.call("finish_current_pixel", req)  # type: ignore[return-value]
+
+    async def list_substrates(self, req: ListSubstrates) -> SubstrateList:
+        """Every registered substrate: what it is, how many positions it has and how many are already grown on. resume_substrate takes an id and this is where you find one. Takes the shared list query -- limit, offset, since/until (epoch seconds), order, search, include_retired -- so 'the last 5' is limit=5 and 'registered this month' is since=<start of month>. Retired substrates are hidden unless include_retired."""
+        return await self.call("list_substrates", req)  # type: ignore[return-value]
+
+    async def get_substrate(self, req: SubstrateId) -> SubstrateInfo:
+        """One substrate by id, with its positions and which are still accessible. current_substrate answers only for the one on the chamber; this reads any of them."""
+        return await self.call("get_substrate", req)  # type: ignore[return-value]
+
+    async def update_substrate(self, req: UpdateSubstrate) -> SubstrateInfo:
+        """Correct a registered substrate's record; only the fields you set are written. substrate_id defaults to the one loaded on the chamber. Descriptive fields (materials, orientation, thickness, name, manufacturer, manufacture_date) are always editable. Geometry (width, height, pixel_spacing, positions) re-derives every pixel index, so it is refused once the substrate has a recorded growth -- before then it rebuilds the positions and their sample rows, exactly as registering with the corrected value would have."""
+        return await self.call("update_substrate", req)  # type: ignore[return-value]
+
+    async def reopen_position(self, req: ReopenPosition) -> ReopenResult:
+        """Undo a finish_substrate/finish_current_pixel that was not meant: puts the position back in play and its sample back to 'planned'. Defaults to the most recently finished position. Refuses a position that has a recorded growth unless force -- and even forced, resume_substrate rebuilds progress from the experiment table and will mark it spent again."""
+        return await self.call("reopen_position", req)  # type: ignore[return-value]
+
+    async def retire_substrate(self, req: RetireSubstrate) -> SubstrateInfo:
+        """Hide a substrate from list_substrates without deleting it -- for one registered by mistake. Nothing recorded against it is destroyed, so its steps and samples stay readable. retire=false restores it."""
+        return await self.call("retire_substrate", req)  # type: ignore[return-value]
+
+    async def unload_substrate(self) -> CurrentSubstrateResponse:
+        """Take the current substrate off the chamber without touching the database, for when the wrong one was registered or resumed. Returns whatever is current afterwards, which is usually nothing."""
+        return await self.call("unload_substrate")  # type: ignore[return-value]
+
+    async def list_projects(self, req: ListQuery) -> ProjectList:
+        """Projects, newest first. Same query shape as every other list_*."""
+        return await self.call("list_projects", req)  # type: ignore[return-value]
+
+    async def get_project(self, req: ProjectId) -> ProjectInfo:
+        """Call driver.get_project."""
+        return await self.call("get_project", req)  # type: ignore[return-value]
+
+    async def update_project(self, req: UpdateProject) -> ProjectInfo:
+        """Rename a project or fix its description. Only the fields you set are written."""
+        return await self.call("update_project", req)  # type: ignore[return-value]
+
+    async def retire_project(self, req: RetireProject) -> ProjectInfo:
+        """Hide a project from listings. Its experiments are untouched and stay readable; retire=false restores it."""
+        return await self.call("retire_project", req)  # type: ignore[return-value]
+
+    async def list_experiments(self, req: ListExperiments) -> ExperimentList:
+        """Recorded growths, newest first, optionally narrowed to one substrate or project and to a time window."""
+        return await self.call("list_experiments", req)  # type: ignore[return-value]
+
+    async def get_experiment(self, req: ExperimentId) -> ExperimentInfo:
+        """Call driver.get_experiment."""
+        return await self.call("get_experiment", req)  # type: ignore[return-value]
+
+    async def update_experiment(self, req: UpdateExperiment) -> ExperimentInfo:
+        """Correct a growth's recorded conditions -- the temperature, pressure and laser power a person read off an instrument and may have typed wrong. Identity (uuid, substrate, pixel) is not editable: that would make it a different growth."""
+        return await self.call("update_experiment", req)  # type: ignore[return-value]
+
+    async def retire_experiment(self, req: RetireExperiment) -> ExperimentInfo:
+        """Mark a growth as recorded by mistake -- a dry run logged as real, a duplicate row. It stops counting as a growth, which also hands its pixel position back, so a substrate wrongly marked spent becomes usable again. Nothing is deleted; retire=false restores it."""
+        return await self.call("retire_experiment", req)  # type: ignore[return-value]
+
+    async def list_records(self, req: ListRecords) -> RecordList:
+        """Storage recordings (the .hdf5 files), optionally for one experiment."""
+        return await self.call("list_records", req)  # type: ignore[return-value]
+
+    async def get_record(self, req: RecordId) -> RecordInfo:
+        """Call driver.get_record."""
+        return await self.call("get_record", req)  # type: ignore[return-value]
+
+    async def update_record(self, req: UpdateRecord) -> RecordInfo:
+        """Rename a recording or re-link it to the right experiment -- the fix for a growth whose file was attached to the wrong row."""
+        return await self.call("update_record", req)  # type: ignore[return-value]
+
+    async def retire_record(self, req: RetireRecord) -> RecordInfo:
+        """Call driver.retire_record."""
+        return await self.call("retire_record", req)  # type: ignore[return-value]
+
+    async def update_sample(self, req: UpdateSample) -> SampleInfo:
+        """Correct a sample's name, notes, growth state or position. There is no retire: a sample exists because the substrate geometry says its position exists, so removing one means update_substrate (fix the geometry) or retire_experiment (undo the growth that filled it)."""
+        return await self.call("update_sample", req)  # type: ignore[return-value]
+
+    async def get_measurement(self, req: MeasurementId) -> MeasurementInfo:
+        """Call driver.get_measurement."""
+        return await self.call("get_measurement", req)  # type: ignore[return-value]
+
+    async def update_measurement(self, req: UpdateMeasurement) -> MeasurementInfo:
+        """Correct a measurement's value, kind, detail or source -- an ex-situ result entered before the analysis was final."""
+        return await self.call("update_measurement", req)  # type: ignore[return-value]
+
+    async def retire_measurement(self, req: RetireMeasurement) -> MeasurementInfo:
+        """Hide a measurement from listings, so a wrong value stops reaching an optimiser without vanishing from the record."""
+        return await self.call("retire_measurement", req)  # type: ignore[return-value]
 
     async def get_current_log(self) -> LogEntry:
         """Call driver.get_current_log."""

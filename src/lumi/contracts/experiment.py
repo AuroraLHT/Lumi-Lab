@@ -54,13 +54,38 @@ from .payloads.experiment import (
     PressureReading,
     ProjectInfo,
     PumpStatus,
+    ExperimentId,
+    ExperimentInfo,
+    ExperimentList,
+    ListExperiments,
+    ListQuery,
+    ListRecords,
+    ProjectId,
+    ProjectList,
+    RecordId,
+    RecordInfo,
+    RecordList,
     RegisterProject,
     RegisterSubstrate,
+    ReopenPosition,
+    ReopenResult,
     ResolvePixelCheck,
     ResumeSubstrate,
+    RetireExperiment,
+    RetireMeasurement,
+    RetireProject,
+    RetireRecord,
+    RetireSubstrate,
+    SubstrateId,
+    UpdateExperiment,
+    UpdateMeasurement,
+    UpdateProject,
+    UpdateRecord,
+    UpdateSample,
     SampleAngle,
     SampleDetail,
     SampleId,
+    SampleInfo,
     SampleList,
     ListSamples,
     ListSteps,
@@ -80,6 +105,10 @@ from .payloads.experiment import (
     StartStorage,
     StorageResult,
     SubstrateInfo,
+    SubstrateList,
+    SubstrateSummary,
+    ListSubstrates,
+    UpdateSubstrate,
     TargetId,
     TargetMap,
     TargetName,
@@ -109,6 +138,104 @@ DRIVER = Capability(
         Op("current_substrate", Empty, CurrentSubstrateResponse),
         Op("finish_substrate", Empty, Ack, journal=True),
         Op("finish_current_pixel", FinishCurrentPixel, Ack, journal=True),
+
+        # --- bookkeeping corrections. Registration is otherwise write-once, which
+        # made a mistyped size or a mis-clicked finish unfixable except by
+        # registering a second, fictional substrate.
+        Op("list_substrates", ListSubstrates, SubstrateList,
+           doc="Every registered substrate: what it is, how many positions it has "
+               "and how many are already grown on. resume_substrate takes an id and "
+               "this is where you find one. Takes the shared list query -- limit, "
+               "offset, since/until (epoch seconds), order, search, include_retired -- "
+               "so 'the last 5' is limit=5 and 'registered this month' is since=<start "
+               "of month>. Retired substrates are hidden unless include_retired."),
+        Op("get_substrate", SubstrateId, SubstrateInfo,
+           doc="One substrate by id, with its positions and which are still "
+               "accessible. current_substrate answers only for the one on the "
+               "chamber; this reads any of them."),
+        Op("update_substrate", UpdateSubstrate, SubstrateInfo,
+           doc="Correct a registered substrate's record; only the fields you set are "
+               "written. substrate_id defaults to the one loaded on the chamber. "
+               "Descriptive fields (materials, orientation, thickness, name, "
+               "manufacturer, manufacture_date) are always editable. Geometry (width, "
+               "height, pixel_spacing, positions) re-derives every pixel index, so it "
+               "is refused once the substrate has a recorded growth -- before then it "
+               "rebuilds the positions and their sample rows, exactly as registering "
+               "with the corrected value would have.",
+           journal=True),
+        Op("reopen_position", ReopenPosition, ReopenResult,
+           doc="Undo a finish_substrate/finish_current_pixel that was not meant: puts "
+               "the position back in play and its sample back to 'planned'. Defaults "
+               "to the most recently finished position. Refuses a position that has a "
+               "recorded growth unless force -- and even forced, resume_substrate "
+               "rebuilds progress from the experiment table and will mark it spent "
+               "again.",
+           journal=True),
+        Op("retire_substrate", RetireSubstrate, SubstrateInfo,
+           doc="Hide a substrate from list_substrates without deleting it -- for one "
+               "registered by mistake. Nothing recorded against it is destroyed, so "
+               "its steps and samples stay readable. retire=false restores it.",
+           journal=True),
+        Op("unload_substrate", Empty, CurrentSubstrateResponse,
+           doc="Take the current substrate off the chamber without touching the "
+               "database, for when the wrong one was registered or resumed. Returns "
+               "whatever is current afterwards, which is usually nothing."),
+
+        # --- growth.db as data, for a management UI. Every list_* takes the same
+        # query (limit/offset/since/until/order/search/include_retired) and answers
+        # with the same PageInfo; every update_* writes only the fields it is given;
+        # every retire_* is a soft delete, because growth.db is the only record of
+        # what this chamber has ever grown and has no restore path. `step` has no
+        # editor at all -- the journal is append-only so that what happened cannot be
+        # rewritten after the fact.
+        Op("list_projects", ListQuery, ProjectList,
+           doc="Projects, newest first. Same query shape as every other list_*."),
+        Op("get_project", ProjectId, ProjectInfo),
+        Op("update_project", UpdateProject, ProjectInfo,
+           doc="Rename a project or fix its description. Only the fields you set are "
+               "written.", journal=True),
+        Op("retire_project", RetireProject, ProjectInfo,
+           doc="Hide a project from listings. Its experiments are untouched and stay "
+               "readable; retire=false restores it.", journal=True),
+
+        Op("list_experiments", ListExperiments, ExperimentList,
+           doc="Recorded growths, newest first, optionally narrowed to one substrate "
+               "or project and to a time window."),
+        Op("get_experiment", ExperimentId, ExperimentInfo),
+        Op("update_experiment", UpdateExperiment, ExperimentInfo,
+           doc="Correct a growth's recorded conditions -- the temperature, pressure "
+               "and laser power a person read off an instrument and may have typed "
+               "wrong. Identity (uuid, substrate, pixel) is not editable: that would "
+               "make it a different growth.", journal=True),
+        Op("retire_experiment", RetireExperiment, ExperimentInfo,
+           doc="Mark a growth as recorded by mistake -- a dry run logged as real, a "
+               "duplicate row. It stops counting as a growth, which also hands its "
+               "pixel position back, so a substrate wrongly marked spent becomes "
+               "usable again. Nothing is deleted; retire=false restores it.",
+           journal=True),
+
+        Op("list_records", ListRecords, RecordList,
+           doc="Storage recordings (the .hdf5 files), optionally for one experiment."),
+        Op("get_record", RecordId, RecordInfo),
+        Op("update_record", UpdateRecord, RecordInfo,
+           doc="Rename a recording or re-link it to the right experiment -- the fix "
+               "for a growth whose file was attached to the wrong row.", journal=True),
+        Op("retire_record", RetireRecord, RecordInfo, journal=True),
+
+        Op("update_sample", UpdateSample, SampleInfo,
+           doc="Correct a sample's name, notes, growth state or position. There is no "
+               "retire: a sample exists because the substrate geometry says its "
+               "position exists, so removing one means update_substrate (fix the "
+               "geometry) or retire_experiment (undo the growth that filled it).",
+           journal=True),
+
+        Op("get_measurement", MeasurementId, MeasurementInfo),
+        Op("update_measurement", UpdateMeasurement, MeasurementInfo,
+           doc="Correct a measurement's value, kind, detail or source -- an ex-situ "
+               "result entered before the analysis was final.", journal=True),
+        Op("retire_measurement", RetireMeasurement, MeasurementInfo,
+           doc="Hide a measurement from listings, so a wrong value stops reaching an "
+               "optimiser without vanishing from the record.", journal=True),
 
         # --- chamber reads: domain interpretation of the raw log row (gauge
         # fallback, field-name mapping) that today only exists in manager.py.

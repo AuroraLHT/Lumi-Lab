@@ -9,6 +9,7 @@ pending-confirmation/current-task state machine without a live chamber.
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pydantic
 import pytest
@@ -23,8 +24,30 @@ from lumi.contracts.payloads.experiment import (
     ConfirmLaserPower,
     MoveTo,
     FinishCurrentPixel,
+    AddMeasurement,
+    ExperimentId,
+    ListExperiments,
+    ListMeasurements,
+    MeasurementId,
+    SubstrateId,
+    ListQuery,
+    ListSamples,
+    ListSteps,
+    ListSubstrates,
+    ProjectId,
+    RegisterProject,
     RegisterSubstrate,
+    RetireExperiment,
+    RetireMeasurement,
+    RetireProject,
+    UpdateExperiment,
+    UpdateMeasurement,
+    UpdateProject,
+    UpdateSample,
+    ReopenPosition,
     ResumeSubstrate,
+    RetireSubstrate,
+    UpdateSubstrate,
     CheckLogging,
     SampleAngle,
     SetMfcControl,
@@ -571,3 +594,405 @@ async def test_start_storage_falls_back_to_project_name_with_no_sample_loaded(ha
     result = await handler.start_storage(StartStorage(project_name="demo"))
 
     assert result.storage_name == f"demo_{result.record_uuid}"
+
+
+# --- bookkeeping corrections ---------------------------------------------------
+# Registration was write-once: a substrate typed in with the wrong size, or a position
+# finished by accident, had no way back, and the only way to keep depositing was to
+# register a second, fictional substrate. These pin the undo paths.
+
+
+async def test_update_substrate_fixes_a_mistyped_size_and_rebuilds_positions(handler):
+    """The reported case: registered, then noticed the size was wrong.
+
+    width drives _compute_positions, so correcting it has to re-derive the positions
+    and their sample rows -- leaving a 3-position substrate that now says width=20
+    would be worse than not allowing the edit at all.
+    """
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+        substrate_name="STO-42",
+    ))
+    assert len(info.positions) == 3
+
+    fixed = await handler.update_substrate(UpdateSubstrate(width=20.0))
+
+    # width=20, spacing=2 reaches +-4mm before the fixture's rheed_limit of +-3 bites,
+    # so the RHEED drop is re-applied too rather than only on first registration.
+    assert fixed.width == 20.0
+    assert [p.position for p in fixed.positions] == [-2.0, 0.0, 2.0]
+    rows = await handler.growth_db.get_samples_for_substrate(info.substrate_id)
+    assert [r[4] for r in rows].count("position") == 3
+    assert [r[4] for r in rows].count("substrate") == 1  # the root survives the rebuild
+
+    # ...and it is persisted, not just patched in memory.
+    handler.manager.substrates.clear()
+    resumed = await handler.resume_substrate(ResumeSubstrate(substrate_id=info.substrate_id))
+    assert resumed.width == 20.0
+
+
+async def test_update_substrate_edits_description_without_touching_positions(handler):
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    before = [p.position for p in info.positions]
+
+    updated = await handler.update_substrate(UpdateSubstrate(
+        substrate_id=info.substrate_id, materials="LaAlO3", substrate_name="LAO-1",
+    ))
+
+    assert updated.materials == "LaAlO3"
+    assert updated.substrate_name == "LAO-1"
+    assert updated.orientation == "(001)"          # untouched fields keep their value
+    assert [p.position for p in updated.positions] == before
+
+
+async def test_update_substrate_refuses_geometry_once_a_growth_is_recorded(handler):
+    """Renumbering pixels under an experiment row would relocate a growth that already
+    happened. Descriptive fields stay editable -- the refusal is about geometry only."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    await handler.growth_db.add_experiment(
+        substrate_id=info.substrate_id, is_pixel=True, pixel_location=0,
+    )
+
+    with pytest.raises(ValueError, match="cannot be changed"):
+        await handler.update_substrate(UpdateSubstrate(width=20.0))
+
+    renamed = await handler.update_substrate(UpdateSubstrate(substrate_name="STO-7"))
+    assert renamed.substrate_name == "STO-7"
+
+
+async def test_reopen_position_undoes_an_accidental_finish(handler):
+    """The other reported case: finished a substrate by mistake and had to register a
+    fake one to carry on. Nothing was deposited, so the position goes straight back."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    await handler.finish_substrate(Empty())
+    assert handler.manager.current_substrate.current_position_id == 1
+
+    result = await handler.reopen_position(ReopenPosition())
+
+    assert result.index == 0
+    assert result.substrate.current_pixel_index == 0
+    sample = await handler.growth_db.find_sample(info.substrate_id, 0)
+    assert sample[8] == "planned"
+    assert len(handler.manager.current_substrate.accessible_positions) == 3
+
+
+async def test_reopen_position_survives_a_resume(handler):
+    """An accidental finish writes no experiment row, so restore_progress agrees the
+    position is free -- the undo is not just an in-memory patch."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    await handler.finish_substrate(Empty())
+    await handler.reopen_position(ReopenPosition())
+
+    handler.manager.substrates.clear()
+    resumed = await handler.resume_substrate(ResumeSubstrate(substrate_id=info.substrate_id))
+    assert resumed.current_pixel_index == 0
+
+
+async def test_reopen_position_refuses_a_position_that_was_really_grown(handler):
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    await handler.growth_db.add_experiment(
+        substrate_id=info.substrate_id, is_pixel=True, pixel_location=0,
+    )
+    await handler.finish_substrate(Empty())
+
+    with pytest.raises(ValueError, match="recorded growth"):
+        await handler.reopen_position(ReopenPosition(index=0))
+
+    forced = await handler.reopen_position(ReopenPosition(index=0, force=True))
+    assert forced.index == 0
+
+
+async def test_list_substrates_reports_what_is_left_and_hides_retired(handler):
+    """resume_substrate takes an id and nothing offered a way to learn one."""
+    first = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+        substrate_name="STO-42",
+    ))
+    await handler.growth_db.add_experiment(
+        substrate_id=first.substrate_id, is_pixel=True, pixel_location=0,
+    )
+    second = await handler.register_substrate(RegisterSubstrate(
+        materials="LaAlO3", orientation="(001)", width=10, positions=[0.0],
+    ))
+
+    # Newest first by default -- what a browsing UI wants on page one.
+    listed = await handler.list_substrates(ListSubstrates())
+    assert [s.substrate_id for s in listed.substrates] == [second.substrate_id, first.substrate_id]
+    assert listed.page.total == 2
+    oldest = listed.substrates[-1]
+    assert oldest.substrate_name == "STO-42"
+    assert (oldest.num_positions, oldest.num_used) == (3, 1)
+    assert oldest.created_at is not None and oldest.created_at_iso.endswith("Z")
+
+    ascending = await handler.list_substrates(ListSubstrates(order="asc"))
+    assert [s.substrate_id for s in ascending.substrates] == [first.substrate_id, second.substrate_id]
+
+    await handler.retire_substrate(RetireSubstrate(substrate_id=second.substrate_id))
+
+    hidden = await handler.list_substrates(ListSubstrates())
+    assert [s.substrate_id for s in hidden.substrates] == [first.substrate_id]
+    assert hidden.page.total == 1  # the pager's total respects the filter too
+    with_retired = await handler.list_substrates(ListSubstrates(include_retired=True))
+    assert len(with_retired.substrates) == 2
+    assert with_retired.substrates[0].state == "retired"
+
+
+async def test_retire_substrate_keeps_its_samples_and_is_reversible(handler):
+    """Retiring is the delete that isn't one: growth.db has no restore path, so a
+    mistaken registration is hidden rather than removed."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    await handler.retire_substrate(RetireSubstrate(substrate_id=info.substrate_id))
+
+    assert len(await handler.growth_db.get_samples_for_substrate(info.substrate_id)) == 4
+    assert await handler.growth_db.get_substrate(info.substrate_id) is not None
+
+    restored = await handler.retire_substrate(
+        RetireSubstrate(substrate_id=info.substrate_id, retire=False)
+    )
+    assert restored.state == "active"
+
+
+async def test_unload_substrate_leaves_the_record_alone(handler):
+    """register/resume push onto a stack, so loading the wrong substrate used to need
+    a node restart."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+
+    after = await handler.unload_substrate(Empty())
+
+    assert after.substrate is None
+    assert handler.readout().mode == "idle"
+    assert await handler.growth_db.get_substrate(info.substrate_id) is not None
+
+
+async def test_migration_adds_state_to_a_database_without_it(tmp_path):
+    """An existing growth.db predates the column; CREATE TABLE IF NOT EXISTS is a
+    no-op on it, so the migration is the only thing that keeps it readable."""
+    db = GrowthDB(str(tmp_path / "old.db"))
+    await db.connect()
+    await db.conn.execute(
+        """CREATE TABLE substrate (
+            substrate_id INTEGER PRIMARY KEY, substrate_uuid VARCHAR(100) NOT NULL,
+            materials VARCHAR(100) NOT NULL, orientation VARCHAR(50), height FLOAT,
+            width FLOAT, thickness FLOAT, pixel_spacing FLOAT, positions TEXT,
+            manufacture VARCHAR(50), manufacture_date VARCHAR(50), substrate_name TEXT
+        )"""
+    )
+    await db.conn.execute(
+        "INSERT INTO substrate (substrate_uuid, materials) VALUES ('u-1', 'SrTiO3')"
+    )
+    await db.conn.commit()
+
+    await db.create_database()
+
+    assert "state" in {c[1] for c in await db.get_table_columns("substrate")}
+    assert [r[0] for r in await db.get_substrates()] == [1]  # the old row is still listed
+    await db.close()
+
+
+# --- growth.db as data: the CRUD surface a management UI reads ------------------
+
+
+async def test_list_query_pages_and_windows_by_time(handler):
+    """One query shape for every entity: limit/offset for 'the last 5', since/until
+    for 'registered this month'. Neither was expressible before."""
+    for i in range(7):
+        await handler.register_substrate(RegisterSubstrate(
+            materials="SrTiO3", orientation="(001)", width=10, positions=[0.0],
+            substrate_name=f"STO-{i}",
+        ))
+
+    page = await handler.list_substrates(ListSubstrates(limit=5))
+    assert len(page.substrates) == 5
+    assert page.page.total == 7          # the total ignores the limit, as a pager needs
+    assert page.page.has_more is True
+
+    second = await handler.list_substrates(ListSubstrates(limit=5, offset=5))
+    assert len(second.substrates) == 2
+    assert second.page.has_more is False
+
+    # A window that starts in the future matches nothing; one that starts in the past
+    # matches everything. Both ends are honoured.
+    assert (await handler.list_substrates(
+        ListSubstrates(since=time.time() + 3600))).page.total == 0
+    assert (await handler.list_substrates(
+        ListSubstrates(since=time.time() - 3600))).page.total == 7
+    assert (await handler.list_substrates(
+        ListSubstrates(until=time.time() - 3600))).page.total == 0
+
+
+async def test_list_substrates_search_matches_descriptive_columns(handler):
+    await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, positions=[0.0],
+        substrate_name="STO-42",
+    ))
+    await handler.register_substrate(RegisterSubstrate(
+        materials="LaAlO3", orientation="(001)", width=10, positions=[0.0],
+        substrate_name="LAO-1",
+    ))
+
+    assert (await handler.list_substrates(ListSubstrates(search="LaAlO"))).page.total == 1
+    assert (await handler.list_substrates(ListSubstrates(search="STO"))).page.total == 1
+    assert (await handler.list_substrates(ListSubstrates(search="(001)"))).page.total == 2
+
+
+async def test_timestamps_are_epoch_and_iso_for_the_same_instant(handler):
+    """Every timestamped payload carries both renderings of one stored column, so a
+    UI gets something sortable and something printable without parsing."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, positions=[0.0],
+    ))
+    full = await handler.get_substrate(SubstrateId(substrate_id=info.substrate_id))
+
+    assert isinstance(full.created_at, float)
+    assert full.created_at_iso.endswith("Z")
+    # Same instant, not two clocks: the ISO string parses back to the epoch value.
+    from lumi.experiment.db import to_epoch
+    assert to_epoch(full.created_at_iso) == pytest.approx(full.created_at, abs=1)
+    assert full.created_at == pytest.approx(time.time(), abs=60)
+
+
+async def test_project_crud_round_trip(handler):
+    project_id = (await handler.register_project(
+        RegisterProject(project_name="demo", description="first pass")
+    )).project_id
+
+    listed = await handler.list_projects(ListQuery())
+    assert [p.project_id for p in listed.projects] == [project_id]
+    assert listed.projects[0].description == "first pass"
+    assert listed.projects[0].created_at is not None
+
+    renamed = await handler.update_project(
+        UpdateProject(project_id=project_id, project_name="demo-v2")
+    )
+    assert renamed.project_name == "demo-v2"
+    assert renamed.description == "first pass"   # untouched field survives
+
+    retired = await handler.retire_project(RetireProject(project_id=project_id))
+    assert retired.state == "retired"
+    assert (await handler.list_projects(ListQuery())).page.total == 0
+    assert (await handler.list_projects(ListQuery(include_retired=True))).page.total == 1
+
+    restored = await handler.retire_project(RetireProject(project_id=project_id, retire=False))
+    assert restored.state == "active"
+
+
+async def test_update_experiment_corrects_a_mistyped_reading(handler):
+    """The measured values are what a person read off an instrument, so correcting
+    one is a correction -- but identity is not editable."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    experiment_id = await handler.growth_db.add_experiment(
+        substrate_id=info.substrate_id, is_pixel=True, pixel_location=0,
+        temperature=700.0, pressure=1e-2,
+    )
+
+    fixed = await handler.update_experiment(
+        UpdateExperiment(experiment_id=experiment_id, pressure=1e-4)
+    )
+    assert fixed.pressure == pytest.approx(1e-4)
+    assert fixed.temperature == pytest.approx(700.0)      # untouched
+    assert fixed.substrate_id == info.substrate_id        # identity is not editable
+
+    listed = await handler.list_experiments(ListExperiments(substrate_id=info.substrate_id))
+    assert [e.experiment_id for e in listed.experiments] == [experiment_id]
+    assert listed.experiments[0].pressure == pytest.approx(1e-4)
+
+
+async def test_retiring_a_mistaken_growth_hands_its_pixel_back(handler):
+    """The payoff of soft-deleting rather than deleting: a dry run logged as a real
+    growth stops consuming a position, and the loaded substrate notices immediately."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    experiment_id = await handler.growth_db.add_experiment(
+        substrate_id=info.substrate_id, is_pixel=True, pixel_location=0,
+    )
+    handler.manager.substrates.clear()
+    resumed = await handler.resume_substrate(ResumeSubstrate(substrate_id=info.substrate_id))
+    assert resumed.current_pixel_index == 1          # position 0 is spent
+
+    await handler.retire_experiment(RetireExperiment(experiment_id=experiment_id))
+
+    # In memory now...
+    assert handler.manager.current_substrate.current_position_id == 0
+    # ...and on the next resume, because get_used_pixel_indices skips retired rows.
+    handler.manager.substrates.clear()
+    again = await handler.resume_substrate(ResumeSubstrate(substrate_id=info.substrate_id))
+    assert again.current_pixel_index == 0
+
+
+async def test_measurement_crud_and_epoch_timestamp(handler):
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    sample = (await handler.growth_db.find_sample(info.substrate_id, 0))[0]
+    measurement_id = (await handler.add_measurement(AddMeasurement(
+        sample_id=sample, kind="rheed_metric", value=0.42, detail={"note": "draft"},
+    ))).measurement_id
+
+    one = await handler.get_measurement(MeasurementId(measurement_id=measurement_id))
+    assert isinstance(one.created_at, float)         # was a raw SQLite string before
+    assert one.created_at_iso.endswith("Z")
+    assert one.value == pytest.approx(0.42)
+
+    fixed = await handler.update_measurement(UpdateMeasurement(
+        measurement_id=measurement_id, value=0.51, detail={"note": "final"},
+    ))
+    assert fixed.value == pytest.approx(0.51)
+    assert fixed.detail == {"note": "final"}
+
+    await handler.retire_measurement(RetireMeasurement(measurement_id=measurement_id))
+    # A wrong value stops reaching an optimiser without vanishing from the record.
+    assert (await handler.list_measurements(ListMeasurements())).page.total == 0
+    assert (await handler.list_measurements(
+        ListMeasurements(include_retired=True))).page.total == 1
+
+
+async def test_update_sample_renames_without_touching_geometry(handler):
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    sample_id = (await handler.growth_db.find_sample(info.substrate_id, 1))[0]
+
+    updated = await handler.update_sample(UpdateSample(
+        sample_id=sample_id, sample_name="corner-piece", notes="cleaved 2026-09-18",
+    ))
+    assert updated.sample_name == "corner-piece"
+    assert updated.notes == "cleaved 2026-09-18"
+    assert updated.pixel_index == 1                  # identity untouched
+
+    listed = await handler.list_samples(ListSamples(substrate_id=info.substrate_id))
+    assert listed.page.total == 4                    # root + 3 positions
+    assert any(s.sample_name == "corner-piece" for s in listed.samples)
+
+
+async def test_steps_are_not_editable(handler):
+    """The journal is the audit trail: it gets a reader and no writer, so what
+    happened cannot be quietly rewritten after the fact."""
+    with pytest.raises(ValueError, match="not editable"):
+        await handler.growth_db.update_row("step", 1, kind="something-else")
+    with pytest.raises(ValueError, match="cannot be retired"):
+        await handler.growth_db.set_row_state("step", 1, "retired")
+
+
+async def test_unknown_column_raises_rather_than_no_opping(handler):
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, positions=[0.0],
+    ))
+    with pytest.raises(ValueError, match="not editable on substrate"):
+        await handler.growth_db.update_row("substrate", info.substrate_id, colour="blue")

@@ -36,7 +36,7 @@ from math import floor
 
 from lumi.contracts.payloads.chamber import SectionQuery
 from lumi.contracts.payloads.storage import StorageRequest
-from lumi.experiment.db import GrowthDB
+from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, utc_now
 from lumi.experiment.mi import MiCommandRunner
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
@@ -141,7 +141,13 @@ class Substrate:
         manufacture: str | None = None,
         manufacture_date: str | None = None,
         name: str | None = None,
+        state: str = "active",
+        created_at: str | None = None,
     ) -> None:
+        self.state = state
+        #: As stored -- CURRENT_TIMESTAMP text. `to_epoch`/`to_iso` render it for the
+        #: wire; None means the row predates the column.
+        self.created_at = created_at
         self.materials = materials
         self.orientation = orientation
         self.width = width
@@ -182,6 +188,24 @@ class Substrate:
     def finish_current_position(self) -> None:
         self._accessed_position_ids.add(self.current_position_id)
         self.current_position_id += 1
+
+    def reopen_position(self, index: int) -> None:
+        """The inverse of finish_current_position: put a retired position back in play.
+
+        `current_position_id` moves to the reopened index rather than merely
+        decrementing, so reopening something other than the most recent finish still
+        leaves the substrate pointing at the position that is now next to grow.
+        """
+        self._accessed_position_ids.discard(index)
+        self.current_position_id = min(self.current_position_id, index)
+
+    @property
+    def last_finished_position(self) -> int | None:
+        return max(self._accessed_position_ids) if self._accessed_position_ids else None
+
+    def reset_progress(self) -> None:
+        self._accessed_position_ids = set()
+        self.current_position_id = 0
 
     def restore_progress(self, used_indices: set[int]) -> None:
         """Re-apply growth history to a substrate rebuilt from the database.
@@ -284,6 +308,7 @@ class BaseExperimentManager:
         substrate = Substrate(
             materials, orientation, width, height, thickness, pixel_spacing, positions or None,
             manufacture=manufacturer, manufacture_date=manufacture_date, name=substrate_name,
+            created_at=utc_now(),
         )
         self._drop_positions_by_rheed_limit(substrate)
 
@@ -292,23 +317,32 @@ class BaseExperimentManager:
             substrate.thickness, substrate.pixel_spacing, json.dumps(substrate.positions),
             substrate_uuid=substrate.uuid, manufacture=manufacturer,
             manufacture_date=manufacture_date, substrate_name=substrate_name,
+            created_at=substrate.created_at,
         )
         await self._materialise_samples(substrate)
         self.substrates.append(substrate)
         return substrate
 
-    async def _materialise_samples(self, substrate: Substrate) -> None:
+    async def _materialise_samples(self, substrate: Substrate, root_exists: bool = False) -> None:
         """One `sample` row per growable position, created with the substrate.
 
         A position becomes a specimen the moment the substrate is registered, not when
         it is first grown on -- that is what lets "which positions are spent" be a
         query instead of in-memory state, and what gives a step somewhere to attach
         before any deposition has happened.
+
+        `root_exists` is the re-materialise case (a geometry correction): the root row
+        carries the substrate's uuid and outlives the positions hanging off it.
         """
-        root = await self.growth_db.add_sample(
-            substrate.db_id, kind="substrate", pixel_index=None,
-            sample_name=substrate.name, state="active", sample_uuid=substrate.uuid,
-        )
+        root = None
+        if root_exists:
+            existing = await self.growth_db.get_samples_for_substrate(substrate.db_id)
+            root = next((r[0] for r in existing if r[4] == "substrate"), None)
+        if root is None:
+            root = await self.growth_db.add_sample(
+                substrate.db_id, kind="substrate", pixel_index=None,
+                sample_name=substrate.name, state="active", sample_uuid=substrate.uuid,
+            )
         base = substrate.name or substrate.materials
         for index, position in enumerate(substrate.positions):
             await self.growth_db.add_sample(
@@ -326,6 +360,8 @@ class BaseExperimentManager:
             pixel_spacing=row[7], positions=json.loads(row[8]) if row[8] else None,
             db_id=row[0], substrate_uuid=row[1], manufacture=row[9], manufacture_date=row[10],
             name=row[11] if len(row) > 11 else None,
+            state=_column(row, "state") or "active",
+            created_at=_column(row, "substrate_created_at"),
         )
         substrate.restore_progress(await self.growth_db.get_used_pixel_indices(substrate_id))
         # A substrate registered before the sample table existed has no rows; make
@@ -366,6 +402,208 @@ class BaseExperimentManager:
         row = await self.growth_db.find_sample(substrate.db_id, index)
         if row is not None:
             await self.growth_db.set_sample_state(row[0], "grown")
+
+    # --- corrections ---------------------------------------------------------
+    # Registration used to be write-once: a substrate typed in with the wrong size,
+    # or a position finished by accident, had no way back and the only way to keep
+    # depositing was to register a second, fictional substrate. These are the undo
+    # paths. They are deliberately conservative -- each one refuses rather than
+    # rewriting anything a real growth already points at.
+
+    #: `update_substrate` fields that change nothing but what the record *says*.
+    _DESCRIPTIVE_FIELDS = ("materials", "orientation", "thickness", "substrate_name",
+                           "manufacturer", "manufacture_date")
+    #: ...and the ones that re-derive `positions`, and with it every pixel index.
+    _GEOMETRY_FIELDS = ("width", "height", "pixel_spacing", "positions")
+    #: Request field -> (Substrate attribute, substrate column), for the three names
+    #: that differ across the three layers. Everything else is spelled the same.
+    _FIELD_ALIASES = {
+        "substrate_name": ("name", "substrate_name"),
+        "manufacturer": ("manufacture", "manufacture"),
+    }
+
+    def _substrate_by_id(self, substrate_id: int) -> Substrate | None:
+        """The loaded Substrate for an id, if this manager happens to hold one.
+
+        An edit is a database write first; keeping the in-memory copy in step matters
+        only when the substrate being corrected is one that is currently loaded --
+        which, for the mistyped-size case, it almost always is.
+        """
+        return next((s for s in self.substrates if s.db_id == substrate_id), None)
+
+    async def update_substrate(self, substrate_id: int | None = None, **fields) -> Substrate:
+        """Correct a registered substrate's record.
+
+        Descriptive fields are always editable. Geometry is only editable while the
+        substrate has no `experiment` rows: `width`/`pixel_spacing` re-derive
+        `positions`, so applying them to a substrate that has been grown on would
+        renumber pixel indices out from under the growths that already reference them.
+        Rather than silently keeping stale positions, that case raises and says so.
+
+        `substrate_id=None` means the current substrate, which is the common case --
+        you notice the size is wrong on the one you just registered.
+        """
+        if substrate_id is None:
+            current = self.current_substrate
+            if current is None or current.db_id is None:
+                raise ValueError("no current substrate to update; pass substrate_id")
+            substrate_id = current.db_id
+
+        row = await self.growth_db.get_substrate(substrate_id)
+        if row is None:
+            raise ValueError(f"no substrate with id {substrate_id}")
+
+        fields = {k: v for k, v in fields.items() if v is not None}
+        unknown = set(fields) - set(self._DESCRIPTIVE_FIELDS) - set(self._GEOMETRY_FIELDS)
+        if unknown:
+            raise ValueError(f"unknown substrate field(s): {sorted(unknown)}")
+
+        geometry = {k: v for k, v in fields.items() if k in self._GEOMETRY_FIELDS}
+        if geometry:
+            grown = await self.growth_db.count_substrate_experiments(substrate_id)
+            if grown:
+                raise ValueError(
+                    f"substrate {substrate_id} has {grown} growth(s) recorded, so "
+                    f"{sorted(geometry)} cannot be changed -- the positions would be "
+                    "renumbered under experiments that already reference them. "
+                    "Register a new substrate for the corrected geometry; the "
+                    "descriptive fields "
+                    f"({', '.join(self._DESCRIPTIVE_FIELDS)}) are still editable."
+                )
+
+        # Rebuild off the stored row so untouched fields keep their values, then let
+        # Substrate re-derive positions exactly the way registration would have.
+        substrate = self._substrate_by_id(substrate_id) or await self._load_substrate(row)
+        columns = {}
+        for name, value in fields.items():
+            attribute, column = self._FIELD_ALIASES.get(name, (name, name))
+            setattr(substrate, attribute, value)
+            columns[column] = value
+        if geometry:
+            substrate.positions = (
+                list(geometry["positions"]) if geometry.get("positions")
+                else substrate._compute_positions()
+            )
+            self._drop_positions_by_rheed_limit(substrate)
+            # No experiments exist (checked above), so the per-position sample rows are
+            # the placeholders registration created. Replace them to match the new
+            # geometry, and put the substrate back at position 0 -- any 'grown' state
+            # on them was an accidental finish, which this edit also undoes.
+            substrate.reset_progress()
+            await self.growth_db.delete_position_samples(substrate_id)
+            await self._materialise_samples(substrate, root_exists=True)
+            columns["positions"] = json.dumps(substrate.positions)
+
+        await self.growth_db.update_substrate(substrate_id, **columns)
+        log.info("substrate %s updated: %s", substrate_id, sorted(fields))
+        return substrate
+
+    async def _load_substrate(self, row) -> Substrate:
+        """A Substrate rebuilt from a database row, without pushing it onto the stack.
+        `resume_substrate` is the loading path; this is for editing a substrate that
+        is not the one on the chamber."""
+        return Substrate(
+            materials=row[2], orientation=row[3], width=row[5], height=row[4], thickness=row[6],
+            pixel_spacing=row[7], positions=json.loads(row[8]) if row[8] else None,
+            db_id=row[0], substrate_uuid=row[1], manufacture=row[9], manufacture_date=row[10],
+            name=row[11] if len(row) > 11 else None,
+            state=_column(row, "state") or "active",
+            created_at=_column(row, "substrate_created_at"),
+        )
+
+    async def reopen_position(self, index: int | None = None, force: bool = False) -> int:
+        """Undo a `finish_substrate` / `finish_current_pixel` that was not meant.
+
+        `index=None` reopens the most recently finished position. A position with an
+        `experiment` row really was deposited on, so reopening it would hand back a
+        spent pixel -- that refuses unless `force`, and even forced it does not survive
+        a `resume_substrate`, which rebuilds progress from the experiment table.
+        """
+        substrate = self.current_substrate
+        if substrate is None:
+            raise ValueError("no current substrate")
+        if index is None:
+            index = substrate.last_finished_position
+            if index is None:
+                raise ValueError("no finished position to reopen")
+        if not 0 <= index < len(substrate.positions):
+            raise ValueError(
+                f"position {index} is outside this substrate's 0..{len(substrate.positions) - 1}"
+            )
+
+        if substrate.db_id is not None and not force:
+            used = await self.growth_db.get_used_pixel_indices(substrate.db_id)
+            if index in used:
+                raise ValueError(
+                    f"position {index} has a recorded growth, so reopening it would "
+                    "hand back a spent pixel. Pass force=True if the experiment row "
+                    "is itself the mistake."
+                )
+
+        substrate.reopen_position(index)
+        if substrate.db_id is not None:
+            row = await self.growth_db.find_sample(substrate.db_id, index)
+            if row is not None:
+                await self.growth_db.set_sample_state(row[0], "planned")
+        log.info("reopened position %s on substrate %s", index, substrate.db_id)
+        return index
+
+    async def list_substrates(self, **query) -> list[dict]:
+        """Every registered substrate with enough to pick one out: what it is, how
+        many positions it has and how many are spent. `resume_substrate` takes an id
+        and nothing else offered a way to learn one.
+
+        `query` is the shared list shape -- filters/since/until/limit/offset/order/
+        search/include_retired -- passed straight through to GrowthDB.list_rows.
+        """
+        summaries = []
+        for row in await self.growth_db.list_rows("substrate", **query):
+            positions = json.loads(row["positions"]) if row["positions"] else []
+            used = await self.growth_db.get_used_pixel_indices(row["substrate_id"])
+            created = _column(row, "substrate_created_at")
+            summaries.append({
+                "substrate_id": row["substrate_id"], "substrate_uuid": row["substrate_uuid"],
+                "materials": row["materials"], "orientation": row["orientation"],
+                "width": row["width"], "pixel_spacing": row["pixel_spacing"],
+                "substrate_name": _column(row, "substrate_name"),
+                "num_positions": len(positions),
+                "num_used": len({i for i in used if 0 <= i < len(positions)}),
+                "state": _column(row, "state") or "active",
+                "created_at": to_epoch(created), "created_at_iso": to_iso(created),
+            })
+        return summaries
+
+    async def retire_substrate(self, substrate_id: int, retire: bool = True) -> Substrate:
+        """Hide a substrate from listings without destroying it.
+
+        This is the delete that isn't one. A substrate registered by mistake stops
+        cluttering `list_substrates`, but whatever was journalled against it stays
+        readable -- deleting the row would orphan steps and samples that point at it,
+        and there is no restore path for growth.db. Reversible: `retire=False`.
+        """
+        row = await self.growth_db.get_substrate(substrate_id)
+        if row is None:
+            raise ValueError(f"no substrate with id {substrate_id}")
+        state = "retired" if retire else "active"
+        await self.growth_db.update_substrate(substrate_id, state=state)
+        substrate = self._substrate_by_id(substrate_id)
+        if substrate is None:
+            substrate = await self._load_substrate(row)
+        substrate.state = state
+        log.info("substrate %s is now %s", substrate_id, state)
+        return substrate
+
+    def unload_substrate(self) -> Substrate | None:
+        """Take the current substrate off the chamber, leaving the database alone.
+
+        `register_substrate` and `resume_substrate` push onto a stack, so loading the
+        wrong one used to be unfixable without restarting the node. Returns whatever
+        is current afterwards -- the one loaded before it, or None.
+        """
+        if self.substrates:
+            dropped = self.substrates.pop()
+            log.info("unloaded substrate %s", dropped.db_id)
+        return self.current_substrate
 
     async def get_target_name_by_id(self, target_id: str) -> str:
         field = self.target_mapper.get(target_id)

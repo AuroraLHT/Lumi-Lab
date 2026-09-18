@@ -78,6 +78,57 @@ class TaskAck(BaseModel):
     task_id: str
 
 
+# --- browsing growth.db: one query shape, one page shape ---------------------
+#
+# Every list_* request inherits ListQuery and every list_* response carries a
+# PageInfo, so a data-management client learns the paging and filtering rules once
+# instead of per entity. Timestamps are epoch seconds on the wire, and each one is
+# accompanied by an `_iso` twin: both are renderings of a single stored column, so a
+# UI gets something sortable and something printable without parsing, and there is
+# no second copy to fall out of step.
+
+
+class ListQuery(BaseModel):
+    """Filtering and paging, shared by every list_* op.
+
+    `since`/`until` are epoch seconds and bound the entity's creation time (a step's
+    start time). They are converted once, server-side, to whatever the table actually
+    stores -- a caller never has to know that `step` holds epoch floats while
+    everything else holds UTC text.
+    """
+
+    limit: int = 100
+    offset: int = 0
+    #: Epoch seconds, inclusive. `since=<start of month>` is the "registered this
+    #: month" filter; leaving both unset means no time bound at all. Rows written
+    #: before their table had a timestamp column match neither bound -- "grown in
+    #: September" should not quietly include a growth whose date nobody recorded --
+    #: so drop the window to see them.
+    since: float | None = None
+    until: float | None = None
+    #: "desc" (newest first, the default a UI wants) or "asc".
+    order: str = "desc"
+    #: Case-insensitive substring match across that entity's descriptive columns --
+    #: name, uuid, material, and so on. See GrowthDB._TABLES for which.
+    search: str | None = None
+    #: Retired rows are hidden by default. Nothing is ever deleted, so this is how a
+    #: UI offers "show removed".
+    include_retired: bool = False
+
+
+class PageInfo(BaseModel):
+    """What a pager needs that the returned rows do not say: how many matched in
+    total, and which slice of them this is."""
+
+    total: int = 0
+    limit: int = 100
+    offset: int = 0
+    #: A real field rather than a Python-side property, so the web client sees it too
+    #: -- a derived value that only exists on one of two generated clients is a bug
+    #: waiting to be found by whichever one goes without.
+    has_more: bool = False
+
+
 # --- substrate / pixel bookkeeping ------------------------------------------
 
 
@@ -103,6 +154,20 @@ class SubstrateInfo(BaseModel):
     pixel_spacing: float | None = None
     positions: list[PixelPosition] = []
     current_pixel_index: int | None = None
+    substrate_name: str | None = None
+    manufacturer: str | None = None
+    manufacture_date: str | None = None
+    #: "active" or "retired". Retired substrates are hidden from list_substrates but
+    #: keep every step, sample and measurement recorded against them.
+    state: str = "active"
+    #: When the substrate was registered. NULL on rows registered before the column
+    #: existed -- that reads as "not recorded", never as a fabricated date.
+    created_at: float | None = None
+    created_at_iso: str | None = None
+
+
+class SubstrateId(BaseModel):
+    substrate_id: int
 
 
 class RegisterProject(BaseModel):
@@ -110,9 +175,130 @@ class RegisterProject(BaseModel):
     description: str = ""
 
 
+class ProjectId(BaseModel):
+    project_id: int
+
+
 class ProjectInfo(BaseModel):
     project_id: int
     project_name: str
+    description: str | None = None
+    created_at: float | None = None
+    created_at_iso: str | None = None
+    state: str = "active"
+
+
+class ProjectList(BaseModel):
+    projects: list[ProjectInfo] = []
+    page: PageInfo = PageInfo()
+
+
+class UpdateProject(BaseModel):
+    project_id: int
+    project_name: str | None = None
+    description: str | None = None
+
+
+class RetireProject(BaseModel):
+    project_id: int
+    retire: bool = True
+
+
+# --- experiment / record: the growth rows and the files they produced ----------
+
+
+class ExperimentId(BaseModel):
+    experiment_id: int
+
+
+class ExperimentInfo(BaseModel):
+    """One recorded growth. The measured values (`temperature`, `pressure`,
+    `laser_power`) are what a person read off an instrument, which is exactly why
+    update_experiment exists -- a mistyped pressure is a correction, not a rewrite of
+    what happened."""
+
+    experiment_id: int
+    experiment_uuid: str | None = None
+    substrate_id: int | None = None
+    project_id: int | None = None
+    is_pixel: bool = False
+    pixel_location: int | None = None
+    temperature: float | None = None
+    pressure: float | None = None
+    laser_power: float | None = None
+    laser_pulse_rate: float | None = None
+    target_material: str | None = None
+    num_pulse: int | None = None
+    do_preablation: bool = False
+    preablation_pulse: int | None = None
+    preablation_frequency: int | None = None
+    before_experiment_waittime: float | None = None
+    after_experiment_waittime: float | None = None
+    ramp_rate: float | None = None
+    created_at: float | None = None
+    created_at_iso: str | None = None
+    state: str = "active"
+
+
+class ExperimentList(BaseModel):
+    experiments: list[ExperimentInfo] = []
+    page: PageInfo = PageInfo()
+
+
+class ListExperiments(ListQuery):
+    substrate_id: int | None = None
+    project_id: int | None = None
+
+
+class UpdateExperiment(BaseModel):
+    experiment_id: int
+    project_id: int | None = None
+    temperature: float | None = None
+    pressure: float | None = None
+    laser_power: float | None = None
+    laser_pulse_rate: float | None = None
+    target_material: str | None = None
+    num_pulse: int | None = None
+    ramp_rate: float | None = None
+
+
+class RetireExperiment(BaseModel):
+    experiment_id: int
+    retire: bool = True
+
+
+class RecordId(BaseModel):
+    record_id: int
+
+
+class RecordInfo(BaseModel):
+    record_id: int
+    record_uuid: str | None = None
+    experiment_id: int | None = None
+    record_name: str | None = None
+    created_at: float | None = None
+    created_at_iso: str | None = None
+    state: str = "active"
+
+
+class RecordList(BaseModel):
+    records: list[RecordInfo] = []
+    page: PageInfo = PageInfo()
+
+
+class ListRecords(ListQuery):
+    experiment_id: int | None = None
+
+
+class UpdateRecord(BaseModel):
+    record_id: int
+    record_name: str | None = None
+    experiment_id: int | None = None
+
+
+class RetireRecord(BaseModel):
+    record_id: int
+    retire: bool = True
 
 
 class RegisterSubstrate(BaseModel):
@@ -136,6 +322,71 @@ class ResumeSubstrate(BaseModel):
 
 class CurrentSubstrateResponse(BaseModel):
     substrate: SubstrateInfo | None = None
+
+
+class UpdateSubstrate(BaseModel):
+    """Correct a registered substrate. Every field is optional; only the ones set are
+    written, so a request carrying just `width` changes only the width."""
+
+    #: None means the substrate currently loaded on the chamber.
+    substrate_id: int | None = None
+    materials: str | None = None
+    orientation: str | None = None
+    thickness: float | None = None
+    substrate_name: str | None = None
+    manufacturer: str | None = None
+    manufacture_date: str | None = None
+    # Geometry. These re-derive `positions` and therefore every pixel index, so they
+    # are refused once the substrate has a recorded growth -- see the op's doc.
+    width: float | None = None
+    height: float | None = None
+    pixel_spacing: float | None = None
+    positions: list[float] | None = None
+
+
+class ReopenPosition(BaseModel):
+    #: None reopens the most recently finished position.
+    index: int | None = None
+    #: Reopen even though a growth is recorded there. The recorded growth still wins
+    #: on the next resume_substrate, which rebuilds progress from the experiment table.
+    force: bool = False
+
+
+class ReopenResult(BaseModel):
+    index: int
+    substrate: SubstrateInfo | None = None
+
+
+class ListSubstrates(ListQuery):
+    materials: str | None = None
+
+
+class SubstrateSummary(BaseModel):
+    substrate_id: int
+    substrate_uuid: str = ""
+    substrate_name: str | None = None
+    materials: str = ""
+    orientation: str = ""
+    width: float = 0.0
+    pixel_spacing: float | None = None
+    num_positions: int = 0
+    #: Positions with a recorded growth -- `num_positions - num_used` are left.
+    num_used: int = 0
+    state: str = "active"
+    #: When it was registered. NULL on rows registered before the column existed.
+    created_at: float | None = None
+    created_at_iso: str | None = None
+
+
+class SubstrateList(BaseModel):
+    substrates: list[SubstrateSummary] = []
+    page: PageInfo = PageInfo()
+
+
+class RetireSubstrate(BaseModel):
+    substrate_id: int
+    #: False restores a retired substrate.
+    retire: bool = True
 
 
 class TargetMap(BaseModel):
@@ -454,8 +705,12 @@ class SampleId(BaseModel):
     sample_id: int
 
 
-class ListSamples(BaseModel):
+class ListSamples(ListQuery):
     substrate_id: int | None = None
+    kind: str | None = None
+    #: The growth state -- "planned", "active" or "grown". Not the soft-delete flag;
+    #: samples are derived from the substrate's geometry and are never retired.
+    state: str | None = None
 
 
 class SampleInfo(BaseModel):
@@ -468,10 +723,28 @@ class SampleInfo(BaseModel):
     position_mm: float | None = None
     sample_name: str | None = None
     state: str = "planned"
+    notes: str | None = None
+    created_at: float | None = None
+    created_at_iso: str | None = None
+
+
+class UpdateSample(BaseModel):
+    """Correct a sample's label or growth state. There is no retire here on purpose:
+    a sample exists because the substrate's geometry says the position exists, so
+    removing one means correcting the geometry (update_substrate) or the growth that
+    filled it (retire_experiment)."""
+
+    sample_id: int
+    sample_name: str | None = None
+    notes: str | None = None
+    #: "planned", "active" or "grown".
+    state: str | None = None
+    position_mm: float | None = None
 
 
 class SampleList(BaseModel):
     samples: list[SampleInfo] = []
+    page: PageInfo = PageInfo()
 
 
 class LayerInfo(BaseModel):
@@ -483,6 +756,7 @@ class LayerInfo(BaseModel):
     num_pulse: int | None = None
     step_id: int | None = None
     started_at: float | None = None
+    started_at_iso: str | None = None
     is_dryrun: bool = False
 
 
@@ -491,9 +765,13 @@ class SampleDetail(BaseModel):
     layers: list[LayerInfo] = []
 
 
-class ListSteps(BaseModel):
+class ListSteps(ListQuery):
     sample_id: int | None = None
     session_id: int | None = None
+    kind: str | None = None
+    #: 500 rather than ListQuery's 100: a single growth runs to several hundred steps
+    #: and this default predates the shared shape, so lowering it would silently
+    #: truncate history reads that work today.
     limit: int = 500
 
 
@@ -509,11 +787,14 @@ class StepInfo(BaseModel):
     actor: str | None = None
     source: str | None = None
     started_at: float = 0.0
+    started_at_iso: str | None = None
     ended_at: float | None = None
+    ended_at_iso: str | None = None
 
 
 class StepList(BaseModel):
     steps: list[StepInfo] = []
+    page: PageInfo = PageInfo()
 
 
 class AddMeasurement(BaseModel):
@@ -537,37 +818,63 @@ class MeasurementInfo(BaseModel):
     value: float | None = None
     detail: dict = {}
     source: str | None = None
-    created_at: str | None = None
+    #: Epoch seconds. This was a raw SQLite timestamp string before every payload
+    #: settled on epoch-plus-ISO; `created_at_iso` is where the string went.
+    created_at: float | None = None
+    created_at_iso: str | None = None
+    state: str = "active"
     #: The growth conditions that produced the sample this measures, resolved
     #: server-side from the linked deposition step. Carried here so assembling a GP
     #: training set is one call rather than one round trip per point.
     conditions: dict = {}
 
 
-class ListMeasurements(BaseModel):
+class ListMeasurements(ListQuery):
     sample_id: int | None = None
     kind: str | None = None
+    #: Resolved through the sample tree, so this is "every measurement on this
+    #: substrate" rather than a plain column match.
     substrate_id: int | None = None
 
 
 class MeasurementList(BaseModel):
     measurements: list[MeasurementInfo] = []
+    page: PageInfo = PageInfo()
+
+
+class UpdateMeasurement(BaseModel):
+    measurement_id: int
+    kind: str | None = None
+    value: float | None = None
+    detail: dict | None = None
+    source: str | None = None
+
+
+class RetireMeasurement(BaseModel):
+    measurement_id: int
+    retire: bool = True
 
 
 __all__ = [
+    # Re-exported from .chamber: the driver's chamber-read ops answer with the same
+    # LogEntry the chamber contract defines rather than a near-copy of it.
+    "LogEntry",
     "AddMeasurement",
     "Anneal",
     "AnnealStep",
     "BeginSetLaserPower",
+    "CheckLogging",
     "ConfirmCenterMask",
     "ConfirmLaserPower",
     "ConfirmMaskCenter",
-    "CheckLogging",
     "ConfirmProceed",
     "CoolDown",
     "CurrentSubstrateResponse",
     "CurrentTask",
     "EndStorage",
+    "ExperimentId",
+    "ExperimentInfo",
+    "ExperimentList",
     "ExperimentReadout",
     "ExperimentRecordId",
     "ExperimentState",
@@ -575,10 +882,13 @@ __all__ = [
     "FinishExperimentRecord",
     "LaserPowerResult",
     "LayerInfo",
+    "ListExperiments",
     "ListMeasurements",
+    "ListQuery",
+    "ListRecords",
     "ListSamples",
     "ListSteps",
-    "LogEntry",
+    "ListSubstrates",
     "LoggingAlive",
     "LoggingStatus",
     "MaskPosition",
@@ -589,6 +899,7 @@ __all__ = [
     "MfcStatus",
     "MotorFree",
     "MoveTo",
+    "PageInfo",
     "PendingConfirmation",
     "PendingStatus",
     "PerformDeposition",
@@ -598,12 +909,24 @@ __all__ = [
     "PixelMoveResult",
     "PixelPosition",
     "PressureReading",
+    "ProjectId",
     "ProjectInfo",
+    "ProjectList",
     "PumpStatus",
+    "RecordId",
+    "RecordInfo",
+    "RecordList",
     "RegisterProject",
     "RegisterSubstrate",
+    "ReopenPosition",
+    "ReopenResult",
     "ResolvePixelCheck",
     "ResumeSubstrate",
+    "RetireExperiment",
+    "RetireMeasurement",
+    "RetireProject",
+    "RetireRecord",
+    "RetireSubstrate",
     "SampleAngle",
     "SampleDetail",
     "SampleId",
@@ -620,7 +943,10 @@ __all__ = [
     "StepInfo",
     "StepList",
     "StorageResult",
+    "SubstrateId",
     "SubstrateInfo",
+    "SubstrateList",
+    "SubstrateSummary",
     "TargetId",
     "TargetMap",
     "TargetName",
@@ -628,5 +954,11 @@ __all__ = [
     "TaskEvent",
     "TemperatureReading",
     "ToTemperature",
+    "UpdateExperiment",
+    "UpdateMeasurement",
+    "UpdateProject",
+    "UpdateRecord",
+    "UpdateSample",
+    "UpdateSubstrate",
     "ValveStatus",
 ]
