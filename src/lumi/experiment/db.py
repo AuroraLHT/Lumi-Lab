@@ -13,10 +13,89 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 import aiosqlite
+
+#: How SQLite's CURRENT_TIMESTAMP writes a time: UTC, second resolution, and -- the
+#: property the time-window filters lean on -- lexically sortable, so a string
+#: comparison in SQL is a chronological one.
+_SQLITE_UTC = "%Y-%m-%d %H:%M:%S"
+
+
+def utc_now() -> str:
+    """A CURRENT_TIMESTAMP-shaped string, for the columns a migration added.
+
+    `ALTER TABLE ... ADD COLUMN` will not accept CURRENT_TIMESTAMP as a default (SQLite
+    requires a constant there), so a column added to an existing growth.db has no
+    default at all. Writing the value explicitly is what keeps a migrated database and
+    a freshly created one storing the same thing.
+    """
+    return datetime.now(timezone.utc).strftime(_SQLITE_UTC)
+
+
+def to_epoch(value) -> float | None:
+    """Any timestamp this schema stores -> epoch seconds, the one form on the wire.
+
+    The schema grew two conventions: `step` holds epoch floats (the journal passes
+    `time.time()` straight through), everything else holds CURRENT_TIMESTAMP text. A
+    client should not have to know which table a field came from to sort it, so every
+    payload carries epoch and this is the single place the two meet.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace("T", " ")
+    # Trailing 'Z', an offset, or fractional seconds all show up in rows written by
+    # hand or by an older tool; parse what we can and give up quietly rather than
+    # failing a listing over one malformed cell.
+    for fmt in (_SQLITE_UTC, "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text.rstrip("Z"), fmt).replace(tzinfo=timezone.utc).timestamp()
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return None
+
+
+def to_iso(value) -> str | None:
+    """The same instant as `to_epoch`, spelled for a human.
+
+    Every timestamped payload carries both. They are two renderings of one stored
+    column rather than two stored columns, so there is nothing for them to disagree
+    about, and a UI gets a sortable number and a printable string without parsing.
+    """
+    epoch = to_epoch(value)
+    if epoch is None:
+        return None
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def from_epoch(value: float | None) -> str | None:
+    """Epoch seconds -> the stored text form, so a wire-side `since` can be compared
+    against a CURRENT_TIMESTAMP column without converting every row."""
+    if value is None:
+        return None
+    return datetime.fromtimestamp(float(value), tz=timezone.utc).strftime(_SQLITE_UTC)
+
+
+def column(row, name: str, default=None):
+    """One column of an aiosqlite.Row by name, tolerating its absence.
+
+    growth.db is migrated in place and a node can be pointed at a database an older
+    build wrote, so a column the current payload wants may genuinely not be there. A
+    listing that renders the row without it beats one that raises.
+    """
+    try:
+        value = row[name]
+    except (IndexError, KeyError):
+        return default
+    return default if value is None else value
 
 
 class GrowthDB:
@@ -30,6 +109,10 @@ class GrowthDB:
         if str(parent) not in ("", "."):
             parent.mkdir(parents=True, exist_ok=True)
         self.conn = await aiosqlite.connect(self.db_path)
+        # Rows stay index-addressable (every reader here and in handlers.py predates
+        # this and reads positionally) but gain name access, which is what keeps the
+        # CRUD readers below from being a wall of magic numbers.
+        self.conn.row_factory = aiosqlite.Row
 
     async def create_database(self) -> None:
         """Create the schema if it does not already exist."""
@@ -47,14 +130,20 @@ class GrowthDB:
                 positions TEXT,
                 manufacture VARCHAR(50),
                 manufacture_date VARCHAR(50),
-                substrate_name TEXT
+                substrate_name TEXT,
+                -- 'active' or 'retired'. A substrate record is never deleted: a
+                -- mistaken registration is retired, which hides it from listings
+                -- while leaving whatever was journalled against it intact.
+                state VARCHAR(20) NOT NULL DEFAULT 'active',
+                substrate_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
             CREATE TABLE IF NOT EXISTS project (
                 project_id INTEGER PRIMARY KEY,
                 project_name VARCHAR(100) NOT NULL,
                 description TEXT,
-                project_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                project_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                state VARCHAR(20) NOT NULL DEFAULT 'active'
             );
 
             CREATE TABLE IF NOT EXISTS experiment (
@@ -77,6 +166,7 @@ class GrowthDB:
                 after_experiment_waittime FLOAT,
                 ramp_rate FLOAT,
                 experiment_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                state VARCHAR(20) NOT NULL DEFAULT 'active',
                 FOREIGN KEY (substrate_id) REFERENCES substrate(substrate_id),
                 FOREIGN KEY (project_id) REFERENCES project(project_id)
             );
@@ -86,6 +176,8 @@ class GrowthDB:
                 record_uuid VARCHAR(100),
                 experiment_id INTEGER,
                 record_name VARCHAR(100),
+                record_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                state VARCHAR(20) NOT NULL DEFAULT 'active',
                 FOREIGN KEY (experiment_id) REFERENCES experiment(experiment_id)
             );
 
@@ -159,6 +251,7 @@ class GrowthDB:
                 source VARCHAR(100),
                 record_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                state VARCHAR(20) NOT NULL DEFAULT 'active',
                 FOREIGN KEY (sample_id) REFERENCES sample(sample_id),
                 FOREIGN KEY (step_id) REFERENCES step(step_id),
                 FOREIGN KEY (experiment_id) REFERENCES experiment(experiment_id),
@@ -177,7 +270,230 @@ class GrowthDB:
             """
         )
         await self.conn.commit()
+        await self._migrate()
         self.logger.info("growth database ready at %s", self.db_path)
+
+    #: Columns added after the schema above first shipped, as
+    #: {table: {column: declaration}}. `CREATE TABLE IF NOT EXISTS` is a no-op on a
+    #: database that already has the table, so a growth.db opened from an earlier
+    #: version would otherwise be missing them and fail on the first read.
+    #: `state` carries a constant default, which ALTER TABLE accepts. The `*_created_at`
+    #: columns cannot (CURRENT_TIMESTAMP is not constant), so they arrive bare and
+    #: `add_substrate`/`add_recording` write the value explicitly -- see utc_now().
+    #: Rows that predate the column keep NULL, which reads back as "registered before
+    #: this was recorded" rather than as a fabricated date.
+    _ADDED_COLUMNS: dict[str, dict[str, str]] = {
+        "substrate": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
+                      "substrate_created_at": "TIMESTAMP"},
+        "project": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'"},
+        "experiment": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'"},
+        "record": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
+                   "record_created_at": "TIMESTAMP"},
+        "measurement": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'"},
+    }
+
+    async def _migrate(self) -> None:
+        """Bring an existing database up to the current schema, idempotently.
+
+        Deliberately additive only: new columns with a default, never a drop or a
+        rename. The lab's growth.db is the record of every growth ever run on this
+        chamber and there is no restore path, so a migration that can only append is
+        worth more than one that can tidy.
+        """
+        for table, columns in self._ADDED_COLUMNS.items():
+            async with self.conn.execute(f"PRAGMA table_info({table})") as cursor:
+                existing = {row[1] for row in await cursor.fetchall()}
+            if not existing:  # table itself is absent -- create_database just made it
+                continue
+            for name, declaration in columns.items():
+                if name in existing:
+                    continue
+                self.logger.info("migrating %s: adding column %s", table, name)
+                await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+        await self.conn.commit()
+
+    # --- generic CRUD ----------------------------------------------------------
+    # One filtered/paged reader, one updater and one soft-remover, shared by every
+    # entity a data-management client browses. The alternative -- a hand-written
+    # query per table -- is how `ListSteps` ended up with a limit while ListSamples
+    # and ListMeasurements had none and nothing had a time window.
+
+    #: table -> (primary key, creation-time column, columns a text `search` scans).
+    _TABLES: dict[str, tuple[str, str, tuple[str, ...]]] = {
+        "substrate": ("substrate_id", "substrate_created_at",
+                      ("substrate_name", "materials", "orientation", "substrate_uuid")),
+        "project": ("project_id", "project_created_at", ("project_name", "description")),
+        "experiment": ("experiment_id", "experiment_created_at",
+                       ("target_material", "experiment_uuid")),
+        "record": ("record_id", "record_created_at", ("record_name", "record_uuid")),
+        "sample": ("sample_id", "created_at", ("sample_name", "notes", "sample_uuid")),
+        "measurement": ("measurement_id", "created_at", ("kind", "source")),
+        "step": ("step_id", "started_at", ("kind", "actor", "source")),
+    }
+
+    #: Whose creation-time column holds epoch floats rather than CURRENT_TIMESTAMP
+    #: text. `step` alone: the journal passes time.time() straight through.
+    _EPOCH_TIME_TABLES = frozenset({"step"})
+
+    #: Whose rows carry the 'active'/'retired' soft-delete column. `sample.state` is
+    #: deliberately not one of these -- it means planned/active/grown, a growth state,
+    #: and overloading it with 'retired' would make "which positions are left" lie.
+    _RETIRABLE = frozenset({"substrate", "project", "experiment", "record", "measurement"})
+
+    #: What `update_row` will write, per table. Identity columns (the primary key, the
+    #: uuid) are absent on purpose: a correction fixes what a record says, it does not
+    #: turn the record into a different one.
+    _EDITABLE: dict[str, frozenset[str]] = {
+        "substrate": frozenset({
+            "materials", "orientation", "height", "width", "thickness", "pixel_spacing",
+            "positions", "manufacture", "manufacture_date", "substrate_name", "state",
+        }),
+        "project": frozenset({"project_name", "description", "state"}),
+        "experiment": frozenset({
+            "project_id", "temperature", "pressure", "laser_power", "laser_pulse_rate",
+            "target_material", "num_pulse", "do_preablation", "preablation_pulse",
+            "preablation_frequency", "before_experiment_waittime",
+            "after_experiment_waittime", "ramp_rate", "state",
+        }),
+        "record": frozenset({"record_name", "experiment_id", "state"}),
+        "sample": frozenset({"sample_name", "notes", "state", "position_mm"}),
+        "measurement": frozenset({"kind", "value", "detail", "source", "state"}),
+    }
+
+    def _check_table(self, table: str, *, editable: bool = False) -> tuple[str, str, tuple[str, ...]]:
+        if table not in self._TABLES:
+            raise ValueError(f"not a listable table: {table!r} (have {sorted(self._TABLES)})")
+        if editable and table not in self._EDITABLE:
+            # `step` is the journal: append-only by design, so that what happened
+            # cannot be quietly rewritten after the fact.
+            raise ValueError(f"{table} rows are not editable")
+        return self._TABLES[table]
+
+    def _filter_sql(
+        self, table: str, *, filters: dict | None, since: float | None, until: float | None,
+        search: str | None, include_retired: bool,
+    ) -> tuple[str, list]:
+        _, time_column, search_columns = self._TABLES[table]
+        where: list[str] = []
+        args: list = []
+
+        for column, value in (filters or {}).items():
+            if value is None:
+                continue
+            where.append(f"{column} = ?")
+            args.append(value)
+
+        if not include_retired and table in self._RETIRABLE:
+            # COALESCE, not `state = 'active'`: a row written before the column existed
+            # reads back NULL and is still a perfectly good record.
+            where.append("COALESCE(state, 'active') != 'retired'")
+
+        # A wire-side window is always epoch; convert it once to whatever this table
+        # stores rather than converting every row on the way out.
+        as_stored = (lambda v: float(v)) if table in self._EPOCH_TIME_TABLES else from_epoch
+        if since is not None:
+            where.append(f"{time_column} >= ?")
+            args.append(as_stored(since))
+        if until is not None:
+            where.append(f"{time_column} <= ?")
+            args.append(as_stored(until))
+
+        if search and search_columns:
+            where.append("(" + " OR ".join(f"{c} LIKE ?" for c in search_columns) + ")")
+            args.extend([f"%{search}%"] * len(search_columns))
+
+        return (" WHERE " + " AND ".join(where) if where else ""), args
+
+    async def list_rows(
+        self,
+        table: str,
+        *,
+        filters: dict | None = None,
+        since: float | None = None,
+        until: float | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        order: str = "desc",
+        search: str | None = None,
+        include_retired: bool = False,
+    ):
+        """A filtered, paged read of one table. `since`/`until` are epoch seconds."""
+        id_column, time_column, _ = self._check_table(table)
+        clause, args = self._filter_sql(
+            table, filters=filters, since=since, until=until, search=search,
+            include_retired=include_retired,
+        )
+        direction = "DESC" if str(order).lower() != "asc" else "ASC"
+        # Tie-break on the primary key so a page boundary is stable: CURRENT_TIMESTAMP
+        # is second-resolution and two substrates registered in the same second would
+        # otherwise be free to swap places between one page and the next. Rows
+        # predating the timestamp column sort NULL, which SQLite puts last under DESC
+        # -- the far end of a newest-first listing, which is where they belong.
+        sql = (f"SELECT * FROM {table}{clause} "
+               f"ORDER BY {time_column} {direction}, {id_column} {direction} LIMIT ? OFFSET ?")
+        args.extend([max(1, min(int(limit), 1000)), max(0, int(offset))])
+        async with self.conn.execute(sql, tuple(args)) as cursor:
+            return await cursor.fetchall()
+
+    async def count_rows(
+        self,
+        table: str,
+        *,
+        filters: dict | None = None,
+        since: float | None = None,
+        until: float | None = None,
+        search: str | None = None,
+        include_retired: bool = False,
+    ) -> int:
+        """How many rows the same filters match, ignoring limit/offset -- a pager
+        needs the total, and asking for it by fetching everything defeats the point."""
+        self._check_table(table)
+        clause, args = self._filter_sql(
+            table, filters=filters, since=since, until=until, search=search,
+            include_retired=include_retired,
+        )
+        async with self.conn.execute(f"SELECT COUNT(*) FROM {table}{clause}", tuple(args)) as cursor:
+            row = await cursor.fetchone()
+        return row[0] if row else 0
+
+    async def get_row(self, table: str, row_id: int):
+        id_column, _, _ = self._check_table(table)
+        async with self.conn.execute(
+            f"SELECT * FROM {table} WHERE {id_column} = ?", (row_id,)
+        ) as cursor:
+            return await cursor.fetchone()
+
+    async def update_row(self, table: str, row_id: int, **fields) -> None:
+        """Write the given columns of one row. An unknown column raises rather than
+        being dropped: a typo'd field name that silently no-ops looks exactly like a
+        correction that was applied."""
+        id_column, _, _ = self._check_table(table, editable=True)
+        unknown = set(fields) - self._EDITABLE[table]
+        if unknown:
+            raise ValueError(
+                f"not editable on {table}: {sorted(unknown)} "
+                f"(editable: {sorted(self._EDITABLE[table])})"
+            )
+        if not fields:
+            return
+        assignments = ", ".join(f"{name} = ?" for name in fields)
+        await self.conn.execute(
+            f"UPDATE {table} SET {assignments} WHERE {id_column} = ?",
+            (*fields.values(), row_id),
+        )
+        await self.conn.commit()
+
+    async def set_row_state(self, table: str, row_id: int, state: str) -> None:
+        """Retire or restore a row. The remover, for every entity that has one.
+
+        Nothing here deletes. growth.db is the record of every growth ever run on this
+        chamber with no restore path, and a DELETE would orphan the steps, samples and
+        measurements pointing at the row. Retiring hides it from listings and leaves
+        the history readable.
+        """
+        if table not in self._RETIRABLE:
+            raise ValueError(f"{table} rows cannot be retired (no state column)")
+        await self.update_row(table, row_id, state=state)
 
     # --- project -------------------------------------------------------------
 
@@ -244,22 +560,58 @@ class GrowthDB:
         manufacture: str | None = None,
         manufacture_date: str | None = None,
         substrate_name: str | None = None,
+        created_at: str | None = None,
     ) -> int:
         substrate_uuid = substrate_uuid or str(uuid4())
         async with self.conn.execute(
             """INSERT INTO substrate
             (materials, orientation, width, height, thickness, pixel_spacing,
-             positions, substrate_uuid, manufacture, manufacture_date, substrate_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             positions, substrate_uuid, manufacture, manufacture_date, substrate_name,
+             substrate_created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (materials, orientation, width, height, thickness, pixel_spacing,
-             positions, substrate_uuid, manufacture, manufacture_date, substrate_name),
+             positions, substrate_uuid, manufacture, manufacture_date, substrate_name,
+             created_at or utc_now()),
         ) as cursor:
             await self.conn.commit()
             return cursor.lastrowid
 
-    async def get_substrates(self):
-        async with self.conn.execute("SELECT * FROM substrate") as cursor:
-            return await cursor.fetchall()
+    async def update_substrate(self, substrate_id: int, **fields) -> None:
+        return await self.update_row("substrate", substrate_id, **fields)
+
+    async def get_substrates(self, include_retired: bool = False, **query):
+        """Registered substrates, oldest first by default so the historical callers
+        that indexed into this list are unaffected. `query` takes the same
+        limit/offset/since/until/order/search `list_rows` does."""
+        query.setdefault("order", "asc")
+        query.setdefault("limit", 1000)
+        return await self.list_rows("substrate", include_retired=include_retired, **query)
+
+    async def count_substrate_experiments(self, substrate_id: int) -> int:
+        """How many growths were run on a substrate. The gate on editing geometry:
+        `width`/`pixel_spacing` renumber the positions, and a pixel index that already
+        has an experiment row pointing at it cannot be renumbered without lying about
+        where that growth happened."""
+        async with self.conn.execute(
+            "SELECT COUNT(*) FROM experiment WHERE substrate_id = ?", (substrate_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return row[0] if row else 0
+
+    async def delete_position_samples(self, substrate_id: int) -> int:
+        """Drop a substrate's per-position sample rows, keeping the root.
+
+        Only called from the geometry-edit path, which has already established that no
+        experiment row references this substrate -- so these rows are the empty
+        placeholders `_materialise_samples` created at registration and nothing points
+        at them. The root row carries the substrate's uuid and stays.
+        """
+        async with self.conn.execute(
+            "DELETE FROM sample WHERE substrate_id = ? AND kind != 'substrate'",
+            (substrate_id,),
+        ) as cursor:
+            await self.conn.commit()
+            return cursor.rowcount
 
     async def get_substrate(self, substrate_id: int):
         async with self.conn.execute(
@@ -311,9 +663,15 @@ class GrowthDB:
         A single-deposition growth (`is_pixel = 0`) writes a NULL `pixel_location` but
         still consumes position 0, which is what `finish_substrate` advances past; it
         counts as used.
+
+        A retired experiment does not count. Retiring a growth that was recorded by
+        mistake is the one way to hand its position back -- `reopen_position` only
+        undoes the bookkeeping, and would be overruled here on the next resume if the
+        experiment row still stood.
         """
         async with self.conn.execute(
-            "SELECT is_pixel, pixel_location FROM experiment WHERE substrate_id = ?",
+            "SELECT is_pixel, pixel_location FROM experiment "
+            "WHERE substrate_id = ? AND COALESCE(state, 'active') != 'retired'",
             (substrate_id,),
         ) as cursor:
             rows = await cursor.fetchall()
@@ -328,8 +686,9 @@ class GrowthDB:
 
     async def add_recording(self, experiment_id: int | None, record_name: str, record_uuid: str) -> int:
         async with self.conn.execute(
-            "INSERT INTO record (experiment_id, record_name, record_uuid) VALUES (?, ?, ?)",
-            (experiment_id, record_name, record_uuid),
+            "INSERT INTO record (experiment_id, record_name, record_uuid, record_created_at)"
+            " VALUES (?, ?, ?, ?)",
+            (experiment_id, record_name, record_uuid, utc_now()),
         ) as cursor:
             await self.conn.commit()
             return cursor.lastrowid
