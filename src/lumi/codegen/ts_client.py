@@ -12,6 +12,7 @@ cannot drift. Types come from pydantic's JSON Schema.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from pydantic import BaseModel
@@ -147,10 +148,16 @@ def _ts_type(schema: dict[str, Any], defs: dict[str, Any]) -> str:
     if "$ref" in schema:
         return schema["$ref"].rsplit("/", 1)[-1]
 
-    if "anyOf" in schema:
-        parts = [_ts_type(s, defs) for s in schema["anyOf"]]
-        # pydantic renders `X | None` as anyOf[X, null]
+    if "anyOf" in schema or "oneOf" in schema:
+        parts = [_ts_type(s, defs) for s in schema.get("anyOf") or schema["oneOf"]]
+        # pydantic renders `X | None` as anyOf[X, null], and a discriminated union as
+        # oneOf[...] -- both are a plain TypeScript union.
         return " | ".join(dict.fromkeys(parts))
+
+    if "const" in schema:
+        # `Literal["cross"]`: keeping the literal is what lets a union of shapes be
+        # narrowed on its tag.
+        return json.dumps(schema["const"])
 
     if "enum" in schema:
         return " | ".join(f'"{v}"' if isinstance(v, str) else str(v) for v in schema["enum"])

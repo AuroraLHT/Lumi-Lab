@@ -382,6 +382,16 @@ idle_time = 0.1
 max_intensity = 255
 name = "JPEG Encoder"
 
+# Fiducial markers on the chamber camera image, and the statistics measured under them.
+# The markers are set by the operator and persisted to `store_path`, so they survive a
+# node restart; that file is machine-local (git-ignored).
+[pascal.fiducials]
+store_path = "cfg/chamber_fiducials.json"
+# Samples of intensity trace kept per marker, for `marker_history`. 5000 is a little
+# over three minutes at 25 fps. The `stats` stream carries every sample regardless.
+history = 5000
+queue_size = 4
+idle_time = 0.1
 
 [pascal.mq.live_video]
 ctrl_key = "live_video_ctrl"

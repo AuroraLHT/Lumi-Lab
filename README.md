@@ -19,7 +19,7 @@ Nodes:
 | --- | --- |
 | `monitor` | presence registry — who is alive on the bus |
 | `storage` | HDF5 recorder for RHEED frames and chamber logs |
-| `pascal` | the PLD chamber: growth log, `PLDconfig.ini`, MI mode, chamber camera |
+| `pascal` | the PLD chamber: growth log, `PLDconfig.ini`, MI mode, chamber camera, fiducial markers |
 | `rheed` | RHEED camera acquisition (Basler/Pylon, webcam, or a canned video) |
 | `detection` | RHEED spot detection (needs the OpenMMLab stack — see below) |
 | `experiment` | the growth driver: plans and runs a deposition end to end |

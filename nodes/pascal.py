@@ -1,4 +1,5 @@
-"""The Pascal chamber node: growth log, chamber config, MI mode, chamber camera.
+"""The Pascal chamber node: growth log, chamber config, MI mode, chamber camera,
+fiducial markers.
 
     python -m nodes.pascal --src sim           # simulated chamber (state model)
     python -m nodes.pascal --src sim --speed 30
@@ -17,10 +18,16 @@ from lumi.base.camera.handlers import JpegCameraHandler
 from lumi.config import settings
 from lumi.contracts.chamber import CHAMBER
 from lumi.node import EquipmentNode
-from lumi.pascal.handlers import ChamberConfigHandler, ChamberLogHandler, MIModeHandler
+from lumi.pascal.handlers import (
+    ChamberConfigHandler,
+    ChamberLogHandler,
+    FiducialHandler,
+    MIModeHandler,
+)
 from lumi.pascal.hardware import (
     build_camera,
     build_config_reader,
+    build_fiducials,
     build_jpeg_encoder,
     build_log_reader,
     build_mi_mode,
@@ -52,6 +59,9 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     # is the encoder's input rather than the handler's.
     frames_q = camera.register_queue("frames")
     jpeg_encoder = build_jpeg_encoder(camera, frames_q)
+    # A second consumer of the same grab: the marker statistics are measured on the
+    # camera's own pixels, not on the JPEG the browser is shown.
+    fiducial_store, fiducial_stats = build_fiducials(camera.register_queue("fiducials"))
 
     node = EquipmentNode(
         CHAMBER,
@@ -63,10 +73,12 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     node.mount("config", ChamberConfigHandler(config_reader))
     node.mount("mi_mode", MIModeHandler(mi_server))
     node.mount("camera", JpegCameraHandler(camera, jpeg_encoder))
+    node.mount("fiducial", FiducialHandler(fiducial_store, fiducial_stats))
 
     # The simulator's writer goes first: it creates the CSV the log reader is waiting
     # for a watchdog event on.
-    workers = [*sim_workers, log_reader, config_reader, mi_server, camera, jpeg_encoder]
+    workers = [*sim_workers, log_reader, config_reader, mi_server, camera, jpeg_encoder,
+               fiducial_stats]
     if mi_simulator is not None:
         workers.append(mi_simulator)
     for worker in workers:

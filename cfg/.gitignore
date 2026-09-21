@@ -31,3 +31,9 @@ growth.db
 growth.db-journal
 growth.db-wal
 growth.db-shm
+
+# Fiducial markers an operator drew on the chamber camera image
+# (`pascal.fiducials.store_path`). Set up by hand per machine and camera position.
+chamber_fiducials.json
+chamber_fiducials.json.tmp
+chamber_fiducials.json.corrupt

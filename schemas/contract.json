@@ -1208,6 +1208,899 @@
           }
         },
         "update": null
+      },
+      {
+        "kind": "duplex",
+        "name": "fiducial",
+        "ops": [
+          {
+            "name": "list_markers",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "CrossShape": {
+                  "description": "A cross-hair. Statistics are taken over the pixels *on its two arms*, not the\nsquare they span -- a cross is a thin sampling line, so it can sit across an edge\nwithout the empty corners diluting the reading.",
+                  "properties": {
+                    "kind": {
+                      "const": "cross",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "size": {
+                      "default": 10.0,
+                      "exclusiveMinimum": 0,
+                      "title": "Size",
+                      "type": "number"
+                    },
+                    "thickness": {
+                      "default": 1,
+                      "minimum": 1,
+                      "title": "Thickness",
+                      "type": "integer"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y"
+                  ],
+                  "title": "CrossShape",
+                  "type": "object"
+                },
+                "FiducialMarker": {
+                  "description": "One named marker. Setting an id that already exists replaces it.",
+                  "properties": {
+                    "marker_id": {
+                      "maxLength": 64,
+                      "minLength": 1,
+                      "title": "Marker Id",
+                      "type": "string"
+                    },
+                    "shape": {
+                      "discriminator": {
+                        "mapping": {
+                          "cross": "#/$defs/CrossShape",
+                          "poly": "#/$defs/PolyShape",
+                          "rect": "#/$defs/RectShape"
+                        },
+                        "propertyName": "kind"
+                      },
+                      "oneOf": [
+                        {
+                          "$ref": "#/$defs/CrossShape"
+                        },
+                        {
+                          "$ref": "#/$defs/RectShape"
+                        },
+                        {
+                          "$ref": "#/$defs/PolyShape"
+                        }
+                      ],
+                      "title": "Shape"
+                    }
+                  },
+                  "required": [
+                    "marker_id",
+                    "shape"
+                  ],
+                  "title": "FiducialMarker",
+                  "type": "object"
+                },
+                "Point": {
+                  "properties": {
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "title": "Point",
+                  "type": "object"
+                },
+                "PolyShape": {
+                  "description": "A closed polygon, vertices in order. Statistics cover the pixels inside it.",
+                  "properties": {
+                    "kind": {
+                      "const": "poly",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "points": {
+                      "items": {
+                        "$ref": "#/$defs/Point"
+                      },
+                      "minItems": 3,
+                      "title": "Points",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "points"
+                  ],
+                  "title": "PolyShape",
+                  "type": "object"
+                },
+                "RectShape": {
+                  "description": "An axis-aligned rectangle. `x`/`y` is the top-left corner, matching the RHEED\n`BBox`. Statistics cover the pixels inside it.",
+                  "properties": {
+                    "height": {
+                      "exclusiveMinimum": 0,
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "kind": {
+                      "const": "rect",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "width": {
+                      "exclusiveMinimum": 0,
+                      "title": "Width",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "RectShape",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "frame_height": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Frame Height"
+                },
+                "frame_width": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Frame Width"
+                },
+                "markers": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/FiducialMarker"
+                  },
+                  "title": "Markers",
+                  "type": "array"
+                }
+              },
+              "title": "MarkerList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_marker",
+            "request": {
+              "$defs": {
+                "CrossShape": {
+                  "description": "A cross-hair. Statistics are taken over the pixels *on its two arms*, not the\nsquare they span -- a cross is a thin sampling line, so it can sit across an edge\nwithout the empty corners diluting the reading.",
+                  "properties": {
+                    "kind": {
+                      "const": "cross",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "size": {
+                      "default": 10.0,
+                      "exclusiveMinimum": 0,
+                      "title": "Size",
+                      "type": "number"
+                    },
+                    "thickness": {
+                      "default": 1,
+                      "minimum": 1,
+                      "title": "Thickness",
+                      "type": "integer"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y"
+                  ],
+                  "title": "CrossShape",
+                  "type": "object"
+                },
+                "Point": {
+                  "properties": {
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y"
+                  ],
+                  "title": "Point",
+                  "type": "object"
+                },
+                "PolyShape": {
+                  "description": "A closed polygon, vertices in order. Statistics cover the pixels inside it.",
+                  "properties": {
+                    "kind": {
+                      "const": "poly",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "points": {
+                      "items": {
+                        "$ref": "#/$defs/Point"
+                      },
+                      "minItems": 3,
+                      "title": "Points",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "points"
+                  ],
+                  "title": "PolyShape",
+                  "type": "object"
+                },
+                "RectShape": {
+                  "description": "An axis-aligned rectangle. `x`/`y` is the top-left corner, matching the RHEED\n`BBox`. Statistics cover the pixels inside it.",
+                  "properties": {
+                    "height": {
+                      "exclusiveMinimum": 0,
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "kind": {
+                      "const": "rect",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "width": {
+                      "exclusiveMinimum": 0,
+                      "title": "Width",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "RectShape",
+                  "type": "object"
+                }
+              },
+              "description": "One named marker. Setting an id that already exists replaces it.",
+              "properties": {
+                "marker_id": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "title": "Marker Id",
+                  "type": "string"
+                },
+                "shape": {
+                  "discriminator": {
+                    "mapping": {
+                      "cross": "#/$defs/CrossShape",
+                      "poly": "#/$defs/PolyShape",
+                      "rect": "#/$defs/RectShape"
+                    },
+                    "propertyName": "kind"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/$defs/CrossShape"
+                    },
+                    {
+                      "$ref": "#/$defs/RectShape"
+                    },
+                    {
+                      "$ref": "#/$defs/PolyShape"
+                    }
+                  ],
+                  "title": "Shape"
+                }
+              },
+              "required": [
+                "marker_id",
+                "shape"
+              ],
+              "title": "FiducialMarker",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "remove_marker",
+            "request": {
+              "properties": {
+                "marker_id": {
+                  "title": "Marker Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "marker_id"
+              ],
+              "title": "MarkerId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "marker_stats",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "MarkerStats": {
+                  "description": "Intensity statistics over the pixels under one marker, for one frame.\n\nColour frames are reduced to luminance first (Rec. 601), so the numbers are on the\nsame scale as the sensor's own range. `std` is the population standard deviation.\n\nThe four statistics are None -- with `n_pixels` 0 -- when the marker lies wholly\noutside the frame, which is a marker drawn for a different resolution rather than a\nreading of zero.",
+                  "properties": {
+                    "max": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Max"
+                    },
+                    "mean": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mean"
+                    },
+                    "min": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Min"
+                    },
+                    "n_pixels": {
+                      "title": "N Pixels",
+                      "type": "integer"
+                    },
+                    "std": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Std"
+                    }
+                  },
+                  "required": [
+                    "n_pixels"
+                  ],
+                  "title": "MarkerStats",
+                  "type": "object"
+                }
+              },
+              "description": "Statistics for every marker on one frame; the header is that frame's.",
+              "properties": {
+                "frame_idx": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Frame Idx"
+                },
+                "stats": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/MarkerStats"
+                  },
+                  "title": "Stats",
+                  "type": "object"
+                },
+                "time": {
+                  "title": "Time",
+                  "type": "number"
+                },
+                "time_stamp": {
+                  "title": "Time Stamp",
+                  "type": "string"
+                },
+                "uuid": {
+                  "title": "Uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "time",
+                "uuid",
+                "time_stamp",
+                "stats"
+              ],
+              "title": "MarkerStatsSample",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "marker_history",
+            "request": {
+              "properties": {
+                "limit": {
+                  "anyOf": [
+                    {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Limit"
+                },
+                "marker_id": {
+                  "title": "Marker Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "marker_id"
+              ],
+              "title": "MarkerHistoryQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "MarkerPoint": {
+                  "description": "One marker's statistics at one frame -- a point on its intensity trace.",
+                  "properties": {
+                    "frame_idx": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Frame Idx"
+                    },
+                    "stats": {
+                      "$ref": "#/$defs/MarkerStats"
+                    },
+                    "time": {
+                      "title": "Time",
+                      "type": "number"
+                    },
+                    "time_stamp": {
+                      "title": "Time Stamp",
+                      "type": "string"
+                    },
+                    "uuid": {
+                      "title": "Uuid",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "uuid",
+                    "time_stamp",
+                    "stats"
+                  ],
+                  "title": "MarkerPoint",
+                  "type": "object"
+                },
+                "MarkerStats": {
+                  "description": "Intensity statistics over the pixels under one marker, for one frame.\n\nColour frames are reduced to luminance first (Rec. 601), so the numbers are on the\nsame scale as the sensor's own range. `std` is the population standard deviation.\n\nThe four statistics are None -- with `n_pixels` 0 -- when the marker lies wholly\noutside the frame, which is a marker drawn for a different resolution rather than a\nreading of zero.",
+                  "properties": {
+                    "max": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Max"
+                    },
+                    "mean": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mean"
+                    },
+                    "min": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Min"
+                    },
+                    "n_pixels": {
+                      "title": "N Pixels",
+                      "type": "integer"
+                    },
+                    "std": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Std"
+                    }
+                  },
+                  "required": [
+                    "n_pixels"
+                  ],
+                  "title": "MarkerStats",
+                  "type": "object"
+                }
+              },
+              "description": "The retained trace for one marker, oldest first.",
+              "properties": {
+                "marker_id": {
+                  "title": "Marker Id",
+                  "type": "string"
+                },
+                "samples": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MarkerPoint"
+                  },
+                  "title": "Samples",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "marker_id"
+              ],
+              "title": "MarkerHistory",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "chamber.fiducial.ctrl.*",
+          "publish": "chamber.fiducial.pub",
+          "request_pattern": "chamber.fiducial.req.*",
+          "requests": {
+            "list_markers": "chamber.fiducial.req.list_markers",
+            "marker_history": "chamber.fiducial.req.marker_history",
+            "marker_stats": "chamber.fiducial.req.marker_stats",
+            "remove_marker": "chamber.fiducial.req.remove_marker",
+            "set_marker": "chamber.fiducial.req.set_marker"
+          },
+          "state": "chamber.fiducial.state",
+          "update": "chamber.fiducial.update",
+          "work_queue": "q.chamber.fiducial.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "frame_height": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Frame Height"
+            },
+            "frame_width": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Frame Width"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "marker_ids": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Marker Ids",
+              "type": "array"
+            },
+            "n_processed": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Processed"
+            }
+          },
+          "title": "FiducialState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "json",
+          "name": "stats",
+          "payload": {
+            "$defs": {
+              "MarkerStats": {
+                "description": "Intensity statistics over the pixels under one marker, for one frame.\n\nColour frames are reduced to luminance first (Rec. 601), so the numbers are on the\nsame scale as the sensor's own range. `std` is the population standard deviation.\n\nThe four statistics are None -- with `n_pixels` 0 -- when the marker lies wholly\noutside the frame, which is a marker drawn for a different resolution rather than a\nreading of zero.",
+                "properties": {
+                  "max": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Max"
+                  },
+                  "mean": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Mean"
+                  },
+                  "min": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Min"
+                  },
+                  "n_pixels": {
+                    "title": "N Pixels",
+                    "type": "integer"
+                  },
+                  "std": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Std"
+                  }
+                },
+                "required": [
+                  "n_pixels"
+                ],
+                "title": "MarkerStats",
+                "type": "object"
+              }
+            },
+            "description": "Statistics for every marker on one frame; the header is that frame's.",
+            "properties": {
+              "frame_idx": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Frame Idx"
+              },
+              "stats": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/MarkerStats"
+                },
+                "title": "Stats",
+                "type": "object"
+              },
+              "time": {
+                "title": "Time",
+                "type": "number"
+              },
+              "time_stamp": {
+                "title": "Time Stamp",
+                "type": "string"
+              },
+              "uuid": {
+                "title": "Uuid",
+                "type": "string"
+              }
+            },
+            "required": [
+              "time",
+              "uuid",
+              "time_stamp",
+              "stats"
+            ],
+            "title": "MarkerStatsSample",
+            "type": "object"
+          }
+        },
+        "update": null
       }
     ],
     "exchange": "CHAMBER",

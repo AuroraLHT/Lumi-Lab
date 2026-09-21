@@ -21,6 +21,7 @@ import io
 import logging
 from pathlib import Path
 
+from lumi.base.camera.fiducials import FiducialStatsConfig, FiducialStatsWorker, FiducialStore
 from lumi.base.camera.jpeg_stream import JpegEncoder, JpegEncoderConfig
 from lumi.base.camera.sim_camera import SimCamera, SimCameraConfig
 from lumi.base.camera.web_camera import WebCamera, WebCameraConfig
@@ -289,3 +290,25 @@ def build_jpeg_encoder(camera, camera_queue) -> JpegEncoder:
         name=cfg.name,
         daemon=True,
     )
+
+
+def build_fiducials(camera_queue, store_path: str | None = None):
+    """The chamber camera's fiducial markers. Returns (store, stats_worker).
+
+    `.get(..., default)` rather than attribute access, so a machine-local settings.toml
+    that predates this section keeps working.
+    """
+    path = _resolve(store_path or settings.get("pascal.fiducials.store_path", "cfg/chamber_fiducials.json"))
+    store = FiducialStore(path)
+    worker = FiducialStatsWorker(
+        store,
+        camera_queue,
+        config=FiducialStatsConfig(
+            queue_size=int(settings.get("pascal.fiducials.queue_size", 4)),
+            history=int(settings.get("pascal.fiducials.history", 5000)),
+            idle_time=float(settings.get("pascal.fiducials.idle_time", 0.1)),
+        ),
+        name="Fiducial Stats",
+        daemon=True,
+    )
+    return store, worker
