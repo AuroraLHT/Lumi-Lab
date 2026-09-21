@@ -1224,25 +1224,57 @@
             "request_codec": "json",
             "response": {
               "$defs": {
+                "CircleShape": {
+                  "description": "A disc. Statistics cover the pixels whose centres fall inside it; one smaller than\na pixel still measures the pixel it is over.",
+                  "properties": {
+                    "kind": {
+                      "const": "circle",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "radius": {
+                      "exclusiveMinimum": 0,
+                      "title": "Radius",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y",
+                    "radius"
+                  ],
+                  "title": "CircleShape",
+                  "type": "object"
+                },
                 "CrossShape": {
-                  "description": "A cross-hair. Statistics are taken over the pixels *on its two arms*, not the\nsquare they span -- a cross is a thin sampling line, so it can sit across an edge\nwithout the empty corners diluting the reading.",
+                  "description": "A cross-hair that measures a *point*. It is drawn as a cross so it is easy to see\nand to place, but the statistics are those of a small patch centred on it -- the arms\nare display only.",
                   "properties": {
                     "kind": {
                       "const": "cross",
                       "title": "Kind",
                       "type": "string"
                     },
+                    "sample_radius": {
+                      "default": 1,
+                      "maximum": 50,
+                      "minimum": 0,
+                      "title": "Sample Radius",
+                      "type": "integer"
+                    },
                     "size": {
                       "default": 10.0,
                       "exclusiveMinimum": 0,
                       "title": "Size",
                       "type": "number"
-                    },
-                    "thickness": {
-                      "default": 1,
-                      "minimum": 1,
-                      "title": "Thickness",
-                      "type": "integer"
                     },
                     "x": {
                       "title": "X",
@@ -1273,6 +1305,7 @@
                     "shape": {
                       "discriminator": {
                         "mapping": {
+                          "circle": "#/$defs/CircleShape",
                           "cross": "#/$defs/CrossShape",
                           "poly": "#/$defs/PolyShape",
                           "rect": "#/$defs/RectShape"
@@ -1282,6 +1315,9 @@
                       "oneOf": [
                         {
                           "$ref": "#/$defs/CrossShape"
+                        },
+                        {
+                          "$ref": "#/$defs/CircleShape"
                         },
                         {
                           "$ref": "#/$defs/RectShape"
@@ -1423,25 +1459,57 @@
             "name": "set_marker",
             "request": {
               "$defs": {
+                "CircleShape": {
+                  "description": "A disc. Statistics cover the pixels whose centres fall inside it; one smaller than\na pixel still measures the pixel it is over.",
+                  "properties": {
+                    "kind": {
+                      "const": "circle",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "radius": {
+                      "exclusiveMinimum": 0,
+                      "title": "Radius",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "x",
+                    "y",
+                    "radius"
+                  ],
+                  "title": "CircleShape",
+                  "type": "object"
+                },
                 "CrossShape": {
-                  "description": "A cross-hair. Statistics are taken over the pixels *on its two arms*, not the\nsquare they span -- a cross is a thin sampling line, so it can sit across an edge\nwithout the empty corners diluting the reading.",
+                  "description": "A cross-hair that measures a *point*. It is drawn as a cross so it is easy to see\nand to place, but the statistics are those of a small patch centred on it -- the arms\nare display only.",
                   "properties": {
                     "kind": {
                       "const": "cross",
                       "title": "Kind",
                       "type": "string"
                     },
+                    "sample_radius": {
+                      "default": 1,
+                      "maximum": 50,
+                      "minimum": 0,
+                      "title": "Sample Radius",
+                      "type": "integer"
+                    },
                     "size": {
                       "default": 10.0,
                       "exclusiveMinimum": 0,
                       "title": "Size",
                       "type": "number"
-                    },
-                    "thickness": {
-                      "default": 1,
-                      "minimum": 1,
-                      "title": "Thickness",
-                      "type": "integer"
                     },
                     "x": {
                       "title": "X",
@@ -1551,6 +1619,7 @@
                 "shape": {
                   "discriminator": {
                     "mapping": {
+                      "circle": "#/$defs/CircleShape",
                       "cross": "#/$defs/CrossShape",
                       "poly": "#/$defs/PolyShape",
                       "rect": "#/$defs/RectShape"
@@ -1560,6 +1629,9 @@
                   "oneOf": [
                     {
                       "$ref": "#/$defs/CrossShape"
+                    },
+                    {
+                      "$ref": "#/$defs/CircleShape"
                     },
                     {
                       "$ref": "#/$defs/RectShape"
@@ -1637,6 +1709,18 @@
                 "MarkerStats": {
                   "description": "Intensity statistics over the pixels under one marker, for one frame.\n\nColour frames are reduced to luminance first (Rec. 601), so the numbers are on the\nsame scale as the sensor's own range. `std` is the population standard deviation.\n\nThe four statistics are None -- with `n_pixels` 0 -- when the marker lies wholly\noutside the frame, which is a marker drawn for a different resolution rather than a\nreading of zero.",
                   "properties": {
+                    "center": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Center"
+                    },
                     "max": {
                       "anyOf": [
                         {
@@ -1816,6 +1900,18 @@
                 "MarkerStats": {
                   "description": "Intensity statistics over the pixels under one marker, for one frame.\n\nColour frames are reduced to luminance first (Rec. 601), so the numbers are on the\nsame scale as the sensor's own range. `std` is the population standard deviation.\n\nThe four statistics are None -- with `n_pixels` 0 -- when the marker lies wholly\noutside the frame, which is a marker drawn for a different resolution rather than a\nreading of zero.",
                   "properties": {
+                    "center": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Center"
+                    },
                     "max": {
                       "anyOf": [
                         {
@@ -1996,6 +2092,18 @@
               "MarkerStats": {
                 "description": "Intensity statistics over the pixels under one marker, for one frame.\n\nColour frames are reduced to luminance first (Rec. 601), so the numbers are on the\nsame scale as the sensor's own range. `std` is the population standard deviation.\n\nThe four statistics are None -- with `n_pixels` 0 -- when the marker lies wholly\noutside the frame, which is a marker drawn for a different resolution rather than a\nreading of zero.",
                 "properties": {
+                  "center": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Center"
+                  },
                   "max": {
                     "anyOf": [
                       {

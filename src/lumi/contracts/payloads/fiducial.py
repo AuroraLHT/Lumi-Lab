@@ -1,7 +1,7 @@
 """Fiducial markers on the chamber webcam, and the pixel statistics under each one.
 
 A marker is a region the operator draws once on the camera image -- a cross on the mask
-edge, a rectangle over the substrate, a polygon around a window. The node keeps the
+edge, a circle or rectangle over the substrate, a polygon around a window. The node keeps the
 list (and persists it), the frontend draws it over the stream, and a worker thread
 reports mean / min / max / std of the pixels under every marker, frame by frame. The
 statistics are the point: watching a marker's intensity while the mask moves is how the
@@ -27,18 +27,33 @@ class Point(BaseModel):
 
 
 class CrossShape(BaseModel):
-    """A cross-hair. Statistics are taken over the pixels *on its two arms*, not the
-    square they span -- a cross is a thin sampling line, so it can sit across an edge
-    without the empty corners diluting the reading."""
+    """A cross-hair that measures a *point*. It is drawn as a cross so it is easy to see
+    and to place, but the statistics are those of a small patch centred on it -- the arms
+    are display only."""
 
     kind: Literal["cross"]
-    #: Centre of the cross.
+    #: Centre of the cross -- the pixel at the middle of the measured patch.
     x: float
     y: float
-    #: Half-length of each arm, in pixels.
+    #: Half-length of each arm, in pixels. Display only.
     size: float = Field(default=10.0, gt=0)
-    #: Arm thickness in pixels. 1 samples a single pixel-wide line.
-    thickness: int = Field(default=1, ge=1)
+    #: Half-width of the square patch the statistics cover: 0 is the single centre pixel,
+    #: 1 (the default) a 3x3 patch, 2 a 5x5. One camera pixel is noisy, and the mean of a
+    #: few is a steadier reading of the same place. A patch that hangs off the frame edge
+    #: is clipped to it. `MarkerStats.center` is the raw centre pixel whatever this is.
+    sample_radius: int = Field(default=1, ge=0, le=50)
+
+
+class CircleShape(BaseModel):
+    """A disc. Statistics cover the pixels whose centres fall inside it; one smaller than
+    a pixel still measures the pixel it is over."""
+
+    kind: Literal["circle"]
+    #: Centre of the circle.
+    x: float
+    y: float
+    #: Radius in pixels.
+    radius: float = Field(gt=0)
 
 
 class RectShape(BaseModel):
@@ -60,7 +75,7 @@ class PolyShape(BaseModel):
 
 
 #: Tagged on `kind`, so a frontend narrows with a plain `switch (shape.kind)`.
-Shape = Annotated[CrossShape | RectShape | PolyShape, Field(discriminator="kind")]
+Shape = Annotated[CrossShape | CircleShape | RectShape | PolyShape, Field(discriminator="kind")]
 
 
 class FiducialMarker(BaseModel):
@@ -98,6 +113,13 @@ class MarkerStats(BaseModel):
     min: float | None = None
     max: float | None = None
     std: float | None = None
+    #: Intensity of the single pixel at the marker's geometric centre -- the position for
+    #: a cross or circle, the middle of a rectangle, the area centroid of a polygon --
+    #: on the same scale as the statistics above. The same field on every shape, so a
+    #: consumer that only wants a point reads this and need not care what was drawn. It is
+    #: always the one raw pixel: for the steadier reading of a cross, which averages a
+    #: patch around it, read `mean`. None when that pixel is off the frame.
+    center: float | None = None
 
 
 class MarkerStatsSample(FrameHeader):

@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import queue
 import threading
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import cv2
@@ -30,6 +31,7 @@ import numpy as np
 from pydantic import TypeAdapter, ValidationError
 
 from lumi.contracts.payloads.fiducial import (
+    CircleShape,
     CrossShape,
     FiducialMarker,
     MarkerStats,
@@ -43,26 +45,62 @@ log = logging.getLogger(__name__)
 #: Rec. 601 luma. The cameras hand out RGB.
 _LUMA = np.array([0.299, 0.587, 0.114])
 
-_EMPTY = MarkerStats(n_pixels=0)
-
-
 # --- geometry ---------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class Region:
-    """A marker rasterised for one frame size: the window it covers, and which pixels
-    inside the window count. `mask` is None for the whole window (a rectangle)."""
+    """A marker rasterised for one frame size: the window it covers, which pixels inside
+    the window count, and the pixel at its centre. `mask` is None for the whole window
+    (a rectangle, a point)."""
 
     y0: int
     y1: int
     x0: int
     x1: int
     mask: np.ndarray | None
+    #: (row, column) of the pixel under the marker's geometric centre; None when that
+    #: pixel is off the frame.
+    center: tuple[int, int] | None = None
 
     @property
     def is_empty(self) -> bool:
         return self.y1 <= self.y0 or self.x1 <= self.x0
+
+
+def geometric_center(shape: Shape) -> tuple[float, float]:
+    """The (x, y) a marker is "at": a cross or circle's position, a rectangle's middle,
+    a polygon's area centroid. Pixel `i` covers [i, i+1), so the pixel a point is over is
+    its floor -- which is also what a canvas click at that point lands on."""
+    if isinstance(shape, RectShape):
+        return shape.x + shape.width / 2, shape.y + shape.height / 2
+    if isinstance(shape, PolyShape):
+        return _centroid([(p.x, p.y) for p in shape.points])
+    return shape.x, shape.y
+
+
+def _centroid(points: list[tuple[float, float]]) -> tuple[float, float]:
+    """Area centroid (shoelace), for a polygon that has one.
+
+    A simple polygon's centroid always lies within its vertices' bounding box. A
+    self-intersecting one -- and a hand-drawn polygon will cross itself sometimes -- has
+    areas of opposite sign that nearly cancel, so the formula divides by almost nothing
+    and lands far outside the shape. There, and for a polygon with no area at all
+    (collinear vertices), fall back to the mean of the vertices, which is always inside.
+    """
+    twice_area = cx = cy = 0.0
+    for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]):
+        cross = x0 * y1 - x1 * y0
+        twice_area += cross
+        cx += (x0 + x1) * cross
+        cy += (y0 + y1) * cross
+
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    if abs(twice_area) > 1e-9:
+        centroid = (cx / (3 * twice_area), cy / (3 * twice_area))
+        if min(xs) <= centroid[0] <= max(xs) and min(ys) <= centroid[1] <= max(ys):
+            return centroid
+    return sum(xs) / len(xs), sum(ys) / len(ys)
 
 
 def rasterise(shape: Shape, height: int, width: int) -> Region:
@@ -72,6 +110,14 @@ def rasterise(shape: Shape, height: int, width: int) -> Region:
     marker that hangs off the edge measures the part that is on the frame rather than
     failing.
     """
+    region = _region(shape, height, width)
+    cx, cy = geometric_center(shape)
+    row, col = math.floor(cy), math.floor(cx)
+    on_frame = 0 <= row < height and 0 <= col < width
+    return replace(region, center=(row, col) if on_frame else None)
+
+
+def _region(shape: Shape, height: int, width: int) -> Region:
     if isinstance(shape, RectShape):
         x0, y0 = round(shape.x), round(shape.y)
         x1, y1 = round(shape.x + shape.width), round(shape.y + shape.height)
@@ -80,14 +126,29 @@ def rasterise(shape: Shape, height: int, width: int) -> Region:
         return _clipped(x0, y0, x1, y1, height, width, draw=None)
 
     if isinstance(shape, CrossShape):
-        cx, cy, arm = round(shape.x), round(shape.y), max(round(shape.size), 1)
-        pad = shape.thickness // 2 + 1
-        x0, y0, x1, y1 = cx - arm - pad, cy - arm - pad, cx + arm + pad + 1, cy + arm + pad + 1
+        # A point: the arms are for the eye. What is measured is the patch around the
+        # centre pixel -- 3x3 by default, or that pixel alone at radius 0.
+        col, row, r = math.floor(shape.x), math.floor(shape.y), shape.sample_radius
+        return _clipped(col - r, row - r, col + r + 1, row + r + 1, height, width, draw=None)
+
+    if isinstance(shape, CircleShape):
+        cx, cy, r = shape.x, shape.y, shape.radius
+        x0, y0 = math.floor(cx - r) - 1, math.floor(cy - r) - 1
+        x1, y1 = math.ceil(cx + r) + 1, math.ceil(cy + r) + 1
 
         def draw(mask: np.ndarray, ox: int, oy: int) -> None:
-            for a, b in (((cx - arm, cy), (cx + arm, cy)), ((cx, cy - arm), (cx, cy + arm))):
-                cv2.line(mask, (a[0] - ox, a[1] - oy), (b[0] - ox, b[1] - oy),
-                         255, shape.thickness)
+            # A pixel counts when its *centre* is inside, which is the same rule the
+            # rectangle's rounded edges follow.
+            ys = np.arange(oy, oy + mask.shape[0]) + 0.5
+            xs = np.arange(ox, ox + mask.shape[1]) + 0.5
+            inside = (xs[None, :] - cx) ** 2 + (ys[:, None] - cy) ** 2 <= r * r
+            mask[inside] = 255
+            if not inside.any():
+                # Smaller than a pixel and off every pixel centre: still measure the
+                # pixel it is over, as a rectangle sliver does.
+                row, col = math.floor(cy) - oy, math.floor(cx) - ox
+                if 0 <= row < mask.shape[0] and 0 <= col < mask.shape[1]:
+                    mask[row, col] = 255
 
         return _clipped(x0, y0, x1, y1, height, width, draw=draw)
 
@@ -125,20 +186,27 @@ def luminance(window: np.ndarray) -> np.ndarray:
 
 
 def measure(frame: np.ndarray, region: Region) -> MarkerStats:
-    """Mean / min / max / std over the pixels of `region` on `frame`."""
+    """Mean / min / max / std over the pixels of `region` on `frame`, and the intensity
+    of the pixel at its centre."""
+    center = None
+    if region.center is not None:
+        row, col = region.center
+        center = float(luminance(frame[row:row + 1, col:col + 1]).ravel()[0])
+
     if region.is_empty:
-        return _EMPTY
+        return MarkerStats(n_pixels=0, center=center)
     values = luminance(frame[region.y0:region.y1, region.x0:region.x1])
     if region.mask is not None:
         values = values[region.mask > 0]
     if values.size == 0:
-        return _EMPTY
+        return MarkerStats(n_pixels=0, center=center)
     return MarkerStats(
         n_pixels=int(values.size),
         mean=float(values.mean()),
         min=float(values.min()),
         max=float(values.max()),
         std=float(values.std()),
+        center=center,
     )
 
 
