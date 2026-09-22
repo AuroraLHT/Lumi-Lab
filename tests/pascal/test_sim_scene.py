@@ -77,11 +77,12 @@ def test_at_the_centre_position_the_holder_centre_pixel_is_lit_through_the_slit(
 
 def test_beyond_the_centre_the_mask_has_moved_past_and_the_centre_pixel_darkens(model, holder, mask):
     """The slit is only *at* the centre right at `center_position_mm` -- move Mask1 on
-    past it by more than half the slit's own width and the opaque plate covers the
-    centre pixel instead."""
+    past its half-extent along the travel axis (but not so far it clears the plate's
+    own half-width too) and the opaque plate covers the centre pixel instead."""
     renderer = ChamberSceneRenderer(model, holder, mask)
-    slit_u_mm = renderer._slit_u / renderer._scale(H, W)
-    set_axis(model.mask1, mask.center_position_mm + slit_u_mm)
+    past_slit_px = renderer._slit_u / 2 + 5  # just past the slit's own edge...
+    assert past_slit_px < renderer._mask_u / 2  # ...but still within the plate
+    set_axis(model.mask1, mask.center_position_mm + past_slit_px / renderer._scale(H, W))
 
     out = renderer.render(blank(200))
 
@@ -101,9 +102,11 @@ def test_the_mask_extent_matches_the_holders_inner_circle(model, holder, mask):
 
 
 def test_the_slit_is_two_thirds_the_mask_length_at_a_1_to_10_aspect(model, holder, mask):
+    """The slit's long axis runs along u, parallel to the plate's short edge (and so to
+    the sample holder block); its narrow axis runs along v, parallel to the arm."""
     renderer = ChamberSceneRenderer(model, holder, mask)
-    assert renderer._slit_v == pytest.approx(holder.inner_circle_diameter * 2 / 3)
-    assert renderer._slit_u == pytest.approx(renderer._slit_v / 10)
+    assert renderer._slit_u == pytest.approx(holder.inner_circle_diameter * 2 / 3)
+    assert renderer._slit_v == pytest.approx(renderer._slit_u / 10)
 
 
 def test_the_arm_reaches_well_past_the_head_on_the_side_away_from_the_slit(model, holder, mask):
@@ -122,7 +125,7 @@ def test_the_arm_reaches_well_past_the_head_on_the_side_away_from_the_slit(model
 
 def test_alpha_one_paints_a_flat_colour_alpha_zero_leaves_the_frame_showing(model, holder):
     set_axis(model.mask1, 96.0)
-    opaque_row, opaque_col = 150, 220  # inside the head (u<=50), outside the slit (u>3.3)
+    opaque_row, opaque_col = 150, 240  # inside the head (u<=50), outside the slit (u>33.3)
 
     solid = MaskGeometry(center_position_mm=96.0, hidden_position_mm=50.0, direction=1.0,
                           arm_length=0.0, color=77.0, alpha=1.0)
@@ -168,7 +171,9 @@ def test_a_marker_at_the_slit_position_dips_as_mask1_sweeps_past_it(model, holde
     region = rasterise(target, H, W)
     # Just past the slit's own edge but well short of the mask's -- the shoulder of the
     # opaque plate, guaranteed to cover the centre once it has slid this far.
-    dip_mm = mask.center_position_mm + 2 * renderer._slit_u / renderer._scale(H, W)
+    past_slit_px = renderer._slit_u / 2 + 5
+    assert past_slit_px < renderer._mask_u / 2
+    dip_mm = mask.center_position_mm + past_slit_px / renderer._scale(H, W)
 
     readings = {}
     for mm in (mask.hidden_position_mm, mask.center_position_mm, dip_mm):

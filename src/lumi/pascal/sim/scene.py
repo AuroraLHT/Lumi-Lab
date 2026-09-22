@@ -82,15 +82,20 @@ class ChamberSceneRenderer:
         self.mask = mask
 
         # The mask rectangle, in its own (u, v) frame: u runs along the holder's edge
-        # (the travel axis), v across it. The plate's *head* -- what the slit is cut
-        # into -- is square with the holder's inner circle, u in [-side/2, side/2] and
-        # v in [-side/2, side/2]; its *arm* extends `arm_length` further in -v, off
-        # toward where the real thing would be mounted, outside the frame.
+        # (the travel axis) -- the plate's *short* edges are the ones at u = +-side/2,
+        # parallel to it. v runs the plate's own length: across the head at
+        # v in [-side/2, side/2], then on into the arm, `arm_length` further in -v,
+        # off toward where the real thing would be mounted, roughly top-left to
+        # bottom-right, outside the frame.
         side = holder.inner_circle_diameter
         self._mask_u = side          # "mostly covers the sample holder"
         self._mask_v_bounds = (-(side / 2.0 + mask.arm_length), side / 2.0)
-        self._slit_v = side * 2.0 / 3.0   # 2/3 the (head's) length
-        self._slit_u = self._slit_v / 10.0  # 1:10 aspect ratio
+        # The slit itself is cut across the head, parallel to the plate's *short*
+        # edges: its long axis (2/3 the head's own side) runs along u, its narrow axis
+        # (1:10 of that) along v -- so it is a letterbox slot the width of the plate,
+        # not a sliver running off down the arm.
+        self._slit_u = side * 2.0 / 3.0   # 2/3 the head's length, parallel to the short edge
+        self._slit_v = self._slit_u / 10.0  # 1:10 aspect ratio
 
         rad = math.radians(holder.edge_angle)
         self._u_hat = np.array([math.cos(rad), math.sin(rad)])
