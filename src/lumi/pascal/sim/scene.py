@@ -40,9 +40,10 @@ class HolderGeometry:
     #: Diameter of the holder's inner (polished) ring. The mask's own coverage is
     #: sized against this, not the outer disc.
     inner_circle_diameter: float
-    #: Tilt of the sample block's edge in the unrotated image, degrees. This is the
-    #: axis the mask travels along, and the angle its own edges are drawn parallel to
-    #: -- see `_rotated_rect`/`cv2.getRotationMatrix2D` for the sign convention.
+    #: Tilt of the sample block's edge in the unrotated image, degrees -- the angle the
+    #: mask's own short edges (and the slit's long axis) are drawn parallel to. Mask1
+    #: translates the mask along the *perpendicular* axis (the plate's own length, see
+    #: `ChamberSceneRenderer._travel_hat`), not this one.
     edge_angle: float
 
 
@@ -57,7 +58,8 @@ class MaskGeometry:
     #: the pixels-per-mm scale; everything else interpolates from the two.
     hidden_position_mm: float
     #: +1: increasing Mask1 slides the mask from `hidden_position_mm` toward and
-    #: through the centre in the +edge_angle direction; -1 the other way.
+    #: through the centre along the plate's own length (roughly top-left to
+    #: bottom-right at the default edge_angle); -1 the other way.
     direction: float
     #: How far the plate extends beyond its holder-sized head, in pixels, on the side
     #: away from the slit -- the arm a real mask hangs off of, mounted outside the
@@ -97,8 +99,13 @@ class ChamberSceneRenderer:
         self._slit_u = side * 2.0 / 3.0   # 2/3 the head's length, parallel to the short edge
         self._slit_v = self._slit_u / 10.0  # 1:10 aspect ratio
 
+        # `travel_hat` is the v-axis in image space -- the plate's own length, arm
+        # included. A real paddle is mounted on a slide running along its own length,
+        # not across it, so this is the direction Mask1 actually translates the whole
+        # assembly along (+direction toward +travel_hat, i.e. roughly top-left to
+        # bottom-right at this edge_angle) -- not the short/holder-parallel axis.
         rad = math.radians(holder.edge_angle)
-        self._u_hat = np.array([math.cos(rad), math.sin(rad)])
+        self._travel_hat = np.array([-math.sin(rad), math.cos(rad)])
         self._center = np.array([holder.center_x, holder.center_y])
         self._px_per_mm: float | None = None  # lazily computed against the frame size
 
@@ -117,13 +124,15 @@ class ChamberSceneRenderer:
         if self._px_per_mm is not None:
             return self._px_per_mm
         # Cast a ray from the holder centre in the direction Mask1 retreats toward
-        # (opposite `direction`); the distance to where it leaves the frame, plus half
-        # the mask's own extent along that axis, is the offset at which the whole mask
-        # has just cleared the frame -- which `hidden_position_mm` is defined to be.
-        toward_hidden = -self._u_hat * (1.0 if self.mask.direction >= 0 else -1.0)
+        # (opposite `direction`, along `travel_hat`); the distance to where it leaves
+        # the frame, plus the *head*'s own half-extent along that axis (the leading
+        # edge as the plate retreats -- the arm behind it clears even sooner), is the
+        # offset at which the whole mask has just cleared the frame -- which
+        # `hidden_position_mm` is defined to be.
+        toward_hidden = -self._travel_hat * (1.0 if self.mask.direction >= 0 else -1.0)
         edge = _ray_box_exit(self._center, toward_hidden, width, height)
         span_mm = self.mask.center_position_mm - self.mask.hidden_position_mm
-        self._px_per_mm = (edge + self._mask_u / 2.0) / span_mm if span_mm else 0.0
+        self._px_per_mm = (edge + self._mask_v_bounds[1]) / span_mm if span_mm else 0.0
         return self._px_per_mm
 
     # --- drawing ---
@@ -131,7 +140,7 @@ class ChamberSceneRenderer:
     def _draw_mask(self, frame: np.ndarray, mask1_mm: float, height: int, width: int) -> np.ndarray:
         scale = self._scale(height, width)
         offset = self.mask.direction * (mask1_mm - self.mask.center_position_mm) * scale
-        center = self._center + self._u_hat * offset
+        center = self._center + self._travel_hat * offset
         half_u = self._mask_u / 2.0
 
         opaque = _rotated_rect_mask((height, width), center, (-half_u, half_u),

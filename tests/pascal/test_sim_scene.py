@@ -77,11 +77,12 @@ def test_at_the_centre_position_the_holder_centre_pixel_is_lit_through_the_slit(
 
 def test_beyond_the_centre_the_mask_has_moved_past_and_the_centre_pixel_darkens(model, holder, mask):
     """The slit is only *at* the centre right at `center_position_mm` -- move Mask1 on
-    past its half-extent along the travel axis (but not so far it clears the plate's
-    own half-width too) and the opaque plate covers the centre pixel instead."""
+    past the slit's own (narrow) extent along the travel axis, but not so far the
+    plate's own head clears the point too, and the opaque plate covers the centre
+    pixel instead."""
     renderer = ChamberSceneRenderer(model, holder, mask)
-    past_slit_px = renderer._slit_u / 2 + 5  # just past the slit's own edge...
-    assert past_slit_px < renderer._mask_u / 2  # ...but still within the plate
+    past_slit_px = renderer._slit_v / 2 + 5  # just past the slit's edge along travel...
+    assert past_slit_px < renderer._mask_v_bounds[1]  # ...but still within the head
     set_axis(model.mask1, mask.center_position_mm + past_slit_px / renderer._scale(H, W))
 
     out = renderer.render(blank(200))
@@ -107,6 +108,34 @@ def test_the_slit_is_two_thirds_the_mask_length_at_a_1_to_10_aspect(model, holde
     renderer = ChamberSceneRenderer(model, holder, mask)
     assert renderer._slit_u == pytest.approx(holder.inner_circle_diameter * 2 / 3)
     assert renderer._slit_v == pytest.approx(renderer._slit_u / 10)
+
+
+def test_increasing_mask1_slides_the_plate_from_top_left_toward_bottom_right(model, mask):
+    """Mask1 translates the plate along its own length (the arm's direction), not
+    across it -- a real paddle slides along the rail it is mounted on. A tilted
+    edge_angle (as on the real chamber) is needed to tell "top-left to bottom-right"
+    apart from a plain up/down slide, which edge_angle=0 can't distinguish."""
+    holder = HolderGeometry(center_x=200.0, center_y=150.0, inner_circle_diameter=100.0, edge_angle=-39.0)
+    renderer = ChamberSceneRenderer(model, holder, mask)
+
+    set_axis(model.mask1, mask.hidden_position_mm + 2.0)
+    near_hidden = renderer.render(blank(200))
+    set_axis(model.mask1, mask.center_position_mm)
+    at_centre = renderer.render(blank(200))
+
+    def centroid(frame: np.ndarray) -> tuple[float, float]:
+        """Mean (row, col) of the painted pixels -- where the visible part of the
+        plate sits, on average."""
+        rows, cols = np.nonzero(frame[:, :, 0] < 200)
+        assert len(rows) > 0
+        return float(rows.mean()), float(cols.mean())
+
+    hidden_row, hidden_col = centroid(near_hidden)
+    centre_row, centre_col = centroid(at_centre)
+    # Further along (more Mask1): the visible plate has moved down and right, not up
+    # and right -- i.e. toward the bottom-right corner, not the top-right one.
+    assert centre_row > hidden_row
+    assert centre_col > hidden_col
 
 
 def test_the_arm_reaches_well_past_the_head_on_the_side_away_from_the_slit(model, holder, mask):
@@ -169,10 +198,11 @@ def test_a_marker_at_the_slit_position_dips_as_mask1_sweeps_past_it(model, holde
     renderer = ChamberSceneRenderer(model, holder, mask)
     target = CrossShape(kind="cross", x=holder.center_x, y=holder.center_y, sample_radius=0)
     region = rasterise(target, H, W)
-    # Just past the slit's own edge but well short of the mask's -- the shoulder of the
-    # opaque plate, guaranteed to cover the centre once it has slid this far.
-    past_slit_px = renderer._slit_u / 2 + 5
-    assert past_slit_px < renderer._mask_u / 2
+    # Just past the slit's own edge along the travel axis but well short of the
+    # plate's -- the shoulder of the opaque head, guaranteed to cover the centre once
+    # it has slid this far.
+    past_slit_px = renderer._slit_v / 2 + 5
+    assert past_slit_px < renderer._mask_v_bounds[1]
     dip_mm = mask.center_position_mm + past_slit_px / renderer._scale(H, W)
 
     readings = {}
