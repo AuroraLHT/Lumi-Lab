@@ -371,7 +371,14 @@ edge_angle = -39.0
 center_position_mm = 96.0
 hidden_position_mm = 50.0
 direction = 1.0
-opacity = 0.9
+# How far the plate's arm extends beyond its holder-sized head, in pixels, off toward
+# where it would be mounted outside the frame -- not just a small tile floating over
+# the sample.
+arm_length = 500.0
+# A flat grey plate: color is the grey level (0..255), alpha 1.0 fully replaces the
+# frame under it (0.0 would leave the frame showing through untouched).
+color = 100.0
+alpha = 1.0
 
 [pascal.display]
 enable = false

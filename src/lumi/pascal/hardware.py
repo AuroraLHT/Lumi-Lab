@@ -248,7 +248,9 @@ def build_scene_renderer(model: ChamberModel) -> ChamberSceneRenderer:
         center_position_mm=float(settings.get("pascal.simcam.mask.center_position_mm", 96.0)),
         hidden_position_mm=float(settings.get("pascal.simcam.mask.hidden_position_mm", 50.0)),
         direction=float(settings.get("pascal.simcam.mask.direction", 1.0)),
-        opacity=float(settings.get("pascal.simcam.mask.opacity", 0.9)),
+        arm_length=float(settings.get("pascal.simcam.mask.arm_length", 500.0)),
+        color=float(settings.get("pascal.simcam.mask.color", 100.0)),
+        alpha=float(settings.get("pascal.simcam.mask.alpha", 1.0)),
     )
     return ChamberSceneRenderer(model, holder, mask)
 

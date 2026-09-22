@@ -35,7 +35,8 @@ def holder() -> HolderGeometry:
 
 @pytest.fixture
 def mask() -> MaskGeometry:
-    return MaskGeometry(center_position_mm=96.0, hidden_position_mm=50.0, direction=1.0, opacity=1.0)
+    return MaskGeometry(center_position_mm=96.0, hidden_position_mm=50.0, direction=1.0,
+                         arm_length=500.0, color=0.0, alpha=1.0)
 
 
 def set_axis(axis, value: float) -> None:
@@ -90,16 +91,48 @@ def test_beyond_the_centre_the_mask_has_moved_past_and_the_centre_pixel_darkens(
 
 def test_the_mask_extent_matches_the_holders_inner_circle(model, holder, mask):
     """'the mask has the width that mostly covers the sample holder' -- 100% of the
-    inner circle's diameter, both along the travel axis and across it."""
+    inner circle's diameter along the travel axis, and its head (where the slit is
+    cut) is square with it across the axis too; the arm then extends further still,
+    off the side away from the slit."""
     renderer = ChamberSceneRenderer(model, holder, mask)
+    half = holder.inner_circle_diameter / 2
     assert renderer._mask_u == holder.inner_circle_diameter
-    assert renderer._mask_v == holder.inner_circle_diameter
+    assert renderer._mask_v_bounds == (-(half + mask.arm_length), half)
 
 
 def test_the_slit_is_two_thirds_the_mask_length_at_a_1_to_10_aspect(model, holder, mask):
     renderer = ChamberSceneRenderer(model, holder, mask)
     assert renderer._slit_v == pytest.approx(holder.inner_circle_diameter * 2 / 3)
     assert renderer._slit_u == pytest.approx(renderer._slit_v / 10)
+
+
+def test_the_arm_reaches_well_past_the_head_on_the_side_away_from_the_slit(model, holder, mask):
+    """A real mask hangs off an arm mounted outside the frame -- the plate should cover
+    a point far off to one side of the holder (beyond where the small square head used
+    to reach) once positioned over the frame."""
+    renderer = ChamberSceneRenderer(model, holder, mask)
+    set_axis(model.mask1, mask.center_position_mm)
+
+    out = renderer.render(blank(200))
+
+    far_row = int(holder.center_y) - int(holder.inner_circle_diameter / 2) - 100  # into the arm, not the head
+    assert far_row >= 0
+    assert out[far_row, int(holder.center_x), 0] == pytest.approx(mask.color)
+
+
+def test_alpha_one_paints_a_flat_colour_alpha_zero_leaves_the_frame_showing(model, holder):
+    set_axis(model.mask1, 96.0)
+    opaque_row, opaque_col = 150, 220  # inside the head (u<=50), outside the slit (u>3.3)
+
+    solid = MaskGeometry(center_position_mm=96.0, hidden_position_mm=50.0, direction=1.0,
+                          arm_length=0.0, color=77.0, alpha=1.0)
+    out = ChamberSceneRenderer(model, holder, solid).render(blank(200))
+    assert out[opaque_row, opaque_col, 0] == pytest.approx(77.0)
+
+    invisible = MaskGeometry(center_position_mm=96.0, hidden_position_mm=50.0, direction=1.0,
+                              arm_length=0.0, color=77.0, alpha=0.0)
+    out = ChamberSceneRenderer(model, holder, invisible).render(blank(200))
+    assert out[opaque_row, opaque_col, 0] == pytest.approx(200.0)
 
 
 def test_sample_rotation_turns_the_holder_but_not_the_mask(model, holder, mask):

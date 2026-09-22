@@ -48,7 +48,7 @@ class HolderGeometry:
 
 @dataclass(frozen=True)
 class MaskGeometry:
-    """Mask1's mm -> pixel calibration, and how dark it renders."""
+    """Mask1's mm -> pixel calibration, and how the plate renders."""
 
     #: Mask1 position, mm, at which the slit is centred on the holder.
     center_position_mm: float
@@ -59,8 +59,17 @@ class MaskGeometry:
     #: +1: increasing Mask1 slides the mask from `hidden_position_mm` toward and
     #: through the centre in the +edge_angle direction; -1 the other way.
     direction: float
-    #: How dark the mask renders outside the slit, 0 (invisible) .. 1 (opaque).
-    opacity: float
+    #: How far the plate extends beyond its holder-sized head, in pixels, on the side
+    #: away from the slit -- the arm a real mask hangs off of, mounted outside the
+    #: frame rather than floating free over the sample. Long enough by default to run
+    #: off the edge of a 640x480 frame; the *slit*'s own position and size are
+    #: unaffected, they stay sized off `HolderGeometry.inner_circle_diameter` as before.
+    arm_length: float = 500.0
+    #: Grey level (0..255) the plate renders outside the slit.
+    color: float = 100.0
+    #: How much of `color` replaces the frame under the plate, 0 (invisible) .. 1 (a
+    #: flat, fully opaque colour -- no texture of what is underneath shows through).
+    alpha: float = 1.0
 
 
 class ChamberSceneRenderer:
@@ -73,11 +82,14 @@ class ChamberSceneRenderer:
         self.mask = mask
 
         # The mask rectangle, in its own (u, v) frame: u runs along the holder's edge
-        # (the travel axis), v across it.
+        # (the travel axis), v across it. The plate's *head* -- what the slit is cut
+        # into -- is square with the holder's inner circle, u in [-side/2, side/2] and
+        # v in [-side/2, side/2]; its *arm* extends `arm_length` further in -v, off
+        # toward where the real thing would be mounted, outside the frame.
         side = holder.inner_circle_diameter
         self._mask_u = side          # "mostly covers the sample holder"
-        self._mask_v = side
-        self._slit_v = side * 2.0 / 3.0   # 2/3 the mask's length
+        self._mask_v_bounds = (-(side / 2.0 + mask.arm_length), side / 2.0)
+        self._slit_v = side * 2.0 / 3.0   # 2/3 the (head's) length
         self._slit_u = self._slit_v / 10.0  # 1:10 aspect ratio
 
         rad = math.radians(holder.edge_angle)
@@ -115,17 +127,19 @@ class ChamberSceneRenderer:
         scale = self._scale(height, width)
         offset = self.mask.direction * (mask1_mm - self.mask.center_position_mm) * scale
         center = self._center + self._u_hat * offset
+        half_u = self._mask_u / 2.0
 
-        opaque = _rotated_rect_mask((height, width), center, self._mask_u, self._mask_v,
-                                     self.holder.edge_angle)
+        opaque = _rotated_rect_mask((height, width), center, (-half_u, half_u),
+                                     self._mask_v_bounds, self.holder.edge_angle)
         if not opaque.any():
             return frame
-        slit = _rotated_rect_mask((height, width), center, self._slit_u, self._slit_v,
-                                   self.holder.edge_angle)
-        darken = opaque & ~slit
+        half_slit_u, half_slit_v = self._slit_u / 2.0, self._slit_v / 2.0
+        slit = _rotated_rect_mask((height, width), center, (-half_slit_u, half_slit_u),
+                                   (-half_slit_v, half_slit_v), self.holder.edge_angle)
+        painted = opaque & ~slit
 
         out = frame.astype(np.float32, copy=True)
-        out[darken] *= (1.0 - self.mask.opacity)
+        out[painted] = out[painted] * (1.0 - self.mask.alpha) + self.mask.color * self.mask.alpha
         return out
 
 
@@ -138,10 +152,16 @@ def _rotate(frame: np.ndarray, angle_deg: float, center: tuple[float, float]) ->
 
 
 def _rotated_rect_mask(
-    shape: tuple[int, int], center: np.ndarray, extent_u: float, extent_v: float, angle_deg: float,
+    shape: tuple[int, int],
+    center: np.ndarray,
+    u_bounds: tuple[float, float],
+    v_bounds: tuple[float, float],
+    angle_deg: float,
 ) -> np.ndarray:
-    """Boolean mask of `shape`, True inside a `extent_u` x `extent_v` rectangle
-    centred at `center` and rotated `angle_deg` (the u-axis direction)."""
+    """Boolean mask of `shape`, True inside the rectangle `u_bounds` x `v_bounds` (in
+    the frame centred on `center` and rotated `angle_deg`, the u-axis direction) --
+    not necessarily centred on `center` itself, since a bound pair need not be
+    symmetric (the mask's arm extends further one way than the other)."""
     height, width = shape
     ys, xs = np.mgrid[0:height, 0:width]
     dx, dy = xs - center[0], ys - center[1]
@@ -149,7 +169,7 @@ def _rotated_rect_mask(
     cos_t, sin_t = math.cos(rad), math.sin(rad)
     u = dx * cos_t + dy * sin_t
     v = -dx * sin_t + dy * cos_t
-    return (np.abs(u) <= extent_u / 2.0) & (np.abs(v) <= extent_v / 2.0)
+    return (u_bounds[0] <= u) & (u <= u_bounds[1]) & (v_bounds[0] <= v) & (v <= v_bounds[1])
 
 
 def _ray_box_exit(origin: np.ndarray, direction: np.ndarray, width: int, height: int) -> float:
