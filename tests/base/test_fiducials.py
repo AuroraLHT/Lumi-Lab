@@ -32,6 +32,8 @@ from lumi.contracts.payloads.fiducial import (
     Point,
     PolyShape,
     RectShape,
+    RoleAssignment,
+    RoleQuery,
 )
 from lumi.pascal.handlers import FiducialHandler
 
@@ -470,6 +472,80 @@ def test_a_store_with_no_path_is_memory_only():
     assert len(store.list()) == 1
 
 
+# --- roles: naming a marker for a purpose -------------------------------------
+
+
+def test_a_role_points_at_a_marker_and_can_be_repointed():
+    store = FiducialStore(None)
+    store.set(marker("a", rect(0, 0, 1, 1)))
+    store.set(marker("b", rect(1, 1, 1, 1)))
+
+    store.set_role("sample_holder", "a")
+    assert store.get_role("sample_holder") == "a"
+    assert store.list_roles() == {"sample_holder": "a"}
+
+    store.set_role("sample_holder", "b")  # repointing replaces, does not add
+    assert store.get_role("sample_holder") == "b"
+    assert store.list_roles() == {"sample_holder": "b"}
+
+
+def test_an_unset_role_reads_as_none_and_removing_an_unknown_one_is_an_error():
+    store = FiducialStore(None)
+    assert store.get_role("nope") is None
+    with pytest.raises(KeyError):
+        store.remove_role("nope")
+
+
+def test_a_role_may_name_a_marker_that_does_not_exist_yet():
+    """Setting the role and drawing the marker can happen in either order -- the store
+    does not enforce that the marker_id already exists."""
+    store = FiducialStore(None)
+    store.set_role("sample_holder", "not-drawn-yet")
+    assert store.get_role("sample_holder") == "not-drawn-yet"
+
+
+def test_removing_a_role_does_not_touch_its_marker():
+    store = FiducialStore(None)
+    store.set(marker("a", rect(0, 0, 1, 1)))
+    store.set_role("sample_holder", "a")
+    store.remove_role("sample_holder")
+    assert store.get_role("sample_holder") is None
+    assert store.get("a") is not None
+
+
+def test_roles_survive_a_restart(tmp_path):
+    path = tmp_path / "m.json"
+    store = FiducialStore(path)
+    store.set(marker("a", rect(0, 0, 1, 1)))
+    store.set_role("sample_holder", "a")
+
+    again = FiducialStore(path)
+    assert again.list_roles() == {"sample_holder": "a"}
+    assert [m.marker_id for m in again.list()] == ["a"]
+
+
+def test_a_legacy_bare_list_file_still_loads_with_no_roles(tmp_path):
+    path = tmp_path / "m.json"
+    path.write_text('[{"marker_id": "a", "shape": {"kind": "rect", "x": 0, "y": 0, "width": 1, "height": 1}}]')
+
+    store = FiducialStore(path)
+
+    assert [m.marker_id for m in store.list()] == ["a"]
+    assert store.list_roles() == {}
+    assert not (tmp_path / "m.json.corrupt").exists()
+
+
+def test_a_role_map_that_is_not_a_str_to_str_mapping_is_treated_as_corrupt(tmp_path):
+    path = tmp_path / "m.json"
+    path.write_text('{"markers": [], "roles": {"sample_holder": 5}}')
+
+    store = FiducialStore(path)
+
+    assert store.list() == []
+    assert store.list_roles() == {}
+    assert (tmp_path / "m.json.corrupt").exists()
+
+
 # --- the worker --------------------------------------------------------------
 
 
@@ -601,3 +677,17 @@ async def test_readout_reports_liveness(handler):
     handler.worker.process(gradient(), header())
     readout = handler.readout()
     assert readout.marker_ids == ["a"] and readout.n_processed == 1
+
+
+async def test_roles_round_trip_through_the_handler(handler):
+    await handler.set_marker(marker("a", rect(0, 0, 4, 4)))
+    await handler.set_role(RoleAssignment(role="sample_holder", marker_id="a"))
+
+    roles = await handler.list_roles(Empty())
+    assert roles.roles == {"sample_holder": "a"}
+
+    await handler.remove_role(RoleQuery(role="sample_holder"))
+    assert (await handler.list_roles(Empty())).roles == {}
+
+    with pytest.raises(KeyError):
+        await handler.remove_role(RoleQuery(role="sample_holder"))

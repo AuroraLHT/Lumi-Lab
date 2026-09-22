@@ -47,6 +47,7 @@ READ_ONLY_OPS = frozenset({
     "list_markers",
     "marker_stats",
     "marker_history",
+    "list_roles",
     "detection",
     "initial_fragments",
     "initial_fragments_size",

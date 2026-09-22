@@ -10,6 +10,10 @@ mask's exact position is found, since the trace dips as the edge crosses the mar
 Everything is in **camera-frame pixels**, origin top-left, x to the right, y down --
 the same space the MJPEG stream is encoded in, so a frontend scales one factor
 (`displayed width / frame_width`) and draws the geometry as it is.
+
+A marker can also be named for a role (`RoleAssignment`) -- "this one is the sample
+holder", "this one is the alignment target" -- so an automated step looks a marker up
+by what it is for rather than by whatever id the operator happened to type in.
 """
 
 from __future__ import annotations
@@ -145,6 +149,26 @@ class MarkerHistory(BaseModel):
 
     marker_id: str
     samples: list[MarkerPoint] = []
+
+
+class RoleAssignment(BaseModel):
+    """Names a marker for a purpose: `role` is a free-form tag (e.g. "sample_holder",
+    "mask_alignment_target") chosen by whoever sets it up, `marker_id` the marker it
+    currently points at. A later automated step -- or another operator -- looks the
+    role up rather than hardcoding a marker_id, so redrawing the marker (or aiming the
+    same role at a different one) does not need touching whatever consumes it."""
+
+    role: str = Field(min_length=1, max_length=64)
+    marker_id: str = Field(min_length=1, max_length=64)
+
+
+class RoleQuery(BaseModel):
+    role: str
+
+
+class RoleMap(BaseModel):
+    #: role -> marker_id.
+    roles: dict[str, str] = {}
 
 
 class FiducialReadout(BaseModel):

@@ -29,6 +29,9 @@ from .payloads.fiducial import (
     MarkerId,
     MarkerList,
     MarkerStatsSample,
+    RoleAssignment,
+    RoleMap,
+    RoleQuery,
 )
 from .spec import Capability, Codec, EquipmentContract, Kind, Op, StreamSpec
 
@@ -120,6 +123,12 @@ FIDUCIAL = Capability(
            doc="Statistics of every marker on the latest frame."),
         Op("marker_history", MarkerHistoryQuery, MarkerHistory,
            doc="One marker's retained intensity trace, oldest first."),
+        Op("set_role", RoleAssignment, Ack,
+           doc="Name a marker for a purpose (e.g. role='sample_holder'), so an "
+               "automated step can look it up by what it is for. Replaces whatever "
+               "marker the role previously pointed at."),
+        Op("remove_role", RoleQuery, Ack),
+        Op("list_roles", Empty, RoleMap),
     ),
     stream=StreamSpec("stats", MarkerStatsSample),
 )

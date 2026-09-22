@@ -216,19 +216,26 @@ _MARKERS = TypeAdapter(list[FiducialMarker])
 
 
 class FiducialStore:
-    """The markers, by id. Shared between the handler (event loop) and the stats worker
-    (its own thread), so every access is under a lock and the worker reads a
-    `snapshot()` rather than the live dict.
+    """The markers, by id, and the role names pinned to them. Shared between the
+    handler (event loop) and the stats worker (its own thread), so every access is
+    under a lock and the worker reads a `snapshot()` rather than the live dict.
 
     Persisted on every change, because a marker is set up by hand once and is worth
     keeping across a node restart -- unlike the statistics, which are cheap to
     regenerate. `path=None` keeps them in memory only.
+
+    A role is a free-form name (e.g. "sample_holder") pointing at a marker_id, so
+    something that needs "the" marker for a purpose looks it up by what it is for
+    rather than by a fixed id. It is not required to name an existing marker --
+    setting one ahead of the marker it will point at, or leaving it aimed at one that
+    was since removed, is a caller's business, not something the store enforces.
     """
 
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path) if path else None
         self._lock = threading.Lock()
         self._markers: dict[str, FiducialMarker] = {}
+        self._roles: dict[str, str] = {}
         #: Bumps on every change; the worker compares it to know when to re-rasterise.
         self.version = 0
         self._load()
@@ -259,13 +266,47 @@ class FiducialStore:
         with self._lock:
             return self.version, dict(self._markers)
 
+    # --- roles ---
+
+    def set_role(self, role: str, marker_id: str) -> None:
+        with self._lock:
+            self._roles[role] = marker_id
+            self.version += 1
+            self._save()
+
+    def remove_role(self, role: str) -> None:
+        with self._lock:
+            if role not in self._roles:
+                raise KeyError(f"no role {role!r}")
+            del self._roles[role]
+            self.version += 1
+            self._save()
+
+    def get_role(self, role: str) -> str | None:
+        """The marker_id pinned to `role`, or None if nothing is."""
+        with self._lock:
+            return self._roles.get(role)
+
+    def list_roles(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._roles)
+
     # --- persistence ---
 
     def _load(self) -> None:
         if self.path is None or not self.path.exists():
             return
         try:
-            markers = _MARKERS.validate_python(json.loads(self.path.read_text()))
+            raw = json.loads(self.path.read_text())
+            # Old files are a bare `[marker, ...]` list, from before roles existed;
+            # a new one is `{"markers": [...], "roles": {...}}`. Reading a legacy file
+            # keeps it starting with no roles rather than failing to load at all.
+            markers_raw, roles = (raw, {}) if isinstance(raw, list) else (
+                raw.get("markers", []), raw.get("roles", {})
+            )
+            markers = _MARKERS.validate_python(markers_raw)
+            if not isinstance(roles, dict) or not all(isinstance(v, str) for v in roles.values()):
+                raise ValueError(f"roles must be a str->str mapping, got {roles!r}")
         except (OSError, ValueError, ValidationError):
             # Do not let a hand-edited or truncated file take the chamber node down, and
             # do not let the next save silently overwrite it either.
@@ -278,12 +319,17 @@ class FiducialStore:
                 pass
             return
         self._markers = {m.marker_id: m for m in markers}
-        log.info("loaded %d fiducial marker(s) from %s", len(self._markers), self.path)
+        self._roles = {str(k): v for k, v in roles.items()}
+        log.info("loaded %d fiducial marker(s) and %d role(s) from %s",
+                 len(self._markers), len(self._roles), self.path)
 
     def _save(self) -> None:
         if self.path is None:
             return
-        payload = _MARKERS.dump_json(list(self._markers.values()), indent=2)
+        payload = json.dumps({
+            "markers": json.loads(_MARKERS.dump_json(list(self._markers.values()))),
+            "roles": self._roles,
+        }, indent=2).encode()
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             # Write-then-rename, so a crash mid-write leaves the previous file intact

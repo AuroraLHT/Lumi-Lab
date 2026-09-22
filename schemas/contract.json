@@ -1994,6 +1994,101 @@
               "type": "object"
             },
             "response_codec": "json"
+          },
+          {
+            "name": "set_role",
+            "request": {
+              "description": "Names a marker for a purpose: `role` is a free-form tag (e.g. \"sample_holder\",\n\"mask_alignment_target\") chosen by whoever sets it up, `marker_id` the marker it\ncurrently points at. A later automated step -- or another operator -- looks the\nrole up rather than hardcoding a marker_id, so redrawing the marker (or aiming the\nsame role at a different one) does not need touching whatever consumes it.",
+              "properties": {
+                "marker_id": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "title": "Marker Id",
+                  "type": "string"
+                },
+                "role": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "title": "Role",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "marker_id"
+              ],
+              "title": "RoleAssignment",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "remove_role",
+            "request": {
+              "properties": {
+                "role": {
+                  "title": "Role",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role"
+              ],
+              "title": "RoleQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_roles",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "roles": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "default": {},
+                  "title": "Roles",
+                  "type": "object"
+                }
+              },
+              "title": "RoleMap",
+              "type": "object"
+            },
+            "response_codec": "json"
           }
         ],
         "routing_keys": {
@@ -2002,10 +2097,13 @@
           "request_pattern": "chamber.fiducial.req.*",
           "requests": {
             "list_markers": "chamber.fiducial.req.list_markers",
+            "list_roles": "chamber.fiducial.req.list_roles",
             "marker_history": "chamber.fiducial.req.marker_history",
             "marker_stats": "chamber.fiducial.req.marker_stats",
             "remove_marker": "chamber.fiducial.req.remove_marker",
-            "set_marker": "chamber.fiducial.req.set_marker"
+            "remove_role": "chamber.fiducial.req.remove_role",
+            "set_marker": "chamber.fiducial.req.set_marker",
+            "set_role": "chamber.fiducial.req.set_role"
           },
           "state": "chamber.fiducial.state",
           "update": "chamber.fiducial.update",

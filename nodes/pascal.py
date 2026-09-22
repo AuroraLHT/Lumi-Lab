@@ -41,18 +41,20 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     log_reader = build_log_reader(args.src, args.log)
     config_reader = build_config_reader(args.src)
     sim_workers: list = []
+    model = None
     if args.src == "sim":
-        # One chamber model, shared: the MI backend drives it and the log writer
-        # renders it. The log *reader* above is the production one, tailing the CSV the
-        # writer produces -- it has no idea a simulator is on the other end.
-        _model, log_writer, mi_server, mi_backend = build_simulated_chamber(
+        # One chamber model, shared: the MI backend drives it, the log writer renders
+        # it, and the camera's scene overlay reads it (sample rotation, Mask1's slit).
+        # The log *reader* above is the production one, tailing the CSV the writer
+        # produces -- it has no idea a simulator is on the other end.
+        model, log_writer, mi_server, mi_backend = build_simulated_chamber(
             args.log, args.mi, time_scale=args.speed
         )
         sim_workers = [log_writer, mi_backend]
         mi_simulator = None
     else:
         mi_server, mi_simulator = build_mi_mode(args.src, args.mi)
-    camera, _, _ = build_camera(args.src)
+    camera, _, _ = build_camera(args.src, model=model)
 
     # The camera's in-process fan-out: one grab feeds every consumer. The stream is
     # served from the encoder's output, not from a camera queue directly, so `frames`

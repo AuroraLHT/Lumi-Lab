@@ -31,6 +31,9 @@ from lumi.contracts.payloads.fiducial import (
     MarkerList,
     MarkerPoint,
     MarkerStatsSample,
+    RoleAssignment,
+    RoleMap,
+    RoleQuery,
 )
 
 log = logging.getLogger(__name__)
@@ -291,6 +294,19 @@ class FiducialHandler:
                 for stats, header in self.worker.trace(req.marker_id, req.limit)
             ],
         )
+
+    async def set_role(self, req: RoleAssignment) -> Ack:
+        self.store.set_role(req.role, req.marker_id)
+        log.info("fiducial role %r set to marker %r", req.role, req.marker_id)
+        return Ack()
+
+    async def remove_role(self, req: RoleQuery) -> Ack:
+        self.store.remove_role(req.role)
+        log.info("fiducial role %r removed", req.role)
+        return Ack()
+
+    async def list_roles(self, req: Empty) -> RoleMap:
+        return RoleMap(roles=self.store.list_roles())
 
     async def next(self) -> MarkerStatsSample | None:
         try:

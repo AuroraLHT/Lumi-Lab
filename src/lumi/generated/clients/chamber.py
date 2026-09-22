@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 58f95c5a92b54f58
+# contract_hash: 21112a7b98c5aa79
 
 """Generated clients for the chamber node."""
 
@@ -20,7 +20,7 @@ from lumi.contracts.chamber import CAMERA, CONFIG, FIDUCIAL, LOG, MI_MODE
 from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta, JpegMeta
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, LogBatch, LogEntry, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample
+from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
 
 
 class ChamberLogClient(CapabilityClient):
@@ -219,6 +219,18 @@ class ChamberFiducialClient(CapabilityClient):
     async def marker_history(self, req: MarkerHistoryQuery) -> MarkerHistory:
         """One marker's retained intensity trace, oldest first."""
         return await self.call("marker_history", req)  # type: ignore[return-value]
+
+    async def set_role(self, req: RoleAssignment) -> Ack:
+        """Name a marker for a purpose (e.g. role='sample_holder'), so an automated step can look it up by what it is for. Replaces whatever marker the role previously pointed at."""
+        return await self.call("set_role", req)  # type: ignore[return-value]
+
+    async def remove_role(self, req: RoleQuery) -> Ack:
+        """Call fiducial.remove_role."""
+        return await self.call("remove_role", req)  # type: ignore[return-value]
+
+    async def list_roles(self) -> RoleMap:
+        """Call fiducial.list_roles."""
+        return await self.call("list_roles")  # type: ignore[return-value]
 
     async def on_stats(
         self, callback: Callable[[MarkerStatsSample, None], Awaitable[None]]

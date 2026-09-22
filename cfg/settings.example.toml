@@ -357,6 +357,22 @@ feature_oscillation_frequency = 0.03
 feature_oscillation_amplitude = 20
 max_intensity = 255
 
+# `--src sim`'s camera overlay: the sample rotating with `Substrate`, and a dark mask
+# with a narrow slit sliding over it with `Mask1`. Tuned against the bundled YSZ.bmp
+# above -- retune (or measure for real) if `source` points elsewhere. See
+# lumi.pascal.sim.scene for the geometry these describe.
+[pascal.simcam.holder]
+center_x = 293.0
+center_y = 225.0
+inner_circle_diameter = 240.0
+edge_angle = -39.0
+
+[pascal.simcam.mask]
+center_position_mm = 96.0
+hidden_position_mm = 50.0
+direction = 1.0
+opacity = 0.9
+
 [pascal.display]
 enable = false
 add_timestamp = true
