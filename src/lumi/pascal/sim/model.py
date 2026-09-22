@@ -267,7 +267,12 @@ class ChamberModel:
         # continuously by `Sample Rotation ON`. The two are separate: the spin advances
         # the angle without the axis being "busy", so a spinning sample does not hold
         # `motor_free` low forever the way an unfinished move does.
-        self.sample_rot = _Axis(261.60, c.sample_rotation_speed, rotary=True)
+        #
+        # Starts at 0 -- the chamber webcam overlay (lumi.pascal.sim.scene) treats 0 as
+        # the sample's reference orientation, the angle the base image itself was shot
+        # at, so a freshly started `--src sim` shows it undistorted rather than already
+        # rotated to an arbitrary angle.
+        self.sample_rot = _Axis(0.0, c.sample_rotation_speed, rotary=True)
         #: Every positioning axis, in one place: `motor_free` (all axes idle) is the AND
         #: of them all and `motion_eta` the max, so a new axis must never be added to one
         #: and not the other.
