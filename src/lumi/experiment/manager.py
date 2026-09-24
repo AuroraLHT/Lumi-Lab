@@ -35,10 +35,13 @@ from dataclasses import dataclass
 from math import floor
 
 from lumi.contracts.payloads.chamber import SectionQuery
+from lumi.contracts.payloads.experiment import MaskAlignPass, MaskAlignResult, MaskSweepPoint
+from lumi.contracts.payloads.fiducial import MASK_CENTER_ROLE
 from lumi.contracts.payloads.storage import StorageRequest
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, utc_now
+from lumi.experiment.mask_align import locate_slit
 from lumi.experiment.mi import MiCommandRunner
-from lumi.generated.clients.chamber import ChamberConfigClient, ChamberLogClient
+from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
 from lumi.pascal import command as pcmd
@@ -238,8 +241,11 @@ class BaseExperimentManager:
         pld_config: PLDChamberConfiguration,
         bounds: ExperimentBounds,
         target_mapper: dict[str, str],
+        chamber_fiducial: ChamberFiducialClient | None = None,
     ) -> None:
         self.chamber_mi = chamber_mi
+        # Only mask-centre auto-alignment reads it; None leaves everything else working.
+        self.chamber_fiducial = chamber_fiducial
         self.chamber_log = chamber_log
         self.chamber_config = chamber_config
         self.rheed_camera = rheed_camera
@@ -1134,6 +1140,149 @@ class BaseExperimentManager:
             mask_id=pcmd.MaskID.M1, distance=self.pld_config.center_mask_pos, sync=False, nowait=False,
         ))
         return True
+
+    # --- automatic: mask-center alignment from a fiducial marker --------------------
+
+    async def auto_align_center_mask(
+        self,
+        half_window_mm: float = 4.0,
+        step_mm: float = 0.5,
+        max_passes: int = 3,
+        points_per_pass: int = 15,
+        tolerance_mm: float = 0.02,
+        frames_per_point: int = 2,
+        min_contrast: float = 5.0,
+        apply: bool = True,
+    ) -> dict:
+        """The camera-read version of the begin/confirm_mask_center loop: scan Mask1
+        across `center_mask_pos +- half_window_mm`, read the marker tagged
+        `mask-center` at each point, and find where the slit passes over it from the
+        intensity-vs-position curve (see `lumi.experiment.mask_align`). Then re-scan
+        just that bump, finer each pass, until the centre settles within
+        `tolerance_mm` or `max_passes` runs out. Every pass is one steady scan in
+        increasing Mask1, so the mask never wanders back and forth mid-scan.
+
+        Leaves the mask at the found centre, so the result can be checked by eye, and
+        sets `center_mask_pos` to it when `apply`. Sets up the view the same way
+        `begin_check_mask_center` does -- target carousel on Clear, sample shutter
+        open -- since both look at the same thing.
+        """
+        marker_id, problem = await self.find_mask_center_marker()
+        if marker_id is None:
+            raise RuntimeError(problem)
+
+        previous = self.pld_config.center_mask_pos
+        n = int(round(2 * half_window_mm / step_mm))
+        start = previous - half_window_mm
+        positions = [start + i * step_mm for i in range(n + 1)]
+        self._check_mask_travel(positions)
+
+        await self._await_motor_ready()
+        await self.chamber_mi.execute(pcmd.SelectTarget(pcmd.Targets.Clear, nowait=False))
+        await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("ON")))
+
+        samples: list[MaskSweepPoint] = []
+        passes: list[MaskAlignPass] = []
+
+        async def scan(pass_index: int, points: list[float]) -> list[float]:
+            readings = []
+            for position in points:
+                await self.move_mask_to_position(position)
+                readings.append(await self._fresh_marker_reading(marker_id, frames_per_point))
+                samples.append(MaskSweepPoint(pass_index=pass_index, position=position, reading=readings[-1]))
+                log.info("mask scan %d: %.3f mm -> %.1f", pass_index, position, readings[-1])
+            return readings
+
+        # Pass 0: the wide scan. Its median is the plate's reading, which every
+        # narrower pass reuses -- those sit mostly on the bump, where a median would
+        # be the slit's own level instead.
+        fit = locate_slit(positions, await scan(0, positions), min_contrast=min_contrast)
+        baseline, step = fit.baseline, step_mm
+        passes.append(MaskAlignPass(start=positions[0], stop=positions[-1], step=step, center=fit.center,
+                                    width=fit.width, contrast=fit.contrast))
+        log.info("mask scan 0: slit at %.3f mm (bump %.2f mm wide)", fit.center, fit.width)
+
+        converged = False
+        for pass_index in range(1, max_passes):
+            # The bump plus a margin of two of the last pass's steps each side: the
+            # bump's true edges lie up to a step beyond its outermost half-height
+            # points, and the fit needs plate-level points past both of them.
+            half = fit.width / 2 + 2 * step
+            step = 2 * half / (points_per_pass - 1)
+            points = [fit.center - half + i * step for i in range(points_per_pass)]
+            self._check_mask_travel(points)
+            refined = locate_slit(points, await scan(pass_index, points),
+                                  min_contrast=min_contrast, baseline=baseline)
+            passes.append(MaskAlignPass(start=points[0], stop=points[-1], step=step, center=refined.center,
+                                        width=refined.width, contrast=refined.contrast))
+            shift = abs(refined.center - fit.center)
+            log.info("mask scan %d: slit at %.3f mm (moved %.3f mm, step %.3f mm)",
+                     pass_index, refined.center, shift, step)
+            fit = refined
+            if shift < tolerance_mm:
+                converged = True
+                break
+
+        log.info(
+            "mask centre found at %.3f mm (was %.3f; contrast %.1f over baseline %.1f; %s)",
+            fit.center, previous, fit.contrast, baseline, "converged" if converged else "max passes reached",
+        )
+        if apply:
+            self.pld_config.center_mask_pos = fit.center
+        await self.move_mask_to_position(fit.center)
+        return MaskAlignResult(
+            marker_id=marker_id, previous_center=previous, center=fit.center, applied=apply,
+            converged=converged, contrast=fit.contrast, baseline=baseline, polarity=fit.polarity,
+            passes=passes, samples=samples,
+        ).model_dump()
+
+    async def find_mask_center_marker(self) -> tuple[str | None, str]:
+        """The marker tagged `mask-center`, or (None, what is wrong) -- untagged, or
+        tagged to a marker that has since been deleted. Asked without raising so the
+        handler can hold the alignment open for an operator to fix it."""
+        fiducial = self.chamber_fiducial
+        if fiducial is None:
+            raise RuntimeError("no chamber fiducial client -- auto-alignment needs the chamber camera's markers")
+        marker_id = (await fiducial.list_roles()).roles.get(MASK_CENTER_ROLE)
+        if marker_id is None:
+            return None, (f"no fiducial marker is tagged {MASK_CENTER_ROLE!r} -- tag the marker on "
+                          "the sample's centre with that role")
+        if marker_id not in {m.marker_id for m in (await fiducial.list_markers()).markers}:
+            return None, (f"role {MASK_CENTER_ROLE!r} points at marker {marker_id!r}, which no longer "
+                          "exists -- tag the marker on the sample's centre with that role")
+        return marker_id, ""
+
+    def _check_mask_travel(self, positions: list[float]) -> None:
+        if positions[0] < 0 or positions[-1] >= self.bounds.mask_travel_max:
+            raise ValueError(
+                f"scan {positions[0]:.2f}..{positions[-1]:.2f} mm leaves the mask's travel "
+                f"[0, {self.bounds.mask_travel_max})"
+            )
+
+    async def _fresh_marker_reading(
+        self, marker_id: str, frames: int, timeout: float = 10.0, poll: float = 0.05,
+    ) -> float:
+        """Mean of `marker_id`'s reading over the next `frames` camera frames. The
+        frame current when this is called may have been exposed mid-move, so it is
+        skipped: frames are told apart by their uuid, not by time, which would need
+        this host's clock to agree with the chamber node's."""
+        assert self.chamber_fiducial is not None
+        seen = {(await self.chamber_fiducial.marker_stats()).uuid}
+        values: list[float] = []
+        deadline = time.monotonic() + timeout
+        while len(values) < frames:
+            if time.monotonic() > deadline:
+                raise RuntimeError(f"no new camera frame within {timeout:.0f}s -- is the chamber camera streaming?")
+            sample = await self.chamber_fiducial.marker_stats()
+            if sample.uuid in seen:
+                await asyncio.sleep(poll)
+                continue
+            seen.add(sample.uuid)
+            stats = sample.stats.get(marker_id)
+            if stats is None or stats.mean is None:
+                raise RuntimeError(f"marker {marker_id!r} has no reading -- is it on the frame?")
+            values.append(stats.mean)
+        return sum(values) / len(values)
 
     # --- gated: RHEED gain tuning ------------------------------------------------
 

@@ -691,3 +691,13 @@ async def test_roles_round_trip_through_the_handler(handler):
 
     with pytest.raises(KeyError):
         await handler.remove_role(RoleQuery(role="sample_holder"))
+
+
+async def test_list_roles_offers_the_predefined_roles_even_when_unassigned(handler):
+    """The mask-centre role is something the driver reads -- a UI offers it to pick
+    rather than asking the operator to type its name."""
+    from lumi.contracts.payloads.fiducial import MASK_CENTER_ROLE
+
+    roles = await handler.list_roles(Empty())
+    assert roles.roles == {}
+    assert MASK_CENTER_ROLE in {spec.role for spec in roles.known}

@@ -27,7 +27,7 @@ with one fixed server-side sequence.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from .chamber import LogEntry
 from .common import ServerStateBase
@@ -48,7 +48,7 @@ _STRICT = ConfigDict(extra="forbid")
 class PendingConfirmation(BaseModel):
     id: str
     kind: str  # "proceed" | "laser_power" | "mask_center_alignment" | "mask_center_check"
-    # | "rheed_gain" | "pixel_check"
+    # | "rheed_gain" | "pixel_check" | "fiducial_role"
     message: str
     requested_at: float
 
@@ -56,6 +56,7 @@ class PendingConfirmation(BaseModel):
 class CurrentTask(BaseModel):
     id: str
     kind: str  # "to_temperature" | "cool_down" | "perform_deposition" | "perform_preablation" | "anneal"
+    # | "auto_align_center_mask"
     started_at: float
     detail: dict = {}
 
@@ -632,6 +633,72 @@ class ConfirmMaskCenter(BaseModel):
     corrected_position: float | None = None
 
 
+class AutoAlignMaskCenter(BaseModel):
+    """Scan Mask1 around the current `center_mask_pos` and centre the slit on the
+    fiducial marker tagged `mask-center`.
+
+    The first pass scans `center_mask_pos +- half_window_mm` in `step_mm` steps and
+    finds the bump in the marker's intensity-vs-position curve. Each later pass
+    re-scans just the bump (plus a margin) with `points_per_pass` points, so the step
+    shrinks, and re-fits it -- until the centre moves less than `tolerance_mm` between
+    passes or `max_passes` is reached. Every pass scans in the same (increasing)
+    direction, one steady step after another."""
+
+    half_window_mm: float = Field(default=4.0, gt=0, le=30)
+    step_mm: float = Field(default=0.5, gt=0, le=5)
+    #: Passes in total, the first wide scan included. 1 is the wide scan alone.
+    max_passes: int = Field(default=3, ge=1, le=10)
+    #: Scan points in each refining pass.
+    points_per_pass: int = Field(default=15, ge=5, le=100)
+    #: Stop refining once the centre moves less than this between passes.
+    tolerance_mm: float = Field(default=0.02, gt=0)
+    #: New camera frames averaged per point, after the one current when the move ended.
+    frames_per_point: int = Field(default=2, ge=1, le=20)
+    #: Least |slit reading - plate reading| accepted as having seen the slit.
+    min_contrast: float = Field(default=5.0, gt=0)
+    #: False: report where the slit was found, but leave `center_mask_pos` alone.
+    apply: bool = True
+    #: With no marker tagged `mask-center`, how long to hold a `fiducial_role` pending
+    #: confirmation open for someone to tag one before giving up. 0 fails at once.
+    role_wait_timeout_s: float = Field(default=600.0, ge=0)
+
+
+class MaskSweepPoint(BaseModel):
+    #: Which scan this point belongs to: 0 the wide one, then each refining pass.
+    pass_index: int = 0
+    position: float
+    reading: float
+
+
+class MaskAlignPass(BaseModel):
+    """One scan's fit."""
+
+    start: float
+    stop: float
+    step: float
+    center: float
+    width: float
+    contrast: float
+
+
+class MaskAlignResult(BaseModel):
+    """What an `auto_align_center_mask` task reports in its `task_result`."""
+
+    marker_id: str
+    previous_center: float
+    center: float
+    applied: bool
+    #: Whether the last two passes agreed within `tolerance_mm`; False means
+    #: `max_passes` ran out first and `center` is the last pass's fit.
+    converged: bool
+    contrast: float
+    baseline: float
+    #: +1 the slit reads brighter than the plate, -1 darker.
+    polarity: int
+    passes: list[MaskAlignPass] = []
+    samples: list[MaskSweepPoint] = []
+
+
 class PendingStatus(BaseModel):
     pending: PendingConfirmation | None = None
 
@@ -861,6 +928,7 @@ __all__ = [
     "LogEntry",
     "AddMeasurement",
     "Anneal",
+    "AutoAlignMaskCenter",
     "AnnealStep",
     "BeginSetLaserPower",
     "CheckLogging",
@@ -891,7 +959,10 @@ __all__ = [
     "ListSubstrates",
     "LoggingAlive",
     "LoggingStatus",
+    "MaskAlignPass",
+    "MaskAlignResult",
     "MaskPosition",
+    "MaskSweepPoint",
     "MeasurementId",
     "MeasurementInfo",
     "MeasurementList",

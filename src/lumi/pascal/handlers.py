@@ -23,6 +23,7 @@ from lumi.contracts.payloads.chamber import (
 )
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import (
+    KNOWN_ROLES,
     FiducialMarker,
     FiducialReadout,
     MarkerHistory,
@@ -306,7 +307,7 @@ class FiducialHandler:
         return Ack()
 
     async def list_roles(self, req: Empty) -> RoleMap:
-        return RoleMap(roles=self.store.list_roles())
+        return RoleMap(roles=self.store.list_roles(), known=list(KNOWN_ROLES))
 
     async def next(self) -> MarkerStatsSample | None:
         try:

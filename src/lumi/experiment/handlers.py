@@ -40,6 +40,7 @@ from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.experiment import (
     Anneal,
+    AutoAlignMaskCenter,
     BeginSetLaserPower,
     ConfirmCenterMask,
     ConfirmLaserPower,
@@ -216,6 +217,7 @@ class ExperimentHandler:
     #: `_start_task`'s runner is the only place that knows when they really ended.
     journals_own = frozenset({
         "to_temperature", "cool_down", "perform_preablation", "perform_deposition", "anneal",
+        "auto_align_center_mask",
     })
 
     async def current_sample_id(self) -> int | None:
@@ -246,6 +248,7 @@ class ExperimentHandler:
             pld_config=self.pld_config,
             bounds=self.bounds,
             target_mapper=self.target_mapper,
+            chamber_fiducial=self.sources.get("chamber_fiducial"),
         )
 
     # --- state / updates -----------------------------------------------------
@@ -1014,6 +1017,46 @@ class ExperimentHandler:
         await self.manager.confirm_center_mask(req.position)
         await self._clear_pending()
         return Ack()
+
+    async def auto_align_center_mask(self, req: AutoAlignMaskCenter) -> TaskAck:
+        params = req.model_dump(exclude={"role_wait_timeout_s"})
+
+        async def run() -> dict:
+            await self._await_mask_center_role(req.role_wait_timeout_s)
+            return await self.manager.auto_align_center_mask(**params)
+
+        return await self._start_task("auto_align_center_mask", run(), req.model_dump())
+
+    async def _await_mask_center_role(self, timeout_s: float, poll: float = 1.0) -> None:
+        """Hold the alignment until a marker is tagged `mask-center`, asking for it
+        through a `fiducial_role` pending confirmation rather than failing outright --
+        the operator tags the marker (chamber.fiducial.set_role, from any client) and
+        the task carries on by itself. Resolving the confirmation with `confirm`
+        instead cancels the alignment; so does `timeout_s` running out. A timeout of 0
+        fails straight away, for an unattended caller with nobody to ask."""
+        marker_id, problem = await self.manager.find_mask_center_marker()
+        if marker_id is not None:
+            return
+        if timeout_s <= 0:
+            raise RuntimeError(problem)
+
+        await self._set_pending("fiducial_role", f"{problem}; mask auto-alignment continues once it is set")
+        pending_id = self._pending.id
+        deadline = time.monotonic() + timeout_s
+        try:
+            while True:
+                await asyncio.sleep(poll)
+                if self._pending is None or self._pending.id != pending_id:
+                    raise RuntimeError("mask auto-alignment cancelled while waiting for the mask-center marker")
+                marker_id, problem = await self.manager.find_mask_center_marker()
+                if marker_id is not None:
+                    log.info("mask-center role set to %r -- continuing auto-alignment", marker_id)
+                    return
+                if time.monotonic() > deadline:
+                    raise RuntimeError(f"gave up after {timeout_s:.0f}s waiting: {problem}")
+        finally:
+            if self._pending is not None and self._pending.id == pending_id:
+                await self._clear_pending()
 
     # --- gated: mask-center check loop ----------------------------------------------
 

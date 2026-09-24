@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 21112a7b98c5aa79
+# contract_hash: 95159f6a6d08e9de
 
 """Generated clients for the chamber node."""
 
@@ -221,7 +221,7 @@ class ChamberFiducialClient(CapabilityClient):
         return await self.call("marker_history", req)  # type: ignore[return-value]
 
     async def set_role(self, req: RoleAssignment) -> Ack:
-        """Name a marker for a purpose (e.g. role='sample_holder'), so an automated step can look it up by what it is for. Replaces whatever marker the role previously pointed at."""
+        """Name a marker for a purpose (e.g. role='mask-center'), so an automated step can look it up by what it is for. Replaces whatever marker the role previously pointed at."""
         return await self.call("set_role", req)  # type: ignore[return-value]
 
     async def remove_role(self, req: RoleQuery) -> Ack:
@@ -229,7 +229,7 @@ class ChamberFiducialClient(CapabilityClient):
         return await self.call("remove_role", req)  # type: ignore[return-value]
 
     async def list_roles(self) -> RoleMap:
-        """Call fiducial.list_roles."""
+        """Every role -> marker_id assignment, plus `known`: the predefined roles something in the system reads, to offer as choices when tagging."""
         return await self.call("list_roles")  # type: ignore[return-value]
 
     async def on_stats(

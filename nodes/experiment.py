@@ -26,7 +26,12 @@ from lumi.experiment.handlers import ExperimentHandler
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 from lumi.experiment.mi import MiCommandRunner
-from lumi.generated.clients.chamber import ChamberConfigClient, ChamberLogClient, ChamberMiModeClient
+from lumi.generated.clients.chamber import (
+    ChamberConfigClient,
+    ChamberFiducialClient,
+    ChamberLogClient,
+    ChamberMiModeClient,
+)
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
 from lumi.generated.clients.system import SystemRegistryClient
@@ -128,6 +133,7 @@ async def main(args: argparse.Namespace) -> None:
         "chamber_mi": MiCommandRunner(chamber_mi_client, timeout=mi_timeout, raise_on_abort=raise_on_abort),
         "chamber_log": ChamberLogClient(channel, chamber_x),
         "chamber_config": ChamberConfigClient(channel, chamber_x),
+        "chamber_fiducial": ChamberFiducialClient(channel, chamber_x),
         "rheed_camera": RheedCameraClient(channel, rheed_x),
         "storage": StorageStorageClient(channel, storage_x),
     }

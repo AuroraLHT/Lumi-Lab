@@ -2075,7 +2075,36 @@
             },
             "request_codec": "json",
             "response": {
+              "$defs": {
+                "RoleSpec": {
+                  "description": "A role the system itself consumes -- offered to the operator as a choice so it\nis tagged by picking it, not by retyping (and mistyping) its name.",
+                  "properties": {
+                    "doc": {
+                      "default": "",
+                      "title": "Doc",
+                      "type": "string"
+                    },
+                    "role": {
+                      "title": "Role",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "role"
+                  ],
+                  "title": "RoleSpec",
+                  "type": "object"
+                }
+              },
               "properties": {
+                "known": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/RoleSpec"
+                  },
+                  "title": "Known",
+                  "type": "array"
+                },
                 "roles": {
                   "additionalProperties": {
                     "type": "string"
@@ -9563,6 +9592,95 @@
             "response_codec": "json"
           },
           {
+            "name": "auto_align_center_mask",
+            "request": {
+              "description": "Scan Mask1 around the current `center_mask_pos` and centre the slit on the\nfiducial marker tagged `mask-center`.\n\nThe first pass scans `center_mask_pos +- half_window_mm` in `step_mm` steps and\nfinds the bump in the marker's intensity-vs-position curve. Each later pass\nre-scans just the bump (plus a margin) with `points_per_pass` points, so the step\nshrinks, and re-fits it -- until the centre moves less than `tolerance_mm` between\npasses or `max_passes` is reached. Every pass scans in the same (increasing)\ndirection, one steady step after another.",
+              "properties": {
+                "apply": {
+                  "default": true,
+                  "title": "Apply",
+                  "type": "boolean"
+                },
+                "frames_per_point": {
+                  "default": 2,
+                  "maximum": 20,
+                  "minimum": 1,
+                  "title": "Frames Per Point",
+                  "type": "integer"
+                },
+                "half_window_mm": {
+                  "default": 4.0,
+                  "exclusiveMinimum": 0,
+                  "maximum": 30,
+                  "title": "Half Window Mm",
+                  "type": "number"
+                },
+                "max_passes": {
+                  "default": 3,
+                  "maximum": 10,
+                  "minimum": 1,
+                  "title": "Max Passes",
+                  "type": "integer"
+                },
+                "min_contrast": {
+                  "default": 5.0,
+                  "exclusiveMinimum": 0,
+                  "title": "Min Contrast",
+                  "type": "number"
+                },
+                "points_per_pass": {
+                  "default": 15,
+                  "maximum": 100,
+                  "minimum": 5,
+                  "title": "Points Per Pass",
+                  "type": "integer"
+                },
+                "role_wait_timeout_s": {
+                  "default": 600.0,
+                  "minimum": 0,
+                  "title": "Role Wait Timeout S",
+                  "type": "number"
+                },
+                "step_mm": {
+                  "default": 0.5,
+                  "exclusiveMinimum": 0,
+                  "maximum": 5,
+                  "title": "Step Mm",
+                  "type": "number"
+                },
+                "tolerance_mm": {
+                  "default": 0.02,
+                  "exclusiveMinimum": 0,
+                  "title": "Tolerance Mm",
+                  "type": "number"
+                }
+              },
+              "title": "AutoAlignMaskCenter",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "task_id": {
+                  "title": "Task Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id"
+              ],
+              "title": "TaskAck",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "begin_adjust_rheed_gain",
             "request": {
               "description": "No payload. Used for ops that take or return nothing.",
@@ -10983,6 +11101,7 @@
           "requests": {
             "add_measurement": "experiment.driver.req.add_measurement",
             "anneal": "experiment.driver.req.anneal",
+            "auto_align_center_mask": "experiment.driver.req.auto_align_center_mask",
             "begin_adjust_rheed_gain": "experiment.driver.req.begin_adjust_rheed_gain",
             "begin_align_center_mask": "experiment.driver.req.begin_align_center_mask",
             "begin_check_mask_center": "experiment.driver.req.begin_check_mask_center",

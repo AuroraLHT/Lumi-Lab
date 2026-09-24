@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 21112a7b98c5aa79
+# contract_hash: 95159f6a6d08e9de
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, BeginSetLaserPower, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskPosition, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireProject, RetireRecord, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AutoAlignMaskCenter, BeginSetLaserPower, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskPosition, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireProject, RetireRecord, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -315,6 +315,10 @@ class ExperimentDriverClient(CapabilityClient):
     async def confirm_mask_center(self, req: ConfirmMaskCenter) -> PendingStatus:
         """Call driver.confirm_mask_center."""
         return await self.call("confirm_mask_center", req)  # type: ignore[return-value]
+
+    async def auto_align_center_mask(self, req: AutoAlignMaskCenter) -> TaskAck:
+        """Scan Mask1 around center_mask_pos, watching the fiducial marker tagged 'mask-center' (the sample's centre), locate the slit from the intensity-vs-position curve, then re-scan just the slit, finer each pass, until the centre settles. Sets center_mask_pos to it and leaves the mask there. Long-running: the MaskAlignResult (centre, each pass's fit, every scanned point) arrives as the task_result. If no marker is tagged 'mask-center' it first opens a 'fiducial_role' pending confirmation and waits for one to be tagged (chamber.fiducial.set_role), then continues; `confirm` on that confirmation cancels the alignment."""
+        return await self.call("auto_align_center_mask", req)  # type: ignore[return-value]
 
     async def begin_adjust_rheed_gain(self) -> Ack:
         """Call driver.begin_adjust_rheed_gain."""

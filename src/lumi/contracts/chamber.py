@@ -124,11 +124,13 @@ FIDUCIAL = Capability(
         Op("marker_history", MarkerHistoryQuery, MarkerHistory,
            doc="One marker's retained intensity trace, oldest first."),
         Op("set_role", RoleAssignment, Ack,
-           doc="Name a marker for a purpose (e.g. role='sample_holder'), so an "
+           doc="Name a marker for a purpose (e.g. role='mask-center'), so an "
                "automated step can look it up by what it is for. Replaces whatever "
                "marker the role previously pointed at."),
         Op("remove_role", RoleQuery, Ack),
-        Op("list_roles", Empty, RoleMap),
+        Op("list_roles", Empty, RoleMap,
+           doc="Every role -> marker_id assignment, plus `known`: the predefined roles "
+               "something in the system reads, to offer as choices when tagging."),
     ),
     stream=StreamSpec("stats", MarkerStatsSample),
 )

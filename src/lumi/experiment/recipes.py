@@ -30,12 +30,14 @@ import uuid
 from typing import Awaitable, Callable
 
 from lumi.contracts.payloads.experiment import (
+    AutoAlignMaskCenter,
     BeginSetLaserPower,
     ConfirmLaserPower,
     ConfirmMaskCenter,
     EndStorage,
     FinishCurrentPixel,
     FinishExperimentRecord,
+    MaskAlignResult,
     PerformDeposition,
     PerformPreablation,
     SetRheedGain,
@@ -122,6 +124,39 @@ async def run_check_mask_center(exp: ExperimentSession, value_provider: ValuePro
         status = await exp.driver.confirm_mask_center(ConfirmMaskCenter(aligned=aligned, corrected_position=corrected))
         if status.pending is None:
             return
+
+
+async def run_auto_align_mask_center(
+    exp: ExperimentSession,
+    request: AutoAlignMaskCenter | None = None,
+    notify: Callable[[str], None] = print,
+    poll_interval: float = 0.5,
+) -> MaskAlignResult:
+    """The unattended alternative to `run_check_mask_center`: the driver scans Mask1
+    and centres the slit on the fiducial marker tagged `mask-center`. Raises if the
+    task failed (no slit seen, cancelled, ...) rather than carrying on with an
+    unaligned mask.
+
+    With no marker tagged yet, the driver holds the task on a `fiducial_role` pending
+    confirmation until one is; `notify` is handed its message once, so whoever is
+    running this knows to go and tag it (in the UI, or with
+    chamber.fiducial.set_role) -- the alignment then carries on by itself."""
+    ack = await exp.driver.auto_align_center_mask(request or AutoAlignMaskCenter())
+    told: str | None = None
+    while True:
+        state = await exp.driver.get_state()
+        pending = state.pending_confirmation
+        if pending is not None and pending.kind == "fiducial_role" and pending.id != told:
+            notify(f"[Action] {pending.message}")
+            told = pending.id
+        if state.current_task is None or state.current_task.id != ack.task_id:
+            break
+        await asyncio.sleep(poll_interval)
+    result = exp.last_task_result
+    if not result or not result.get("ok"):
+        raise RuntimeError(f"mask auto-alignment failed: {(result or {}).get('error', 'no result')}")
+    fields = {k: v for k, v in result.items() if k != "ok"}
+    return MaskAlignResult(**fields)
 
 
 async def run_adjust_rheed_gain(exp: ExperimentSession, value_provider: ValueProvider = default_value_provider) -> None:

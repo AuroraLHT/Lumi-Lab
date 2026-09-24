@@ -23,6 +23,7 @@ from __future__ import annotations
 from .payloads.common import Ack, Empty
 from .payloads.experiment import (
     Anneal,
+    AutoAlignMaskCenter,
     BeginSetLaserPower,
     CheckLogging,
     ConfirmCenterMask,
@@ -340,6 +341,17 @@ DRIVER = Capability(
         Op("confirm_center_mask", ConfirmCenterMask, Ack, journal=True),
         Op("begin_check_mask_center", Empty, Ack, journal=True),
         Op("confirm_mask_center", ConfirmMaskCenter, PendingStatus, journal=True),
+        # --- automatic: the same calibration, read off the chamber camera
+        Op("auto_align_center_mask", AutoAlignMaskCenter, TaskAck,
+           doc="Scan Mask1 around center_mask_pos, watching the fiducial marker tagged "
+               "'mask-center' (the sample's centre), locate the slit from the "
+               "intensity-vs-position curve, then re-scan just the slit, finer each pass, "
+               "until the centre settles. Sets center_mask_pos to it and leaves the mask "
+               "there. Long-running: the MaskAlignResult (centre, each pass's fit, every "
+               "scanned point) arrives as the task_result. If no marker is tagged "
+               "'mask-center' it first opens a 'fiducial_role' pending confirmation and "
+               "waits for one to be tagged (chamber.fiducial.set_role), then continues; "
+               "`confirm` on that confirmation cancels the alignment.", journal=True),
 
         # --- gated: RHEED gain tuning (live view, iterative)
         Op("begin_adjust_rheed_gain", Empty, Ack, journal=True),

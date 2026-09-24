@@ -166,9 +166,34 @@ class RoleQuery(BaseModel):
     role: str
 
 
+class RoleSpec(BaseModel):
+    """A role the system itself consumes -- offered to the operator as a choice so it
+    is tagged by picking it, not by retyping (and mistyping) its name."""
+
+    role: str
+    doc: str = ""
+
+
+#: The role mask-centre auto-alignment looks up: a marker on the sample's centre, the
+#: point the mask's slit should sit over at `center_mask_pos`.
+MASK_CENTER_ROLE = "mask-center"
+
+#: Roles something in the system reads. `set_role` still accepts any name -- these are
+#: the ones that do something.
+KNOWN_ROLES: tuple[RoleSpec, ...] = (
+    RoleSpec(
+        role=MASK_CENTER_ROLE,
+        doc="The sample's centre. Mask-centre auto-alignment sweeps Mask1 and centres "
+            "the slit on this marker.",
+    ),
+)
+
+
 class RoleMap(BaseModel):
     #: role -> marker_id.
     roles: dict[str, str] = {}
+    #: The predefined roles, assigned or not -- what a UI offers to tag a marker with.
+    known: list[RoleSpec] = []
 
 
 class FiducialReadout(BaseModel):
