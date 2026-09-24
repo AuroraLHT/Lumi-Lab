@@ -9600,14 +9600,59 @@
             "response_codec": "json"
           },
           {
+            "name": "set_center_mask_pos",
+            "request": {
+              "description": "A new `center_mask_pos`, mm along Mask1's travel.",
+              "properties": {
+                "position": {
+                  "minimum": 0,
+                  "title": "Position",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "title": "CenterMaskPos",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "auto_align_center_mask",
             "request": {
-              "description": "Scan Mask1 around the current `center_mask_pos` and centre the slit on the\nfiducial marker tagged `mask-center`.\n\nThe first pass scans `center_mask_pos +- half_window_mm` in `step_mm` steps and\nfinds the bump in the marker's intensity-vs-position curve. Each later pass\nre-scans just the bump (plus a margin) with `points_per_pass` points, so the step\nshrinks, and re-fits it -- until the centre moves less than `tolerance_mm` between\npasses or `max_passes` is reached. Every pass scans in the same (increasing)\ndirection, one steady step after another.",
+              "description": "Scan Mask1 around the current `center_mask_pos` (or `center_mm`) and centre the\nslit on the fiducial marker tagged `mask-center`.\n\nThe first pass scans `center_mm +- half_window_mm` in `step_mm` steps and\nfinds the bump in the marker's intensity-vs-position curve. Each later pass\nre-scans just the bump (plus a margin) with `points_per_pass` points, so the step\nshrinks, and re-fits it -- until the centre moves less than `tolerance_mm` between\npasses or `max_passes` is reached. Every pass scans in the same (increasing)\ndirection, one steady step after another.",
               "properties": {
                 "apply": {
                   "default": true,
                   "title": "Apply",
                   "type": "boolean"
+                },
+                "center_mm": {
+                  "anyOf": [
+                    {
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Center Mm"
                 },
                 "frames_per_point": {
                   "default": 2,
@@ -9686,7 +9731,136 @@
               "title": "TaskAck",
               "type": "object"
             },
-            "response_codec": "json"
+            "response_codec": "json",
+            "result": {
+              "$defs": {
+                "MaskAlignPass": {
+                  "description": "One scan's fit.",
+                  "properties": {
+                    "center": {
+                      "title": "Center",
+                      "type": "number"
+                    },
+                    "contrast": {
+                      "title": "Contrast",
+                      "type": "number"
+                    },
+                    "start": {
+                      "title": "Start",
+                      "type": "number"
+                    },
+                    "step": {
+                      "title": "Step",
+                      "type": "number"
+                    },
+                    "stop": {
+                      "title": "Stop",
+                      "type": "number"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "start",
+                    "stop",
+                    "step",
+                    "center",
+                    "width",
+                    "contrast"
+                  ],
+                  "title": "MaskAlignPass",
+                  "type": "object"
+                },
+                "MaskSweepPoint": {
+                  "properties": {
+                    "pass_index": {
+                      "default": 0,
+                      "title": "Pass Index",
+                      "type": "integer"
+                    },
+                    "position": {
+                      "title": "Position",
+                      "type": "number"
+                    },
+                    "reading": {
+                      "title": "Reading",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "position",
+                    "reading"
+                  ],
+                  "title": "MaskSweepPoint",
+                  "type": "object"
+                }
+              },
+              "description": "What an `auto_align_center_mask` task reports in its `task_result`.",
+              "properties": {
+                "applied": {
+                  "title": "Applied",
+                  "type": "boolean"
+                },
+                "baseline": {
+                  "title": "Baseline",
+                  "type": "number"
+                },
+                "center": {
+                  "title": "Center",
+                  "type": "number"
+                },
+                "contrast": {
+                  "title": "Contrast",
+                  "type": "number"
+                },
+                "converged": {
+                  "title": "Converged",
+                  "type": "boolean"
+                },
+                "marker_id": {
+                  "title": "Marker Id",
+                  "type": "string"
+                },
+                "passes": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MaskAlignPass"
+                  },
+                  "title": "Passes",
+                  "type": "array"
+                },
+                "polarity": {
+                  "title": "Polarity",
+                  "type": "integer"
+                },
+                "previous_center": {
+                  "title": "Previous Center",
+                  "type": "number"
+                },
+                "samples": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MaskSweepPoint"
+                  },
+                  "title": "Samples",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "marker_id",
+                "previous_center",
+                "center",
+                "applied",
+                "converged",
+                "contrast",
+                "baseline",
+                "polarity"
+              ],
+              "title": "MaskAlignResult",
+              "type": "object"
+            }
           },
           {
             "name": "begin_adjust_rheed_gain",
@@ -11167,6 +11341,7 @@
             "rotate_sample_by": "experiment.driver.req.rotate_sample_by",
             "rotate_sample_to": "experiment.driver.req.rotate_sample_to",
             "sample_history": "experiment.driver.req.sample_history",
+            "set_center_mask_pos": "experiment.driver.req.set_center_mask_pos",
             "set_mfc_control": "experiment.driver.req.set_mfc_control",
             "set_mfc_flow": "experiment.driver.req.set_mfc_flow",
             "set_pressure": "experiment.driver.req.set_pressure",
@@ -11254,6 +11429,18 @@
             }
           },
           "properties": {
+            "center_mask_pos": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Center Mask Pos"
+            },
             "current_pixel_index": {
               "anyOf": [
                 {
@@ -11469,9 +11656,20 @@
                 "type": "object"
               }
             },
-            "description": "Pushed on the update channel whenever pending_confirmation or current_task\nchanges -- a client that is already connected does not have to poll state in a\nloop to notice a gate opened or a long-running op finished.",
+            "description": "Pushed on the update channel whenever pending_confirmation or current_task\nchanges -- a client that is already connected does not have to poll state in a\nloop to notice a gate opened or a long-running op finished.\n\n`pending_confirmation` and `current_task` are always a full snapshot of both as\nof this event, so None means there is none, not \"unchanged\". `task_result` is\nset only on the one event of a long-running op finishing, with `finished_task`\nnaming the op.",
             "properties": {
               "current_task": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CurrentTask"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "finished_task": {
                 "anyOf": [
                   {
                     "$ref": "#/$defs/CurrentTask"

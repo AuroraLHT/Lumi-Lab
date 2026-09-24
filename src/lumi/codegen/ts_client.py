@@ -242,6 +242,8 @@ def _capability_client(contract: EquipmentContract, cap: Capability) -> str:
         else:
             ret = f"Response<{op.response.__name__}>"
         doc = op.doc or f"{target}.{op.name}"
+        if op.result is not None:
+            doc += f" On success the task_result carries a {op.result.__name__}."
         lines += [
             f"  /** {doc} */",
             f"  async {op.name}({arg}): Promise<{ret}> {{",

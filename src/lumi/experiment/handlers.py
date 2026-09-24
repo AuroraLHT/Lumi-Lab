@@ -42,6 +42,7 @@ from lumi.contracts.payloads.experiment import (
     Anneal,
     AutoAlignMaskCenter,
     BeginSetLaserPower,
+    CenterMaskPos,
     ConfirmCenterMask,
     ConfirmLaserPower,
     ConfirmMaskCenter,
@@ -272,6 +273,7 @@ class ExperimentHandler:
             deps_available=dict(self._deps),
             laser_power_set=m._laser_power_set if m else None,
             laser_power_real=m._laser_power_real if m else None,
+            center_mask_pos=self.pld_config.center_mask_pos,
         )
 
     async def next_update(self) -> TaskEvent | None:
@@ -280,8 +282,13 @@ class ExperimentHandler:
         except asyncio.QueueEmpty:
             return None
 
-    async def _push(self, **fields) -> None:
-        await self._updates.put(TaskEvent(**fields))
+    async def _push(self, task_result: dict | None = None, finished_task: CurrentTask | None = None) -> None:
+        # Always the whole picture: a client reads each event as the current gate and
+        # task, so a push about one must not report the other as cleared.
+        await self._updates.put(TaskEvent(
+            pending_confirmation=self._pending, current_task=self._current_task,
+            task_result=task_result, finished_task=finished_task,
+        ))
 
     # --- dependency liveness ---------------------------------------------------
 
@@ -307,8 +314,9 @@ class ExperimentHandler:
     async def _start_task(self, kind: str, coro, detail: dict | None = None) -> TaskAck:
         task_id = uuid.uuid4().hex
         started_at = time.time()
-        self._current_task = CurrentTask(id=task_id, kind=kind, started_at=started_at, detail=detail or {})
-        await self._push(current_task=self._current_task)
+        task = CurrentTask(id=task_id, kind=kind, started_at=started_at, detail=detail or {})
+        self._current_task = task
+        await self._push()
 
         # The journal row is opened here and closed by the runner below, so its
         # duration is the ramp's, not the ack's. `detail` is already the typed
@@ -335,7 +343,7 @@ class ExperimentHandler:
                     step_id, ok=bool(task_result.get("ok")),
                     result=task_result, error=task_result.get("error"),
                 )
-            await self._push(current_task=None, task_result=task_result)
+            await self._push(task_result=task_result, finished_task=task)
 
         asyncio.create_task(runner(), name=f"experiment-task-{kind}")
         return TaskAck(task_id=task_id)
@@ -448,11 +456,11 @@ class ExperimentHandler:
 
     async def _set_pending(self, kind: str, message: str) -> None:
         self._pending = PendingConfirmation(id=uuid.uuid4().hex, kind=kind, message=message, requested_at=time.time())
-        await self._push(pending_confirmation=self._pending)
+        await self._push()
 
     async def _clear_pending(self) -> None:
         self._pending = None
-        await self._push(pending_confirmation=None)
+        await self._push()
 
     def _require_pending(self, kind: str) -> None:
         if self._pending is None or self._pending.kind != kind:
@@ -1018,6 +1026,25 @@ class ExperimentHandler:
         await self._clear_pending()
         return Ack()
 
+    async def set_center_mask_pos(self, req: CenterMaskPos) -> Ack:
+        """Store a calibration without moving anything -- e.g. a report-only
+        auto-align result the operator decided to keep."""
+        if req.position >= self.bounds.mask_travel_max:
+            raise ValueError(
+                f"{req.position:.3f} mm is past the mask's travel [0, {self.bounds.mask_travel_max})"
+            )
+        await self.manager.set_center_mask_pos(req.position, source="set_center_mask_pos")
+        return Ack()
+
+    async def load_calibration(self) -> None:
+        """Take the calibration saved by the last run over settings' starting value.
+        Called once at node start, after the growth db is open."""
+        saved = await self.growth_db.get_calibration("center_mask_pos")
+        if saved is not None:
+            log.info("center_mask_pos %.3f mm from growth.db (settings say %.3f)",
+                     saved, self.pld_config.center_mask_pos)
+            self.pld_config.center_mask_pos = saved
+
     async def auto_align_center_mask(self, req: AutoAlignMaskCenter) -> TaskAck:
         params = req.model_dump(exclude={"role_wait_timeout_s"})
 
@@ -1069,7 +1096,7 @@ class ExperimentHandler:
         self._require_pending("mask_center_check")
         still_pending = await self.manager.confirm_mask_center(req.aligned, req.corrected_position)
         if still_pending:
-            await self._push(pending_confirmation=self._pending)
+            await self._push()
             return PendingStatus(pending=self._pending)
         await self._clear_pending()
         return PendingStatus(pending=None)
@@ -1111,7 +1138,7 @@ class ExperimentHandler:
         if status["done"]:
             await self._clear_pending()
         else:
-            await self._push(pending_confirmation=self._pending)
+            await self._push()
         return PixelCheckStatus(**status)
 
     # --- generic confirm -----------------------------------------------------------

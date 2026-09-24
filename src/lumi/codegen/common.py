@@ -45,6 +45,8 @@ def models_of(cap: Capability) -> list[type[BaseModel]]:
     out: list[type[BaseModel]] = [cap.state]
     for op in cap.ops:
         out += [op.request, op.response]
+        if op.result is not None:
+            out.append(op.result)
     for spec in (cap.stream, cap.update):
         if spec is not None:
             out.append(spec.payload)

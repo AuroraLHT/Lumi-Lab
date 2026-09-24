@@ -122,6 +122,10 @@ class Op:
     #: does not include it, so toggling it leaves the contract hash -- and therefore the
     #: generated frontend client -- untouched. It is server-side policy, not protocol.
     journal: bool = False
+    #: For a long-running op (one that answers with a TaskAck): the model its
+    #: `task_result` carries, beside `ok`, when it succeeds. Declared so the generated
+    #: clients name the type -- otherwise codegen only ever sees the TaskAck.
+    result: type[BaseModel] | None = None
 
 
 @dataclass(frozen=True, slots=True)

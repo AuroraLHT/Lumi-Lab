@@ -11,7 +11,13 @@ import uuid
 import numpy as np
 import pytest
 
-from lumi.contracts.payloads.experiment import AutoAlignMaskCenter
+from lumi.contracts.payloads.experiment import (
+    AutoAlignMaskCenter,
+    CenterMaskPos,
+    ConfirmCenterMask,
+    ConfirmMaskCenter,
+)
+from lumi.experiment.handlers import ExperimentHandler
 from lumi.contracts.payloads.fiducial import (
     MASK_CENTER_ROLE,
     CrossShape,
@@ -218,6 +224,118 @@ async def test_a_slit_outside_the_window_fails_and_keeps_the_old_center(handler)
     assert handler.pld_config.center_mask_pos == 100.0
 
 
+async def test_center_mm_moves_the_scan_but_previous_center_stays_the_calibration(handler):  # noqa: F811
+    mi = handler.sources["chamber_mi"]
+    with_fiducial(handler, FakeFiducial(mi, true_center=110.0))
+
+    result = await run_task(handler, AutoAlignMaskCenter(center_mm=109.0, half_window_mm=4.0, apply=False))
+
+    assert result["ok"] is True, result
+    wide = [s["position"] for s in result["samples"] if s["pass_index"] == 0]
+    assert wide[0] == pytest.approx(105.0) and wide[-1] == pytest.approx(113.0)
+    assert result["center"] == pytest.approx(110.0, abs=0.1)
+    assert result["previous_center"] == 100.0
+    assert handler.pld_config.center_mask_pos == 100.0
+
+
+async def test_the_result_event_names_its_task_even_when_it_fails_at_once(handler):  # noqa: F811
+    with_fiducial(handler, FakeFiducial(handler.sources["chamber_mi"], true_center=100.0, roles={}))
+
+    ack = await handler.auto_align_center_mask(AutoAlignMaskCenter(role_wait_timeout_s=0))
+    for _ in range(500):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            break
+        await asyncio.sleep(0.01)
+
+    assert event.task_result["ok"] is False
+    assert event.current_task is None
+    assert event.finished_task.id == ack.task_id
+    assert event.finished_task.kind == "auto_align_center_mask"
+
+
+def test_the_contract_declares_what_auto_align_reports():
+    from lumi.codegen.ts_client import emit
+    from lumi.contracts.experiment import EXPERIMENT
+    from lumi.contracts.payloads.experiment import MaskAlignResult
+
+    (op,) = [o for cap in EXPERIMENT.capabilities for o in cap.ops if o.name == "auto_align_center_mask"]
+    assert op.result is MaskAlignResult
+    ts = emit()
+    assert "export interface MaskAlignResult" in ts
+    assert "export interface MaskSweepPoint" in ts
+
+
+# --- the calibration itself: on the state, and settable without moving ------------
+
+
+async def test_center_mask_pos_is_on_the_state(handler):  # noqa: F811
+    assert handler.readout().center_mask_pos == 100.0
+    handler.pld_config.center_mask_pos = 97.2
+    assert handler.readout().center_mask_pos == 97.2
+
+
+async def test_set_center_mask_pos_stores_it_and_moves_nothing(handler):  # noqa: F811
+    mi = handler.sources["chamber_mi"]
+    n_calls = len(mi.calls)
+
+    await handler.set_center_mask_pos(CenterMaskPos(position=97.219))
+
+    assert handler.pld_config.center_mask_pos == 97.219
+    assert handler.readout().center_mask_pos == 97.219
+    assert len(mi.calls) == n_calls
+
+
+async def test_set_center_mask_pos_refuses_a_position_past_the_travel(handler):  # noqa: F811
+    with pytest.raises(ValueError, match="travel"):
+        await handler.set_center_mask_pos(CenterMaskPos(position=handler.bounds.mask_travel_max))
+    assert handler.pld_config.center_mask_pos == 100.0
+
+
+async def restarted(handler) -> ExperimentHandler:  # noqa: F811
+    """A fresh handler on the same growth.db, starting from settings' value again --
+    what a node restart looks like."""
+    handler.pld_config.center_mask_pos = 100.0
+    again = ExperimentHandler(
+        sources=handler.sources, growth_db=handler.growth_db, pld_config=handler.pld_config,
+        bounds=handler.bounds, target_mapper=handler.target_mapper,
+    )
+    await again.load_calibration()
+    return again
+
+
+async def test_with_nothing_saved_the_settings_value_stands(handler):  # noqa: F811
+    assert (await restarted(handler)).readout().center_mask_pos == 100.0
+
+
+async def test_set_center_mask_pos_survives_a_restart(handler):  # noqa: F811
+    await handler.set_center_mask_pos(CenterMaskPos(position=97.219))
+    assert (await restarted(handler)).readout().center_mask_pos == 97.219
+
+
+async def test_an_applied_auto_align_survives_a_restart(handler):  # noqa: F811
+    with_fiducial(handler, FakeFiducial(handler.sources["chamber_mi"], true_center=99.0))
+    result = await run_task(handler, AutoAlignMaskCenter())
+    assert result["ok"] is True, result
+    assert (await restarted(handler)).readout().center_mask_pos == pytest.approx(result["center"])
+
+
+async def test_a_report_only_auto_align_saves_nothing(handler):  # noqa: F811
+    with_fiducial(handler, FakeFiducial(handler.sources["chamber_mi"], true_center=99.0))
+    await run_task(handler, AutoAlignMaskCenter(apply=False))
+    assert await handler.growth_db.get_calibration("center_mask_pos") is None
+
+
+async def test_the_manual_calibrations_are_saved_too(handler):  # noqa: F811
+    await handler.begin_align_center_mask(None)
+    await handler.confirm_center_mask(ConfirmCenterMask(position=98.5))
+    assert await handler.growth_db.get_calibration("center_mask_pos") == 98.5
+
+    await handler.begin_check_mask_center(None)
+    await handler.confirm_mask_center(ConfirmMaskCenter(aligned=False, corrected_position=98.1))
+    assert (await restarted(handler)).readout().center_mask_pos == 98.1
+
+
 # --- the fiducial_role gate: ask for the marker rather than failing ------------------
 
 
@@ -248,6 +366,14 @@ async def test_an_untagged_marker_is_asked_for_and_the_alignment_continues_once_
     assert MASK_CENTER_ROLE in pending.message
     assert handler.readout().current_task.id == ack.task_id
     assert not any("Set Mask Position" in c for c in mi.calls)  # nothing moves while it waits
+
+    # Every event is a full snapshot: once one shows the gate, none reports it cleared.
+    events = []
+    while (event := await handler.next_update()) is not None:
+        events.append(event)
+    gated = [e.pending_confirmation is not None for e in events]
+    assert gated[-1] and all(gated[gated.index(True):])
+    assert all(e.current_task is not None for e in events)
 
     fiducial.roles[MASK_CENTER_ROLE] = "m41"  # the operator tags it
     result = await run_task_result(handler)

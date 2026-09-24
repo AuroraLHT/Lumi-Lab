@@ -46,13 +46,16 @@ def _schema(model: type) -> dict[str, Any]:
 
 
 def _op_json(op: Op) -> dict[str, Any]:
-    return {
+    out = {
         "name": op.name,
         "request": _schema(op.request),
         "response": _schema(op.response),
         "request_codec": str(op.request_codec),
         "response_codec": str(op.response_codec),
     }
+    if op.result is not None:
+        out["result"] = _schema(op.result)
+    return out
 
 
 def _stream_json(s: StreamSpec | None) -> dict[str, Any] | None:

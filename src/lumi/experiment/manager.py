@@ -1113,7 +1113,14 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=self.pld_config.center_mask_pos, sync=False, nowait=False))
 
     async def confirm_center_mask(self, position: float) -> None:
+        await self.set_center_mask_pos(position, source="confirm_center_mask")
+
+    async def set_center_mask_pos(self, position: float, source: str) -> None:
+        """The one way `center_mask_pos` changes: in memory, and saved to growth.db
+        so the node comes back up with it (see `ExperimentHandler.load_calibration`)."""
+        log.info("center_mask_pos %.3f -> %.3f mm (%s)", self.pld_config.center_mask_pos, position, source)
         self.pld_config.center_mask_pos = position
+        await self.growth_db.set_calibration("center_mask_pos", position, source=source)
 
     # --- gated: mask-center check loop ----------------------------------------------
 
@@ -1129,7 +1136,7 @@ class BaseExperimentManager:
             return False
 
         if corrected_position is not None:
-            self.pld_config.center_mask_pos = corrected_position
+            await self.set_center_mask_pos(corrected_position, source="confirm_mask_center")
         await self._await_motor_ready()
         # Retract-then-reapproach: a move of only a few mm can leave the mask motor
         # stuck, so back off first rather than nudging directly to the new position.
@@ -1145,6 +1152,7 @@ class BaseExperimentManager:
 
     async def auto_align_center_mask(
         self,
+        center_mm: float | None = None,
         half_window_mm: float = 4.0,
         step_mm: float = 0.5,
         max_passes: int = 3,
@@ -1155,7 +1163,8 @@ class BaseExperimentManager:
         apply: bool = True,
     ) -> dict:
         """The camera-read version of the begin/confirm_mask_center loop: scan Mask1
-        across `center_mask_pos +- half_window_mm`, read the marker tagged
+        across `center_mm +- half_window_mm` (`center_mm` defaulting to
+        `center_mask_pos`), read the marker tagged
         `mask-center` at each point, and find where the slit passes over it from the
         intensity-vs-position curve (see `lumi.experiment.mask_align`). Then re-scan
         just that bump, finer each pass, until the centre settles within
@@ -1173,7 +1182,7 @@ class BaseExperimentManager:
 
         previous = self.pld_config.center_mask_pos
         n = int(round(2 * half_window_mm / step_mm))
-        start = previous - half_window_mm
+        start = (previous if center_mm is None else center_mm) - half_window_mm
         positions = [start + i * step_mm for i in range(n + 1)]
         self._check_mask_travel(positions)
 
@@ -1228,7 +1237,7 @@ class BaseExperimentManager:
             fit.center, previous, fit.contrast, baseline, "converged" if converged else "max passes reached",
         )
         if apply:
-            self.pld_config.center_mask_pos = fit.center
+            await self.set_center_mask_pos(fit.center, source="auto_align_center_mask")
         await self.move_mask_to_position(fit.center)
         return MaskAlignResult(
             marker_id=marker_id, previous_center=previous, center=fit.center, applied=apply,

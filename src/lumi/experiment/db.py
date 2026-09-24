@@ -203,6 +203,16 @@ class GrowthDB:
                 FOREIGN KEY (substrate_id) REFERENCES substrate(substrate_id)
             );
 
+            -- Calibrations the driver has learned, by name (e.g. center_mask_pos),
+            -- so a node restart keeps them rather than falling back to settings.
+            -- One row per name, the latest; how it got there is in the step journal.
+            CREATE TABLE IF NOT EXISTS calibration (
+                name VARCHAR(100) PRIMARY KEY,
+                value REAL NOT NULL,
+                source VARCHAR(100),
+                set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             -- A run of the chamber, from node start to node stop. Steps chain within
             -- one of these rather than per sample, because plenty of what happens --
             -- alignment, a gas change, warming up with nothing loaded -- belongs to
@@ -838,6 +848,22 @@ class GrowthDB:
              "is_dryrun": bool(dry)}
             for i, (m, n, sid, at, dry) in enumerate(rows)
         ]
+
+    # --- calibration: what the driver has learned about the chamber --------------
+
+    async def get_calibration(self, name: str) -> float | None:
+        async with self.conn.execute("SELECT value FROM calibration WHERE name = ?", (name,)) as cursor:
+            row = await cursor.fetchone()
+        return None if row is None else float(row["value"])
+
+    async def set_calibration(self, name: str, value: float, source: str | None = None) -> None:
+        await self.conn.execute(
+            """INSERT INTO calibration (name, value, source) VALUES (?, ?, ?)
+            ON CONFLICT(name) DO UPDATE SET
+                value = excluded.value, source = excluded.source, set_at = CURRENT_TIMESTAMP""",
+            (name, value, source),
+        )
+        await self.conn.commit()
 
     # --- chamber session + step journal: what happened -------------------------
 

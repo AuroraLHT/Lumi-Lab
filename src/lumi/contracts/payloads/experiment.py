@@ -64,11 +64,19 @@ class CurrentTask(BaseModel):
 class TaskEvent(BaseModel):
     """Pushed on the update channel whenever pending_confirmation or current_task
     changes -- a client that is already connected does not have to poll state in a
-    loop to notice a gate opened or a long-running op finished."""
+    loop to notice a gate opened or a long-running op finished.
+
+    `pending_confirmation` and `current_task` are always a full snapshot of both as
+    of this event, so None means there is none, not "unchanged". `task_result` is
+    set only on the one event of a long-running op finishing, with `finished_task`
+    naming the op."""
 
     pending_confirmation: PendingConfirmation | None = None
     current_task: CurrentTask | None = None
     task_result: dict | None = None
+    #: The task `task_result` belongs to, set alongside it -- `current_task` is
+    #: already None by then.
+    finished_task: CurrentTask | None = None
 
 
 class TaskAck(BaseModel):
@@ -633,17 +641,27 @@ class ConfirmMaskCenter(BaseModel):
     corrected_position: float | None = None
 
 
-class AutoAlignMaskCenter(BaseModel):
-    """Scan Mask1 around the current `center_mask_pos` and centre the slit on the
-    fiducial marker tagged `mask-center`.
+class CenterMaskPos(BaseModel):
+    """A new `center_mask_pos`, mm along Mask1's travel."""
 
-    The first pass scans `center_mask_pos +- half_window_mm` in `step_mm` steps and
+    position: float = Field(ge=0)
+
+
+class AutoAlignMaskCenter(BaseModel):
+    """Scan Mask1 around the current `center_mask_pos` (or `center_mm`) and centre the
+    slit on the fiducial marker tagged `mask-center`.
+
+    The first pass scans `center_mm +- half_window_mm` in `step_mm` steps and
     finds the bump in the marker's intensity-vs-position curve. Each later pass
     re-scans just the bump (plus a margin) with `points_per_pass` points, so the step
     shrinks, and re-fits it -- until the centre moves less than `tolerance_mm` between
     passes or `max_passes` is reached. Every pass scans in the same (increasing)
     direction, one steady step after another."""
 
+    #: Where the first scan is centred, mm. None scans around the current
+    #: `center_mask_pos`; set it when that calibration is well off (a new mask, a
+    #: remount) rather than widening the window.
+    center_mm: float | None = Field(default=None, ge=0)
     half_window_mm: float = Field(default=4.0, gt=0, le=30)
     step_mm: float = Field(default=0.5, gt=0, le=5)
     #: Passes in total, the first wide scan included. 1 is the wide scan alone.
@@ -685,6 +703,8 @@ class MaskAlignResult(BaseModel):
     """What an `auto_align_center_mask` task reports in its `task_result`."""
 
     marker_id: str
+    #: The `center_mask_pos` this result replaces (or would, with apply=False) -- the
+    #: calibration, not where the scan was centred.
     previous_center: float
     center: float
     applied: bool
@@ -752,6 +772,10 @@ class ExperimentReadout(BaseModel):
     deps_available: dict[str, bool] = {}
     laser_power_set: float | None = None
     laser_power_real: float | None = None
+    #: Mask1 position, mm, that centres the slit on the sample. Every change is saved
+    #: to growth.db and survives a node restart; settings.experiment.pld_config is
+    #: only the starting value for a database that has never had one.
+    center_mask_pos: float | None = None
 
 
 class ExperimentState(ExperimentReadout, ServerStateBase):
@@ -929,6 +953,7 @@ __all__ = [
     "AddMeasurement",
     "Anneal",
     "AutoAlignMaskCenter",
+    "CenterMaskPos",
     "AnnealStep",
     "BeginSetLaserPower",
     "CheckLogging",
