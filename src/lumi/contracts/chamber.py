@@ -1,4 +1,5 @@
-"""The Pascal chamber node: growth log, chamber config, MI mode, chamber camera."""
+"""The Pascal chamber node: growth log, chamber config, MI mode, chamber camera,
+fiducial markers."""
 
 from __future__ import annotations
 
@@ -20,6 +21,18 @@ from .payloads.chamber import (
     SectionQuery,
 )
 from .payloads.common import Ack, Empty
+from .payloads.fiducial import (
+    FiducialMarker,
+    FiducialState,
+    MarkerHistory,
+    MarkerHistoryQuery,
+    MarkerId,
+    MarkerList,
+    MarkerStatsSample,
+    RoleAssignment,
+    RoleMap,
+    RoleQuery,
+)
 from .spec import Capability, Codec, EquipmentContract, Kind, Op, StreamSpec
 
 LOG = Capability(
@@ -90,9 +103,41 @@ CAMERA = Capability(
     stream=StreamSpec("frame", JpegMeta, codec=Codec.RAW),
 )
 
+FIDUCIAL = Capability(
+    name="fiducial",
+    kind=Kind.DUPLEX,
+    doc="Fiducial markers -- crosses, rectangles, polygons -- the operator sets on the "
+        "chamber webcam image, and the intensity statistics (mean, min, max, std) of the "
+        "pixels under each one. Geometry is in camera-frame pixels, the same space the "
+        "`camera` stream is encoded in, so a frontend draws it straight over the feed. "
+        "The statistics are for calibration: a marker's intensity trace dips as the mask "
+        "edge crosses it, which locates the mask.",
+    state=FiducialState,
+    ops=(
+        Op("list_markers", Empty, MarkerList,
+           doc="Every marker, with the frame size they were drawn against."),
+        Op("set_marker", FiducialMarker, Ack,
+           doc="Add a marker, or replace the one with this id. Persisted across restarts."),
+        Op("remove_marker", MarkerId, Ack),
+        Op("marker_stats", Empty, MarkerStatsSample,
+           doc="Statistics of every marker on the latest frame."),
+        Op("marker_history", MarkerHistoryQuery, MarkerHistory,
+           doc="One marker's retained intensity trace, oldest first."),
+        Op("set_role", RoleAssignment, Ack,
+           doc="Name a marker for a purpose (e.g. role='mask-center'), so an "
+               "automated step can look it up by what it is for. Replaces whatever "
+               "marker the role previously pointed at."),
+        Op("remove_role", RoleQuery, Ack),
+        Op("list_roles", Empty, RoleMap,
+           doc="Every role -> marker_id assignment, plus `known`: the predefined roles "
+               "something in the system reads, to offer as choices when tagging."),
+    ),
+    stream=StreamSpec("stats", MarkerStatsSample),
+)
+
 CHAMBER = EquipmentContract(
     name="chamber",
     exchange="CHAMBER",
     version="2.0",
-    capabilities=(LOG, CONFIG, MI_MODE, CAMERA),
+    capabilities=(LOG, CONFIG, MI_MODE, CAMERA, FIDUCIAL),
 )

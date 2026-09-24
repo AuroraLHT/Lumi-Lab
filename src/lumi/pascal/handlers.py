@@ -1,4 +1,4 @@
-"""Chamber handlers: the growth log, PLDconfig.ini, and MI mode."""
+"""Chamber handlers: the growth log, PLDconfig.ini, MI mode, and fiducial markers."""
 
 from __future__ import annotations
 
@@ -21,7 +21,21 @@ from lumi.contracts.payloads.chamber import (
     MIModeReadout,
     SectionQuery,
 )
-from lumi.contracts.payloads.common import Empty
+from lumi.contracts.payloads.common import Ack, Empty
+from lumi.contracts.payloads.fiducial import (
+    KNOWN_ROLES,
+    FiducialMarker,
+    FiducialReadout,
+    MarkerHistory,
+    MarkerHistoryQuery,
+    MarkerId,
+    MarkerList,
+    MarkerPoint,
+    MarkerStatsSample,
+    RoleAssignment,
+    RoleMap,
+    RoleQuery,
+)
 
 log = logging.getLogger(__name__)
 
@@ -222,3 +236,96 @@ class MIModeHandler:
             num_executions=len(executions),
             current_execution=running[0]["commands_uuid"] if running else None,
         )
+
+
+def _stamp(header: dict) -> dict:
+    """A frame header as FrameHeader fields. The cameras write `time` as a *string*."""
+    return {
+        "time": float(header.get("time", 0.0)),
+        "uuid": str(header.get("uuid", "")),
+        "time_stamp": str(header.get("time_stamp", "")),
+    }
+
+
+class FiducialHandler:
+    """Markers the operator draws on the chamber webcam, and the pixel statistics under
+    them.
+
+    The store and the stats worker are the domain objects (`lumi.base.camera.fiducials`);
+    this only maps them onto the contract. Geometry lives on the node so that every
+    client -- the browser overlay, a calibration notebook -- sees the same markers, and
+    the statistics are computed once, next to the camera, rather than once per client.
+    """
+
+    def __init__(self, store, worker) -> None:
+        self.store = store
+        self.worker = worker
+
+    async def list_markers(self, req: Empty) -> MarkerList:
+        size = self.worker.frame_size()
+        return MarkerList(
+            frame_width=size[0] if size else None,
+            frame_height=size[1] if size else None,
+            markers=self.store.list(),
+        )
+
+    async def set_marker(self, req: FiducialMarker) -> Ack:
+        self.store.set(req)
+        log.info("fiducial marker %r set: %s", req.marker_id, req.shape.kind)
+        return Ack()
+
+    async def remove_marker(self, req: MarkerId) -> Ack:
+        self.store.remove(req.marker_id)
+        log.info("fiducial marker %r removed", req.marker_id)
+        return Ack()
+
+    async def marker_stats(self, req: Empty) -> MarkerStatsSample:
+        latest = self.worker.latest_sample()
+        if latest is None:
+            raise RuntimeError("no frame has been measured yet")
+        return _sample(*latest)
+
+    async def marker_history(self, req: MarkerHistoryQuery) -> MarkerHistory:
+        if self.store.get(req.marker_id) is None:
+            raise KeyError(f"no marker {req.marker_id!r}")
+        return MarkerHistory(
+            marker_id=req.marker_id,
+            samples=[
+                MarkerPoint(**_stamp(header), stats=stats)
+                for stats, header in self.worker.trace(req.marker_id, req.limit)
+            ],
+        )
+
+    async def set_role(self, req: RoleAssignment) -> Ack:
+        self.store.set_role(req.role, req.marker_id)
+        log.info("fiducial role %r set to marker %r", req.role, req.marker_id)
+        return Ack()
+
+    async def remove_role(self, req: RoleQuery) -> Ack:
+        self.store.remove_role(req.role)
+        log.info("fiducial role %r removed", req.role)
+        return Ack()
+
+    async def list_roles(self, req: Empty) -> RoleMap:
+        return RoleMap(roles=self.store.list_roles(), known=list(KNOWN_ROLES))
+
+    async def next(self) -> MarkerStatsSample | None:
+        try:
+            stats, header = self.worker.samples.get_nowait()
+        except queue.Empty:
+            return None
+        return _sample(stats, header)
+
+    def readout(self) -> FiducialReadout:
+        size = self.worker.frame_size()
+        return FiducialReadout(
+            marker_ids=[m.marker_id for m in self.store.list()],
+            roles=self.store.list_roles(),
+            frame_width=size[0] if size else None,
+            frame_height=size[1] if size else None,
+            n_processed=self.worker.n_processed,
+        )
+
+
+def _sample(stats: dict, header: dict) -> MarkerStatsSample:
+    return MarkerStatsSample(**_stamp(header), stats=stats)

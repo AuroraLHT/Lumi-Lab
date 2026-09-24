@@ -357,6 +357,29 @@ feature_oscillation_frequency = 0.03
 feature_oscillation_amplitude = 20
 max_intensity = 255
 
+# `--src sim`'s camera overlay: the sample rotating with `Substrate`, and a dark mask
+# with a narrow slit sliding over it with `Mask1`. Tuned against the bundled YSZ.bmp
+# above -- retune (or measure for real) if `source` points elsewhere. See
+# lumi.pascal.sim.scene for the geometry these describe.
+[pascal.simcam.holder]
+center_x = 293.0
+center_y = 225.0
+inner_circle_diameter = 240.0
+edge_angle = -39.0
+
+[pascal.simcam.mask]
+center_position_mm = 96.0
+hidden_position_mm = 50.0
+direction = 1.0
+# How far the plate's arm extends beyond its holder-sized head, in pixels, off toward
+# where it would be mounted outside the frame -- not just a small tile floating over
+# the sample.
+arm_length = 500.0
+# A flat grey plate: color is the grey level (0..255), alpha 1.0 fully replaces the
+# frame under it (0.0 would leave the frame showing through untouched).
+color = 100.0
+alpha = 1.0
+
 [pascal.display]
 enable = false
 add_timestamp = true
@@ -382,6 +405,16 @@ idle_time = 0.1
 max_intensity = 255
 name = "JPEG Encoder"
 
+# Fiducial markers on the chamber camera image, and the statistics measured under them.
+# The markers are set by the operator and persisted to `store_path`, so they survive a
+# node restart; that file is machine-local (git-ignored).
+[pascal.fiducials]
+store_path = "cfg/chamber_fiducials.json"
+# Samples of intensity trace kept per marker, for `marker_history`. 5000 is a little
+# over three minutes at 25 fps. The `stats` stream carries every sample regardless.
+history = 5000
+queue_size = 4
+idle_time = 0.1
 
 [pascal.mq.live_video]
 ctrl_key = "live_video_ctrl"

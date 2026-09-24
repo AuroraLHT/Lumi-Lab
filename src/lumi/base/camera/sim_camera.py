@@ -6,7 +6,7 @@ import time
 import uuid
 import datetime
 from dataclasses import dataclass
-from typing import Union, Tuple, Optional
+from typing import Callable, Optional, Union, Tuple
 import cv2
 import numpy as np
 
@@ -37,6 +37,12 @@ class SimCameraConfig(GenericCameraConfig):
     exposure_time : float
     gain : float
     gamma : float
+
+    # Optional per-frame scene render, applied to the scaled source image before the
+    # oscillation effects below. None (the default) leaves the source image as-is --
+    # used by Pascal's chamber camera to draw the sample rotation and the Mask1-driven
+    # slit mask over the static asset; nothing else sets it.
+    frame_transform : Optional[Callable[[np.ndarray], np.ndarray]] = None
 
 
 class SimCamera(GenericCamera):
@@ -74,6 +80,8 @@ class SimCamera(GenericCamera):
         frame : np.ndarray = self.source_img.copy() * self._exposure_scale * self._gain_scale * self._gamma_scale
         if frame.ndim < 2 or frame.size == 0: return None # frame might be empty
 
+        if self.config.frame_transform is not None:
+            frame = self.config.frame_transform(frame)
 
         if self.config.is_base_oscillation:
             frame += np.sin(2* np.pi * self.config.base_oscillation_frequency * time.time()) * self.config.base_oscillation_amplitude

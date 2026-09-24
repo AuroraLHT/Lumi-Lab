@@ -21,6 +21,7 @@ import io
 import logging
 from pathlib import Path
 
+from lumi.base.camera.fiducials import FiducialStatsConfig, FiducialStatsWorker, FiducialStore
 from lumi.base.camera.jpeg_stream import JpegEncoder, JpegEncoderConfig
 from lumi.base.camera.sim_camera import SimCamera, SimCameraConfig
 from lumi.base.camera.web_camera import WebCamera, WebCameraConfig
@@ -34,7 +35,8 @@ from lumi.pascal.log_reader import (
 )
 from lumi.pascal.mi_mode import MIModeBackendSimulator, MIModeServer, MIModeServerConfig
 from lumi.pascal.sim import ChamberSimConfig, build_chamber_sim
-from lumi.pascal.sim.model import DEFAULT_TARGET_ANGLES
+from lumi.pascal.sim.model import DEFAULT_TARGET_ANGLES, ChamberModel
+from lumi.pascal.sim.scene import ChamberSceneRenderer, HolderGeometry, MaskGeometry
 from lumi.path import PROJECT_ROOT
 
 log = logging.getLogger(__name__)
@@ -228,8 +230,38 @@ def build_simulated_chamber(log_path: str | None, mi_folder: str | None, time_sc
     return model, writer, mi_server, backend
 
 
-def build_camera(src: str):
-    """The chamber's own webcam. Returns (camera, height, width)."""
+def build_scene_renderer(model: ChamberModel) -> ChamberSceneRenderer:
+    """The sim camera's per-frame overlay: the sample rotating with `Substrate`, the
+    slit mask sliding with `Mask1`. `.get(..., default)` throughout, so a
+    settings.toml predating `[pascal.simcam.holder]`/`[pascal.simcam.mask]` still
+    starts -- with geometry tuned to the bundled `YSZ.bmp`, see `lumi.pascal.sim.scene`.
+    """
+    holder = HolderGeometry(
+        center_x=float(settings.get("pascal.simcam.holder.center_x", 293.0)),
+        center_y=float(settings.get("pascal.simcam.holder.center_y", 225.0)),
+        inner_circle_diameter=float(
+            settings.get("pascal.simcam.holder.inner_circle_diameter", 240.0)
+        ),
+        edge_angle=float(settings.get("pascal.simcam.holder.edge_angle", -39.0)),
+    )
+    mask = MaskGeometry(
+        center_position_mm=float(settings.get("pascal.simcam.mask.center_position_mm", 96.0)),
+        hidden_position_mm=float(settings.get("pascal.simcam.mask.hidden_position_mm", 50.0)),
+        direction=float(settings.get("pascal.simcam.mask.direction", 1.0)),
+        arm_length=float(settings.get("pascal.simcam.mask.arm_length", 500.0)),
+        color=float(settings.get("pascal.simcam.mask.color", 100.0)),
+        alpha=float(settings.get("pascal.simcam.mask.alpha", 1.0)),
+    )
+    return ChamberSceneRenderer(model, holder, mask)
+
+
+def build_camera(src: str, model: ChamberModel | None = None):
+    """The chamber's own webcam. Returns (camera, height, width).
+
+    `model` is the live chamber model from `build_simulated_chamber` -- only ever set
+    for `--src sim`, where it drives the rotation/mask overlay (see
+    `build_scene_renderer`). `path` and `test` pass None and get the plain asset.
+    """
     if src == "path":
         cfg = settings.pascal.webcam
         camera = WebCamera(
@@ -267,6 +299,7 @@ def build_camera(src: str):
             gain=cfg.gain,
             gamma=cfg.gamma,
             max_intensity=cfg.max_intensity,
+            frame_transform=build_scene_renderer(model).render if model is not None else None,
         ),
         name=cfg.name,
         daemon=True,
@@ -289,3 +322,25 @@ def build_jpeg_encoder(camera, camera_queue) -> JpegEncoder:
         name=cfg.name,
         daemon=True,
     )
+
+
+def build_fiducials(camera_queue, store_path: str | None = None):
+    """The chamber camera's fiducial markers. Returns (store, stats_worker).
+
+    `.get(..., default)` rather than attribute access, so a machine-local settings.toml
+    that predates this section keeps working.
+    """
+    path = _resolve(store_path or settings.get("pascal.fiducials.store_path", "cfg/chamber_fiducials.json"))
+    store = FiducialStore(path)
+    worker = FiducialStatsWorker(
+        store,
+        camera_queue,
+        config=FiducialStatsConfig(
+            queue_size=int(settings.get("pascal.fiducials.queue_size", 4)),
+            history=int(settings.get("pascal.fiducials.history", 5000)),
+            idle_time=float(settings.get("pascal.fiducials.idle_time", 0.1)),
+        ),
+        name="Fiducial Stats",
+        daemon=True,
+    )
+    return store, worker

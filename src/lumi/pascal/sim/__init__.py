@@ -21,17 +21,23 @@ Three pieces:
 - `model`   -- the chamber itself: setpoints in, physics forward, a log row out.
 - `script`  -- parses the MI script text back into calls on the model.
 - `runner`  -- the two threads: one writes the CSV, one executes MI scripts.
+- `scene`   -- renders the simulated webcam frame (sample rotation, Mask1's slit) from
+               the same model, for `--src sim`'s camera.
 """
 
 from lumi.pascal.sim.columns import LOG_COLUMNS, render_row
 from lumi.pascal.sim.model import ChamberModel, ChamberSimConfig
 from lumi.pascal.sim.runner import SimLogWriter, SimMIBackend, build_chamber_sim
+from lumi.pascal.sim.scene import ChamberSceneRenderer, HolderGeometry, MaskGeometry
 from lumi.pascal.sim.script import ScriptError, parse_script
 
 __all__ = [
     "LOG_COLUMNS",
     "ChamberModel",
+    "ChamberSceneRenderer",
     "ChamberSimConfig",
+    "HolderGeometry",
+    "MaskGeometry",
     "ScriptError",
     "SimLogWriter",
     "SimMIBackend",

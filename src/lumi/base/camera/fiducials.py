@@ -1,0 +1,476 @@
+"""Fiducial markers on a camera feed: where they are, and what is under them.
+
+Three parts, none of which knows about the message bus:
+
+  `FiducialStore`        the operator's markers, thread-safe, persisted to a JSON file
+  `measure`              one marker on one frame -> intensity statistics
+  `FiducialStatsWorker`  consumes a camera fan-out queue and measures every marker on
+                         every frame, keeping a bounded trace per marker
+
+The worker is a thread rather than work done in the handler's `next()` for the same
+reason the JPEG encoder is: `next()` runs on the node's event loop, and the trace has
+to keep accumulating when nobody is subscribed to the stream -- a mask sweep is
+usually reviewed after the fact, through `marker_history`.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+import os
+import queue
+import threading
+import time
+from collections import deque
+from dataclasses import dataclass, replace
+from pathlib import Path
+
+import cv2
+import numpy as np
+from pydantic import TypeAdapter, ValidationError
+
+from lumi.contracts.payloads.fiducial import (
+    CircleShape,
+    CrossShape,
+    FiducialMarker,
+    MarkerStats,
+    PolyShape,
+    RectShape,
+    Shape,
+)
+
+log = logging.getLogger(__name__)
+
+#: Rec. 601 luma. The cameras hand out RGB.
+_LUMA = np.array([0.299, 0.587, 0.114])
+
+# --- geometry ---------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Region:
+    """A marker rasterised for one frame size: the window it covers, which pixels inside
+    the window count, and the pixel at its centre. `mask` is None for the whole window
+    (a rectangle, a point)."""
+
+    y0: int
+    y1: int
+    x0: int
+    x1: int
+    mask: np.ndarray | None
+    #: (row, column) of the pixel under the marker's geometric centre; None when that
+    #: pixel is off the frame.
+    center: tuple[int, int] | None = None
+
+    @property
+    def is_empty(self) -> bool:
+        return self.y1 <= self.y0 or self.x1 <= self.x0
+
+
+def geometric_center(shape: Shape) -> tuple[float, float]:
+    """The (x, y) a marker is "at": a cross or circle's position, a rectangle's middle,
+    a polygon's area centroid. Pixel `i` covers [i, i+1), so the pixel a point is over is
+    its floor -- which is also what a canvas click at that point lands on."""
+    if isinstance(shape, RectShape):
+        return shape.x + shape.width / 2, shape.y + shape.height / 2
+    if isinstance(shape, PolyShape):
+        return _centroid([(p.x, p.y) for p in shape.points])
+    return shape.x, shape.y
+
+
+def _centroid(points: list[tuple[float, float]]) -> tuple[float, float]:
+    """Area centroid (shoelace), for a polygon that has one.
+
+    A simple polygon's centroid always lies within its vertices' bounding box. A
+    self-intersecting one -- and a hand-drawn polygon will cross itself sometimes -- has
+    areas of opposite sign that nearly cancel, so the formula divides by almost nothing
+    and lands far outside the shape. There, and for a polygon with no area at all
+    (collinear vertices), fall back to the mean of the vertices, which is always inside.
+    """
+    twice_area = cx = cy = 0.0
+    for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]):
+        cross = x0 * y1 - x1 * y0
+        twice_area += cross
+        cx += (x0 + x1) * cross
+        cy += (y0 + y1) * cross
+
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    if abs(twice_area) > 1e-9:
+        centroid = (cx / (3 * twice_area), cy / (3 * twice_area))
+        if min(xs) <= centroid[0] <= max(xs) and min(ys) <= centroid[1] <= max(ys):
+            return centroid
+    return sum(xs) / len(xs), sum(ys) / len(ys)
+
+
+def rasterise(shape: Shape, height: int, width: int) -> Region:
+    """The pixels of `shape` that fall inside a `height` x `width` frame.
+
+    The window is clipped to the frame and the mask drawn in window coordinates, so a
+    marker that hangs off the edge measures the part that is on the frame rather than
+    failing.
+    """
+    region = _region(shape, height, width)
+    cx, cy = geometric_center(shape)
+    row, col = math.floor(cy), math.floor(cx)
+    on_frame = 0 <= row < height and 0 <= col < width
+    return replace(region, center=(row, col) if on_frame else None)
+
+
+def _region(shape: Shape, height: int, width: int) -> Region:
+    if isinstance(shape, RectShape):
+        x0, y0 = round(shape.x), round(shape.y)
+        x1, y1 = round(shape.x + shape.width), round(shape.y + shape.height)
+        # A sliver narrower than a pixel still measures the pixel it rounds to.
+        x1, y1 = max(x1, x0 + 1), max(y1, y0 + 1)
+        return _clipped(x0, y0, x1, y1, height, width, draw=None)
+
+    if isinstance(shape, CrossShape):
+        # A point: the arms are for the eye. What is measured is the patch around the
+        # centre pixel -- 3x3 by default, or that pixel alone at radius 0.
+        col, row, r = math.floor(shape.x), math.floor(shape.y), shape.sample_radius
+        return _clipped(col - r, row - r, col + r + 1, row + r + 1, height, width, draw=None)
+
+    if isinstance(shape, CircleShape):
+        cx, cy, r = shape.x, shape.y, shape.radius
+        x0, y0 = math.floor(cx - r) - 1, math.floor(cy - r) - 1
+        x1, y1 = math.ceil(cx + r) + 1, math.ceil(cy + r) + 1
+
+        def draw(mask: np.ndarray, ox: int, oy: int) -> None:
+            # A pixel counts when its *centre* is inside, which is the same rule the
+            # rectangle's rounded edges follow.
+            ys = np.arange(oy, oy + mask.shape[0]) + 0.5
+            xs = np.arange(ox, ox + mask.shape[1]) + 0.5
+            inside = (xs[None, :] - cx) ** 2 + (ys[:, None] - cy) ** 2 <= r * r
+            mask[inside] = 255
+            if not inside.any():
+                # Smaller than a pixel and off every pixel centre: still measure the
+                # pixel it is over, as a rectangle sliver does.
+                row, col = math.floor(cy) - oy, math.floor(cx) - ox
+                if 0 <= row < mask.shape[0] and 0 <= col < mask.shape[1]:
+                    mask[row, col] = 255
+
+        return _clipped(x0, y0, x1, y1, height, width, draw=draw)
+
+    if isinstance(shape, PolyShape):
+        pts = np.array([[round(p.x), round(p.y)] for p in shape.points], dtype=np.int32)
+        x0, y0 = pts.min(axis=0)
+        x1, y1 = pts.max(axis=0) + 1
+
+        def draw(mask: np.ndarray, ox: int, oy: int) -> None:
+            cv2.fillPoly(mask, [pts - np.array([ox, oy], dtype=np.int32)], 255)
+
+        return _clipped(int(x0), int(y0), int(x1), int(y1), height, width, draw=draw)
+
+    raise TypeError(f"unknown marker shape {type(shape).__name__}")
+
+
+def _clipped(x0, y0, x1, y1, height, width, draw) -> Region:
+    cx0, cy0 = max(x0, 0), max(y0, 0)
+    cx1, cy1 = min(x1, width), min(y1, height)
+    if cx1 <= cx0 or cy1 <= cy0:
+        return Region(0, 0, 0, 0, None)
+    mask = None
+    if draw is not None:
+        mask = np.zeros((cy1 - cy0, cx1 - cx0), dtype=np.uint8)
+        draw(mask, cx0, cy0)
+    return Region(cy0, cy1, cx0, cx1, mask)
+
+
+def luminance(window: np.ndarray) -> np.ndarray:
+    """A window of a frame as one channel: greyscale passes through, colour is reduced
+    to luma. Only ever called on a marker's window, never the whole frame."""
+    if window.ndim == 2:
+        return window
+    return window[..., :3] @ _LUMA
+
+
+def measure(frame: np.ndarray, region: Region) -> MarkerStats:
+    """Mean / min / max / std over the pixels of `region` on `frame`, and the intensity
+    of the pixel at its centre."""
+    center = None
+    if region.center is not None:
+        row, col = region.center
+        center = float(luminance(frame[row:row + 1, col:col + 1]).ravel()[0])
+
+    if region.is_empty:
+        return MarkerStats(n_pixels=0, center=center)
+    values = luminance(frame[region.y0:region.y1, region.x0:region.x1])
+    if region.mask is not None:
+        values = values[region.mask > 0]
+    if values.size == 0:
+        return MarkerStats(n_pixels=0, center=center)
+    return MarkerStats(
+        n_pixels=int(values.size),
+        mean=float(values.mean()),
+        min=float(values.min()),
+        max=float(values.max()),
+        std=float(values.std()),
+        center=center,
+    )
+
+
+# --- the operator's markers -------------------------------------------------
+
+_MARKERS = TypeAdapter(list[FiducialMarker])
+
+
+class FiducialStore:
+    """The markers, by id, and the role names pinned to them. Shared between the
+    handler (event loop) and the stats worker (its own thread), so every access is
+    under a lock and the worker reads a `snapshot()` rather than the live dict.
+
+    Persisted on every change, because a marker is set up by hand once and is worth
+    keeping across a node restart -- unlike the statistics, which are cheap to
+    regenerate. `path=None` keeps them in memory only.
+
+    A role is a free-form name (e.g. "sample_holder") pointing at a marker_id, so
+    something that needs "the" marker for a purpose looks it up by what it is for
+    rather than by a fixed id. It is not required to name an existing marker --
+    setting one ahead of the marker it will point at, or leaving it aimed at one that
+    was since removed, is a caller's business, not something the store enforces.
+    """
+
+    def __init__(self, path: str | Path | None = None) -> None:
+        self.path = Path(path) if path else None
+        self._lock = threading.Lock()
+        self._markers: dict[str, FiducialMarker] = {}
+        self._roles: dict[str, str] = {}
+        #: Bumps on every change; the worker compares it to know when to re-rasterise.
+        self.version = 0
+        self._load()
+
+    def set(self, marker: FiducialMarker) -> None:
+        with self._lock:
+            self._markers[marker.marker_id] = marker
+            self.version += 1
+            self._save()
+
+    def remove(self, marker_id: str) -> None:
+        with self._lock:
+            if marker_id not in self._markers:
+                raise KeyError(f"no marker {marker_id!r}")
+            del self._markers[marker_id]
+            self.version += 1
+            self._save()
+
+    def get(self, marker_id: str) -> FiducialMarker | None:
+        with self._lock:
+            return self._markers.get(marker_id)
+
+    def list(self) -> list[FiducialMarker]:
+        with self._lock:
+            return list(self._markers.values())
+
+    def snapshot(self) -> tuple[int, dict[str, FiducialMarker]]:
+        with self._lock:
+            return self.version, dict(self._markers)
+
+    # --- roles ---
+
+    def set_role(self, role: str, marker_id: str) -> None:
+        with self._lock:
+            self._roles[role] = marker_id
+            self.version += 1
+            self._save()
+
+    def remove_role(self, role: str) -> None:
+        with self._lock:
+            if role not in self._roles:
+                raise KeyError(f"no role {role!r}")
+            del self._roles[role]
+            self.version += 1
+            self._save()
+
+    def get_role(self, role: str) -> str | None:
+        """The marker_id pinned to `role`, or None if nothing is."""
+        with self._lock:
+            return self._roles.get(role)
+
+    def list_roles(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._roles)
+
+    # --- persistence ---
+
+    def _load(self) -> None:
+        if self.path is None or not self.path.exists():
+            return
+        try:
+            raw = json.loads(self.path.read_text())
+            # Old files are a bare `[marker, ...]` list, from before roles existed;
+            # a new one is `{"markers": [...], "roles": {...}}`. Reading a legacy file
+            # keeps it starting with no roles rather than failing to load at all.
+            markers_raw, roles = (raw, {}) if isinstance(raw, list) else (
+                raw.get("markers", []), raw.get("roles", {})
+            )
+            markers = _MARKERS.validate_python(markers_raw)
+            if not isinstance(roles, dict) or not all(isinstance(v, str) for v in roles.values()):
+                raise ValueError(f"roles must be a str->str mapping, got {roles!r}")
+        except (OSError, ValueError, ValidationError):
+            # Do not let a hand-edited or truncated file take the chamber node down, and
+            # do not let the next save silently overwrite it either.
+            aside = self.path.with_suffix(self.path.suffix + ".corrupt")
+            log.exception("could not read the marker file %s; moving it to %s and "
+                          "starting with no markers", self.path, aside)
+            try:
+                os.replace(self.path, aside)
+            except OSError:
+                pass
+            return
+        self._markers = {m.marker_id: m for m in markers}
+        self._roles = {str(k): v for k, v in roles.items()}
+        log.info("loaded %d fiducial marker(s) and %d role(s) from %s",
+                 len(self._markers), len(self._roles), self.path)
+
+    def _save(self) -> None:
+        if self.path is None:
+            return
+        payload = json.dumps({
+            "markers": json.loads(_MARKERS.dump_json(list(self._markers.values()))),
+            "roles": self._roles,
+        }, indent=2).encode()
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            # Write-then-rename, so a crash mid-write leaves the previous file intact
+            # rather than a truncated one.
+            tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+            tmp.write_bytes(payload)
+            os.replace(tmp, self.path)
+        except OSError:
+            # The marker is live in memory either way. Losing persistence is worth a
+            # log line, not a failed request.
+            log.exception("could not persist markers to %s", self.path)
+
+
+# --- the worker -------------------------------------------------------------
+
+
+@dataclass
+class FiducialStatsConfig:
+    #: Samples waiting for the stream. Small: this is a live view, so when a consumer
+    #: falls behind the stale sample is the one to drop.
+    queue_size: int = 4
+    #: Samples of trace kept per marker. At 25 fps, 5000 is a little over three minutes.
+    history: int = 5000
+    #: Bounds shutdown latency only; the queue get() blocks.
+    idle_time: float = 0.1
+
+
+class FiducialStatsWorker(threading.Thread):
+    """Measures every marker on every frame of a camera fan-out queue.
+
+    Output is `(stats, header)` with `stats` a `{marker_id: MarkerStats}` -- the same
+    `(payload, header)` pairing the other workers put on their queues -- and each
+    marker's trace is retained in `history`.
+    """
+
+    def __init__(
+        self,
+        store: FiducialStore,
+        camera_queue: "queue.Queue",
+        config: FiducialStatsConfig | None = None,
+        name: str = "",
+        daemon: bool = True,
+    ) -> None:
+        super().__init__(name=name, daemon=daemon)
+        self.store = store
+        self.camera_queue = camera_queue
+        self.config = config or FiducialStatsConfig()
+        self.samples: "queue.Queue" = queue.Queue(maxsize=self.config.queue_size)
+        self.history: dict[str, deque] = {}
+        self.latest: tuple[dict[str, MarkerStats], dict] | None = None
+        self.frame_shape: tuple[int, int] | None = None  # (height, width)
+        self.n_processed = 0
+        self.n_failures = 0
+        self.error: str | None = None
+        self.last_frame_at: float | None = None
+        self._regions: dict[str, Region] = {}
+        self._regions_key: tuple | None = None
+        self._lock = threading.Lock()
+        self._stop_event = threading.Event()
+
+    # --- measuring ---
+
+    def process(self, frame: np.ndarray, header: dict | None) -> dict[str, MarkerStats]:
+        """Measure every marker on `frame` and record the result."""
+        header = dict(header or {})
+        height, width = frame.shape[:2]
+        regions = self._regions_for(height, width)
+        stats = {mid: measure(frame, region) for mid, region in regions.items()}
+
+        with self._lock:
+            self.frame_shape = (height, width)
+            self.latest = (stats, header)
+            for mid, s in stats.items():
+                self.history.setdefault(mid, deque(maxlen=self.config.history)).append((s, header))
+            for gone in set(self.history) - set(stats):
+                del self.history[gone]
+            self.n_processed += 1
+        return stats
+
+    def _regions_for(self, height: int, width: int) -> dict[str, Region]:
+        version, markers = self.store.snapshot()
+        key = (version, height, width)
+        if key != self._regions_key:
+            self._regions = {mid: rasterise(m.shape, height, width) for mid, m in markers.items()}
+            self._regions_key = key
+        return self._regions
+
+    # --- reads for the handler ---
+
+    def trace(self, marker_id: str, limit: int | None = None) -> list[tuple[MarkerStats, dict]]:
+        with self._lock:
+            samples = list(self.history.get(marker_id, ()))
+        return samples[-limit:] if limit else samples
+
+    def latest_sample(self) -> tuple[dict[str, MarkerStats], dict] | None:
+        with self._lock:
+            return self.latest
+
+    def frame_size(self) -> tuple[int, int] | None:
+        """(width, height) of the last frame measured."""
+        with self._lock:
+            return None if self.frame_shape is None else (self.frame_shape[1], self.frame_shape[0])
+
+    # --- thread ---
+
+    def run(self) -> None:
+        """Measure until stopped, surviving a bad frame -- an exception escaping run()
+        would kill the thread while the capability went on looking healthy."""
+        while not self._stop_event.is_set():
+            try:
+                frame, header = self.camera_queue.get(timeout=self.config.idle_time)
+            except queue.Empty:
+                continue
+
+            try:
+                stats = self.process(frame, header)
+            except Exception as exc:
+                self.error = f"{type(exc).__name__}: {exc}"
+                self.n_failures += 1
+                if self.n_failures == 1 or self.n_failures % 100 == 0:
+                    log.exception("fiducial measurement failed (%s), dropping the frame", self.error)
+                continue
+
+            self.error = None
+            self.last_frame_at = time.time()
+            self._put((stats, header))
+
+    def _put(self, content) -> None:
+        """Never block on a slow consumer; drop the stale sample instead."""
+        try:
+            self.samples.put_nowait(content)
+        except queue.Full:
+            try:
+                self.samples.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.samples.put_nowait(content)
+            except queue.Full:
+                pass
+
+    def stop(self) -> None:
+        log.info("fiducial stats worker receives a stop signal")
+        self._stop_event.set()

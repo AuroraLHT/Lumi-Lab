@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: a57b9852c04edaac
+# contract_hash: 3ac5669ddf974b76
 
 """Generated clients for the chamber node."""
 
@@ -16,10 +16,11 @@ import numpy as np
 from aio_pika.abc import AbstractChannel, AbstractExchange
 
 from lumi.base.mq import CapabilityClient
-from lumi.contracts.chamber import CAMERA, CONFIG, LOG, MI_MODE
+from lumi.contracts.chamber import CAMERA, CONFIG, FIDUCIAL, LOG, MI_MODE
 from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta, JpegMeta
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, LogBatch, LogEntry, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
+from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
 
 
 class ChamberLogClient(CapabilityClient):
@@ -181,6 +182,71 @@ class ChamberCameraClient(CapabilityClient):
         return await super().get_state()  # type: ignore[return-value]
 
 
+class ChamberFiducialClient(CapabilityClient):
+    """Fiducial markers -- crosses, rectangles, polygons -- the operator sets on the chamber webcam image, and the intensity statistics (mean, min, max, std) of the pixels under each one. Geometry is in camera-frame pixels, the same space the `camera` stream is encoded in, so a frontend draws it straight over the feed. The statistics are for calibration: a marker's intensity trace dips as the mask edge crosses it, which locates the mask."""
+
+    def __init__(
+        self,
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        *,
+        timeout: float = 10.0,
+        name: str | None = None,
+        actor: str | None = None,
+    ) -> None:
+        super().__init__(
+            FIDUCIAL, 'chamber',
+            channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
+        )
+
+    async def list_markers(self) -> MarkerList:
+        """Every marker, with the frame size they were drawn against."""
+        return await self.call("list_markers")  # type: ignore[return-value]
+
+    async def set_marker(self, req: FiducialMarker) -> Ack:
+        """Add a marker, or replace the one with this id. Persisted across restarts."""
+        return await self.call("set_marker", req)  # type: ignore[return-value]
+
+    async def remove_marker(self, req: MarkerId) -> Ack:
+        """Call fiducial.remove_marker."""
+        return await self.call("remove_marker", req)  # type: ignore[return-value]
+
+    async def marker_stats(self) -> MarkerStatsSample:
+        """Statistics of every marker on the latest frame."""
+        return await self.call("marker_stats")  # type: ignore[return-value]
+
+    async def marker_history(self, req: MarkerHistoryQuery) -> MarkerHistory:
+        """One marker's retained intensity trace, oldest first."""
+        return await self.call("marker_history", req)  # type: ignore[return-value]
+
+    async def set_role(self, req: RoleAssignment) -> Ack:
+        """Name a marker for a purpose (e.g. role='mask-center'), so an automated step can look it up by what it is for. Replaces whatever marker the role previously pointed at."""
+        return await self.call("set_role", req)  # type: ignore[return-value]
+
+    async def remove_role(self, req: RoleQuery) -> Ack:
+        """Call fiducial.remove_role."""
+        return await self.call("remove_role", req)  # type: ignore[return-value]
+
+    async def list_roles(self) -> RoleMap:
+        """Every role -> marker_id assignment, plus `known`: the predefined roles something in the system reads, to offer as choices when tagging."""
+        return await self.call("list_roles")  # type: ignore[return-value]
+
+    async def on_stats(
+        self, callback: Callable[[MarkerStatsSample, None], Awaitable[None]]
+    ) -> None:
+        """Subscribe to the stats stream.
+
+        Subscribing does not start the stream: call start_streaming() for that. Each
+        subscriber gets its own queue, so every subscriber sees every message.
+        """
+        await self.subscribe_stream(callback)  # type: ignore[arg-type]
+
+    async def get_state(self) -> FiducialState:  # type: ignore[override]
+        """The server's current state, typed."""
+        return await super().get_state()  # type: ignore[return-value]
+
+
 class ChamberClient:
     """Every capability of the chamber node, in one object.
 
@@ -194,6 +260,7 @@ class ChamberClient:
         self.config = ChamberConfigClient(channel, exchange, timeout=timeout, actor=actor)
         self.mi_mode = ChamberMiModeClient(channel, exchange, timeout=timeout, actor=actor)
         self.camera = ChamberCameraClient(channel, exchange, timeout=timeout, actor=actor)
+        self.fiducial = ChamberFiducialClient(channel, exchange, timeout=timeout, actor=actor)
 
     @property
     def capabilities(self) -> dict:
@@ -202,6 +269,7 @@ class ChamberClient:
             'config': self.config,
             'mi_mode': self.mi_mode,
             'camera': self.camera,
+            'fiducial': self.fiducial,
         }
 
     async def start(self) -> None:
