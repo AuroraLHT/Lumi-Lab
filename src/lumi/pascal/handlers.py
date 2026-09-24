@@ -320,6 +320,7 @@ class FiducialHandler:
         size = self.worker.frame_size()
         return FiducialReadout(
             marker_ids=[m.marker_id for m in self.store.list()],
+            roles=self.store.list_roles(),
             frame_width=size[0] if size else None,
             frame_height=size[1] if size else None,
             n_processed=self.worker.n_processed,

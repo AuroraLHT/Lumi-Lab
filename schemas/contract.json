@@ -2206,6 +2206,14 @@
               ],
               "default": null,
               "title": "N Processed"
+            },
+            "roles": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "default": {},
+              "title": "Roles",
+              "type": "object"
             }
           },
           "title": "FiducialState",

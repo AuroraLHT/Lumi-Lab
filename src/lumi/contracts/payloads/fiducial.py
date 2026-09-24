@@ -198,6 +198,10 @@ class RoleMap(BaseModel):
 
 class FiducialReadout(BaseModel):
     marker_ids: list[str] = []
+    #: role -> marker_id, as `list_roles` returns it. On the state (and so the
+    #: heartbeat) for the same reason `marker_ids` is: a handful of short strings that
+    #: rarely change, so another client's re-tag shows up without polling.
+    roles: dict[str, str] = {}
     frame_width: int | None = None
     frame_height: int | None = None
     #: Frames whose statistics have been computed. Advancing means the worker is alive.

@@ -679,6 +679,19 @@ async def test_readout_reports_liveness(handler):
     assert readout.marker_ids == ["a"] and readout.n_processed == 1
 
 
+async def test_readout_carries_the_roles_so_a_retag_rides_the_heartbeat(handler):
+    """A re-tag that leaves the marker set alone must still show up on the state --
+    otherwise another console only notices when its marker list next moves."""
+    await handler.set_marker(marker("a", rect(0, 0, 4, 4)))
+    await handler.set_marker(marker("b", rect(0, 0, 4, 4)))
+    await handler.set_role(RoleAssignment(role="mask-center", marker_id="a"))
+    assert handler.readout().roles == {"mask-center": "a"}
+
+    await handler.set_role(RoleAssignment(role="mask-center", marker_id="b"))
+    assert handler.readout().roles == {"mask-center": "b"}
+    assert handler.readout().marker_ids == ["a", "b"]
+
+
 async def test_roles_round_trip_through_the_handler(handler):
     await handler.set_marker(marker("a", rect(0, 0, 4, 4)))
     await handler.set_role(RoleAssignment(role="sample_holder", marker_id="a"))
