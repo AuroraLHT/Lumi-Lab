@@ -86,6 +86,7 @@ async def main(args: argparse.Namespace) -> None:
         sources={}, growth_db=growth_db, pld_config=_pld_config(), bounds=_bounds(),
         target_mapper=dict(settings.experiment.target_mapper), registry_client=None,
     )
+    await handler.load_calibration()
 
     # The step journal has to exist before node.start(), which is where the capability
     # servers are built and where each one picks up its handler's journal. Opening the

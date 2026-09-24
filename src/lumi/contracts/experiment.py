@@ -25,6 +25,7 @@ from .payloads.experiment import (
     Anneal,
     AutoAlignMaskCenter,
     BeginSetLaserPower,
+    CenterMaskPos,
     CheckLogging,
     ConfirmCenterMask,
     ConfirmLaserPower,
@@ -41,6 +42,7 @@ from .payloads.experiment import (
     LogEntry,
     LoggingAlive,
     LoggingStatus,
+    MaskAlignResult,
     MaskPosition,
     MfcQuery,
     MfcStatus,
@@ -342,8 +344,12 @@ DRIVER = Capability(
         Op("begin_check_mask_center", Empty, Ack, journal=True),
         Op("confirm_mask_center", ConfirmMaskCenter, PendingStatus, journal=True),
         # --- automatic: the same calibration, read off the chamber camera
+        Op("set_center_mask_pos", CenterMaskPos, Ack,
+           doc="Set center_mask_pos without moving the mask -- e.g. to keep a "
+               "report-only (apply=false) auto-align result. Saved, like every change "
+               "to it, so it survives a node restart.", journal=True),
         Op("auto_align_center_mask", AutoAlignMaskCenter, TaskAck,
-           doc="Scan Mask1 around center_mask_pos, watching the fiducial marker tagged "
+           doc="Scan Mask1 around center_mask_pos (or center_mm), watching the fiducial marker tagged "
                "'mask-center' (the sample's centre), locate the slit from the "
                "intensity-vs-position curve, then re-scan just the slit, finer each pass, "
                "until the centre settles. Sets center_mask_pos to it and leaves the mask "
@@ -351,7 +357,8 @@ DRIVER = Capability(
                "scanned point) arrives as the task_result. If no marker is tagged "
                "'mask-center' it first opens a 'fiducial_role' pending confirmation and "
                "waits for one to be tagged (chamber.fiducial.set_role), then continues; "
-               "`confirm` on that confirmation cancels the alignment.", journal=True),
+               "`confirm` on that confirmation cancels the alignment.", journal=True,
+           result=MaskAlignResult),
 
         # --- gated: RHEED gain tuning (live view, iterative)
         Op("begin_adjust_rheed_gain", Empty, Ack, journal=True),
