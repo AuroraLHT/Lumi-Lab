@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: d886275865bf2ea5
+# contract_hash: 4c4ce3bd6ca25bbb
 
 """Generated clients for the storage node."""
 
@@ -16,9 +16,9 @@ import numpy as np
 from aio_pika.abc import AbstractChannel, AbstractExchange
 
 from lumi.base.mq import CapabilityClient
-from lumi.contracts.storage import STORAGE
+from lumi.contracts.storage import ARCHIVE, STORAGE
 from lumi.contracts.payloads.common import Empty
-from lumi.contracts.payloads.storage import StorageRequest, StorageState, StorageStatus
+from lumi.contracts.payloads.storage import ArchiveState, ListRecordings, RecordingFrameMeta, RecordingFrameQuery, RecordingInfo, RecordingIntegration, RecordingIntegrationQuery, RecordingJpegMeta, RecordingJpegQuery, RecordingList, RecordingLog, RecordingLogQuery, RecordingName, StorageRequest, StorageState, StorageStatus
 
 
 class StorageStorageClient(CapabilityClient):
@@ -52,6 +52,55 @@ class StorageStorageClient(CapabilityClient):
         return await super().get_state()  # type: ignore[return-value]
 
 
+class StorageArchiveClient(CapabilityClient):
+    """Finished recordings, read back: what is on disk, a frame by index, the RHEED integration traces and the chamber log each file carries. A recording is named by its file stem, which is `record_name` in growth.db."""
+
+    def __init__(
+        self,
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        *,
+        timeout: float = 10.0,
+        name: str | None = None,
+        actor: str | None = None,
+    ) -> None:
+        super().__init__(
+            ARCHIVE, 'storage',
+            channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
+        )
+
+    async def list_recordings(self, req: ListRecordings) -> RecordingList:
+        """Recordings on disk, newest name first, with frame/log counts and time span."""
+        return await self.call("list_recordings", req)  # type: ignore[return-value]
+
+    async def recording_info(self, req: RecordingName) -> RecordingInfo:
+        """One recording in full: frame shape, every frame's time (for a scrubber), the log columns and the integration boxes."""
+        return await self.call("recording_info", req)  # type: ignore[return-value]
+
+    async def recording_frame(self, req: RecordingFrameQuery) -> tuple[RecordingFrameMeta, np.ndarray]:
+        """One recorded frame, lossless -- for analysis. A browser wants recording_frame_jpeg."""
+        # Returns (metadata, np.ndarray); the array never passes through JSON.
+        return await self.call("recording_frame", req)  # type: ignore[return-value]
+
+    async def recording_frame_jpeg(self, req: RecordingJpegQuery) -> tuple[RecordingJpegMeta, bytes]:
+        """One recorded frame as a greyscale JPEG, contrast fixed per recording unless low/high are given. The body is the JFIF buffer."""
+        # Returns (metadata, bytes); the array never passes through JSON.
+        return await self.call("recording_frame_jpeg", req)  # type: ignore[return-value]
+
+    async def recording_integration(self, req: RecordingIntegrationQuery) -> RecordingIntegration:
+        """Each integration box's intensity (mean/max/min) over the recording -- the RHEED oscillation curves."""
+        return await self.call("recording_integration", req)  # type: ignore[return-value]
+
+    async def recording_log(self, req: RecordingLogQuery) -> RecordingLog:
+        """The chamber log rows recorded alongside the frames, as columns."""
+        return await self.call("recording_log", req)  # type: ignore[return-value]
+
+    async def get_state(self) -> ArchiveState:  # type: ignore[override]
+        """The server's current state, typed."""
+        return await super().get_state()  # type: ignore[return-value]
+
+
 class StorageClient:
     """Every capability of the storage node, in one object.
 
@@ -62,11 +111,13 @@ class StorageClient:
     def __init__(self, channel: AbstractChannel, exchange: AbstractExchange,
                  *, timeout: float = 10.0, actor: str | None = None) -> None:
         self.storage = StorageStorageClient(channel, exchange, timeout=timeout, actor=actor)
+        self.archive = StorageArchiveClient(channel, exchange, timeout=timeout, actor=actor)
 
     @property
     def capabilities(self) -> dict:
         return {
             'storage': self.storage,
+            'archive': self.archive,
         }
 
     async def start(self) -> None:

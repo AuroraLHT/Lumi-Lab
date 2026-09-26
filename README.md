@@ -485,6 +485,32 @@ Reachable over the contract: `list_samples`, `get_sample`, `sample_history`,
 `add_measurement`, `list_measurements`. Design notes, the decisions behind it and the
 open to-do are in `docs/SAMPLE_TRACKING.md`.
 
+## Growth history
+
+What a past growth left behind is readable over the contract, not only from a notebook
+that knows the file layout:
+
+- **samples and steps** -- the experiment node's `list_*` / `get_*` ops and
+  `sample_history`, above;
+- **RHEED recordings** -- `storage.archive`: `list_recordings`, `recording_info` (frame
+  times, integration boxes, log columns), `recording_frame` (lossless NPY),
+  `recording_frame_jpeg` (for a browser; contrast fixed per recording),
+  `recording_integration` (the oscillation curves) and `recording_log`. A recording is
+  named by its file stem, which is `record_name` in growth.db;
+- **chamber logs** -- `chamber.log`: `list_log_files`, and `log_window`, which reads a
+  time range across however many PASCAL log files it spans.
+
+To have something to look at on the simulator:
+
+```bash
+.venv/bin/python scripts/seed_history.py           # ~3 weeks of fake growths, ~400 MB
+.venv/bin/python scripts/seed_history.py --purge   # remove exactly what it added
+```
+
+It writes growth.db rows, one HDF5 recording per deposition and one chamber-log CSV per
+session, all driven off the chamber simulator so the three agree. Safe to run against a
+live simulation stack.
+
 ## Contracts and generated code
 
 `src/lumi/contracts/` is the single source of truth. After changing it, regenerate:
