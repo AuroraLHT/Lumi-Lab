@@ -68,6 +68,260 @@
               "type": "object"
             },
             "response_codec": "json"
+          },
+          {
+            "name": "list_log_files",
+            "request": {
+              "properties": {
+                "limit": {
+                  "default": 100,
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "offset": {
+                  "default": 0,
+                  "minimum": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                }
+              },
+              "title": "ListLogFiles",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "LogFileInfo": {
+                  "properties": {
+                    "end": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "End"
+                    },
+                    "end_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "End Iso"
+                    },
+                    "live": {
+                      "default": false,
+                      "title": "Live",
+                      "type": "boolean"
+                    },
+                    "modified": {
+                      "title": "Modified",
+                      "type": "number"
+                    },
+                    "n_rows": {
+                      "title": "N Rows",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "size_bytes": {
+                      "title": "Size Bytes",
+                      "type": "integer"
+                    },
+                    "start": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Start"
+                    },
+                    "start_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Start Iso"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "size_bytes",
+                    "modified",
+                    "n_rows"
+                  ],
+                  "title": "LogFileInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "files": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/LogFileInfo"
+                  },
+                  "title": "Files",
+                  "type": "array"
+                },
+                "total": {
+                  "default": 0,
+                  "title": "Total",
+                  "type": "integer"
+                }
+              },
+              "title": "LogFileList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "log_window",
+            "request": {
+              "description": "A time window of the chamber log, across however many files it spans.\n\nName a `file` to read that one, or leave it out and give `since`/`until` (epoch\nseconds) to read whatever was logged then -- the growth-history case, where the\ncaller knows when an experiment ran but not which file it landed in.",
+              "properties": {
+                "columns": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Columns"
+                },
+                "file": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "File"
+                },
+                "max_points": {
+                  "default": 2000,
+                  "maximum": 100000,
+                  "minimum": 2,
+                  "title": "Max Points",
+                  "type": "integer"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "title": "LogWindowQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A stretch of chamber log as columns rather than rows: `time[i]` goes with\n`columns[name][i]`, which is the shape a chart wants.\n\nA number where the log holds one, the text otherwise (the status words stay\n`0x0001`, since which bit means what is the reader's business). A column the log\ndoes not have comes back as all nulls rather than failing the read.",
+              "properties": {
+                "columns": {
+                  "additionalProperties": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "default": {},
+                  "title": "Columns",
+                  "type": "object"
+                },
+                "n_rows": {
+                  "default": 0,
+                  "title": "N Rows",
+                  "type": "integer"
+                },
+                "stride": {
+                  "default": 1,
+                  "title": "Stride",
+                  "type": "integer"
+                },
+                "time": {
+                  "default": [],
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Time",
+                  "type": "array"
+                }
+              },
+              "title": "LogSeries",
+              "type": "object"
+            },
+            "response_codec": "json"
           }
         ],
         "routing_keys": {
@@ -75,7 +329,9 @@
           "publish": "chamber.log.pub",
           "request_pattern": "chamber.log.req.*",
           "requests": {
-            "log": "chamber.log.req.log"
+            "list_log_files": "chamber.log.req.list_log_files",
+            "log": "chamber.log.req.log",
+            "log_window": "chamber.log.req.log_window"
           },
           "state": "chamber.log.state",
           "update": "chamber.log.update",
@@ -13615,6 +13871,1045 @@
             }
           },
           "title": "StorageState",
+          "type": "object"
+        },
+        "stream": null,
+        "update": null
+      },
+      {
+        "kind": "rpc",
+        "name": "archive",
+        "ops": [
+          {
+            "name": "list_recordings",
+            "request": {
+              "properties": {
+                "limit": {
+                  "default": 100,
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "offset": {
+                  "default": 0,
+                  "minimum": 0,
+                  "title": "Offset",
+                  "type": "integer"
+                },
+                "search": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Search"
+                }
+              },
+              "title": "ListRecordings",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "RecordingSummary": {
+                  "properties": {
+                    "end": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "End"
+                    },
+                    "end_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "End Iso"
+                    },
+                    "error": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Error"
+                    },
+                    "modified": {
+                      "title": "Modified",
+                      "type": "number"
+                    },
+                    "modified_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Modified Iso"
+                    },
+                    "n_frames": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "N Frames"
+                    },
+                    "n_integrations": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "N Integrations"
+                    },
+                    "n_log_rows": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "N Log Rows"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "recording": {
+                      "default": false,
+                      "title": "Recording",
+                      "type": "boolean"
+                    },
+                    "size_bytes": {
+                      "title": "Size Bytes",
+                      "type": "integer"
+                    },
+                    "start": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Start"
+                    },
+                    "start_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Start Iso"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "size_bytes",
+                    "modified"
+                  ],
+                  "title": "RecordingSummary",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "recordings": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/RecordingSummary"
+                  },
+                  "title": "Recordings",
+                  "type": "array"
+                },
+                "total": {
+                  "default": 0,
+                  "title": "Total",
+                  "type": "integer"
+                }
+              },
+              "title": "RecordingList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "recording_info",
+            "request": {
+              "properties": {
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingName",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "IntegrationBox": {
+                  "properties": {
+                    "bbox_id": {
+                      "title": "Bbox Id",
+                      "type": "integer"
+                    },
+                    "center_x": {
+                      "title": "Center X",
+                      "type": "number"
+                    },
+                    "center_y": {
+                      "title": "Center Y",
+                      "type": "number"
+                    },
+                    "height": {
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bbox_id",
+                    "center_x",
+                    "center_y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "IntegrationBox",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "boxes": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/IntegrationBox"
+                  },
+                  "title": "Boxes",
+                  "type": "array"
+                },
+                "datasets": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "default": {},
+                  "title": "Datasets",
+                  "type": "object"
+                },
+                "end": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "End"
+                },
+                "end_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "End Iso"
+                },
+                "error": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Error"
+                },
+                "frame_dtype": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Frame Dtype"
+                },
+                "frame_shape": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Frame Shape"
+                },
+                "frame_times": {
+                  "default": [],
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Frame Times",
+                  "type": "array"
+                },
+                "log_columns": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Log Columns",
+                  "type": "array"
+                },
+                "modified": {
+                  "title": "Modified",
+                  "type": "number"
+                },
+                "modified_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Modified Iso"
+                },
+                "n_frames": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "N Frames"
+                },
+                "n_integrations": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "N Integrations"
+                },
+                "n_log_rows": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "N Log Rows"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "recording": {
+                  "default": false,
+                  "title": "Recording",
+                  "type": "boolean"
+                },
+                "size_bytes": {
+                  "title": "Size Bytes",
+                  "type": "integer"
+                },
+                "start": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Start"
+                },
+                "start_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Start Iso"
+                }
+              },
+              "required": [
+                "name",
+                "size_bytes",
+                "modified"
+              ],
+              "title": "RecordingInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "recording_frame",
+            "request": {
+              "properties": {
+                "index": {
+                  "minimum": 0,
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "index"
+              ],
+              "title": "RecordingFrameQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Headers for a recorded frame. The body is the np.save buffer (Codec.NPY).",
+              "properties": {
+                "dtype": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Dtype"
+                },
+                "index": {
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "n_frames": {
+                  "title": "N Frames",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "shape": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Shape"
+                },
+                "time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Time"
+                },
+                "time_stamp": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Time Stamp"
+                }
+              },
+              "required": [
+                "name",
+                "index",
+                "n_frames"
+              ],
+              "title": "RecordingFrameMeta",
+              "type": "object"
+            },
+            "response_codec": "npy"
+          },
+          {
+            "name": "recording_frame_jpeg",
+            "request": {
+              "description": "A recorded frame as a JPEG, for looking at.\n\nThe frames are 12-bit; a JPEG is 8. `low`/`high` are the raw values mapped to black\nand white. Left out, they are fixed per recording (sampled once across its frames),\nnot per frame -- per-frame scaling makes the pattern flicker while scrubbing and\nhides exactly the intensity changes a growth is judged by.",
+              "properties": {
+                "gamma": {
+                  "default": 1.0,
+                  "exclusiveMinimum": 0,
+                  "title": "Gamma",
+                  "type": "number"
+                },
+                "high": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "High"
+                },
+                "index": {
+                  "minimum": 0,
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "low": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Low"
+                },
+                "max_width": {
+                  "anyOf": [
+                    {
+                      "minimum": 16,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Max Width"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "quality": {
+                  "default": 85,
+                  "maximum": 100,
+                  "minimum": 10,
+                  "title": "Quality",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "index"
+              ],
+              "title": "RecordingJpegQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Headers for a recorded frame as JPEG. The body is the JFIF buffer (Codec.RAW).",
+              "properties": {
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "high": {
+                  "title": "High",
+                  "type": "number"
+                },
+                "index": {
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "low": {
+                  "title": "Low",
+                  "type": "number"
+                },
+                "n_frames": {
+                  "title": "N Frames",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Time"
+                },
+                "time_stamp": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Time Stamp"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "index",
+                "n_frames",
+                "width",
+                "height",
+                "low",
+                "high"
+              ],
+              "title": "RecordingJpegMeta",
+              "type": "object"
+            },
+            "response_codec": "raw"
+          },
+          {
+            "name": "recording_integration",
+            "request": {
+              "properties": {
+                "bbox_ids": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Bbox Ids"
+                },
+                "max_points": {
+                  "default": 4000,
+                  "maximum": 200000,
+                  "minimum": 2,
+                  "title": "Max Points",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingIntegrationQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "IntegrationTrace": {
+                  "description": "One box's intensity over the recording -- where the RHEED oscillations are.",
+                  "properties": {
+                    "bbox_id": {
+                      "title": "Bbox Id",
+                      "type": "integer"
+                    },
+                    "center_x": {
+                      "title": "Center X",
+                      "type": "number"
+                    },
+                    "center_y": {
+                      "title": "Center Y",
+                      "type": "number"
+                    },
+                    "height": {
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "max": {
+                      "default": [],
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Max",
+                      "type": "array"
+                    },
+                    "mean": {
+                      "default": [],
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Mean",
+                      "type": "array"
+                    },
+                    "min": {
+                      "default": [],
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Min",
+                      "type": "array"
+                    },
+                    "n_points": {
+                      "default": 0,
+                      "title": "N Points",
+                      "type": "integer"
+                    },
+                    "stride": {
+                      "default": 1,
+                      "title": "Stride",
+                      "type": "integer"
+                    },
+                    "time": {
+                      "default": [],
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Time",
+                      "type": "array"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bbox_id",
+                    "center_x",
+                    "center_y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "IntegrationTrace",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "traces": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/IntegrationTrace"
+                  },
+                  "title": "Traces",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingIntegration",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "recording_log",
+            "request": {
+              "properties": {
+                "columns": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Columns"
+                },
+                "max_points": {
+                  "default": 2000,
+                  "maximum": 100000,
+                  "minimum": 2,
+                  "title": "Max Points",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingLogQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "columns": {
+                  "additionalProperties": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "default": {},
+                  "title": "Columns",
+                  "type": "object"
+                },
+                "n_rows": {
+                  "default": 0,
+                  "title": "N Rows",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "stride": {
+                  "default": 1,
+                  "title": "Stride",
+                  "type": "integer"
+                },
+                "time": {
+                  "default": [],
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Time",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingLog",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "storage.archive.ctrl.*",
+          "publish": "storage.archive.pub",
+          "request_pattern": "storage.archive.req.*",
+          "requests": {
+            "list_recordings": "storage.archive.req.list_recordings",
+            "recording_frame": "storage.archive.req.recording_frame",
+            "recording_frame_jpeg": "storage.archive.req.recording_frame_jpeg",
+            "recording_info": "storage.archive.req.recording_info",
+            "recording_integration": "storage.archive.req.recording_integration",
+            "recording_log": "storage.archive.req.recording_log"
+          },
+          "state": "storage.archive.state",
+          "update": "storage.archive.update",
+          "work_queue": "q.storage.archive.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "n_recordings": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "N Recordings"
+            },
+            "root_folder": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Root Folder"
+            }
+          },
+          "title": "ArchiveState",
           "type": "object"
         },
         "stream": null,

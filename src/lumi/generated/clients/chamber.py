@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: d886275865bf2ea5
+# contract_hash: 4c4ce3bd6ca25bbb
 
 """Generated clients for the chamber node."""
 
@@ -18,7 +18,7 @@ from aio_pika.abc import AbstractChannel, AbstractExchange
 from lumi.base.mq import CapabilityClient
 from lumi.contracts.chamber import CAMERA, CONFIG, FIDUCIAL, LOG, MI_MODE
 from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta, JpegMeta
-from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, LogBatch, LogEntry, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
+from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
 
@@ -44,6 +44,14 @@ class ChamberLogClient(CapabilityClient):
     async def log(self) -> LogBatch:
         """Latest log rows."""
         return await self.call("log")  # type: ignore[return-value]
+
+    async def list_log_files(self, req: ListLogFiles) -> LogFileList:
+        """The log files in the chamber's log folder, newest name first, with the time span each covers."""
+        return await self.call("list_log_files", req)  # type: ignore[return-value]
+
+    async def log_window(self, req: LogWindowQuery) -> LogSeries:
+        """The log over a time window, as columns, across however many files it spans -- or one named file. For charting a past growth."""
+        return await self.call("log_window", req)  # type: ignore[return-value]
 
     async def on_log(
         self, callback: Callable[[LogEntry, None], Awaitable[None]]

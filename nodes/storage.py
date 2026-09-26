@@ -26,7 +26,8 @@ from lumi.generated.clients.detection import DetectionDetectionClient
 from lumi.generated.clients.rheed import RheedCameraClient, RheedIntegratorClient
 from lumi.generated.clients.system import SystemRegistryClient
 from lumi.node import EquipmentNode
-from lumi.storage.handlers import StorageHandler
+from lumi.storage.archive import RecordingArchive
+from lumi.storage.handlers import ArchiveHandler, StorageHandler
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +43,10 @@ async def main(args: argparse.Namespace) -> None:
     # mounted with empty sources and filled in once the node is connected.
     handler = StorageHandler(sources={}, registry_client=None, root_folder=args.root)
     node.mount("storage", handler)
+    # Reads the same folder the recorder writes, and stays off the file being written.
+    node.mount("archive", ArchiveHandler(RecordingArchive(
+        handler.root_folder, live_name=lambda: handler.project_name,
+    )))
     await node.start()
 
     channel = node.channel
