@@ -53,6 +53,14 @@ class LogSeries(BaseModel):
     n_rows: int = 0
     #: 1 = every row; k = every k-th row.
     stride: int = 1
+    #: The log files the rows came from (chamber log_window only), and per row an index
+    #: into it. PASCAL writes one file at a time, so files should never overlap -- but a
+    #: clock change or a file copied in can make them, and rows merged by time then
+    #: alternate between two sessions. `file_index` is how a chart keeps them apart.
+    files: list[str] = []
+    file_index: list[int] = []
+    #: Rows from different files interleave somewhere in this window.
+    overlap: bool = False
 
 
 class ListLogFiles(BaseModel):

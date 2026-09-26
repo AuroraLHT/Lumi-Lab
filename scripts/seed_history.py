@@ -51,6 +51,7 @@ import numpy as np
 from lumi.config import settings
 from lumi.experiment.db import GrowthDB
 from lumi.pascal.chamber_log import process_row
+from lumi.pascal.log_archive import LogArchive
 from lumi.pascal.sim import LOG_COLUMNS, ChamberModel, ChamberSimConfig, render_row
 from lumi.storage.record import Recorder, RecorderConfig
 
@@ -424,6 +425,11 @@ class Seeder:
         self.quality: dict[int, list[tuple[Growth, int, int, int, dt.datetime]]] = {}
         # Per session
         self.chamber: Chamber | None = None
+        #: (start, end) epoch of every chamber log already in the folder. PASCAL writes
+        #: one file at a time, so a seeded session must not overlap a real one.
+        archive = LogArchive(args.log_dir)
+        self.busy = [(i["start"], i["end"]) for i in map(archive.info, archive.names())
+                     if i.get("start") is not None]
         self.session_id: int | None = None
         self.last_step: int | None = None
         self.actor = "operator"
@@ -465,8 +471,8 @@ class Seeder:
 
     async def run_session(self, spec: SessionSpec) -> None:
         today = dt.datetime.now()
-        start = (today - dt.timedelta(days=spec.days_ago)).replace(
-            hour=spec.start[0], minute=spec.start[1], second=self.rng.randrange(60), microsecond=0)
+        start = self._free_start((today - dt.timedelta(days=spec.days_ago)).replace(
+            hour=spec.start[0], minute=spec.start[1], second=self.rng.randrange(60), microsecond=0))
         log_name = f"chamber_log_{start:%Y%m%d_%H%M%S}.csv"
         staging = self.args.staging / log_name
         self.chamber = Chamber(start, staging, self.rheed, self.args.frame_interval, self.rng)
@@ -540,7 +546,31 @@ class Seeder:
         await self.db.conn.commit()
         final = self.args.log_dir / log_name
         os.replace(staging, final)  # a rename: no modify event for the live log reader
+        self.busy.append((start.timestamp(), ch.now.timestamp()))
         self.manifest["files"].append(str(final))
+
+    #: Room kept free for a session. They run 1-1.5 h; the rest is margin.
+    SESSION_ROOM = dt.timedelta(hours=2, minutes=30)
+
+    def _free_start(self, planned: dt.datetime) -> dt.datetime:
+        """The planned start, or the nearest half-hour step before or after it that has
+        a session's worth of room clear of every existing log (a real one, or a session
+        seeded earlier) and ends before now."""
+        margin = dt.timedelta(minutes=10)
+        now = dt.datetime.now()
+        for step in range(0, 2 * 48 + 1):  # 0, +30min, -30min, +1h, ... up to a day each way
+            start = planned + dt.timedelta(minutes=30) * ((step + 1) // 2) * (1 if step % 2 else -1)
+            end = start + self.SESSION_ROOM
+            if end > now:
+                continue
+            lo, hi = (start - margin).timestamp(), (end + margin).timestamp()
+            if all(hi <= s or lo >= e for s, e in self.busy):
+                if start != planned:
+                    print(f"  moved {planned:%Y-%m-%d %H:%M} -> {start:%Y-%m-%d %H:%M}: "
+                          "an existing chamber log covers the planned time")
+                return start
+        raise RuntimeError(f"no free {self.SESSION_ROOM} within a day of "
+                           f"{planned:%Y-%m-%d %H:%M}: existing chamber logs cover it")
 
     async def _register_substrate(self, sub: SubstrateSpec) -> None:
         ch = self.chamber

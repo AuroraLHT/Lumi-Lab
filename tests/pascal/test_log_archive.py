@@ -73,6 +73,9 @@ async def test_a_window_spans_files(handler):
     assert out.time == sorted(out.time)
     assert out.columns["HT Temp set"][0] == 200 + 540.0
     assert out.columns["Shut Stat"][0] == "0x0000"  # status words stay text
+    assert out.files == ["chamber_log_20260901_100000.csv", "chamber_log_20260901_101500.csv"]
+    assert out.file_index == [0] * 60 + [1] * 61
+    assert out.overlap is False
 
 
 @pytest.mark.asyncio
@@ -147,3 +150,19 @@ def test_names_outside_the_folder_are_refused(folder, name):
 async def test_without_a_folder_the_ops_say_so():
     with pytest.raises(RuntimeError, match="no log folder"):
         await ChamberLogHandler(None, None).list_log_files(ListLogFiles())
+
+
+def test_overlapping_files_are_attributed_not_silently_merged(tmp_path):
+    # Two sessions covering the same six minutes -- a clock change, or a log copied in
+    # from elsewhere. Merged by time the rows alternate between them; each row says
+    # which file it came from, and the reply says the window overlaps.
+    write_log(tmp_path, "chamber_log_20260924_110046.csv", dt.datetime(2026, 9, 24, 11, 0, 46), 1200)
+    write_log(tmp_path, "chamber_log_20260924_111433.csv", dt.datetime(2026, 9, 24, 11, 14, 33), 600)
+    out = LogArchive(tmp_path).window(None, epoch(2026, 9, 24, 11, 10), epoch(2026, 9, 24, 11, 30),
+                                      ["HT Temp set"], 10_000)
+    assert out["overlap"] is True
+    by_file = {i: [v for v, f in zip(out["columns"]["HT Temp set"], out["file_index"]) if f == i]
+               for i in range(len(out["files"]))}
+    # Within one file the rows still run in order.
+    assert all(values == sorted(values) for values in by_file.values())
+    assert len(out["file_index"]) == len(out["time"]) == out["n_rows"]

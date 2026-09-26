@@ -208,7 +208,7 @@ class LogArchive:
             names = self.names()[:1]  # nothing asked for: the newest file
         else:
             names = []
-            for name in self.names():
+            for name in reversed(self.names()):  # oldest first, so `files` reads in order
                 info = self.info(name)
                 start, end = info.get("start"), info.get("end")
                 if start is None:
@@ -217,7 +217,9 @@ class LogArchive:
                     names.append(name)
 
         wanted = list(columns) if columns else list(DEFAULT_LOG_COLUMNS)
+        files: list[str] = []
         times: list[np.ndarray] = []
+        sources: list[np.ndarray] = []
         values: dict[str, list] = {c: [] for c in wanted}
         for name in names:
             parsed = self._load(name)
@@ -230,6 +232,8 @@ class LogArchive:
             idx = np.nonzero(keep)[0]
             if not idx.size:
                 continue
+            sources.append(np.full(idx.size, len(files)))
+            files.append(name)
             times.append(t[idx])
             where = {c: i for i, c in enumerate(parsed["header"])}
             rows = parsed["rows"]
@@ -240,7 +244,11 @@ class LogArchive:
                 )
 
         all_times = np.concatenate(times) if times else np.empty(0)
+        all_sources = np.concatenate(sources) if sources else np.empty(0, dtype=int)
         order = np.argsort(all_times, kind="stable")
+        # Sorted by time, rows of one file should form one unbroken run. More runs than
+        # files means two files cover the same minutes.
+        runs = int(np.count_nonzero(np.diff(all_sources[order]))) + 1 if order.size else 0
         k = stride_for(len(order), max_points)
         picked = order[::k]
         return {
@@ -248,4 +256,7 @@ class LogArchive:
             "columns": {c: [values[c][j] for j in picked] for c in wanted},
             "n_rows": int(len(order)),
             "stride": k,
+            "files": files,
+            "file_index": [int(i) for i in all_sources[picked]],
+            "overlap": runs > len(files),
         }

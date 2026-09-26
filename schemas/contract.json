@@ -299,10 +299,31 @@
                   "title": "Columns",
                   "type": "object"
                 },
+                "file_index": {
+                  "default": [],
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "File Index",
+                  "type": "array"
+                },
+                "files": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Files",
+                  "type": "array"
+                },
                 "n_rows": {
                   "default": 0,
                   "title": "N Rows",
                   "type": "integer"
+                },
+                "overlap": {
+                  "default": false,
+                  "title": "Overlap",
+                  "type": "boolean"
                 },
                 "stride": {
                   "default": 1,
@@ -14811,6 +14832,22 @@
                   "title": "Columns",
                   "type": "object"
                 },
+                "file_index": {
+                  "default": [],
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "File Index",
+                  "type": "array"
+                },
+                "files": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Files",
+                  "type": "array"
+                },
                 "n_rows": {
                   "default": 0,
                   "title": "N Rows",
@@ -14819,6 +14856,11 @@
                 "name": {
                   "title": "Name",
                   "type": "string"
+                },
+                "overlap": {
+                  "default": false,
+                  "title": "Overlap",
+                  "type": "boolean"
                 },
                 "stride": {
                   "default": 1,

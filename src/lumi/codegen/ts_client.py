@@ -170,9 +170,11 @@ def _ts_type(schema: dict[str, Any], defs: dict[str, Any]) -> str:
     if t == "boolean":
         return "boolean"
     if t == "null":
-        return "null";
+        return "null"
     if t == "array":
-        return f"{_ts_type(schema.get('items', {}), defs)}[]"
+        item = _ts_type(schema.get("items", {}), defs)
+        # `A | B[]` is A-or-an-array-of-B; a list of the union needs the parentheses.
+        return f"({item})[]" if " | " in item else f"{item}[]"
     if t == "object":
         extra = schema.get("additionalProperties")
         if isinstance(extra, dict):
