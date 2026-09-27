@@ -121,6 +121,13 @@ export class LumiTransport {
   private rpc<T>(header: Record<string, unknown>, payload?: Uint8Array, opts?: CallOptions): Promise<T> {
     const id = `c${this.seq++}`;
     const timeoutMs = opts?.timeoutMs ?? this.timeoutMs;
+    // send() on a socket that is not open is a silent no-op, so the call would wait out
+    // its whole timeout for a reply that cannot come. Fail it now instead.
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error(
+        `${header.target}.${header.op}: bridge websocket is not open (readyState ${this.ws?.readyState ?? "none"})`,
+      ));
+    }
     return new Promise<T>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.pending.delete(id);
