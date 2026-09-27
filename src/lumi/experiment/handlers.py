@@ -32,6 +32,7 @@ import json
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from lumi.base.mq.context import current_actor, current_source
@@ -75,12 +76,16 @@ from lumi.contracts.payloads.experiment import (
     RegisterProject,
     RegisterSubstrate,
     AddMeasurement,
+    AttachMeasurementFile,
     LayerInfo,
     ListMeasurements,
     ListSamples,
     ListSteps,
+    MeasurementFileId,
+    MeasurementFileInfo,
     MeasurementId,
     MeasurementInfo,
+    MeasurementSeries,
     MeasurementList,
     CheckLogging,
     LoggingAlive,
@@ -103,6 +108,7 @@ from lumi.contracts.payloads.experiment import (
     ResumeSubstrate,
     RetireExperiment,
     RetireMeasurement,
+    RetireMeasurementFile,
     RetireProject,
     RetireRecord,
     RetireSubstrate,
@@ -143,6 +149,7 @@ from lumi.contracts.payloads.experiment import (
     ValveStatus,
 )
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
+from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration, PixelExperimentManager, Substrate
 
@@ -168,6 +175,28 @@ def _loads(raw) -> dict:
     return value if isinstance(value, dict) else {"value": value}
 
 
+def _dump_series(series: list[MeasurementSeries]) -> str | None:
+    return json.dumps([s.model_dump() for s in series]) if series else None
+
+
+def _load_series(raw) -> list[MeasurementSeries]:
+    """Stored series back to models, skipping any that no longer validate rather than
+    failing the whole measurement over one."""
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    out = []
+    for item in items if isinstance(items, list) else []:
+        try:
+            out.append(MeasurementSeries.model_validate(item))
+        except ValueError:
+            log.warning("skipping a stored measurement series that does not validate")
+    return out
+
+
 def _jsonable(value: Any) -> dict:
     if value is None:
         return {}
@@ -187,9 +216,15 @@ class ExperimentHandler:
         bounds: ExperimentBounds,
         target_mapper: dict[str, str],
         registry_client=None,
+        file_store: MeasurementFileStore | None = None,
     ) -> None:
         self.sources = sources
         self.growth_db = growth_db
+        #: Measurement attachments. Beside growth.db unless the node says otherwise,
+        #: since the two are one record and get backed up together.
+        self.file_store = file_store or MeasurementFileStore(
+            Path(growth_db.db_path).parent / "measurement_files", max_bytes=15 * 1024 * 1024,
+        )
         self.pld_config = pld_config
         self.bounds = bounds
         self.target_mapper = target_mapper
@@ -937,20 +972,31 @@ class ExperimentHandler:
         measurement_id = await self.growth_db.add_measurement(
             req.sample_id, req.kind, value=req.value,
             detail=json.dumps(req.detail) if req.detail else None,
+            series=_dump_series(req.series),
             source=req.source, step_id=req.step_id, record_id=req.record_id,
         )
         return MeasurementId(measurement_id=measurement_id)
 
+    async def _measurement_infos(self, rows, *, include_series: bool = True) -> list[MeasurementInfo]:
+        files = await self.growth_db.get_measurement_files([r["measurement_id"] for r in rows])
+        out = []
+        for row in rows:
+            at = _column(row, "created_at")
+            series = _load_series(_column(row, "series"))
+            out.append(MeasurementInfo(
+                measurement_id=row["measurement_id"], sample_id=row["sample_id"],
+                kind=row["kind"], value=_column(row, "value"),
+                detail=_loads(_column(row, "detail")), source=_column(row, "source"),
+                series=series if include_series else [], n_series=len(series),
+                files=[self._file_info(f) for f in files[row["measurement_id"]]],
+                created_at=to_epoch(at), created_at_iso=to_iso(at),
+                state=_column(row, "state") or "active",
+                conditions=await self.growth_db.growth_conditions(row["sample_id"]),
+            ))
+        return out
+
     async def _measurement_info(self, row) -> MeasurementInfo:
-        at = _column(row, "created_at")
-        return MeasurementInfo(
-            measurement_id=row["measurement_id"], sample_id=row["sample_id"],
-            kind=row["kind"], value=_column(row, "value"),
-            detail=_loads(_column(row, "detail")), source=_column(row, "source"),
-            created_at=to_epoch(at), created_at_iso=to_iso(at),
-            state=_column(row, "state") or "active",
-            conditions=await self.growth_db.growth_conditions(row["sample_id"]),
-        )
+        return (await self._measurement_infos([row]))[0]
 
     async def list_measurements(self, req: ListMeasurements) -> MeasurementList:
         # substrate_id is not a column on `measurement` -- it resolves through the
@@ -965,14 +1011,14 @@ class ExperimentHandler:
             total = len(rows)  # the whole match, before this page is cut out of it
             page = rows[req.offset:req.offset + req.limit]
             return MeasurementList(
-                measurements=[await self._measurement_info(r) for r in page],
+                measurements=await self._measurement_infos(page, include_series=req.include_series),
                 page=PageInfo(total=total, limit=req.limit, offset=req.offset,
                               has_more=req.offset + req.limit < total),
             )
         filters = {"sample_id": req.sample_id, "kind": req.kind}
         rows = await self.growth_db.list_rows("measurement", **self._query(req, **filters))
         return MeasurementList(
-            measurements=[await self._measurement_info(r) for r in rows],
+            measurements=await self._measurement_infos(rows, include_series=req.include_series),
             page=await self._page("measurement", req, **filters),
         )
 
@@ -986,6 +1032,8 @@ class ExperimentHandler:
         fields = self._set_fields(req, "kind", "value", "source")
         if req.detail is not None:
             fields["detail"] = json.dumps(req.detail)
+        if req.series is not None:
+            fields["series"] = _dump_series(req.series)
         await self.growth_db.update_row("measurement", req.measurement_id, **fields)
         return await self._measurement_info(
             await self._fetch("measurement", req.measurement_id)
@@ -995,6 +1043,52 @@ class ExperimentHandler:
         return await self._measurement_info(
             await self._retire("measurement", req.measurement_id, req.retire)
         )
+
+    # --- measurement files ---------------------------------------------------------
+
+    @staticmethod
+    def _file_info(row) -> MeasurementFileInfo:
+        at = _column(row, "created_at")
+        return MeasurementFileInfo(
+            file_id=row["file_id"], measurement_id=row["measurement_id"],
+            file_name=row["file_name"], media_type=_column(row, "media_type") or "application/octet-stream",
+            size_bytes=row["size_bytes"], sha256=row["sha256"], role=_column(row, "role") or "raw",
+            description=_column(row, "description"), meta=_loads(_column(row, "meta")),
+            created_at=to_epoch(at), created_at_iso=to_iso(at),
+            state=_column(row, "state") or "active",
+        )
+
+    async def _file_row(self, file_id: int):
+        row = await self.growth_db.get_measurement_file(file_id)
+        if row is None:
+            raise ValueError(f"no measurement file with id {file_id}")
+        return row
+
+    async def attach_measurement_file(self, req: AttachMeasurementFile, data: bytes) -> MeasurementFileInfo:
+        await self._fetch("measurement", req.measurement_id)
+        stored = await asyncio.to_thread(self.file_store.save, bytes(data), req.file_name)
+        file_id = await self.growth_db.add_measurement_file(
+            req.measurement_id, file_uuid=stored.file_uuid, file_name=req.file_name,
+            media_type=req.media_type or guess_media_type(req.file_name),
+            size_bytes=stored.size_bytes, sha256=stored.sha256, stored_path=stored.stored_path,
+            role=req.role, description=req.description,
+            meta=json.dumps(req.meta) if req.meta else None,
+        )
+        log.info("attached %s (%d bytes) to measurement %s as file %s",
+                 req.file_name, stored.size_bytes, req.measurement_id, file_id)
+        return self._file_info(await self._file_row(file_id))
+
+    async def measurement_file(self, req: MeasurementFileId) -> tuple[MeasurementFileInfo, bytes]:
+        row = await self._file_row(req.file_id)
+        data = await asyncio.to_thread(self.file_store.read, row["stored_path"])
+        return self._file_info(row), data
+
+    async def retire_measurement_file(self, req: RetireMeasurementFile) -> MeasurementFileInfo:
+        await self._file_row(req.file_id)
+        # The bytes stay on disk: retiring hides a mistaken upload, it does not destroy
+        # what might turn out to be the only copy of a measurement.
+        await self.growth_db.set_measurement_file_state(req.file_id, "retired" if req.retire else "active")
+        return self._file_info(await self._file_row(req.file_id))
 
     # --- gated: laser power --------------------------------------------------------
 

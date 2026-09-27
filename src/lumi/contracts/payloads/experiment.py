@@ -27,7 +27,7 @@ with one fixed server-side sequence.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .chamber import LogEntry
 from .common import ServerStateBase
@@ -888,18 +888,89 @@ class StepList(BaseModel):
     page: PageInfo = PageInfo()
 
 
+# A measurement is more than a number. `value` is the one scalar an optimiser ranks on,
+# `detail` holds named scalars (FWHM, thickness, Tc), and the rest is either
+#
+# - `series`: curves the UI plots directly -- an XRD scan, a rocking curve, R(T), a P-E
+#   or PFM loop. One x axis, one or more y columns, each named and with a unit; or
+# - attached files (attach_measurement_file): AFM/PFM images and maps, micrographs, and
+#   the instrument's own raw file. A file is kept byte for byte whether or not anything
+#   here can parse it -- the original is the record, anything extracted from it is not.
+
+#: Points across every series of one measurement. A diffractometer scan is a few
+#: thousand; past this it belongs in an attached file.
+MAX_SERIES_POINTS = 200_000
+
+
+class SeriesAxis(BaseModel):
+    name: str
+    unit: str | None = None
+    values: list[float]
+
+
+class MeasurementSeries(BaseModel):
+    """One curve family: `y` columns sampled at the `x` values."""
+
+    name: str
+    x: SeriesAxis
+    y: list[SeriesAxis] = Field(min_length=1)
+    #: Anything about how the curve was taken: scan speed, field, frequency.
+    meta: dict = {}
+
+    @model_validator(mode="after")
+    def _same_length(self):
+        n = len(self.x.values)
+        for column in self.y:
+            if len(column.values) != n:
+                raise ValueError(f"series {self.name!r}: y column {column.name!r} has "
+                                 f"{len(column.values)} values, x has {n}")
+        return self
+
+
+def _check_series_size(series: list[MeasurementSeries] | None) -> None:
+    total = sum(len(s.x.values) * (1 + len(s.y)) for s in series or [])
+    if total > MAX_SERIES_POINTS:
+        raise ValueError(f"series hold {total} values; the limit is {MAX_SERIES_POINTS} -- "
+                         "attach the data as a file instead")
+
+
 class AddMeasurement(BaseModel):
     sample_id: int
     kind: str
     value: float | None = None
     detail: dict = {}
+    series: list[MeasurementSeries] = []
     source: str | None = None
     step_id: int | None = None
     record_id: int | None = None
 
+    @model_validator(mode="after")
+    def _series_size(self):
+        _check_series_size(self.series)
+        return self
+
 
 class MeasurementId(BaseModel):
     measurement_id: int
+
+
+class MeasurementFileInfo(BaseModel):
+    file_id: int
+    measurement_id: int
+    #: The name it was uploaded with, as the instrument wrote it.
+    file_name: str
+    media_type: str
+    size_bytes: int
+    sha256: str
+    #: What the file is: "raw" (the instrument's own file), "image", "map", "data",
+    #: "other". Free text beyond those; a UI shows image/* inline and offers the rest
+    #: as a download.
+    role: str = "raw"
+    description: str | None = None
+    meta: dict = {}
+    created_at: float | None = None
+    created_at_iso: str | None = None
+    state: str = "active"
 
 
 class MeasurementInfo(BaseModel):
@@ -908,6 +979,12 @@ class MeasurementInfo(BaseModel):
     kind: str
     value: float | None = None
     detail: dict = {}
+    #: Full curves from get_measurement; from list_measurements only with
+    #: include_series, since a listing of many scans would otherwise be megabytes.
+    series: list[MeasurementSeries] = []
+    #: How many series the measurement has, whether or not they were included.
+    n_series: int = 0
+    files: list[MeasurementFileInfo] = []
     source: str | None = None
     #: Epoch seconds. This was a raw SQLite timestamp string before every payload
     #: settled on epoch-plus-ISO; `created_at_iso` is where the string went.
@@ -926,6 +1003,7 @@ class ListMeasurements(ListQuery):
     #: Resolved through the sample tree, so this is "every measurement on this
     #: substrate" rather than a plain column match.
     substrate_id: int | None = None
+    include_series: bool = False
 
 
 class MeasurementList(BaseModel):
@@ -938,7 +1016,35 @@ class UpdateMeasurement(BaseModel):
     kind: str | None = None
     value: float | None = None
     detail: dict | None = None
+    #: Replaces every series; None leaves them alone.
+    series: list[MeasurementSeries] | None = None
     source: str | None = None
+
+    @model_validator(mode="after")
+    def _series_size(self):
+        _check_series_size(self.series)
+        return self
+
+
+class AttachMeasurementFile(BaseModel):
+    """Metadata for a file upload. The file itself is the request body (Codec.RAW)."""
+
+    measurement_id: int
+    file_name: str = Field(min_length=1, max_length=255)
+    #: Guessed from the file name when left out; application/octet-stream if unknown.
+    media_type: str | None = None
+    role: str = "raw"
+    description: str | None = None
+    meta: dict = {}
+
+
+class MeasurementFileId(BaseModel):
+    file_id: int
+
+
+class RetireMeasurementFile(BaseModel):
+    file_id: int
+    retire: bool = True
 
 
 class RetireMeasurement(BaseModel):
@@ -951,6 +1057,12 @@ __all__ = [
     # LogEntry the chamber contract defines rather than a near-copy of it.
     "LogEntry",
     "AddMeasurement",
+    "AttachMeasurementFile",
+    "MeasurementFileId",
+    "MeasurementFileInfo",
+    "MeasurementSeries",
+    "RetireMeasurementFile",
+    "SeriesAxis",
     "Anneal",
     "AutoAlignMaskCenter",
     "CenterMaskPos",

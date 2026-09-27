@@ -47,6 +47,10 @@ function unpackFrame(buf: ArrayBuffer): { header: any; payload: Uint8Array } {
 
 export interface Response<T> { meta: T; payload: Uint8Array }
 
+/** Per-call options. `timeoutMs` overrides the transport's default -- an upload of a
+ *  15 MB file needs longer than a state read. */
+export interface CallOptions { timeoutMs?: number }
+
 type Pending = { resolve: (v: any) => void; reject: (e: Error) => void; timer: number };
 type StreamHandler = (meta: any, payload: Uint8Array) => void;
 
@@ -70,7 +74,21 @@ export class LumiTransport {
       this.ws.onopen = () => resolve();
       this.ws.onerror = () => reject(new Error(`bridge websocket failed: ${this.url}`));
       this.ws.onmessage = (ev) => this.onMessage(ev.data as ArrayBuffer);
+      // No reply can arrive on a closed socket, so fail every waiting call now rather
+      // than letting each one sit out its timeout and report "timed out".
+      this.ws.onclose = (ev) => this.rejectAll(
+        new Error(`bridge websocket closed (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ""})`),
+      );
     });
+  }
+
+  private rejectAll(err: Error): void {
+    const pending = [...this.pending.values()];
+    this.pending.clear();
+    for (const p of pending) {
+      clearTimeout(p.timer);
+      p.reject(err);
+    }
   }
 
   private onMessage(buf: ArrayBuffer): void {
@@ -100,21 +118,34 @@ export class LumiTransport {
     this.ws.send(packFrame(header, payload));
   }
 
-  private rpc<T>(header: Record<string, unknown>, payload?: Uint8Array): Promise<T> {
+  private rpc<T>(header: Record<string, unknown>, payload?: Uint8Array, opts?: CallOptions): Promise<T> {
     const id = `c${this.seq++}`;
+    const timeoutMs = opts?.timeoutMs ?? this.timeoutMs;
+    // send() on a socket that is not open is a silent no-op, so the call would wait out
+    // its whole timeout for a reply that cannot come. Fail it now instead.
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return Promise.reject(new Error(
+        `${header.target}.${header.op}: bridge websocket is not open (readyState ${this.ws?.readyState ?? "none"})`,
+      ));
+    }
     return new Promise<T>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`${header.target}.${header.op} timed out after ${this.timeoutMs}ms`));
-      }, this.timeoutMs);
+        reject(new Error(`${header.target}.${header.op} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       this.send({ ...header, kind: "request", correlation_id: id }, payload);
     });
   }
 
   /** A request/response op. */
-  call<T>(target: string, op: string, body: unknown): Promise<T> {
-    return this.rpc<T>({ target, op }, new TextEncoder().encode(JSON.stringify(body ?? {})));
+  call<T>(target: string, op: string, body: unknown, opts?: CallOptions): Promise<T> {
+    return this.rpc<T>({ target, op }, new TextEncoder().encode(JSON.stringify(body ?? {})), opts);
+  }
+
+  /** An upload: `body` is the metadata model, `payload` the bytes, sent unencoded. */
+  callWithPayload<T>(target: string, op: string, body: unknown, payload: Uint8Array, opts?: CallOptions): Promise<T> {
+    return this.rpc<T>({ target, op, body: body ?? {} }, payload, opts);
   }
 
   /** A control verb (start/stop/state). */
@@ -246,10 +277,16 @@ def _capability_client(contract: EquipmentContract, cap: Capability) -> str:
         doc = op.doc or f"{target}.{op.name}"
         if op.result is not None:
             doc += f" On success the task_result carries a {op.result.__name__}."
+        if op.request_codec is not Codec.JSON:
+            # An upload: the bytes go as the frame payload, not through JSON.
+            call = f'this.t.callWithPayload<{ret}>({cls}.target, "{op.name}", req, payload, opts)'
+            arg = f"req: {op.request.__name__}, payload: Uint8Array, opts?: CallOptions"
+        else:
+            call = f'this.t.call<{ret}>({cls}.target, "{op.name}", {body})'
         lines += [
             f"  /** {doc} */",
             f"  async {op.name}({arg}): Promise<{ret}> {{",
-            f'    return this.t.call<{ret}>({cls}.target, "{op.name}", {body});',
+            f"    return {call};",
             "  }",
             "",
         ]

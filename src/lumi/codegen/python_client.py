@@ -41,7 +41,12 @@ def _op_method(cap: Capability, op) -> str:
     takes_args = bool(op.request.model_fields)
     ret = return_type(op.response, op.response_codec)
 
-    if takes_args:
+    if op.request_codec is not Codec.JSON:
+        # An upload: the model is the metadata, `payload` the bytes.
+        binary_in = payload_type(op.request_codec)
+        sig = f"    async def {op.name}(self, req: {op.request.__name__}, payload: {binary_in}) -> {ret}:"
+        call = f'        return await self.call("{op.name}", req, payload)  # type: ignore[return-value]'
+    elif takes_args:
         sig = f"    async def {op.name}(self, req: {op.request.__name__}) -> {ret}:"
         call = f'        return await self.call("{op.name}", req)  # type: ignore[return-value]'
     else:

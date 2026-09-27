@@ -7997,6 +7997,164 @@
             },
             "request_codec": "json",
             "response": {
+              "$defs": {
+                "MeasurementFileInfo": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Description"
+                    },
+                    "file_id": {
+                      "title": "File Id",
+                      "type": "integer"
+                    },
+                    "file_name": {
+                      "title": "File Name",
+                      "type": "string"
+                    },
+                    "measurement_id": {
+                      "title": "Measurement Id",
+                      "type": "integer"
+                    },
+                    "media_type": {
+                      "title": "Media Type",
+                      "type": "string"
+                    },
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "role": {
+                      "default": "raw",
+                      "title": "Role",
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "title": "Sha256",
+                      "type": "string"
+                    },
+                    "size_bytes": {
+                      "title": "Size Bytes",
+                      "type": "integer"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "measurement_id",
+                    "file_name",
+                    "media_type",
+                    "size_bytes",
+                    "sha256"
+                  ],
+                  "title": "MeasurementFileInfo",
+                  "type": "object"
+                },
+                "MeasurementSeries": {
+                  "description": "One curve family: `y` columns sampled at the `x` values.",
+                  "properties": {
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "x": {
+                      "$ref": "#/$defs/SeriesAxis"
+                    },
+                    "y": {
+                      "items": {
+                        "$ref": "#/$defs/SeriesAxis"
+                      },
+                      "minItems": 1,
+                      "title": "Y",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "x",
+                    "y"
+                  ],
+                  "title": "MeasurementSeries",
+                  "type": "object"
+                },
+                "SeriesAxis": {
+                  "properties": {
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "unit": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Unit"
+                    },
+                    "values": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Values",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "values"
+                  ],
+                  "title": "SeriesAxis",
+                  "type": "object"
+                }
+              },
               "properties": {
                 "conditions": {
                   "additionalProperties": true,
@@ -8034,6 +8192,14 @@
                   "title": "Detail",
                   "type": "object"
                 },
+                "files": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MeasurementFileInfo"
+                  },
+                  "title": "Files",
+                  "type": "array"
+                },
                 "kind": {
                   "title": "Kind",
                   "type": "string"
@@ -8042,9 +8208,22 @@
                   "title": "Measurement Id",
                   "type": "integer"
                 },
+                "n_series": {
+                  "default": 0,
+                  "title": "N Series",
+                  "type": "integer"
+                },
                 "sample_id": {
                   "title": "Sample Id",
                   "type": "integer"
+                },
+                "series": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MeasurementSeries"
+                  },
+                  "title": "Series",
+                  "type": "array"
                 },
                 "source": {
                   "anyOf": [
@@ -8089,6 +8268,74 @@
           {
             "name": "update_measurement",
             "request": {
+              "$defs": {
+                "MeasurementSeries": {
+                  "description": "One curve family: `y` columns sampled at the `x` values.",
+                  "properties": {
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "x": {
+                      "$ref": "#/$defs/SeriesAxis"
+                    },
+                    "y": {
+                      "items": {
+                        "$ref": "#/$defs/SeriesAxis"
+                      },
+                      "minItems": 1,
+                      "title": "Y",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "x",
+                    "y"
+                  ],
+                  "title": "MeasurementSeries",
+                  "type": "object"
+                },
+                "SeriesAxis": {
+                  "properties": {
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "unit": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Unit"
+                    },
+                    "values": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Values",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "values"
+                  ],
+                  "title": "SeriesAxis",
+                  "type": "object"
+                }
+              },
               "properties": {
                 "detail": {
                   "anyOf": [
@@ -8118,6 +8365,21 @@
                 "measurement_id": {
                   "title": "Measurement Id",
                   "type": "integer"
+                },
+                "series": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "$ref": "#/$defs/MeasurementSeries"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Series"
                 },
                 "source": {
                   "anyOf": [
@@ -8152,6 +8414,164 @@
             },
             "request_codec": "json",
             "response": {
+              "$defs": {
+                "MeasurementFileInfo": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Description"
+                    },
+                    "file_id": {
+                      "title": "File Id",
+                      "type": "integer"
+                    },
+                    "file_name": {
+                      "title": "File Name",
+                      "type": "string"
+                    },
+                    "measurement_id": {
+                      "title": "Measurement Id",
+                      "type": "integer"
+                    },
+                    "media_type": {
+                      "title": "Media Type",
+                      "type": "string"
+                    },
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "role": {
+                      "default": "raw",
+                      "title": "Role",
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "title": "Sha256",
+                      "type": "string"
+                    },
+                    "size_bytes": {
+                      "title": "Size Bytes",
+                      "type": "integer"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "measurement_id",
+                    "file_name",
+                    "media_type",
+                    "size_bytes",
+                    "sha256"
+                  ],
+                  "title": "MeasurementFileInfo",
+                  "type": "object"
+                },
+                "MeasurementSeries": {
+                  "description": "One curve family: `y` columns sampled at the `x` values.",
+                  "properties": {
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "x": {
+                      "$ref": "#/$defs/SeriesAxis"
+                    },
+                    "y": {
+                      "items": {
+                        "$ref": "#/$defs/SeriesAxis"
+                      },
+                      "minItems": 1,
+                      "title": "Y",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "x",
+                    "y"
+                  ],
+                  "title": "MeasurementSeries",
+                  "type": "object"
+                },
+                "SeriesAxis": {
+                  "properties": {
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "unit": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Unit"
+                    },
+                    "values": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Values",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "values"
+                  ],
+                  "title": "SeriesAxis",
+                  "type": "object"
+                }
+              },
               "properties": {
                 "conditions": {
                   "additionalProperties": true,
@@ -8189,6 +8609,14 @@
                   "title": "Detail",
                   "type": "object"
                 },
+                "files": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MeasurementFileInfo"
+                  },
+                  "title": "Files",
+                  "type": "array"
+                },
                 "kind": {
                   "title": "Kind",
                   "type": "string"
@@ -8197,9 +8625,22 @@
                   "title": "Measurement Id",
                   "type": "integer"
                 },
+                "n_series": {
+                  "default": 0,
+                  "title": "N Series",
+                  "type": "integer"
+                },
                 "sample_id": {
                   "title": "Sample Id",
                   "type": "integer"
+                },
+                "series": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MeasurementSeries"
+                  },
+                  "title": "Series",
+                  "type": "array"
                 },
                 "source": {
                   "anyOf": [
@@ -8263,6 +8704,164 @@
             },
             "request_codec": "json",
             "response": {
+              "$defs": {
+                "MeasurementFileInfo": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Description"
+                    },
+                    "file_id": {
+                      "title": "File Id",
+                      "type": "integer"
+                    },
+                    "file_name": {
+                      "title": "File Name",
+                      "type": "string"
+                    },
+                    "measurement_id": {
+                      "title": "Measurement Id",
+                      "type": "integer"
+                    },
+                    "media_type": {
+                      "title": "Media Type",
+                      "type": "string"
+                    },
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "role": {
+                      "default": "raw",
+                      "title": "Role",
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "title": "Sha256",
+                      "type": "string"
+                    },
+                    "size_bytes": {
+                      "title": "Size Bytes",
+                      "type": "integer"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "measurement_id",
+                    "file_name",
+                    "media_type",
+                    "size_bytes",
+                    "sha256"
+                  ],
+                  "title": "MeasurementFileInfo",
+                  "type": "object"
+                },
+                "MeasurementSeries": {
+                  "description": "One curve family: `y` columns sampled at the `x` values.",
+                  "properties": {
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "x": {
+                      "$ref": "#/$defs/SeriesAxis"
+                    },
+                    "y": {
+                      "items": {
+                        "$ref": "#/$defs/SeriesAxis"
+                      },
+                      "minItems": 1,
+                      "title": "Y",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "x",
+                    "y"
+                  ],
+                  "title": "MeasurementSeries",
+                  "type": "object"
+                },
+                "SeriesAxis": {
+                  "properties": {
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "unit": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Unit"
+                    },
+                    "values": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Values",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "values"
+                  ],
+                  "title": "SeriesAxis",
+                  "type": "object"
+                }
+              },
               "properties": {
                 "conditions": {
                   "additionalProperties": true,
@@ -8300,6 +8899,14 @@
                   "title": "Detail",
                   "type": "object"
                 },
+                "files": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MeasurementFileInfo"
+                  },
+                  "title": "Files",
+                  "type": "array"
+                },
                 "kind": {
                   "title": "Kind",
                   "type": "string"
@@ -8308,9 +8915,22 @@
                   "title": "Measurement Id",
                   "type": "integer"
                 },
+                "n_series": {
+                  "default": 0,
+                  "title": "N Series",
+                  "type": "integer"
+                },
                 "sample_id": {
                   "title": "Sample Id",
                   "type": "integer"
+                },
+                "series": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MeasurementSeries"
+                  },
+                  "title": "Series",
+                  "type": "array"
                 },
                 "source": {
                   "anyOf": [
@@ -8348,6 +8968,378 @@
                 "kind"
               ],
               "title": "MeasurementInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "attach_measurement_file",
+            "request": {
+              "description": "Metadata for a file upload. The file itself is the request body (Codec.RAW).",
+              "properties": {
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "file_name": {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "title": "File Name",
+                  "type": "string"
+                },
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "media_type": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Media Type"
+                },
+                "meta": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Meta",
+                  "type": "object"
+                },
+                "role": {
+                  "default": "raw",
+                  "title": "Role",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "measurement_id",
+                "file_name"
+              ],
+              "title": "AttachMeasurementFile",
+              "type": "object"
+            },
+            "request_codec": "raw",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "file_id": {
+                  "title": "File Id",
+                  "type": "integer"
+                },
+                "file_name": {
+                  "title": "File Name",
+                  "type": "string"
+                },
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "media_type": {
+                  "title": "Media Type",
+                  "type": "string"
+                },
+                "meta": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Meta",
+                  "type": "object"
+                },
+                "role": {
+                  "default": "raw",
+                  "title": "Role",
+                  "type": "string"
+                },
+                "sha256": {
+                  "title": "Sha256",
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "title": "Size Bytes",
+                  "type": "integer"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file_id",
+                "measurement_id",
+                "file_name",
+                "media_type",
+                "size_bytes",
+                "sha256"
+              ],
+              "title": "MeasurementFileInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "measurement_file",
+            "request": {
+              "properties": {
+                "file_id": {
+                  "title": "File Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "file_id"
+              ],
+              "title": "MeasurementFileId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "file_id": {
+                  "title": "File Id",
+                  "type": "integer"
+                },
+                "file_name": {
+                  "title": "File Name",
+                  "type": "string"
+                },
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "media_type": {
+                  "title": "Media Type",
+                  "type": "string"
+                },
+                "meta": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Meta",
+                  "type": "object"
+                },
+                "role": {
+                  "default": "raw",
+                  "title": "Role",
+                  "type": "string"
+                },
+                "sha256": {
+                  "title": "Sha256",
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "title": "Size Bytes",
+                  "type": "integer"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file_id",
+                "measurement_id",
+                "file_name",
+                "media_type",
+                "size_bytes",
+                "sha256"
+              ],
+              "title": "MeasurementFileInfo",
+              "type": "object"
+            },
+            "response_codec": "raw"
+          },
+          {
+            "name": "retire_measurement_file",
+            "request": {
+              "properties": {
+                "file_id": {
+                  "title": "File Id",
+                  "type": "integer"
+                },
+                "retire": {
+                  "default": true,
+                  "title": "Retire",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "file_id"
+              ],
+              "title": "RetireMeasurementFile",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "created_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At"
+                },
+                "created_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Created At Iso"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "file_id": {
+                  "title": "File Id",
+                  "type": "integer"
+                },
+                "file_name": {
+                  "title": "File Name",
+                  "type": "string"
+                },
+                "measurement_id": {
+                  "title": "Measurement Id",
+                  "type": "integer"
+                },
+                "media_type": {
+                  "title": "Media Type",
+                  "type": "string"
+                },
+                "meta": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Meta",
+                  "type": "object"
+                },
+                "role": {
+                  "default": "raw",
+                  "title": "Role",
+                  "type": "string"
+                },
+                "sha256": {
+                  "title": "Sha256",
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "title": "Size Bytes",
+                  "type": "integer"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "file_id",
+                "measurement_id",
+                "file_name",
+                "media_type",
+                "size_bytes",
+                "sha256"
+              ],
+              "title": "MeasurementFileInfo",
               "type": "object"
             },
             "response_codec": "json"
@@ -11192,6 +12184,74 @@
           {
             "name": "add_measurement",
             "request": {
+              "$defs": {
+                "MeasurementSeries": {
+                  "description": "One curve family: `y` columns sampled at the `x` values.",
+                  "properties": {
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "x": {
+                      "$ref": "#/$defs/SeriesAxis"
+                    },
+                    "y": {
+                      "items": {
+                        "$ref": "#/$defs/SeriesAxis"
+                      },
+                      "minItems": 1,
+                      "title": "Y",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "x",
+                    "y"
+                  ],
+                  "title": "MeasurementSeries",
+                  "type": "object"
+                },
+                "SeriesAxis": {
+                  "properties": {
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "unit": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Unit"
+                    },
+                    "values": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Values",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "values"
+                  ],
+                  "title": "SeriesAxis",
+                  "type": "object"
+                }
+              },
               "properties": {
                 "detail": {
                   "additionalProperties": true,
@@ -11218,6 +12278,14 @@
                 "sample_id": {
                   "title": "Sample Id",
                   "type": "integer"
+                },
+                "series": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/MeasurementSeries"
+                  },
+                  "title": "Series",
+                  "type": "array"
                 },
                 "source": {
                   "anyOf": [
@@ -11286,6 +12354,11 @@
                 "include_retired": {
                   "default": false,
                   "title": "Include Retired",
+                  "type": "boolean"
+                },
+                "include_series": {
+                  "default": false,
+                  "title": "Include Series",
                   "type": "boolean"
                 },
                 "kind": {
@@ -11382,6 +12455,96 @@
             "request_codec": "json",
             "response": {
               "$defs": {
+                "MeasurementFileInfo": {
+                  "properties": {
+                    "created_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At"
+                    },
+                    "created_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Created At Iso"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Description"
+                    },
+                    "file_id": {
+                      "title": "File Id",
+                      "type": "integer"
+                    },
+                    "file_name": {
+                      "title": "File Name",
+                      "type": "string"
+                    },
+                    "measurement_id": {
+                      "title": "Measurement Id",
+                      "type": "integer"
+                    },
+                    "media_type": {
+                      "title": "Media Type",
+                      "type": "string"
+                    },
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "role": {
+                      "default": "raw",
+                      "title": "Role",
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "title": "Sha256",
+                      "type": "string"
+                    },
+                    "size_bytes": {
+                      "title": "Size Bytes",
+                      "type": "integer"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "file_id",
+                    "measurement_id",
+                    "file_name",
+                    "media_type",
+                    "size_bytes",
+                    "sha256"
+                  ],
+                  "title": "MeasurementFileInfo",
+                  "type": "object"
+                },
                 "MeasurementInfo": {
                   "properties": {
                     "conditions": {
@@ -11420,6 +12583,14 @@
                       "title": "Detail",
                       "type": "object"
                     },
+                    "files": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/MeasurementFileInfo"
+                      },
+                      "title": "Files",
+                      "type": "array"
+                    },
                     "kind": {
                       "title": "Kind",
                       "type": "string"
@@ -11428,9 +12599,22 @@
                       "title": "Measurement Id",
                       "type": "integer"
                     },
+                    "n_series": {
+                      "default": 0,
+                      "title": "N Series",
+                      "type": "integer"
+                    },
                     "sample_id": {
                       "title": "Sample Id",
                       "type": "integer"
+                    },
+                    "series": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/MeasurementSeries"
+                      },
+                      "title": "Series",
+                      "type": "array"
                     },
                     "source": {
                       "anyOf": [
@@ -11470,6 +12654,39 @@
                   "title": "MeasurementInfo",
                   "type": "object"
                 },
+                "MeasurementSeries": {
+                  "description": "One curve family: `y` columns sampled at the `x` values.",
+                  "properties": {
+                    "meta": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Meta",
+                      "type": "object"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "x": {
+                      "$ref": "#/$defs/SeriesAxis"
+                    },
+                    "y": {
+                      "items": {
+                        "$ref": "#/$defs/SeriesAxis"
+                      },
+                      "minItems": 1,
+                      "title": "Y",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "x",
+                    "y"
+                  ],
+                  "title": "MeasurementSeries",
+                  "type": "object"
+                },
                 "PageInfo": {
                   "description": "What a pager needs that the returned rows do not say: how many matched in\ntotal, and which slice of them this is.",
                   "properties": {
@@ -11495,6 +12712,39 @@
                     }
                   },
                   "title": "PageInfo",
+                  "type": "object"
+                },
+                "SeriesAxis": {
+                  "properties": {
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "unit": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Unit"
+                    },
+                    "values": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Values",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "values"
+                  ],
+                  "title": "SeriesAxis",
                   "type": "object"
                 }
               },
@@ -11560,6 +12810,7 @@
           "requests": {
             "add_measurement": "experiment.driver.req.add_measurement",
             "anneal": "experiment.driver.req.anneal",
+            "attach_measurement_file": "experiment.driver.req.attach_measurement_file",
             "auto_align_center_mask": "experiment.driver.req.auto_align_center_mask",
             "begin_adjust_rheed_gain": "experiment.driver.req.begin_adjust_rheed_gain",
             "begin_align_center_mask": "experiment.driver.req.begin_align_center_mask",
@@ -11601,6 +12852,7 @@
             "list_records": "experiment.driver.req.list_records",
             "list_samples": "experiment.driver.req.list_samples",
             "list_substrates": "experiment.driver.req.list_substrates",
+            "measurement_file": "experiment.driver.req.measurement_file",
             "move_mask_to_position": "experiment.driver.req.move_mask_to_position",
             "move_rheed_to_position": "experiment.driver.req.move_rheed_to_position",
             "perform_deposition": "experiment.driver.req.perform_deposition",
@@ -11612,6 +12864,7 @@
             "resume_substrate": "experiment.driver.req.resume_substrate",
             "retire_experiment": "experiment.driver.req.retire_experiment",
             "retire_measurement": "experiment.driver.req.retire_measurement",
+            "retire_measurement_file": "experiment.driver.req.retire_measurement_file",
             "retire_project": "experiment.driver.req.retire_project",
             "retire_record": "experiment.driver.req.retire_record",
             "retire_substrate": "experiment.driver.req.retire_substrate",

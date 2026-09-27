@@ -34,7 +34,8 @@ from aio_pika import ExchangeType
 from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange
 
 from lumi.base.mq import CapabilityClient, RemoteError
-from lumi.base.mq.codec import encode as encode_body
+from lumi.config import settings
+from lumi.base.mq.codec import decode as decode_body, encode as encode_body
 from lumi.contracts import REGISTRY, Capability, Codec
 from lumi.contracts.policy import permits, permits_read
 
@@ -143,6 +144,10 @@ class BusProxy:
 # --- one browser connection -------------------------------------------------
 
 
+def max_request_payload_bytes() -> int:
+    return int(settings.api.get("max_request_payload_bytes", 16 * 1024 * 1024 - 256 * 1024))
+
+
 @dataclass
 class BridgeSession:
     """Proxies one browser websocket to the bus, gated by the user's role.
@@ -197,6 +202,15 @@ class BridgeSession:
         cid = header.get("correlation_id")
         target = header.get("target", "")
         op_name = header.get("op", "")
+        limit = max_request_payload_bytes()
+        if len(payload) > limit:
+            # Refused here, before the bus: RabbitMQ answers an oversized publish by
+            # closing the channel, which would take every other request on it down too.
+            return await self._error(
+                cid, "PayloadTooLarge",
+                f"{target}.{op_name}: the request is {len(payload)} bytes; the bridge "
+                f"forwards at most {limit} (api.max_request_payload_bytes)",
+            )
         try:
             equipment, cap, client = self.proxy.resolve(target)
         except KeyError as exc:
@@ -217,7 +231,7 @@ class BridgeSession:
             if is_control:
                 result = await self._control(client, op_name)
             else:
-                result = await self._call(cap, client, op_name, payload)
+                result = await self._call(cap, client, op_name, payload, header)
         except RemoteError as exc:
             return await self._error(cid, exc.error_type, exc.error_message)
         except TimeoutError:
@@ -235,10 +249,20 @@ class BridgeSession:
             resp["body"] = model.model_dump()
             await self._send(pack(resp))
 
-    async def _call(self, cap: Capability, client: CapabilityClient, op_name: str, payload: bytes):
+    async def _call(self, cap: Capability, client: CapabilityClient, op_name: str, payload: bytes,
+                    header: dict | None = None):
         op = cap.op(op_name)
-        req = op.request.model_validate_json(payload or b"{}")
-        result = await client.call(op_name, req)
+        if op.request_codec is Codec.JSON:
+            req = op.request.model_validate_json(payload or b"{}")
+            result = await client.call(op_name, req)
+        else:
+            # A binary request (an upload): the model rides in the frame header as
+            # `body`, and the frame's payload is the bytes, passed through untouched --
+            # the same split the bus makes between the `meta` header and the body.
+            req = op.request.model_validate((header or {}).get("body") or {})
+            data = payload if op.request_codec is Codec.RAW else decode_body(
+                op.request, op.request_codec, payload, {"meta": req.model_dump_json()})[1]
+            result = await client.call(op_name, req, data)
         if op.response_codec is Codec.JSON:
             return result, None
         # The transport handed back a decoded (model, ndarray/bytes). Re-encode the

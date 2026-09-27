@@ -50,6 +50,7 @@ READ_ONLY_OPS = frozenset({
     "recording_frame_jpeg",
     "recording_integration",
     "recording_log",
+    "measurement_file",
     "bboxes",
     "cache",
     "list_markers",

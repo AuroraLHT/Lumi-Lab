@@ -14,6 +14,9 @@ def run(host):
         workers=settings.api.workers,
         reload=False,
         timeout_graceful_shutdown=30,
+        # Above the bridge's own upload cap, so an oversized upload reaches the bridge
+        # and is refused with an error reply rather than dropped mid-frame (close 1006).
+        ws_max_size=int(settings.api.get("ws_max_bytes", 64 * 1024 * 1024)),
     )
 
 

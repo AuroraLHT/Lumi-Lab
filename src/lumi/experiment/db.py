@@ -258,6 +258,9 @@ class GrowthDB:
                 kind VARCHAR(50) NOT NULL,
                 value FLOAT,
                 detail TEXT,
+                -- JSON list of MeasurementSeries: curves (an XRD scan, R(T)) that are
+                -- the measurement, as opposed to the scalars in `detail`.
+                series TEXT,
                 source VARCHAR(100),
                 record_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -268,6 +271,28 @@ class GrowthDB:
                 FOREIGN KEY (record_id) REFERENCES record(record_id)
             );
 
+            -- Files attached to a measurement: the instrument's raw file, an AFM
+            -- image, a map. The bytes live on disk under the node's measurement-files
+            -- folder (`stored_path` is relative to it); this is the index. Kept even if
+            -- nothing here can parse the file -- it is the original record.
+            CREATE TABLE IF NOT EXISTS measurement_file (
+                file_id INTEGER PRIMARY KEY,
+                file_uuid VARCHAR(100) NOT NULL,
+                measurement_id INTEGER NOT NULL,
+                file_name TEXT NOT NULL,
+                media_type VARCHAR(100),
+                size_bytes INTEGER NOT NULL,
+                sha256 VARCHAR(64) NOT NULL,
+                stored_path TEXT NOT NULL,
+                role VARCHAR(50) NOT NULL DEFAULT 'raw',
+                description TEXT,
+                meta TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                state VARCHAR(20) NOT NULL DEFAULT 'active',
+                FOREIGN KEY (measurement_id) REFERENCES measurement(measurement_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_meas_file ON measurement_file(measurement_id);
             CREATE INDEX IF NOT EXISTS idx_substrate_uuid ON substrate(substrate_uuid);
             CREATE INDEX IF NOT EXISTS idx_experiment_uuid ON experiment(experiment_uuid);
             CREATE INDEX IF NOT EXISTS idx_record_uuid ON record(record_uuid);
@@ -299,7 +324,8 @@ class GrowthDB:
         "experiment": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'"},
         "record": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
                    "record_created_at": "TIMESTAMP"},
-        "measurement": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'"},
+        "measurement": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
+                        "series": "TEXT"},
     }
 
     async def _migrate(self) -> None:
@@ -367,7 +393,7 @@ class GrowthDB:
         }),
         "record": frozenset({"record_name", "experiment_id", "state"}),
         "sample": frozenset({"sample_name", "notes", "state", "position_mm"}),
-        "measurement": frozenset({"kind", "value", "detail", "source", "state"}),
+        "measurement": frozenset({"kind", "value", "detail", "series", "source", "state"}),
     }
 
     def _check_table(self, table: str, *, editable: bool = False) -> tuple[str, str, tuple[str, ...]]:
@@ -949,15 +975,60 @@ class GrowthDB:
         step_id: int | None = None,
         experiment_id: int | None = None,
         record_id: int | None = None,
+        series: str | None = None,
     ) -> int:
         async with self.conn.execute(
             """INSERT INTO measurement
-            (sample_id, step_id, experiment_id, kind, value, detail, source, record_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (sample_id, step_id, experiment_id, kind, value, detail, source, record_id),
+            (sample_id, step_id, experiment_id, kind, value, detail, source, record_id, series)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (sample_id, step_id, experiment_id, kind, value, detail, source, record_id, series),
         ) as cursor:
             await self.conn.commit()
             return cursor.lastrowid
+
+    # --- measurement files: the index; the bytes are on disk ---------------------
+
+    async def add_measurement_file(
+        self, measurement_id: int, *, file_uuid: str, file_name: str, media_type: str,
+        size_bytes: int, sha256: str, stored_path: str, role: str = "raw",
+        description: str | None = None, meta: str | None = None,
+    ) -> int:
+        async with self.conn.execute(
+            """INSERT INTO measurement_file
+            (file_uuid, measurement_id, file_name, media_type, size_bytes, sha256,
+             stored_path, role, description, meta)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (file_uuid, measurement_id, file_name, media_type, size_bytes, sha256,
+             stored_path, role, description, meta),
+        ) as cursor:
+            await self.conn.commit()
+            return cursor.lastrowid
+
+    async def get_measurement_file(self, file_id: int):
+        async with self.conn.execute(
+            "SELECT * FROM measurement_file WHERE file_id = ?", (file_id,)
+        ) as cursor:
+            return await cursor.fetchone()
+
+    async def get_measurement_files(self, measurement_ids: list[int], include_retired: bool = False):
+        """{measurement_id: [rows]}, in upload order."""
+        out: dict[int, list] = {mid: [] for mid in measurement_ids}
+        if not measurement_ids:
+            return out
+        marks = ",".join("?" * len(measurement_ids))
+        sql = f"SELECT * FROM measurement_file WHERE measurement_id IN ({marks})"
+        if not include_retired:
+            sql += " AND state != 'retired'"
+        async with self.conn.execute(sql + " ORDER BY file_id", tuple(measurement_ids)) as cursor:
+            for row in await cursor.fetchall():
+                out[row["measurement_id"]].append(row)
+        return out
+
+    async def set_measurement_file_state(self, file_id: int, state: str) -> None:
+        await self.conn.execute(
+            "UPDATE measurement_file SET state = ? WHERE file_id = ?", (state, file_id)
+        )
+        await self.conn.commit()
 
     async def get_measurements(self, sample_id: int, kind: str | None = None):
         if kind is None:

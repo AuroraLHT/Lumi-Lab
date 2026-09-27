@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: a497c47a1558347b
+# contract_hash: 72ecc45c4bf41d2d
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AutoAlignMaskCenter, BeginSetLaserPower, CenterMaskPos, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireProject, RetireRecord, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CenterMaskPos, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -163,6 +163,19 @@ class ExperimentDriverClient(CapabilityClient):
     async def retire_measurement(self, req: RetireMeasurement) -> MeasurementInfo:
         """Hide a measurement from listings, so a wrong value stops reaching an optimiser without vanishing from the record."""
         return await self.call("retire_measurement", req)  # type: ignore[return-value]
+
+    async def attach_measurement_file(self, req: AttachMeasurementFile, payload: bytes) -> MeasurementFileInfo:
+        """Attach a file to a measurement: the instrument's raw file, an AFM/PFM image or map, a micrograph. The request body is the file itself. Kept byte for byte, whether or not anything can parse it yet."""
+        return await self.call("attach_measurement_file", req, payload)  # type: ignore[return-value]
+
+    async def measurement_file(self, req: MeasurementFileId) -> tuple[MeasurementFileInfo, bytes]:
+        """An attached file's bytes, exactly as uploaded."""
+        # Returns (metadata, bytes); the array never passes through JSON.
+        return await self.call("measurement_file", req)  # type: ignore[return-value]
+
+    async def retire_measurement_file(self, req: RetireMeasurementFile) -> MeasurementFileInfo:
+        """Hide a mistaken upload. The bytes stay on disk."""
+        return await self.call("retire_measurement_file", req)  # type: ignore[return-value]
 
     async def get_current_log(self) -> LogEntry:
         """Call driver.get_current_log."""
@@ -357,7 +370,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("sample_history", req)  # type: ignore[return-value]
 
     async def add_measurement(self, req: AddMeasurement) -> MeasurementId:
-        """Attach a result to a sample -- a RHEED growth metric, or an ex-situ XRD/AFM/PFM/transport measurement. `value` is the scalar an optimiser sorts on; `detail` carries the full result."""
+        """Attach a result to a sample -- a RHEED growth metric, or an ex-situ XRD/AFM/PFM/transport measurement. `value` is the scalar an optimiser sorts on; `detail` carries named scalars; `series` carries curves (a scan, R(T), a loop). Files go on afterwards with attach_measurement_file."""
         return await self.call("add_measurement", req)  # type: ignore[return-value]
 
     async def list_measurements(self, req: ListMeasurements) -> MeasurementList:
