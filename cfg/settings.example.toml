@@ -515,6 +515,12 @@ name = "Storage"
 exchange = "EXPERIMENT"
 exchange_type = "topic"
 growth_db_path = "cfg/growth.db"
+# Files attached to measurements (raw instrument files, AFM images). Empty means a
+# `measurement_files` folder beside growth.db -- keep the two together, they are one
+# record. The size cap is per file: an upload is one bus message, and RabbitMQ 4 and
+# the browser websocket both stop at 16 MiB.
+measurement_files_path = ""
+measurement_file_max_bytes = 15728640
 
 # How long to wait for an MI script to report completion, in seconds. **0 means wait
 # indefinitely**, and that is the default because it is what the controller actually

@@ -76,6 +76,7 @@ from .payloads.experiment import (
     ResumeSubstrate,
     RetireExperiment,
     RetireMeasurement,
+    RetireMeasurementFile,
     RetireProject,
     RetireRecord,
     RetireSubstrate,
@@ -94,6 +95,9 @@ from .payloads.experiment import (
     ListSteps,
     StepList,
     AddMeasurement,
+    AttachMeasurementFile,
+    MeasurementFileId,
+    MeasurementFileInfo,
     MeasurementId,
     MeasurementInfo,
     MeasurementList,
@@ -121,7 +125,7 @@ from .payloads.experiment import (
     ToTemperature,
     ValveStatus,
 )
-from .spec import Capability, EquipmentContract, Kind, Op, StreamSpec
+from .spec import Capability, Codec, EquipmentContract, Kind, Op, StreamSpec
 
 DRIVER = Capability(
     name="driver",
@@ -239,6 +243,15 @@ DRIVER = Capability(
         Op("retire_measurement", RetireMeasurement, MeasurementInfo,
            doc="Hide a measurement from listings, so a wrong value stops reaching an "
                "optimiser without vanishing from the record.", journal=True),
+        Op("attach_measurement_file", AttachMeasurementFile, MeasurementFileInfo,
+           request_codec=Codec.RAW, journal=True,
+           doc="Attach a file to a measurement: the instrument's raw file, an AFM/PFM "
+               "image or map, a micrograph. The request body is the file itself. Kept "
+               "byte for byte, whether or not anything can parse it yet."),
+        Op("measurement_file", MeasurementFileId, MeasurementFileInfo, response_codec=Codec.RAW,
+           doc="An attached file's bytes, exactly as uploaded."),
+        Op("retire_measurement_file", RetireMeasurementFile, MeasurementFileInfo, journal=True,
+           doc="Hide a mistaken upload. The bytes stay on disk."),
 
         # --- chamber reads: domain interpretation of the raw log row (gauge
         # fallback, field-name mapping) that today only exists in manager.py.
@@ -386,7 +399,8 @@ DRIVER = Capability(
         Op("add_measurement", AddMeasurement, MeasurementId, journal=True,
            doc="Attach a result to a sample -- a RHEED growth metric, or an ex-situ "
                "XRD/AFM/PFM/transport measurement. `value` is the scalar an optimiser "
-               "sorts on; `detail` carries the full result."),
+               "sorts on; `detail` carries named scalars; `series` carries curves (a scan, "
+               "R(T), a loop). Files go on afterwards with attach_measurement_file."),
         Op("list_measurements", ListMeasurements, MeasurementList,
            doc="Measurements, with the growth conditions that produced each sample "
                "resolved alongside them -- one call for a GP training set."),

@@ -31,6 +31,8 @@ growth.db
 growth.db-journal
 growth.db-wal
 growth.db-shm
+# ...and the files attached to its measurements, which live beside it.
+measurement_files/
 
 # Fiducial markers an operator drew on the chamber camera image
 # (`pascal.fiducials.store_path`). Set up by hand per machine and camera position.

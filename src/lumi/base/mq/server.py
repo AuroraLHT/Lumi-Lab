@@ -268,7 +268,7 @@ class CapabilityServer(ControlPlane):
 
         op, fn = entry
         try:
-            req, _ = decode(op.request, op.request_codec, message.body, headers)
+            req, payload = decode(op.request, op.request_codec, message.body, headers)
         except ValidationError as exc:
             await self._reply_error(message, op.name, "BadRequest", exc.json())
             return
@@ -297,7 +297,9 @@ class CapabilityServer(ControlPlane):
             )
 
         try:
-            result = await fn(req)
+            # A binary request (an upload) hands the handler its bytes beside the
+            # metadata model, the mirror of a binary response returning (meta, payload).
+            result = await (fn(req) if op.request_codec is Codec.JSON else fn(req, payload))
         except Exception as exc:
             log.exception("%s.%s failed", self.source, op.name)
             error = f"{type(exc).__name__}: {exc}"

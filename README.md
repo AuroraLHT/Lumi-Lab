@@ -482,7 +482,14 @@ succeeded, and results (RHEED metric, XRD, AFM, transport) attach to the sample 
 than to a CSV beside a notebook.
 
 Reachable over the contract: `list_samples`, `get_sample`, `sample_history`,
-`add_measurement`, `list_measurements`. Design notes, the decisions behind it and the
+`add_measurement`, `list_measurements`.
+
+A measurement is more than its headline `value` (the scalar an optimiser ranks on):
+`detail` holds named scalars, `series` holds curves -- an XRD scan, R(T), a loop -- with
+named, unit-carrying axes, and `attach_measurement_file` uploads files: the instrument's
+raw file, kept byte for byte whether or not anything parses it, and images or maps.
+Files live in `measurement_files/` beside growth.db, up to
+`experiment.measurement_file_max_bytes` (15 MiB) each. Design notes, the decisions behind it and the
 open to-do are in `docs/SAMPLE_TRACKING.md`.
 
 ## Growth history

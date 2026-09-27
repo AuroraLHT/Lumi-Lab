@@ -39,7 +39,7 @@ from starlette.routing import Route
 from lumi.api.db import UserStore
 from lumi.base.mq.client import CapabilityClient, RemoteError
 from lumi.config import settings
-from lumi.contracts import policy
+from lumi.contracts import Codec, policy
 from lumi.contracts.chamber import CHAMBER
 from lumi.contracts.experiment import EXPERIMENT
 from lumi.contracts.rheed import RHEED
@@ -118,6 +118,9 @@ class ExperimentMCPServer:
                 await client.start()
                 self._clients[f"{contract.name}.{cap.name}"] = client
                 for op in cap.ops:
+                    if op.request_codec is not Codec.JSON:
+                        # An upload takes raw bytes, which a JSON tool call cannot carry.
+                        continue
                     self._tools[_tool_name(contract.name, cap.name, op.name)] = (contract, cap, op, client)
 
         log.info("mcp server connected; %d tools from %s", len(self._tools), ", ".join(self._clients))

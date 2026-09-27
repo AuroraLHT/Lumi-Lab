@@ -222,3 +222,34 @@ async def test_dispatch_journals_a_handler_owned_op_that_refuses():
 async def test_a_server_with_no_journal_still_dispatches():
     server = _journal_server(Journalled(), None)
     await server._handle_request(_message("alpha"))  # must not raise
+
+
+async def test_a_binary_request_hands_the_handler_its_bytes():
+    """An upload (request_codec RAW) arrives as a `meta` header plus a body; the handler
+    gets both, the mirror of a binary response returning (meta, payload)."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from lumi.base.mq.codec import encode
+    from lumi.contracts import Codec
+    from lumi.contracts.payloads.experiment import MeasurementFileId
+
+    cap = Capability(name="thing", kind=Kind.RPC, state=Empty,
+                     ops=(Op("upload", MeasurementFileId, Ack, request_codec=Codec.RAW),))
+    seen = {}
+
+    class Uploads:
+        async def upload(self, req, data):
+            seen["req"], seen["data"] = req, data
+            return Ack()
+
+    server = _server(cap, Uploads())
+    server.channel.default_exchange.publish = AsyncMock()
+    body, extra = encode(MeasurementFileId(file_id=7), Codec.RAW, b"\x00raw bytes\xff")
+    await server._handle_request(SimpleNamespace(
+        headers=extra, routing_key="test.thing.req.upload", body=body,
+        reply_to="reply-q", correlation_id="c1",
+    ))
+    assert seen == {"req": MeasurementFileId(file_id=7), "data": b"\x00raw bytes\xff"}
+    reply = server.channel.default_exchange.publish.await_args.args[0]
+    assert reply.headers.get("succ", True) is not False

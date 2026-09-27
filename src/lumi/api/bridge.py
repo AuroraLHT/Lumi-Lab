@@ -34,7 +34,7 @@ from aio_pika import ExchangeType
 from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange
 
 from lumi.base.mq import CapabilityClient, RemoteError
-from lumi.base.mq.codec import encode as encode_body
+from lumi.base.mq.codec import decode as decode_body, encode as encode_body
 from lumi.contracts import REGISTRY, Capability, Codec
 from lumi.contracts.policy import permits, permits_read
 
@@ -217,7 +217,7 @@ class BridgeSession:
             if is_control:
                 result = await self._control(client, op_name)
             else:
-                result = await self._call(cap, client, op_name, payload)
+                result = await self._call(cap, client, op_name, payload, header)
         except RemoteError as exc:
             return await self._error(cid, exc.error_type, exc.error_message)
         except TimeoutError:
@@ -235,10 +235,20 @@ class BridgeSession:
             resp["body"] = model.model_dump()
             await self._send(pack(resp))
 
-    async def _call(self, cap: Capability, client: CapabilityClient, op_name: str, payload: bytes):
+    async def _call(self, cap: Capability, client: CapabilityClient, op_name: str, payload: bytes,
+                    header: dict | None = None):
         op = cap.op(op_name)
-        req = op.request.model_validate_json(payload or b"{}")
-        result = await client.call(op_name, req)
+        if op.request_codec is Codec.JSON:
+            req = op.request.model_validate_json(payload or b"{}")
+            result = await client.call(op_name, req)
+        else:
+            # A binary request (an upload): the model rides in the frame header as
+            # `body`, and the frame's payload is the bytes, passed through untouched --
+            # the same split the bus makes between the `meta` header and the body.
+            req = op.request.model_validate((header or {}).get("body") or {})
+            data = payload if op.request_codec is Codec.RAW else decode_body(
+                op.request, op.request_codec, payload, {"meta": req.model_dump_json()})[1]
+            result = await client.call(op_name, req, data)
         if op.response_codec is Codec.JSON:
             return result, None
         # The transport handed back a decoded (model, ndarray/bytes). Re-encode the

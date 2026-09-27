@@ -46,10 +46,13 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from lumi.config import settings
+from lumi.contracts.payloads.experiment import MeasurementSeries, SeriesAxis
 from lumi.experiment.db import GrowthDB
+from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.pascal.chamber_log import process_row
 from lumi.pascal.log_archive import LogArchive
 from lumi.pascal.sim import LOG_COLUMNS, ChamberModel, ChamberSimConfig, render_row
@@ -418,7 +421,8 @@ class Seeder:
         self.rheed = FakeRheed(np.random.default_rng(args.seed))
         self.manifest: dict[str, list] = {k: [] for k in (
             "project", "substrate", "sample", "chamber_session", "step",
-            "experiment", "record", "measurement", "files")}
+            "experiment", "record", "measurement", "measurement_file", "files")}
+        self.file_store = MeasurementFileStore(args.files_root, max_bytes=1 << 30)
         self.project_ids: dict[str, int] = {}
         self.substrate_ids: dict[str, int] = {}
         self.samples: dict[tuple[str, int], int] = {}
@@ -553,12 +557,12 @@ class Seeder:
     SESSION_ROOM = dt.timedelta(hours=2, minutes=30)
 
     def _free_start(self, planned: dt.datetime) -> dt.datetime:
-        """The planned start, or the nearest half-hour step before or after it that has
+        """The planned start, or the nearest half-hour step (up to three days) before or after it that has
         a session's worth of room clear of every existing log (a real one, or a session
         seeded earlier) and ends before now."""
         margin = dt.timedelta(minutes=10)
         now = dt.datetime.now()
-        for step in range(0, 2 * 48 + 1):  # 0, +30min, -30min, +1h, ... up to a day each way
+        for step in range(0, 2 * 144 + 1):  # 0, +30min, -30min, +1h, ... up to three days each way
             start = planned + dt.timedelta(minutes=30) * ((step + 1) // 2) * (1 if step % 2 else -1)
             end = start + self.SESSION_ROOM
             if end > now:
@@ -569,7 +573,7 @@ class Seeder:
                     print(f"  moved {planned:%Y-%m-%d %H:%M} -> {start:%Y-%m-%d %H:%M}: "
                           "an existing chamber log covers the planned time")
                 return start
-        raise RuntimeError(f"no free {self.SESSION_ROOM} within a day of "
+        raise RuntimeError(f"no free {self.SESSION_ROOM} within three days of "
                            f"{planned:%Y-%m-%d %H:%M}: existing chamber logs cover it")
 
     async def _register_substrate(self, sub: SubstrateSpec) -> None:
@@ -817,13 +821,27 @@ class Seeder:
     # --- measurements
 
     async def _measure(self, kind: str, value: float, detail: dict, source: str, when: dt.datetime,
-                       *, step_id=None, experiment_id=None, record_id=None, sample_id=None) -> int:
+                       *, step_id=None, experiment_id=None, record_id=None, sample_id=None,
+                       series: list[MeasurementSeries] | None = None) -> int:
         mid = await self.db.add_measurement(
             sample_id or self.sample_id, kind, value=value, detail=json.dumps(detail), source=source,
-            step_id=step_id, experiment_id=experiment_id, record_id=record_id)
+            step_id=step_id, experiment_id=experiment_id, record_id=record_id,
+            series=json.dumps([x.model_dump() for x in series]) if series else None)
         await self._backdate("measurement", "measurement_id", mid, "created_at", when)
         self.manifest["measurement"].append(mid)
         return mid
+
+    async def _attach(self, mid: int, name: str, data: bytes, role: str, when: dt.datetime,
+                      description: str | None = None, meta: dict | None = None) -> None:
+        """What attach_measurement_file does, written directly: same store, same row."""
+        stored = self.file_store.save(data, name)
+        fid = await self.db.add_measurement_file(
+            mid, file_uuid=stored.file_uuid, file_name=name, media_type=guess_media_type(name),
+            size_bytes=stored.size_bytes, sha256=stored.sha256, stored_path=stored.stored_path,
+            role=role, description=description, meta=json.dumps(meta) if meta else None)
+        await self._backdate("measurement_file", "file_id", fid, "created_at", when)
+        self.manifest["measurement_file"].append(fid)
+        self.manifest["files"].append(str(self.file_store.path(stored.stored_path)))
 
     async def _rheed_metric(self, g: Growth, step_id: int, exp_id: int, rec_id: int) -> dict:
         q = g.quality
@@ -842,31 +860,119 @@ class Seeder:
 
     async def ex_situ(self) -> None:
         """XRD and AFM on most grown samples, transport on the electrodes -- measured a
-        day or two after growth, as they would be."""
+        day or two after growth, as they would be. Each carries what the instrument
+        actually gives, not just the headline number: curves as series, and the raw
+        file (which nothing here parses) plus, for AFM, a rendered image."""
+        rng = np.random.default_rng(self.args.seed)
         for sample_id, layers in self.quality.items():
             g, _, exp_id, _, grown_at = layers[-1]
             q = sum(layer[0].quality for layer in layers) / len(layers)
             when = grown_at + dt.timedelta(days=1, hours=self.rng.uniform(1, 6))
+            sample = f"s{sample_id}"
             if self.rng.random() < 0.85:
                 fwhm = round(0.03 + 0.25 * (1 - q) + abs(self.rng.gauss(0, 0.01)), 4)
                 thickness = round(sum(layer[0].pulses / layer[0].period for layer in layers) * 0.39, 1)
-                await self._measure("xrd", fwhm, {
-                    "rocking_curve_fwhm_deg": fwhm,
-                    "peak_2theta_deg": round(46.5 + self.rng.gauss(0, 0.15), 3),
+                peak = round(46.5 + self.rng.gauss(0, 0.15), 3)
+                mid = await self._measure("xrd", fwhm, {
+                    "rocking_curve_fwhm_deg": fwhm, "peak_2theta_deg": peak,
                     "thickness_nm": thickness, "laue_fringes": q > 0.6,
-                }, "XRD (Bruker D8)", when, experiment_id=exp_id, sample_id=sample_id)
+                }, "XRD (Bruker D8)", when, experiment_id=exp_id, sample_id=sample_id,
+                    series=[xrd_scan(rng, peak, thickness, q), rocking_curve(rng, peak / 2, fwhm)])
+                await self._attach(mid, f"{sample}_2theta-omega.raw", fake_raw(rng, b"RAW1.01", 24_000),
+                                   "raw", when, "Bruker .raw as exported by the diffractometer")
             if self.rng.random() < 0.7:
                 rms = round(0.15 + 1.6 * (1 - q) + abs(self.rng.gauss(0, 0.05)), 3)
-                await self._measure("afm", rms, {
+                at = when + dt.timedelta(hours=3)
+                height = afm_map(rng, rms, terraces=q > 0.7)
+                mid = await self._measure("afm", rms, {
                     "rms_nm": rms, "scan_um": 5, "step_terraces": q > 0.7,
-                }, "AFM (Asylum MFP-3D)", when + dt.timedelta(hours=3),
-                    experiment_id=exp_id, sample_id=sample_id)
+                }, "AFM (Asylum MFP-3D)", at, experiment_id=exp_id, sample_id=sample_id,
+                    series=[afm_line(height, scan_um=5.0)])
+                await self._attach(mid, f"{sample}_topo_5um.png", afm_png(height), "image", at,
+                                   "Height, 5 x 5 um", {"scan_um": 5, "pixels": 256, "unit": "nm"})
+                await self._attach(mid, f"{sample}_0001.ibw", fake_raw(rng, b"IBW\x05", 300_000),
+                                   "raw", at, "Igor binary wave from the MFP-3D; not parsed here")
             if layers[0][0].material == "La0.7Sr0.3MnO3":
                 rho = round((1.2 + 3.0 * (1 - q)) * 1e-4, 7)
-                await self._measure("transport", rho, {
-                    "resistivity_ohm_cm": rho, "tc_k": round(330 + 30 * q + self.rng.gauss(0, 3)),
-                    "geometry": "van der Pauw",
-                }, "PPMS", when + dt.timedelta(days=1), experiment_id=exp_id, sample_id=sample_id)
+                tc = round(330 + 30 * q + self.rng.gauss(0, 3))
+                at = when + dt.timedelta(days=1)
+                series = resistance_curve(rng, rho, tc)
+                mid = await self._measure("transport", rho, {
+                    "resistivity_ohm_cm": rho, "tc_k": tc, "geometry": "van der Pauw",
+                }, "PPMS", at, experiment_id=exp_id, sample_id=sample_id, series=[series])
+                await self._attach(mid, f"{sample}_RT.dat", ppms_dat(series), "raw", at,
+                                   "PPMS resistivity option export")
+
+
+# --- ex-situ data, synthesised ---------------------------------------------------
+
+def xrd_scan(rng, peak: float, thickness_nm: float, q: float) -> MeasurementSeries:
+    """A theta-2theta scan: the substrate's (002), the film's peak, Laue fringes on a
+    smooth film -- log intensity, which is how anyone looks at one."""
+    x = np.round(np.arange(40.0, 50.0, 0.01), 3)
+    sub = 1e6 * np.exp(-((x - 46.47) / 0.012) ** 2)
+    width = max(0.05, 0.9 / max(thickness_nm, 1.0))
+    film = 3e3 * np.sinc((x - peak) / width) ** 2 if q > 0.6 else 3e3 * np.exp(-((x - peak) / width) ** 2)
+    counts = rng.poisson(sub + film + 20.0).astype(float)
+    return MeasurementSeries(name="2theta-omega", x=SeriesAxis(name="2theta", unit="deg", values=x.tolist()),
+                             y=[SeriesAxis(name="intensity", unit="counts", values=counts.tolist())],
+                             meta={"step_deg": 0.01, "time_per_step_s": 0.5, "log_scale": True})
+
+
+def rocking_curve(rng, omega0: float, fwhm: float) -> MeasurementSeries:
+    x = np.round(np.arange(omega0 - 1.0, omega0 + 1.0, 0.005), 4)
+    sigma = fwhm / 2.355
+    counts = rng.poisson(5e3 * np.exp(-((x - omega0) ** 2) / (2 * sigma ** 2)) + 10.0).astype(float)
+    return MeasurementSeries(name="rocking curve", x=SeriesAxis(name="omega", unit="deg", values=x.tolist()),
+                             y=[SeriesAxis(name="intensity", unit="counts", values=counts.tolist())])
+
+
+def afm_map(rng, rms: float, terraces: bool, n: int = 256) -> np.ndarray:
+    """Height in nm: unit-cell steps on a good film, rough islands on a poor one."""
+    yy, xx = np.mgrid[0:n, 0:n] / n
+    base = np.floor((xx * 0.9 + yy * 0.3) * 8) * 0.39 if terraces else 0.0
+    noise = rng.normal(0, 1, (n, n))
+    kernel = np.outer(*[np.exp(-np.linspace(-2, 2, 9) ** 2)] * 2)
+    rough = cv2.filter2D(noise, -1, kernel / kernel.sum())
+    rough *= rms / (rough.std() or 1.0)
+    return base + rough - (base + rough).min()
+
+
+def afm_line(height: np.ndarray, scan_um: float) -> MeasurementSeries:
+    row = height[height.shape[0] // 2]
+    x = np.linspace(0, scan_um, row.size)
+    return MeasurementSeries(name="line profile", x=SeriesAxis(name="x", unit="um", values=np.round(x, 4).tolist()),
+                             y=[SeriesAxis(name="height", unit="nm", values=np.round(row, 4).tolist())],
+                             meta={"row": height.shape[0] // 2})
+
+
+def afm_png(height: np.ndarray) -> bytes:
+    scaled = (255 * (height - height.min()) / (np.ptp(height) or 1.0)).astype(np.uint8)
+    ok, buf = cv2.imencode(".png", cv2.applyColorMap(scaled, cv2.COLORMAP_INFERNO))
+    return buf.tobytes()
+
+
+def resistance_curve(rng, rho300: float, tc: float) -> MeasurementSeries:
+    """LSMO's R(T): metallic below Tc, a peak at the metal-insulator transition."""
+    t = np.arange(10.0, 400.0, 2.0)
+    metallic = 0.2 + 0.8 * (t / tc) ** 2
+    peak = 1.3 * np.exp(-((t - tc) / 25.0) ** 2)
+    insulating = np.where(t > tc, np.exp((tc - t) / 60.0), 1.0)
+    rho = rho300 * (np.minimum(metallic, 1.0) * insulating + peak) * (1 + rng.normal(0, 0.003, t.size))
+    return MeasurementSeries(name="R(T)", x=SeriesAxis(name="T", unit="K", values=t.tolist()),
+                             y=[SeriesAxis(name="resistivity", unit="ohm cm", values=rho.tolist())],
+                             meta={"field_T": 0.0, "current_uA": 10.0})
+
+
+def ppms_dat(series: MeasurementSeries) -> bytes:
+    lines = ["[Header]", "TITLE,Resistivity", "[Data]", "Temperature (K),Resistivity (ohm-cm)"]
+    lines += [f"{t},{r:.6e}" for t, r in zip(series.x.values, series.y[0].values)]
+    return ("\n".join(lines) + "\n").encode()
+
+
+def fake_raw(rng, magic: bytes, size: int) -> bytes:
+    """Bytes in no format anything here reads -- which is the point of keeping them."""
+    return magic + rng.integers(0, 256, size, dtype=np.uint8).tobytes()
 
 
 # --- entry points ---------------------------------------------------------------
@@ -907,10 +1013,11 @@ async def purge(args) -> None:
     if not args.manifest.exists():
         sys.exit(f"no manifest at {args.manifest}: nothing seeded to purge")
     manifest = json.loads(args.manifest.read_text())
+    attached = {p for p in manifest.get("files", []) if Path(p).parent.parent == args.files_root}
     db = GrowthDB(manifest.get("db", str(args.db)))
     await db.connect()
     # Children first: every foreign key points up this list.
-    order = [("measurement", "measurement_id"), ("step", "step_id"), ("record", "record_id"),
+    order = [("measurement_file", "file_id"), ("measurement", "measurement_id"), ("step", "step_id"), ("record", "record_id"),
              ("experiment", "experiment_id"), ("sample", "sample_id"),
              ("substrate", "substrate_id"), ("project", "project_id"),
              ("chamber_session", "session_id")]
@@ -929,6 +1036,11 @@ async def purge(args) -> None:
             removed += 1
         except FileNotFoundError:
             pass
+        if path in attached:
+            try:
+                Path(path).parent.rmdir()  # the attachment's own uuid folder
+            except OSError:
+                pass
     print(f"removed {removed} files")
     args.manifest.unlink()
 
@@ -941,12 +1053,19 @@ def main() -> None:
     parser.add_argument("--h5-root", type=Path, default=sim / "database",
                         help="where the storage node writes HDF5 (start_simulation.sh's --root)")
     parser.add_argument("--log-dir", type=Path, default=PROJECT_ROOT / settings.pascal.sim.log_dir)
+    parser.add_argument("--files-root", type=Path, default=None,
+                        help="measurement attachments (default: the experiment node's, beside the db)")
     parser.add_argument("--manifest", type=Path, default=sim / "seed_history.json")
     parser.add_argument("--frame-interval", type=float, default=3.0,
                         help="seconds between recorded RHEED frames (each is 0.75 MB raw)")
     parser.add_argument("--seed", type=int, default=20260926)
     args = parser.parse_args()
     args.staging = sim / ".seed_staging"
+    if args.files_root is None:
+        # Where nodes/experiment.py puts them, so the running node serves these files.
+        configured = settings.experiment.get("measurement_files_path")
+        args.files_root = Path(configured) if configured else args.db.parent / "measurement_files"
+    args.files_root = args.files_root.resolve()
     asyncio.run(purge(args) if args.purge else seed(args))
 
 

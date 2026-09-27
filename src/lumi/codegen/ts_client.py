@@ -117,6 +117,11 @@ export class LumiTransport {
     return this.rpc<T>({ target, op }, new TextEncoder().encode(JSON.stringify(body ?? {})));
   }
 
+  /** An upload: `body` is the metadata model, `payload` the bytes, sent unencoded. */
+  callWithPayload<T>(target: string, op: string, body: unknown, payload: Uint8Array): Promise<T> {
+    return this.rpc<T>({ target, op, body: body ?? {} }, payload);
+  }
+
   /** A control verb (start/stop/state). */
   controlCall<T>(target: string, verb: string): Promise<T> {
     return this.rpc<T>({ target, op: verb, control: true });
@@ -246,10 +251,16 @@ def _capability_client(contract: EquipmentContract, cap: Capability) -> str:
         doc = op.doc or f"{target}.{op.name}"
         if op.result is not None:
             doc += f" On success the task_result carries a {op.result.__name__}."
+        if op.request_codec is not Codec.JSON:
+            # An upload: the bytes go as the frame payload, not through JSON.
+            call = f'this.t.callWithPayload<{ret}>({cls}.target, "{op.name}", req, payload)'
+            arg = f"req: {op.request.__name__}, payload: Uint8Array"
+        else:
+            call = f'this.t.call<{ret}>({cls}.target, "{op.name}", {body})'
         lines += [
             f"  /** {doc} */",
             f"  async {op.name}({arg}): Promise<{ret}> {{",
-            f'    return this.t.call<{ret}>({cls}.target, "{op.name}", {body});',
+            f"    return {call};",
             "  }",
             "",
         ]

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+from pathlib import Path
 
 from aio_pika import ExchangeType
 
@@ -22,6 +23,7 @@ from lumi.contracts.rheed import RHEED
 from lumi.contracts.storage import STORAGE_NODE
 from lumi.contracts.system import SYSTEM
 from lumi.experiment.db import GrowthDB
+from lumi.experiment.files import MeasurementFileStore
 from lumi.experiment.handlers import ExperimentHandler
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
@@ -82,9 +84,17 @@ async def main(args: argparse.Namespace) -> None:
     # The handler needs clients, and the clients need the node's channel, so it is
     # mounted with empty sources and filled in once the node is connected -- same
     # two-step wiring nodes/storage.py uses.
+    # Measurement attachments sit beside growth.db unless settings put them elsewhere:
+    # the index and the bytes are one record.
+    files_root = settings.experiment.get("measurement_files_path") or str(
+        Path(growth_db.db_path).parent / "measurement_files")
     handler = ExperimentHandler(
         sources={}, growth_db=growth_db, pld_config=_pld_config(), bounds=_bounds(),
         target_mapper=dict(settings.experiment.target_mapper), registry_client=None,
+        file_store=MeasurementFileStore(
+            files_root,
+            max_bytes=int(settings.experiment.get("measurement_file_max_bytes", 15 * 1024 * 1024)),
+        ),
     )
     await handler.load_calibration()
 
