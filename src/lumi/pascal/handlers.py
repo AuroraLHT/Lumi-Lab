@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import queue
+from datetime import datetime, timezone
 
 from lumi.contracts.payloads.chamber import (
     AllConfigs,
@@ -13,8 +15,13 @@ from lumi.contracts.payloads.chamber import (
     ConfigQuery,
     ConfigSection,
     ConfigSections,
+    ListLogFiles,
     LogBatch,
     LogEntry,
+    LogFileInfo,
+    LogFileList,
+    LogSeries,
+    LogWindowQuery,
     MICommands,
     MIExecution,
     MIExecutionList,
@@ -36,8 +43,15 @@ from lumi.contracts.payloads.fiducial import (
     RoleMap,
     RoleQuery,
 )
+from lumi.pascal.log_archive import LogArchive
 
 log = logging.getLogger(__name__)
+
+
+def iso(epoch: float | None) -> str | None:
+    if epoch is None:
+        return None
+    return datetime.fromtimestamp(epoch, tz=timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _entry(row: dict, header: dict) -> LogEntry:
@@ -76,9 +90,12 @@ class ChamberLogHandler:
     returned the log -- so it was a one-op capability pretending to be a dispatcher.
     """
 
-    def __init__(self, log_reader, stream_queue: "queue.Queue | None" = None) -> None:
+    def __init__(self, log_reader, stream_queue: "queue.Queue | None" = None,
+                 archive: LogArchive | None = None) -> None:
         self.log_reader = log_reader
         self.stream_queue = stream_queue
+        #: The folder's earlier files, for list_log_files / log_window.
+        self.archive = archive
 
     async def log(self, req: Empty) -> LogBatch:
         # A dead reader thread is worse than no reader: get_log() goes on returning the
@@ -94,6 +111,31 @@ class ChamberLogHandler:
         if row is None:
             raise RuntimeError("could not read the chamber log file")
         return LogBatch(entries=[_entry(row, header)])
+
+    async def list_log_files(self, req: ListLogFiles) -> LogFileList:
+        archive = self._archive()
+        names = archive.names()
+        if req.search:
+            needle = req.search.lower()
+            names = [n for n in names if needle in n.lower()]
+        page = names[req.offset:req.offset + req.limit]
+        infos = await asyncio.to_thread(lambda: [archive.info(n) for n in page])
+        return LogFileList(
+            files=[LogFileInfo(**i, start_iso=iso(i.get("start")), end_iso=iso(i.get("end")))
+                   for i in infos],
+            total=len(names),
+        )
+
+    async def log_window(self, req: LogWindowQuery) -> LogSeries:
+        archive = self._archive()
+        out = await asyncio.to_thread(archive.window, req.file, req.since, req.until,
+                                      req.columns, req.max_points)
+        return LogSeries(**out)
+
+    def _archive(self) -> LogArchive:
+        if self.archive is None:
+            raise RuntimeError("this chamber node has no log folder to read history from")
+        return self.archive
 
     async def next(self) -> LogEntry | None:
         if self.stream_queue is None:

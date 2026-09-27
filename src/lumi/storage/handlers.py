@@ -18,14 +18,35 @@ problem.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 from lumi.config import settings
 from lumi.contracts.payloads.common import Empty
-from lumi.contracts.payloads.storage import StorageReadout, StorageRequest, StorageStatus
+from lumi.contracts.payloads.storage import (
+    ArchiveReadout,
+    ListRecordings,
+    RecordingFrameMeta,
+    RecordingFrameQuery,
+    RecordingInfo,
+    RecordingIntegration,
+    RecordingIntegrationQuery,
+    RecordingJpegMeta,
+    RecordingJpegQuery,
+    RecordingList,
+    RecordingLog,
+    RecordingLogQuery,
+    RecordingName,
+    RecordingSummary,
+    StorageReadout,
+    StorageRequest,
+    StorageStatus,
+)
+from lumi.storage.archive import RecordingArchive, iso
 from lumi.storage.record import Recorder, RecorderConfig, RecorderServer, RecorderServerConfig
 
 log = logging.getLogger(__name__)
@@ -337,3 +358,81 @@ def _prediction(result, arrays: dict[str, np.ndarray]) -> dict:
             "uuid": result.uuid,
         },
     }
+
+
+class ArchiveHandler:
+    """Serves `storage.archive`: finished recordings, read back.
+
+    Every op runs its h5py work in a thread. A frame read is milliseconds, but a
+    summary of a long recording or a full integration trace is not, and the node's
+    event loop also carries the live recording's traffic.
+    """
+
+    def __init__(self, archive: RecordingArchive) -> None:
+        self.archive = archive
+
+    async def list_recordings(self, req: ListRecordings) -> RecordingList:
+        names = self.archive.names()
+        if req.search:
+            needle = req.search.lower()
+            names = [n for n in names if needle in n.lower()]
+        page = names[req.offset:req.offset + req.limit]
+        summaries = await asyncio.to_thread(lambda: [self.archive.summary(n) for n in page])
+        return RecordingList(recordings=[_summary(RecordingSummary, s) for s in summaries],
+                             total=len(names))
+
+    async def recording_info(self, req: RecordingName) -> RecordingInfo:
+        return _summary(RecordingInfo, await asyncio.to_thread(self.archive.info, req.name))
+
+    async def recording_frame(self, req: RecordingFrameQuery) -> tuple[RecordingFrameMeta, np.ndarray]:
+        meta, image = await asyncio.to_thread(self.archive.frame, req.name, req.index)
+        return RecordingFrameMeta(**meta), image
+
+    async def recording_frame_jpeg(self, req: RecordingJpegQuery) -> tuple[RecordingJpegMeta, bytes]:
+        def work():
+            meta, image = self.archive.frame(req.name, req.index)
+            if req.low is None or req.high is None:
+                low, high = self.archive.frame_scale(req.name)
+            low = req.low if req.low is not None else low
+            high = req.high if req.high is not None else high
+            if high <= low:
+                raise ValueError(f"high ({high}) must be above low ({low})")
+            if image.ndim == 3:
+                image = image[..., 0]
+            scaled = np.clip((image.astype(np.float32) - low) / (high - low), 0.0, 1.0)
+            if req.gamma != 1.0:
+                scaled **= 1.0 / req.gamma
+            pixels = (scaled * 255.0).astype(np.uint8)
+            if req.max_width and pixels.shape[1] > req.max_width:
+                height = max(1, round(pixels.shape[0] * req.max_width / pixels.shape[1]))
+                pixels = cv2.resize(pixels, (req.max_width, height), interpolation=cv2.INTER_AREA)
+            ok, buf = cv2.imencode(".jpg", pixels, [int(cv2.IMWRITE_JPEG_QUALITY), req.quality])
+            if not ok:
+                raise RuntimeError("cv2.imencode rejected the frame")
+            return RecordingJpegMeta(
+                name=req.name, index=req.index, n_frames=meta["n_frames"],
+                time=meta.get("time"), time_stamp=meta.get("time_stamp"),
+                width=pixels.shape[1], height=pixels.shape[0], low=low, high=high,
+            ), buf.tobytes()
+        return await asyncio.to_thread(work)
+
+    async def recording_integration(self, req: RecordingIntegrationQuery) -> RecordingIntegration:
+        out = await asyncio.to_thread(self.archive.integration, req.name,
+                                      set(req.bbox_ids) if req.bbox_ids is not None else None,
+                                      req.since, req.until, req.max_points)
+        return RecordingIntegration(**out)
+
+    async def recording_log(self, req: RecordingLogQuery) -> RecordingLog:
+        out = await asyncio.to_thread(self.archive.log, req.name, req.columns,
+                                      req.since, req.until, req.max_points)
+        return RecordingLog(**out)
+
+    def readout(self) -> ArchiveReadout:
+        return ArchiveReadout(root_folder=str(self.archive.root),
+                              n_recordings=len(self.archive.names()))
+
+
+def _summary(model, data: dict):
+    """A summary dict -> its payload, with the `_iso` twins of each time filled in."""
+    return model(**data, **{f"{k}_iso": iso(data.get(k)) for k in ("modified", "start", "end")
+                            if f"{k}_iso" in model.model_fields})

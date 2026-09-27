@@ -12,8 +12,12 @@ from .payloads.chamber import (
     ConfigQuery,
     ConfigSection,
     ConfigSections,
+    ListLogFiles,
     LogBatch,
     LogEntry,
+    LogFileList,
+    LogSeries,
+    LogWindowQuery,
     MICommands,
     MIExecution,
     MIExecutionList,
@@ -40,7 +44,15 @@ LOG = Capability(
     kind=Kind.DUPLEX,
     doc="The chamber's growth log, tailed from disk.",
     state=ChamberLogState,
-    ops=(Op("log", Empty, LogBatch, doc="Latest log rows."),),
+    ops=(
+        Op("log", Empty, LogBatch, doc="Latest log rows."),
+        Op("list_log_files", ListLogFiles, LogFileList,
+           doc="The log files in the chamber's log folder, newest name first, with the "
+               "time span each covers."),
+        Op("log_window", LogWindowQuery, LogSeries,
+           doc="The log over a time window, as columns, across however many files it "
+               "spans -- or one named file. For charting a past growth."),
+    ),
     stream=StreamSpec("log", LogEntry),
 )
 

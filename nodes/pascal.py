@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+from pathlib import Path
 
 from lumi.base.camera.handlers import JpegCameraHandler
 from lumi.config import settings
@@ -33,6 +34,7 @@ from lumi.pascal.hardware import (
     build_mi_mode,
     build_simulated_chamber,
 )
+from lumi.pascal.log_archive import LogArchive
 
 log = logging.getLogger(__name__)
 
@@ -71,7 +73,14 @@ def build(args: argparse.Namespace) -> EquipmentNode:
         instance_id=args.instance,
     )
 
-    node.mount("log", ChamberLogHandler(log_reader, getattr(log_reader, "queue", None)))
+    # The reader watches a folder (a single file for --src test); earlier files in it
+    # are the history `list_log_files` / `log_window` read back.
+    log_path = Path(log_reader.config.log_path)
+    log_archive = LogArchive(
+        log_path if log_path.is_dir() else log_path.parent,
+        live_path=lambda: getattr(log_reader, "_log_file_path", None),
+    )
+    node.mount("log", ChamberLogHandler(log_reader, getattr(log_reader, "queue", None), log_archive))
     node.mount("config", ChamberConfigHandler(config_reader))
     node.mount("mi_mode", MIModeHandler(mi_server))
     node.mount("camera", JpegCameraHandler(camera, jpeg_encoder))

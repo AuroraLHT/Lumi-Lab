@@ -245,6 +245,8 @@ class Recorder(RecordDataset):
         self.h5f = h5py.File( h5_path, open_mode)
 
     def close_h5(self):
+        if self.config.save_integration:
+            self.flush_integrations()
         self.h5f.flush()
         self.h5f.close()
 
@@ -729,40 +731,41 @@ class Recorder(RecordDataset):
             # print("append integrations end", _integrations_bbox_idx_start, _integrations_bbox_idx_end, time.time())
 
         if len(self._buffer_integrations["content"]) >= settings.storage.hdf5_recorder.buffer.intergration_buffer_size:
-            with self._lock_buffer_integrations:
-                if resize_step is None: resize_step = self.RESIZE_STEP
+            self.flush_integrations()
 
-                _integrations_data = np.concatenate(self._buffer_integrations["content"], axis=0)
-                _integrations_meta = np.concatenate(self._buffer_integrations["meta"], axis=0)
-                _integrations_idx = self._buffer_integrations["integration_idx"]
-                _integrations_bbox_idx_start = self._buffer_integrations["bbox_idx_start"]
-                _integrations_bbox_idx_end = self._buffer_integrations["bbox_idx_end"]
+    def flush_integrations(self):
+        """Write whatever integrations are buffered.
 
-                # print(_integrations_bbox_idx_start)
+        Called when the buffer fills, and by close_h5 -- without that, the last
+        partial buffer of every recording (up to intergration_buffer_size - 1 events)
+        was dropped on close. Takes the buffer under its lock and returns if it is
+        empty, so a second thread that also saw it full finds nothing left to write
+        rather than concatenating an empty list.
+        """
+        with self._lock_buffer_integrations:
+            if not self._buffer_integrations["content"]:
+                return
+            _integrations_data = np.concatenate(self._buffer_integrations["content"], axis=0)
+            _integrations_meta = np.concatenate(self._buffer_integrations["meta"], axis=0)
+            _integrations_idx = self._buffer_integrations["integration_idx"]
+            _integrations_bbox_idx_start = self._buffer_integrations["bbox_idx_start"]
+            _integrations_bbox_idx_end = self._buffer_integrations["bbox_idx_end"]
+            try:
+                self._save_integrations_buffered_data(
+                    _integrations_data,
+                    _integrations_meta,
+                    _integrations_idx,
+                    _integrations_bbox_idx_start,
+                    _integrations_bbox_idx_end,
+                )
+            except Exception as e:
+                logging.error(f"save integrations from buffered data error: {e}")
 
-                # print(_integrations_bbox_idx_end)
-
-                # print("save integrations from buffered data start", _integrations_bbox_idx_start[0], _integrations_bbox_idx_end[-1])
-                # print(_integrations_data.shape, _integrations_meta.shape, len(_integrations_idx), len(_integrations_bbox_idx_start), len(_integrations_bbox_idx_end))
-                try:
-                    self._save_integrations_buffered_data(
-                        _integrations_data,
-                        _integrations_meta,
-                        _integrations_idx,
-                        _integrations_bbox_idx_start,
-                        _integrations_bbox_idx_end,
-                    )
-                except Exception as e:
-                    logging.error(f"save integrations from buffered data error: {e}")
-                # print("save integrations from buffered data end", _integrations_bbox_idx_start[0], _integrations_bbox_idx_end[-1])
-
-                self._buffer_integrations["content"] = []
-                self._buffer_integrations["meta"] = []
-                self._buffer_integrations["bbox_idx_start"] = []
-                self._buffer_integrations["bbox_idx_end"] = []
-                self._buffer_integrations["integration_idx"] = []
-                # print("clear buffered integrations")
-
+            self._buffer_integrations["content"] = []
+            self._buffer_integrations["meta"] = []
+            self._buffer_integrations["bbox_idx_start"] = []
+            self._buffer_integrations["bbox_idx_end"] = []
+            self._buffer_integrations["integration_idx"] = []
 
     def save_integrations(
         self,
