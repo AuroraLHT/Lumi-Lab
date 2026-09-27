@@ -28,6 +28,10 @@ function unpackFrame(buf: ArrayBuffer): { header: any; payload: Uint8Array } {
 
 export interface Response<T> { meta: T; payload: Uint8Array }
 
+/** Per-call options. `timeoutMs` overrides the transport's default -- an upload of a
+ *  15 MB file needs longer than a state read. */
+export interface CallOptions { timeoutMs?: number }
+
 type Pending = { resolve: (v: any) => void; reject: (e: Error) => void; timer: number };
 type StreamHandler = (meta: any, payload: Uint8Array) => void;
 
@@ -51,7 +55,21 @@ export class LumiTransport {
       this.ws.onopen = () => resolve();
       this.ws.onerror = () => reject(new Error(`bridge websocket failed: ${this.url}`));
       this.ws.onmessage = (ev) => this.onMessage(ev.data as ArrayBuffer);
+      // No reply can arrive on a closed socket, so fail every waiting call now rather
+      // than letting each one sit out its timeout and report "timed out".
+      this.ws.onclose = (ev) => this.rejectAll(
+        new Error(`bridge websocket closed (code ${ev.code}${ev.reason ? `: ${ev.reason}` : ""})`),
+      );
     });
+  }
+
+  private rejectAll(err: Error): void {
+    const pending = [...this.pending.values()];
+    this.pending.clear();
+    for (const p of pending) {
+      clearTimeout(p.timer);
+      p.reject(err);
+    }
   }
 
   private onMessage(buf: ArrayBuffer): void {
@@ -81,26 +99,27 @@ export class LumiTransport {
     this.ws.send(packFrame(header, payload));
   }
 
-  private rpc<T>(header: Record<string, unknown>, payload?: Uint8Array): Promise<T> {
+  private rpc<T>(header: Record<string, unknown>, payload?: Uint8Array, opts?: CallOptions): Promise<T> {
     const id = `c${this.seq++}`;
+    const timeoutMs = opts?.timeoutMs ?? this.timeoutMs;
     return new Promise<T>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.pending.delete(id);
-        reject(new Error(`${header.target}.${header.op} timed out after ${this.timeoutMs}ms`));
-      }, this.timeoutMs);
+        reject(new Error(`${header.target}.${header.op} timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       this.send({ ...header, kind: "request", correlation_id: id }, payload);
     });
   }
 
   /** A request/response op. */
-  call<T>(target: string, op: string, body: unknown): Promise<T> {
-    return this.rpc<T>({ target, op }, new TextEncoder().encode(JSON.stringify(body ?? {})));
+  call<T>(target: string, op: string, body: unknown, opts?: CallOptions): Promise<T> {
+    return this.rpc<T>({ target, op }, new TextEncoder().encode(JSON.stringify(body ?? {})), opts);
   }
 
   /** An upload: `body` is the metadata model, `payload` the bytes, sent unencoded. */
-  callWithPayload<T>(target: string, op: string, body: unknown, payload: Uint8Array): Promise<T> {
-    return this.rpc<T>({ target, op, body: body ?? {} }, payload);
+  callWithPayload<T>(target: string, op: string, body: unknown, payload: Uint8Array, opts?: CallOptions): Promise<T> {
+    return this.rpc<T>({ target, op, body: body ?? {} }, payload, opts);
   }
 
   /** A control verb (start/stop/state). */
@@ -2347,8 +2366,8 @@ export class ExperimentDriverClient {
   }
 
   /** Attach a file to a measurement: the instrument's raw file, an AFM/PFM image or map, a micrograph. The request body is the file itself. Kept byte for byte, whether or not anything can parse it yet. */
-  async attach_measurement_file(req: AttachMeasurementFile, payload: Uint8Array): Promise<MeasurementFileInfo> {
-    return this.t.callWithPayload<MeasurementFileInfo>(ExperimentDriverClient.target, "attach_measurement_file", req, payload);
+  async attach_measurement_file(req: AttachMeasurementFile, payload: Uint8Array, opts?: CallOptions): Promise<MeasurementFileInfo> {
+    return this.t.callWithPayload<MeasurementFileInfo>(ExperimentDriverClient.target, "attach_measurement_file", req, payload, opts);
   }
 
   /** An attached file's bytes, exactly as uploaded. */

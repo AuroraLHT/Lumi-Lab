@@ -34,6 +34,7 @@ from aio_pika import ExchangeType
 from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange
 
 from lumi.base.mq import CapabilityClient, RemoteError
+from lumi.config import settings
 from lumi.base.mq.codec import decode as decode_body, encode as encode_body
 from lumi.contracts import REGISTRY, Capability, Codec
 from lumi.contracts.policy import permits, permits_read
@@ -143,6 +144,10 @@ class BusProxy:
 # --- one browser connection -------------------------------------------------
 
 
+def max_request_payload_bytes() -> int:
+    return int(settings.api.get("max_request_payload_bytes", 16 * 1024 * 1024 - 256 * 1024))
+
+
 @dataclass
 class BridgeSession:
     """Proxies one browser websocket to the bus, gated by the user's role.
@@ -197,6 +202,15 @@ class BridgeSession:
         cid = header.get("correlation_id")
         target = header.get("target", "")
         op_name = header.get("op", "")
+        limit = max_request_payload_bytes()
+        if len(payload) > limit:
+            # Refused here, before the bus: RabbitMQ answers an oversized publish by
+            # closing the channel, which would take every other request on it down too.
+            return await self._error(
+                cid, "PayloadTooLarge",
+                f"{target}.{op_name}: the request is {len(payload)} bytes; the bridge "
+                f"forwards at most {limit} (api.max_request_payload_bytes)",
+            )
         try:
             equipment, cap, client = self.proxy.resolve(target)
         except KeyError as exc:

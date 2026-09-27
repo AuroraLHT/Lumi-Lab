@@ -8,6 +8,14 @@ host = "localhost"
 [api]
 host = "0.0.0.0"
 port = 8000
+# Largest websocket frame the server accepts. Deliberately above what the bus can carry
+# (below): a frame over this is dropped by uvicorn before the bridge sees it, with no
+# chance to answer, whereas one under it reaches the bridge and gets an error reply.
+ws_max_bytes = 67108864
+# Largest request payload (an upload) the bridge forwards. RabbitMQ 4 refuses messages
+# over 16 MiB by closing the channel, so the bridge stops short of that, leaving room
+# for the headers.
+max_request_payload_bytes = 16515072
 workers = 10
 
 [auth]
