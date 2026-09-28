@@ -257,6 +257,14 @@ sleep 2
 start_node pascal --host "$RABBITMQ_HOST" --src sim --speed "$CHAMBER_SPEED"
 start_node rheed  --host "$RABBITMQ_HOST" --src simcam
 
+# RHEED pattern simulation: no hardware, so it always runs when its extra is there.
+SIMULATION_SKIPPED=""
+if "$PYTHON" -c "import gemmi" 2>/dev/null; then
+    start_node simulation --host "$RABBITMQ_HOST"
+else
+    SIMULATION_SKIPPED="  simulation skipped (uv sync --extra rheedsim)"
+fi
+
 if [[ $WITH_AGENT -eq 1 ]]; then
     # Per-host supervisor (spawn/kill). Only does anything with an [agent.nodes]
     # allowlist in settings; harmless otherwise.
@@ -314,6 +322,7 @@ done
 [[ $WITH_AGENT -eq 0 ]] && echo "  agent      skipped (pass --with-agent)"
 [[ $WITH_DETECTION -eq 0 ]] && echo "  detection  skipped (pass --with-detection once its deps are installed)"
 [[ $WITH_EXPERIMENT -eq 0 ]] && echo "  experiment skipped (pass --with-experiment)"
+[[ -n "$SIMULATION_SKIPPED" ]] && echo "$SIMULATION_SKIPPED"
 echo
 echo "API on http://localhost:8000 -- $AUTH_NOTE"
 echo "logs in $LOG_DIR"

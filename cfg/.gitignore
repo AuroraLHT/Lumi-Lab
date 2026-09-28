@@ -39,3 +39,7 @@ measurement_files/
 chamber_fiducials.json
 chamber_fiducials.json.tmp
 chamber_fiducials.json.corrupt
+
+# Structures saved through the simulation node (`simulation.rheed.structures_path`):
+# whatever CIFs this lab uploaded, local like the rest of this folder's data.
+rheed_structures/

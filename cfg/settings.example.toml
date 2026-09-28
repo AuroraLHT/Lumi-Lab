@@ -519,6 +519,32 @@ ctrl_key = "storage_ctrl"
 state_key = "storage_state"
 name = "Storage"
 
+[simulation]
+exchange = "SIMULATION"
+exchange_type = "topic"
+
+[simulation.rheed]
+# Structures kept with save_structure, one JSON file each. The built-ins need nothing.
+structures_path = "cfg/rheed_structures"
+
+# The lab RHEED camera's view of the phosphor screen: what a simulation uses when the
+# request names no screen, so a simulated pattern lines up with the live one.
+# pixel_size_mm is one image pixel measured *on the screen* (the lens is folded in).
+# The origin is the shadow-edge centre on the image -- where the surface's horizon
+# crosses the beam axis. The lab camera sees the screen upside down (flip_y). These
+# are eyeballed from src/lumi/rheed/assets/test_frame.npy; calibrate against a known
+# pattern (SrTiO3 (001) along [100] at a known energy) before trusting a fit.
+[simulation.rheed.screen]
+camera_length_mm = 300.0
+pixel_size_mm = 0.25
+width_px = 720
+height_px = 540
+origin_x_px = 268.0
+origin_y_px = 87.0
+roll_deg = 0.0
+flip_x = false
+flip_y = true
+
 [experiment]
 exchange = "EXPERIMENT"
 exchange_type = "topic"

@@ -40,7 +40,7 @@ uv sync --all-extras          # everything; or pick per-host extras, e.g. --extr
 ```
 
 The extras are deliberately split by role — `camera`, `pascal`, `storage`, `api`,
-`detection`, `experiment`, `mcp` — so a detection box doesn't have to install `pypylon`
+`detection`, `experiment`, `rheedsim`, `mcp` — so a detection box doesn't have to install `pypylon`
 and the camera host doesn't have to install CUDA.
 
 On the **detection** host only, after `uv sync`:
@@ -168,6 +168,7 @@ python nodes/pascal.py   --host <broker> --src path \
 python nodes/rheed.py    --host <broker> --src pylon          # on the camera host
 python nodes/detection.py --host <broker>                     # on the GPU box
 python nodes/experiment.py --host <broker>
+python nodes/simulation.py --host <broker>                   # RHEED simulation, any host
 
 python nodes/api.py                                           # on the web host
 ```
@@ -517,6 +518,44 @@ To have something to look at on the simulator:
 It writes growth.db rows, one HDF5 recording per deposition and one chamber-log CSV per
 session, all driven off the chamber simulator so the three agree. Safe to run against a
 live simulation stack.
+
+## RHEED simulation
+
+`nodes/simulation.py` computes what a RHEED pattern should look like: give it a crystal,
+the surface it is cut along, the beam and the screen, and it returns the picture and
+every rod and spot on it, labelled. The same request works from a notebook:
+
+```python
+from lumi.rheedsim import simulate
+from lumi.contracts.payloads.simulation import RheedSimRequest, StructureSpec, SurfaceSpec, BeamSpec
+
+meta, image = simulate(RheedSimRequest(
+    structure=StructureSpec(name="SrTiO3"),              # or cif="...", or manual=...
+    surface=SurfaceSpec(normal=[0, 0, 1], azimuth=[1, 0, 0], termination="TiO2"),
+    beam=BeamSpec(energy_kev=20, incidence_deg=3),
+))
+```
+
+- **Structures** come from a CIF (symmetry applied), a cell typed in by hand (lattice,
+  space group, sites), or the built-ins (SrTiO3, LSMO, LaFeO3 and LaAlO3 pseudocubic,
+  LSAT, YSZ, MgO, Al2O3, rutile, Si, GaAs). `save_structure` keeps one by name.
+- **Orientation** is the surface plane (hkl) and the beam's direction along it [uvw],
+  plus an azimuth offset for off-axis patterns. The simulator finds the primitive
+  surface mesh, including a centred lattice's (Si(111) is 3.84 A, not 7.68), and lists
+  the atomic planes a surface can end on.
+- **Morphology**: terrace size (spots become streaks), a share of 3D islands
+  (transmission spots), and reconstructions as supercell matrices -- `[[2,0],[0,1]]` is
+  2x1.
+- **Screen**: camera length, pixel size on the screen, the shadow-edge origin, roll and
+  flips. A request that names none gets the lab camera's, from
+  `[simulation.rheed.screen]`.
+
+It is kinematic: positions are exact geometry, intensities are single-scattering and
+qualitative -- no Kikuchi lines, no refraction, and a specular spot that is often weaker
+than the lab's. `rheed_spots` (the spot list alone, tens of ms) is meant for overlaying on
+the live camera; `simulate_rheed_jpeg` for showing the pattern; `simulate_rheed` for
+analysis. The equations, and where each lives in the code, are in
+[docs/RHEED_SIMULATION.md](docs/RHEED_SIMULATION.md).
 
 ## Contracts and generated code
 
