@@ -21,7 +21,7 @@ from lumi.contracts.payloads.simulation import RheedSimMeta, RheedSimRequest, Rh
 
 from .crystal import Crystal, from_cif, from_manual
 from .kinematic import Kinematic
-from .scene import Scene, build, summarize
+from .scene import DEFAULT_ENERGY_KEV, Scene, build, summarize
 from .store import StructureStore
 
 __all__ = [
@@ -45,19 +45,22 @@ def simulate(
     store: StructureStore | None = None,
     crystal: Crystal | None = None,
     default_screen: ScreenSpec | None = None,
+    default_energy_kev: float = DEFAULT_ENERGY_KEV,
     image: bool = True,
     backend: Backend = KINEMATIC,
 ) -> tuple[RheedSimMeta, np.ndarray | None]:
     """The pattern and its labelled spots. `image=False` skips the picture (the spot
     list alone is milliseconds -- what an overlay or a fit wants)."""
     t0 = time.perf_counter()
+    if req.beam.energy_kev is None:
+        req = req.model_copy(update={"beam": req.beam.model_copy(update={"energy_kev": default_energy_kev})})
     if crystal is None:
         crystal = (store or StructureStore(None)).resolve(req.structure)
     scene = build(req, crystal, req.screen or default_screen or ScreenSpec())
     spots, img = backend.run(scene, image=image)
     meta = RheedSimMeta(
         structure=scene.summary(), mesh=scene.mesh(), screen=scene.screen.filled(),
-        wavelength_a=round(scene.lam, 6), k_inv_a=round(scene.k, 4),
+        energy_kev=req.beam.energy_kev, wavelength_a=round(scene.lam, 6), k_inv_a=round(scene.k, 4),
         spots=spots, warnings=scene.warnings, **scene.landmarks(),
         elapsed_ms=round((time.perf_counter() - t0) * 1e3, 1),
     )

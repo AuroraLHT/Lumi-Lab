@@ -33,7 +33,8 @@ def build(args: argparse.Namespace) -> EquipmentNode:
         amqp_url=f"amqp://{args.user}:{args.password}@{args.host}/",
         instance_id=args.instance,
     )
-    node.mount("rheed_sim", RheedSimHandler(store, screen))
+    energy = float(settings.get("rheed.energy_kev", 25.0) or 25.0)
+    node.mount("rheed_sim", RheedSimHandler(store, screen, energy_kev=energy))
     return node
 
 

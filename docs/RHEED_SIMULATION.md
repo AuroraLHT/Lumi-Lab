@@ -47,7 +47,7 @@ in `RheedSimRequest` (`lumi/contracts/payloads/simulation.py`) when the user set
 | $m_0$ | electron rest mass | kg | |
 | $e$ | elementary charge | C | |
 | $c_0$ | speed of light | m/s | |
-| $E$ | beam energy (accelerating voltage × $e$) | keV | `beam.energy_kev` |
+| $E$ | beam energy (accelerating voltage × $e$) | keV | `beam.energy_kev`; unset = the lab's `rheed.energy_kev` (25 keV) |
 | $\lambda$ | electron wavelength | Å | |
 | $\lvert\mathbf k_\text{in}\rvert,\ \lvert\mathbf k_\text{out}\rvert$ | wavenumber $2\pi/\lambda$; the two are equal because scattering is elastic | Å⁻¹ | |
 | $\theta$ | glancing angle of incidence, from the surface plane | rad | `beam.incidence_deg` |
@@ -740,7 +740,25 @@ SrTiO₃(001), beam along [100], 20 keV, $\theta=4.4°$, $L=300$ mm, $p=0.25$ mm
 | $N_\text{layers}$ at $\Lambda=10$ nm | 26 |
 
 The lab's test frame (`src/lumi/rheed/assets/test_frame.npy`) shows streaks 24–26 px
-apart. That is where the default `[simulation.rheed.screen]` values came from.
+apart.
+
+The example above is illustrative. The lab's defaults come from fitting two real
+recordings at the lab's 25 keV, using the zeroth-zone geometry: the specular spot, the
+first-order spots on the Laue circle, the streak columns and the shadow edge.
+
+| Recording | Incidence $\theta$ | Camera $L/p$ | Origin $(u_0,v_0)$ | Azimuth offset $\phi$ | Residual |
+|---|---|---|---|---|---|
+| SrTiO₃(001) along [100], 2026-03-09 | 1.89° | 4289 px/rad | (375, 130) | −0.02° | 0.7 px |
+| YSZ(111) along [1-10], 2025-09-19 | 1.63° | 4286 px/rad | (387, 179) | 0.00° | 0.6 px |
+
+The two camera scales agree to 0.1 %. The YSZ/SrTiO₃ streak-spacing ratio is 1.238
+measured against 1.240 predicted
+($\lvert\mathbf g\rvert$ = 1.996 and 1.609 Å⁻¹).
+
+Zeroth-zone geometry alone fixes only $\lvert\mathbf k_\text{in}\rvert\sin\theta$ and
+$(L/p)/\lvert\mathbf k_\text{in}\rvert$, so the energy has to be known. It is stored with
+each recording (`rheed_energy_kev`). The bright points on those streaks that are *not* on
+the Laue circle are not reproduced yet; see §13.
 
 ## 13. What it leaves out
 
@@ -751,7 +769,10 @@ replace §6–9.
   $\theta$) are only qualitatively right. The specular spot is usually weaker than
   measured. [IC04 ch. 5–7, MB81]
 - **Refraction** at the surface, from the mean inner potential. Real spots near the
-  shadow edge sit slightly lower than predicted. [IC04]
+  shadow edge sit slightly lower than predicted. In the two recordings of §12, the
+  bright points along the streaks away from the Laue circle miss the kinematic Bragg
+  maxima by 10–30 px, and refraction together with Kikuchi lines is the likely reason.
+  [IC04]
 - **Inelastic background and energy spread**, beyond the cosmetic halo of §10.
 - **Reconstructed atom positions.** Fractional-rod intensities are a knob (§8).
 - **Real line shapes.** Every broadening is a Gaussian (§7, §9); there are no step

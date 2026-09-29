@@ -541,6 +541,9 @@ class StartStorage(BaseModel):
     save_log: bool = True
     save_integration: bool = True
     force_rewrite: bool = False
+    #: The RHEED beam energy, keV, stored with the recording. None = the lab's usual
+    #: (`rheed.energy_kev` in the storage node's settings).
+    rheed_energy_kev: float | None = Field(default=None, gt=0, le=200)
 
 
 class StorageResult(BaseModel):

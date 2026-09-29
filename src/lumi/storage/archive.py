@@ -69,8 +69,12 @@ class RecordingNotFound(KeyError):
 
 
 class RecordingArchive:
-    def __init__(self, root: str | Path, *, live_name=lambda: None) -> None:
+    def __init__(self, root: str | Path, *, live_name=lambda: None,
+                 default_energy_kev: float | None = None) -> None:
         self.root = Path(root)
+        #: Reported for recordings made before files carried their beam energy.
+        self.default_energy_kev = float(default_energy_kev if default_energy_kev is not None
+                                        else settings.get("rheed.energy_kev", 25.0) or 25.0)
         #: Returns the stem being recorded right now, or None. That file is open for
         #: writing in this same process and HDF5 will not open it a second time.
         self.live_name = live_name
@@ -141,6 +145,9 @@ class RecordingArchive:
             out["n_integrations"] = _size(f[self.ds.integration_root])
         if times is not None and times.size:
             out["start"], out["end"] = float(np.nanmin(times)), float(np.nanmax(times))
+        energy = f.attrs.get("rheed_energy_kev")
+        out["rheed_energy_recorded"] = energy is not None
+        out["rheed_energy_kev"] = float(energy) if energy is not None else self.default_energy_kev
         return out
 
     def info(self, name: str) -> dict:

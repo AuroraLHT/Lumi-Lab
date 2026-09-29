@@ -184,7 +184,9 @@ class SurfaceSpec(BaseModel):
 
 
 class BeamSpec(BaseModel):
-    energy_kev: float = Field(default=20.0, ge=1, le=100)
+    #: None = the lab's usual beam energy (`rheed.energy_kev` in settings, 25 keV). The
+    #: result's `energy_kev` says what was used.
+    energy_kev: float | None = Field(default=None, ge=1, le=100)
     #: Glancing angle between the beam and the surface plane.
     incidence_deg: float = Field(default=3.0, gt=0, le=20)
     #: Angular spread of the beam; blurs every feature by about k * divergence.
@@ -314,6 +316,8 @@ class RheedSimMeta(BaseModel):
     mesh: SurfaceMesh
     #: The screen used, with its defaults filled in.
     screen: ScreenSpec
+    #: The beam energy used, keV (the lab default when the request named none).
+    energy_kev: float
     wavelength_a: float
     k_inv_a: float
     origin_px: list[float]

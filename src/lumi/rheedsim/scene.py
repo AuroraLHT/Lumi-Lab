@@ -27,6 +27,9 @@ from .surface import SurfaceCell, cut, orientation, pick_termination, reduce_int
 
 #: Depth (in amplitude attenuation lengths) the slab is summed to: e^-6.9 = 1e-3.
 _DEPTH = 6.9
+#: The lab's usual RHEED beam energy, keV, for a request that names none. The
+#: simulation node passes `rheed.energy_kev` from settings to simulate() instead.
+DEFAULT_ENERGY_KEV = 25.0
 
 
 @dataclass
@@ -135,7 +138,8 @@ def build(req: RheedSimRequest, crystal: Crystal, screen: ScreenSpec) -> Scene:
     cell = _cut(crystal, tuple(req.surface.normal))
     top = pick_termination(cell, req.surface.termination)
     R = orientation(cell, req.surface.azimuth, req.surface.azimuth_offset_deg)
-    lam = wavelength(req.beam.energy_kev)
+    energy = req.beam.energy_kev if req.beam.energy_kev is not None else DEFAULT_ENERGY_KEV
+    lam = wavelength(energy)
     k = 2 * math.pi / lam
     theta = math.radians(req.beam.incidence_deg)
     warnings: list[str] = []

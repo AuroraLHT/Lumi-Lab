@@ -24,17 +24,20 @@ from lumi.contracts.payloads.simulation import (
     StructureName,
 )
 
-from . import simulate, summarize
+from . import DEFAULT_ENERGY_KEV, simulate, summarize
 from .crystal import Crystal
 from .library import BUILTINS
 from .store import StructureStore
 
 
 class RheedSimHandler:
-    def __init__(self, store: StructureStore, screen: ScreenSpec | None = None) -> None:
+    def __init__(self, store: StructureStore, screen: ScreenSpec | None = None,
+                 energy_kev: float = DEFAULT_ENERGY_KEV) -> None:
         self.store = store
         #: The lab camera's screen, used when a request names none.
         self.screen = screen or ScreenSpec()
+        #: The lab's usual beam energy, used when a request names none.
+        self.energy_kev = energy_kev
 
     # --- structures -----------------------------------------------------------
 
@@ -75,7 +78,8 @@ class RheedSimHandler:
         return await asyncio.to_thread(work)
 
     def _run(self, req: RheedSimRequest, image: bool):
-        return simulate(req, store=self.store, default_screen=self.screen, image=image)
+        return simulate(req, store=self.store, default_screen=self.screen,
+                        default_energy_kev=self.energy_kev, image=image)
 
     def readout(self) -> RheedSimReadout:
         return RheedSimReadout(

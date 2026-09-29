@@ -548,7 +548,10 @@ meta, image = simulate(RheedSimRequest(
   2x1.
 - **Screen**: camera length, pixel size on the screen, the shadow-edge origin, roll and
   flips. A request that names none gets the lab camera's, from
-  `[simulation.rheed.screen]`.
+  `[simulation.rheed.screen]` (fitted to real recordings).
+- **Energy**: a request that names none gets the lab's `rheed.energy_kev`, 25 keV. The
+  same value is stored in every recording (`start_recording`'s `rheed_energy_kev`
+  overrides it) and read back by `storage.archive`.
 
 It is kinematic: positions are exact geometry, intensities are single-scattering and
 qualitative -- no Kikuchi lines, no refraction, and a specular spot that is often weaker

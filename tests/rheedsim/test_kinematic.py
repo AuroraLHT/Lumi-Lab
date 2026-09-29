@@ -32,7 +32,7 @@ SCREEN = ScreenSpec(camera_length_mm=300, pixel_size_mm=0.25, width_px=400, heig
 
 def req(name="SrTiO3", surface=None, morphology=None, render=None, deg=3.0):
     return RheedSimRequest(structure=StructureSpec(name=name), surface=surface or SurfaceSpec(),
-                           beam=BeamSpec(incidence_deg=deg), screen=SCREEN,
+                           beam=BeamSpec(energy_kev=20.0, incidence_deg=deg), screen=SCREEN,
                            morphology=morphology or Morphology(),
                            render=render or RenderSpec(background=0, direct_beam=False, blur_px=0))
 

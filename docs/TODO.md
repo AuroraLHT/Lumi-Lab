@@ -204,12 +204,11 @@ cert).
 `lumi.rheedsim` and `nodes/simulation.py` (PR #14) are kinematic and uncalibrated. The
 equations and their limits are in `docs/RHEED_SIMULATION.md`. In rough order:
 
-- **Calibrate the lab screen.** `[simulation.rheed.screen]` (camera length 300 mm,
-  0.25 mm/px, origin (268, 87), `flip_y`) was eyeballed from
-  `src/lumi/rheed/assets/test_frame.npy`. The energy and incidence of that frame are not
-  known either, and ~4.4° is only a best match. Check it against a pattern taken at a
-  known energy and angle: SrTiO3 (001) along [100] is the easiest. Until then, simulated
-  and live spots can be several pixels apart.
+- **Keep the lab screen calibrated.** `[simulation.rheed.screen]` was fitted at 25 keV to
+  two recordings (see §12 of the doc): 4288 px/rad, with the origin from the SrTiO3 one.
+  The origin moves with the sample height, and the scale will move if the camera or
+  its lens is touched. Refit after either, and whenever a recording's beam energy
+  differs.
 - **Fit the geometry to a live frame.** Vary camera length, incidence, azimuth offset,
   origin and roll until the `rheed_spots` positions match the spots found in a camera
   frame. Return the fitted `ScreenSpec` and beam, and ideally save them as the new

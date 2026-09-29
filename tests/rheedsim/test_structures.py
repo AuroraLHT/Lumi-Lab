@@ -188,3 +188,16 @@ async def test_a_request_without_a_screen_gets_the_nodes(tmp_path):
     h = RheedSimHandler(StructureStore(None), screen=lab)
     meta = await h.rheed_spots(RheedSimRequest(structure=StructureSpec(name="SrTiO3")))
     assert (meta.screen.width_px, meta.screen.flip_y, meta.origin_px) == (320, True, [100, 30])
+
+
+async def test_a_request_without_an_energy_gets_the_labs():
+    from lumi.contracts.payloads.simulation import BeamSpec
+    from lumi.rheedsim.geometry import wavelength
+
+    sto = StructureSpec(name="SrTiO3")
+    assert simulate(RheedSimRequest(structure=sto), image=False)[0].energy_kev == 25.0
+    h = RheedSimHandler(StructureStore(None), energy_kev=30.0)
+    meta = await h.rheed_spots(RheedSimRequest(structure=sto))
+    assert meta.energy_kev == 30.0 and meta.wavelength_a == pytest.approx(wavelength(30.0), abs=1e-6)
+    named = await h.rheed_spots(RheedSimRequest(structure=sto, beam=BeamSpec(energy_kev=15)))
+    assert named.energy_kev == 15.0

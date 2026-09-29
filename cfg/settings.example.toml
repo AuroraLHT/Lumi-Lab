@@ -66,6 +66,10 @@ state_monitior = "State Monitor"
 [rheed]
 exchange = "RHEED"
 exchange_type = "direct"
+# The RHEED gun's beam energy, keV. Nothing reads it off the gun, so this is what a
+# recording stores (start_recording's rheed_energy_kev overrides it per recording) and
+# what the simulator assumes when a request names no energy.
+energy_kev = 25.0
 
 [rheed.pylon]
 fps = 30
@@ -529,18 +533,20 @@ structures_path = "cfg/rheed_structures"
 
 # The lab RHEED camera's view of the phosphor screen: what a simulation uses when the
 # request names no screen, so a simulated pattern lines up with the live one.
-# pixel_size_mm is one image pixel measured *on the screen* (the lens is folded in).
-# The origin is the shadow-edge centre on the image -- where the surface's horizon
-# crosses the beam axis. The lab camera sees the screen upside down (flip_y). These
-# are eyeballed from src/lumi/rheed/assets/test_frame.npy; calibrate against a known
-# pattern (SrTiO3 (001) along [100] at a known energy) before trusting a fit.
+# Only camera_length_mm / pixel_size_mm matters (4288 px per radian); pixel_size_mm is
+# one image pixel measured *on the screen*, the lens folded in. The origin is the
+# shadow-edge centre on the image, which moves with the sample's height, so it is only
+# a starting point. The lab camera sees the screen upside down (flip_y).
+# Fitted at 25 keV to two recordings, 0.1 % apart in scale: SrTiO3(001) along [100]
+# (2026-03-09, origin (375, 130), incidence 1.89 deg) and YSZ(111) along [1-10]
+# (2025-09-19, origin (387, 179), incidence 1.63 deg).
 [simulation.rheed.screen]
-camera_length_mm = 300.0
-pixel_size_mm = 0.25
+camera_length_mm = 428.8
+pixel_size_mm = 0.1
 width_px = 720
 height_px = 540
-origin_x_px = 268.0
-origin_y_px = 87.0
+origin_x_px = 375.0
+origin_y_px = 130.0
 roll_deg = 0.0
 flip_x = false
 flip_y = true

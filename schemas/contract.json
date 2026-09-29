@@ -10120,6 +10120,20 @@
                   "title": "Project Name",
                   "type": "string"
                 },
+                "rheed_energy_kev": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rheed Energy Kev"
+                },
                 "save_ai": {
                   "default": true,
                   "title": "Save Ai",
@@ -15716,11 +15730,18 @@
                       "type": "number"
                     },
                     "energy_kev": {
-                      "default": 20.0,
-                      "maximum": 100,
-                      "minimum": 1,
-                      "title": "Energy Kev",
-                      "type": "number"
+                      "anyOf": [
+                        {
+                          "maximum": 100,
+                          "minimum": 1,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Energy Kev"
                     },
                     "incidence_deg": {
                       "default": 3.0,
@@ -16144,7 +16165,7 @@
                   "$ref": "#/$defs/BeamSpec",
                   "default": {
                     "divergence_mrad": 0.3,
-                    "energy_kev": 20.0,
+                    "energy_kev": null,
                     "incidence_deg": 3.0
                   }
                 },
@@ -16550,6 +16571,10 @@
                   "title": "Elapsed Ms",
                   "type": "number"
                 },
+                "energy_kev": {
+                  "title": "Energy Kev",
+                  "type": "number"
+                },
                 "k_inv_a": {
                   "title": "K Inv A",
                   "type": "number"
@@ -16612,6 +16637,7 @@
                 "structure",
                 "mesh",
                 "screen",
+                "energy_kev",
                 "wavelength_a",
                 "k_inv_a",
                 "origin_px",
@@ -16701,11 +16727,18 @@
                       "type": "number"
                     },
                     "energy_kev": {
-                      "default": 20.0,
-                      "maximum": 100,
-                      "minimum": 1,
-                      "title": "Energy Kev",
-                      "type": "number"
+                      "anyOf": [
+                        {
+                          "maximum": 100,
+                          "minimum": 1,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Energy Kev"
                     },
                     "incidence_deg": {
                       "default": 3.0,
@@ -17129,7 +17162,7 @@
                   "$ref": "#/$defs/BeamSpec",
                   "default": {
                     "divergence_mrad": 0.3,
-                    "energy_kev": 20.0,
+                    "energy_kev": null,
                     "incidence_deg": 3.0
                   }
                 },
@@ -17535,6 +17568,10 @@
                   "title": "Elapsed Ms",
                   "type": "number"
                 },
+                "energy_kev": {
+                  "title": "Energy Kev",
+                  "type": "number"
+                },
                 "k_inv_a": {
                   "title": "K Inv A",
                   "type": "number"
@@ -17597,6 +17634,7 @@
                 "structure",
                 "mesh",
                 "screen",
+                "energy_kev",
                 "wavelength_a",
                 "k_inv_a",
                 "origin_px",
@@ -17686,11 +17724,18 @@
                       "type": "number"
                     },
                     "energy_kev": {
-                      "default": 20.0,
-                      "maximum": 100,
-                      "minimum": 1,
-                      "title": "Energy Kev",
-                      "type": "number"
+                      "anyOf": [
+                        {
+                          "maximum": 100,
+                          "minimum": 1,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Energy Kev"
                     },
                     "incidence_deg": {
                       "default": 3.0,
@@ -18114,7 +18159,7 @@
                   "$ref": "#/$defs/BeamSpec",
                   "default": {
                     "divergence_mrad": 0.3,
-                    "energy_kev": 20.0,
+                    "energy_kev": null,
                     "incidence_deg": 3.0
                   }
                 },
@@ -18537,6 +18582,10 @@
                   "title": "Elapsed Ms",
                   "type": "number"
                 },
+                "energy_kev": {
+                  "title": "Energy Kev",
+                  "type": "number"
+                },
                 "k_inv_a": {
                   "title": "K Inv A",
                   "type": "number"
@@ -18604,6 +18653,7 @@
                 "structure",
                 "mesh",
                 "screen",
+                "energy_kev",
                 "wavelength_a",
                 "k_inv_a",
                 "origin_px",
@@ -18712,6 +18762,20 @@
                 "project_name": {
                   "title": "Project Name",
                   "type": "string"
+                },
+                "rheed_energy_kev": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rheed Energy Kev"
                 },
                 "save_ai": {
                   "default": false,
@@ -19059,6 +19123,23 @@
                       "title": "Recording",
                       "type": "boolean"
                     },
+                    "rheed_energy_kev": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Energy Kev"
+                    },
+                    "rheed_energy_recorded": {
+                      "default": false,
+                      "title": "Rheed Energy Recorded",
+                      "type": "boolean"
+                    },
                     "size_bytes": {
                       "title": "Size Bytes",
                       "type": "integer"
@@ -19324,6 +19405,23 @@
                 "recording": {
                   "default": false,
                   "title": "Recording",
+                  "type": "boolean"
+                },
+                "rheed_energy_kev": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rheed Energy Kev"
+                },
+                "rheed_energy_recorded": {
+                  "default": false,
+                  "title": "Rheed Energy Recorded",
                   "type": "boolean"
                 },
                 "size_bytes": {

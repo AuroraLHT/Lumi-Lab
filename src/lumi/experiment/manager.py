@@ -1031,6 +1031,7 @@ class BaseExperimentManager:
         save_log: bool = True,
         save_integration: bool = True,
         force_rewrite: bool = False,
+        rheed_energy_kev: float | None = None,
     ) -> dict:
         record_uuid = str(uuid.uuid4())
         sample_name = await self._current_sample_name()
@@ -1047,6 +1048,7 @@ class BaseExperimentManager:
         status = await self.storage.start_recording(StorageRequest(
             project_name=storage_name, save_frame=save_frame, save_ai=save_ai, save_log=save_log,
             save_integration=save_integration, force_rewrite=force_rewrite,
+            rheed_energy_kev=rheed_energy_kev,
         ))
         return {
             "ok": status.ok, "record_uuid": record_uuid, "storage_name": storage_name,
