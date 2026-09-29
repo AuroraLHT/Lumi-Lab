@@ -128,6 +128,21 @@ never turned on, so `_warm_up_to_pid_limit` drives current into a dark diode and
 substrate never leaves the pyrometer floor. Either the recipe should initiate the heater
 or it should document that the operator does it first.
 
+## A malformed websocket frame gets no reply
+
+The API bridge unpacks each frame as `[u32 header_len][header json][payload]` (see
+`packFrame` in the generated `web/src/generated/lumi.ts`). If the header does not parse
+-- a wrong length prefix, bad JSON -- the bridge logs a `JSONDecodeError` traceback and
+never answers. Since the `correlation_id` was in the unparsable header, the client cannot
+be told which call failed, and its call just waits out its timeout. Found by a hand-written
+test client that packed the length little-endian; the generated TS client packs it
+correctly, so this only bites other clients.
+
+Fix: catch the decode error in the bridge and send back an `error` frame. It can carry
+the correlation id when that much of the header is recoverable; otherwise it should be a
+connection-level error that makes the client fail every pending call, as a socket close
+already does.
+
 ## Simulator numbers that are still guesses
 
 Most of the chamber model is now anchored to a measurement. These are not:
@@ -150,6 +165,21 @@ Control verbs (`start`/`stop` streaming) are global and reachable by any connect
 viewer, so a read-only user can toggle a feed off for everyone. Nuisance-level, but it is
 an authorization gap in the direct-to-broker model.
 
+## Viewer access to the experiment node's read ops
+
+`READ_ONLY_OPS` (`src/lumi/contracts/policy.py`) is what a viewer may call. None of the
+experiment node's 22 read ops are in it, so all of them are classified as mutations and
+a viewer role cannot call them over the broker. That covers:
+
+- the records: `list_`/`get_` substrates, projects, experiments, records, samples and
+  measurements, plus `sample_history`;
+- the live readouts: `get_current_pressure`, `get_current_temperature`, the valve, MFC
+  and pump status, the mask position, and so on.
+
+The storage archive and chamber-log ops that the growth-history view also uses *are*
+listed. Decide what a viewer may read -- probably the records, and maybe the readouts --
+then add those ops or write down why not.
+
 ## Put TLS in front of the API bridge and the MCP server
 
 Both `nodes/api.py` (the FastAPI/websocket bridge, incl. `POST /auth/login`) and
@@ -168,3 +198,43 @@ real cert, proxying to `127.0.0.1:8000` (api) and `127.0.0.1:8100` (mcp) — e.g
 cover both if they're on the same domain/subpaths. Open decisions: nginx vs. Caddy, the
 domain name, and the cert approach (Caddy auto-TLS via Let's Encrypt vs. an existing
 cert).
+
+## RHEED simulation: what is left
+
+`lumi.rheedsim` and `nodes/simulation.py` (PR #14) are kinematic and uncalibrated. The
+equations and their limits are in `docs/RHEED_SIMULATION.md`. In rough order:
+
+- **Calibrate the lab screen.** `[simulation.rheed.screen]` (camera length 300 mm,
+  0.25 mm/px, origin (268, 87), `flip_y`) was eyeballed from
+  `src/lumi/rheed/assets/test_frame.npy`. The energy and incidence of that frame are not
+  known either, and ~4.4° is only a best match. Check it against a pattern taken at a
+  known energy and angle: SrTiO3 (001) along [100] is the easiest. Until then, simulated
+  and live spots can be several pixels apart.
+- **Fit the geometry to a live frame.** Vary camera length, incidence, azimuth offset,
+  origin and roll until the `rheed_spots` positions match the spots found in a camera
+  frame. Return the fitted `ScreenSpec` and beam, and ideally save them as the new
+  defaults. The spot list already carries what a fit needs: pixel positions, labels and
+  `q`. Use `rod` crossings for flat surfaces and `streak_max` for streaky ones.
+- **Frontend.** Nothing shows the simulation yet. The frontend needs the new `simulation`
+  contract (`simulation.rheed_sim`) and the four spot kinds (`rod`, `fractional`,
+  `streak_max`, `bulk`). The obvious first view is the spot list as an overlay on the
+  live camera.
+- **Refraction.** The mean inner potential (≈10–15 V in oxides) bends the beam at the
+  surface, which shifts real spots near the shadow edge, and the specular rocking-curve
+  peaks, to lower angles than predicted. It is a small correction to the kinematic
+  geometry and matters most at low exit angles. Do it before fitting, or the fit will
+  absorb it into a wrong incidence angle.
+- **A dynamical backend.** Multislice or Bloch-wave, behind the `Backend` protocol and
+  the same `Scene`, for intensities worth comparing with a camera: rocking curves,
+  Kikuchi lines, and specular intensity. Kinematic intensities are qualitative, and
+  their troughs are far too deep (see "Why a spot can vanish" in the doc).
+- **Partial coverage.** Growth oscillations need a surface that is partly one layer and
+  partly the next. The kinematic sum can do this with two terminations weighted by
+  coverage, which would let the simulator suggest the incidence angle that gives the
+  strongest oscillations.
+- **Reconstruction intensities.** Fractional-order rods are scaled top-plane scattering
+  (`strength` is a knob). Real intensities need the reconstructed atoms, e.g. an adatom
+  layer given as extra sites.
+- **Check the references.** §14 of `docs/RHEED_SIMULATION.md` was written from memory.
+  Check the volume and page numbers, and confirm that gemmi's electron scattering factors
+  (`c4322`) are the Peng et al. (1996) fits.
