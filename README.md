@@ -553,6 +553,10 @@ meta, image = simulate(RheedSimRequest(
 - **Screen**: camera length, pixel size on the screen, the shadow-edge origin, roll and
   flips. A request that names none gets the lab camera's, from
   `[simulation.rheed.screen]` (fitted to real recordings).
+- **Beam position**: `beam.shift_y_mm` / `shift_z_mm` move the beam off the camera axis
+  (+y left looking down the beam, +z up), as the lab's beam deflection does. The whole
+  pattern moves with it -- spots, shadow edge, direct beam -- by the same millimetres;
+  the result's `origin_px` says where the shadow edge's centre ended up.
 - **Energy**: a request that names none gets the lab's `rheed.energy_kev`, 25 keV. The
   same value is stored in every recording (`start_recording`'s `rheed_energy_kev`
   overrides it) and read back by `storage.archive`.

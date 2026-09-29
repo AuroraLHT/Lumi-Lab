@@ -48,6 +48,12 @@ MAX_SPOTS = 2000
 _FWHM = 2 * math.sqrt(2 * math.log(2))
 #: Rods further than this many sigma from a pixel contribute nothing (e^-4.5 = 1 %).
 _REACH = 3.0
+#: A pixel sees what falls within this many pixels (a Gaussian sigma) of its centre.
+#: A square pixel's own spread is 1/sqrt(12) = 0.29, but a Gaussian that narrow,
+#: summed over the pixel grid, gives a spot on a pixel's edge half the total of one
+#: on its centre; from 0.6 the total no longer depends on where the spot falls
+#: (to 0.2 %), so a pair of mirror-image spots come out equally bright.
+_PIXEL_SIGMA = 0.6
 
 
 @dataclass
@@ -78,6 +84,17 @@ class _Lattice:
                    for v in ((1, 0), (0, 1), (1, 1), (1, -1)))
 
 
+@dataclass(frozen=True)
+class _Spread:
+    """How far a rod's intensity reaches off its centre, in q (1/A): Gaussian
+    variances along lab x (the beam) and y in-plane, and the width it is smoothed
+    over along the rod."""
+
+    var_x: float
+    var_y: float
+    sigma_qz: float
+
+
 class Kinematic:
     name = "kinematic"
 
@@ -92,10 +109,13 @@ class Kinematic:
         qz_top = float(q[2][valid].max()) if valid.any() else qz0 + 1.0
         qz = np.linspace(qz0, qz_top + 0.05 * (qz_top - qz0) + 1e-3, N_QZ)
 
-        sigma = self._rod_sigma(scene)
-        lattices = self._lattices(scene, q[:2][:, valid], qz, sigma)
+        spread = self._rod_spread(scene)
+        foot = _footprint(q)
+        reach = _REACH * math.sqrt(spread.var_x + spread.var_y
+                                   + (float((foot[0] + foot[2])[valid].max()) if valid.any() else 0.0))
+        lattices = self._lattices(scene, q[:2][:, valid], qz, spread, reach)
         spots = [s for lat in lattices for s in self._rod_spots(scene, lat, qz)]
-        spots += self._streak_maxima(scene, lattices[0], qz, sigma)
+        spots += self._streak_maxima(scene, lattices[0], qz, spread)
         bulk = self._bulk_points(scene, q, valid) if scene.request.morphology.islands > 0 else []
         spots += self._bulk_spots(scene, bulk)
         _normalise(spots)
@@ -111,23 +131,35 @@ class Kinematic:
 
         if not image:
             return spots, None
-        return spots, self._render(scene, q, valid, qz, lattices, sigma, bulk)
+        return spots, self._render(scene, q, valid, qz, lattices, spread, foot, bulk)
 
     # --- rods ----------------------------------------------------------------
 
-    def _rod_sigma(self, scene: Scene) -> float:
-        m, b = scene.request.morphology, scene.request.beam
-        terrace = 2 * math.pi / (m.terrace_nm * 10)
-        divergence = scene.k * b.divergence_mrad * 1e-3
-        return math.hypot(terrace, divergence) / _FWHM
+    def _rod_spread(self, scene: Scene) -> _Spread:
+        """How far each rod's intensity reaches, in q.
 
-    def _lattices(self, scene: Scene, q_par: np.ndarray, qz: np.ndarray, sigma: float) -> list[_Lattice]:
+        Terraces widen a rod the same way in every in-plane direction. Divergence does
+        not: an incident wave tilted by an angle d moves q = k_out - k_in by |k_in| d
+        at right angles to k_in. Tilted sideways (azimuthally) that is along y; tilted
+        up or down it is almost straight along the rod, |k_in| d cos(theta), and only
+        |k_in| d sin(theta) along x -- 30 times less at 2 degrees. So divergence blurs a
+        spot on the screen by its own angle, and does not make a streak.
+        """
+        m, b = scene.request.morphology, scene.request.beam
+        terrace = 2 * math.pi / (m.terrace_nm * 10) / _FWHM
+        tilt = scene.k * b.divergence_mrad * 1e-3 / _FWHM
+        return _Spread(var_x=terrace ** 2 + (tilt * math.sin(scene.theta)) ** 2,
+                       var_y=terrace ** 2 + (tilt * math.cos(scene.theta)) ** 2,
+                       sigma_qz=tilt * math.cos(scene.theta))
+
+    def _lattices(self, scene: Scene, q_par: np.ndarray, qz: np.ndarray, spread: _Spread,
+                  reach: float) -> list[_Lattice]:
         B = scene.mesh_lab()
-        out = [self._surface(scene, B, q_par, qz, sigma)]
+        out = [self._surface(scene, B, q_par, qz, spread, reach)]
         for rec in scene.request.surface.reconstructions:
             M = np.array(rec.matrix, dtype=float)
             Minv = np.linalg.inv(M)
-            out.append(self._reconstruction(scene, B @ Minv, Minv, rec.strength, q_par, qz, sigma))
+            out.append(self._reconstruction(scene, B @ Minv, Minv, rec.strength, q_par, qz, reach))
         return out
 
     def _span(self, B: np.ndarray, q_par: np.ndarray, reach: float) -> tuple[range, range]:
@@ -144,10 +176,10 @@ class Kinematic:
                              "or the screen very wide); lower the resolution or the reconstruction")
         return range(lo[0], hi[0] + 1), range(lo[1], hi[1] + 1)
 
-    def _surface(self, scene: Scene, B, q_par, qz, sigma) -> _Lattice:
-        ms, ns = self._span(B, q_par, _REACH * sigma)
+    def _surface(self, scene: Scene, B, q_par, qz, spread, reach) -> _Lattice:
+        ms, ns = self._span(B, q_par, reach)
         mn = _grid(ms, ns)
-        use = _limit(_reached(B, mn, q_par, _REACH * sigma))
+        use = _limit(_reached(B, mn, q_par, reach))
         g = B @ mn[use].T  # (2, n_rods)
 
         pos, idx = slab(scene.cell, scene.top, scene.layers)
@@ -162,18 +194,20 @@ class Kinematic:
             cols = np.isin(idx, sites)
             if cols.any():
                 A += w_of(s2) * (in_plane[:, cols] @ depth[:, cols].T)
+        # The incident waves tilted up or down each read the rod a little higher or lower.
+        profile = _smooth(np.abs(A) ** 2, spread.sigma_qz / (qz[1] - qz[0]))
         return _Lattice("rod", B, np.eye(2), ms.start, ns.start,
-                        _index(use, ms, ns), (np.abs(A) ** 2).astype(np.float32))
+                        _index(use, ms, ns), profile.astype(np.float32))
 
-    def _reconstruction(self, scene: Scene, B, Minv, strength, q_par, qz, sigma) -> _Lattice:
+    def _reconstruction(self, scene: Scene, B, Minv, strength, q_par, qz, reach) -> _Lattice:
         """The reconstruction's atoms are unknown, so its rods carry the top plane's
         own scattering, |sum f|^2, times `strength`: flat, without the slab's Bragg
         modulation, and falling off with q as the form factors do."""
-        ms, ns = self._span(B, q_par, _REACH * sigma)
+        ms, ns = self._span(B, q_par, reach)
         c = _grid(ms, ns)
         mesh = (Minv @ c.T).T
         fractional = np.any(np.abs(mesh - np.round(mesh)) > 1e-6, axis=1)
-        use = _limit(fractional & _reached(B, c, q_par, _REACH * sigma))
+        use = _limit(fractional & _reached(B, c, q_par, reach))
         g = B @ c[use].T
         s2 = ((g ** 2).sum(axis=0)[:, None] + qz[None, :] ** 2) / (16 * math.pi ** 2)
         top = set(scene.cell.sites[list(scene.cell.planes[scene.top].atoms)].tolist())
@@ -232,7 +266,7 @@ class Kinematic:
             ))
         return spots
 
-    def _streak_maxima(self, scene: Scene, lat: _Lattice, qz: np.ndarray, sigma: float) -> list[RheedSpot]:
+    def _streak_maxima(self, scene: Scene, lat: _Lattice, qz: np.ndarray, spread: _Spread) -> list[RheedSpot]:
         """The bright points along wide streaks: each rod's |Psi|^2 maxima (its bulk
         Bragg points), placed where the Ewald sphere passes nearest them.
 
@@ -240,7 +274,8 @@ class Kinematic:
         sqrt(|k_out|^2 - k_out,z^2) with k_out,z = q_z + k_in,z. The rod sits at
         (k_in,x + g_x, g_y) there; the nearest point of the circle is along the same
         direction, and their distance d is how far off the rod's centre the sphere
-        passes. A maximum is listed while d < 3 sigma, weighted by exp(-d^2 / 2 sigma^2):
+        passes, measured against the rod's width that way (x and y differ, see
+        _rod_spread). A maximum is listed while d < 3 sigma, weighted by exp(-d^2 / 2 sigma^2):
         narrow rods list only the maxima the Laue circle happens to cross, wide ones
         every Bragg point along the streak -- including rods the sphere never crosses
         at the centre.
@@ -257,7 +292,12 @@ class Kinematic:
         repeat = scene.zone_repeat()
         out = []
         for r, c in zip(rows.tolist(), cols.tolist()):
-            qzi = float(qz[c])
+            # The peak between samples: the vertex of the parabola through three.
+            lo, mid, hi = (float(x) for x in prof[r, c - 1:c + 2])
+            curve = lo - 2 * mid + hi
+            step = 0.5 * (lo - hi) / curve if curve < 0 else 0.0
+            qzi = float(qz[c]) + step * float(qz[1] - qz[0])
+            peak = mid - 0.25 * (lo - hi) * step
             kz = qzi + k_in[2]
             radius2 = K * K - kz * kz
             if kz <= 0 or radius2 <= 0:
@@ -267,7 +307,9 @@ class Kinematic:
             if norm == 0:
                 continue
             d = abs(norm - math.sqrt(radius2))
-            if d > _REACH * sigma:
+            # (d / sigma)^2 with sigma the rod's width along the offset, (px, py) / norm.
+            m2 = d * d * ((px / norm) ** 2 / spread.var_x + (py / norm) ** 2 / spread.var_y)
+            if m2 > _REACH ** 2:
                 continue
             kx, ky = px / norm * math.sqrt(radius2), py / norm * math.sqrt(radius2)
             if kx <= 0:
@@ -292,7 +334,7 @@ class Kinematic:
                 label=" ".join(str(int(x)) for x in near),
                 indices=[float(x) for x in near], hkl=[float(x) for x in near],
                 x_px=round(u, 2), y_px=round(v, 2),
-                intensity=float(prof[r, c]) * math.exp(-d * d / (2 * sigma * sigma)),
+                intensity=peak * math.exp(-m2 / 2),
                 laue_zone=zone, in_view=True,
                 q=[round(kx - k_in[0], 5), round(ky, 5), round(qzi, 5)],
             ))
@@ -300,17 +342,27 @@ class Kinematic:
 
     # --- 3D islands ------------------------------------------------------------
 
-    def _island_sigma(self, scene: Scene) -> float:
+    def _island_cov(self, scene: Scene) -> np.ndarray:
+        """A transmission spot's (3, 3) covariance in q: the island size's in every
+        direction, and the divergence's at right angles to k_in (see _rod_spread)."""
         m, b = scene.request.morphology, scene.request.beam
-        size = 2 * math.pi / (m.island_nm * 10)
-        return math.hypot(size, scene.k * b.divergence_mrad * 1e-3) / _FWHM
+        size = 2 * math.pi / (m.island_nm * 10) / _FWHM
+        tilt = scene.k * b.divergence_mrad * 1e-3 / _FWHM
+        polar = np.array([math.sin(scene.theta), 0.0, math.cos(scene.theta)])
+        return size ** 2 * np.eye(3) + tilt ** 2 * (np.outer(polar, polar) + np.diag([0.0, 1.0, 0.0]))
+
+    def _excitation_var(self, scene: Scene, k_out: np.ndarray) -> np.ndarray:
+        """Variance of a bulk point's excitation error |k_in + G| - |k_in|, which is
+        its distance from the sphere along k_out."""
+        n = k_out / np.linalg.norm(k_out, axis=0)
+        return np.einsum("in,ij,jn->n", n, self._island_cov(scene), n)
 
     def _bulk_points(self, scene: Scene, q: np.ndarray, valid: np.ndarray) -> list[dict]:
         """Bulk reciprocal-lattice points within reach of the Ewald sphere, on screen."""
-        sigma = self._island_sigma(scene)
         if not valid.any():
             return []
-        q_max = float(np.linalg.norm(q[:, valid], axis=0).max()) + _REACH * sigma
+        q_max = float(np.linalg.norm(q[:, valid], axis=0).max()) \
+            + _REACH * math.sqrt(float(np.linalg.eigvalsh(self._island_cov(scene)).max()))
         cr = scene.crystal
         lim = [math.ceil(q_max * float(np.linalg.norm(cr.orth[:, i])) / (2 * math.pi)) for i in range(3)]
         if np.prod([2 * x + 1 for x in lim]) > 2_000_000:
@@ -320,10 +372,11 @@ class Kinematic:
         G = scene.R @ cr.reciprocal @ hkl.T  # (3, n)
         k_out = scene.k_in[:, None] + G
         excitation = np.linalg.norm(k_out, axis=0) - scene.k
-        keep = (np.abs(excitation) < _REACH * sigma) & (k_out[2] > 0) & (np.linalg.norm(G, axis=0) > 0)
+        var = self._excitation_var(scene, k_out)
+        keep = (excitation ** 2 < _REACH ** 2 * var) & (k_out[2] > 0) & (np.linalg.norm(G, axis=0) > 0)
         if not keep.any():
             return []
-        hkl, G, k_out, excitation = hkl[keep], G[:, keep], k_out[:, keep], excitation[keep]
+        hkl, G, k_out, excitation, var = hkl[keep], G[:, keep], k_out[:, keep], excitation[keep], var[keep]
         u, v = scene.screen.pixel_of(k_out)
         s2 = (G ** 2).sum(axis=0) / (16 * math.pi ** 2)
         F = np.zeros(len(hkl), dtype=complex)
@@ -338,17 +391,16 @@ class Kinematic:
             if intensity < 1e-9 or not scene.screen.inside(u[n], v[n], 0.1 * scene.screen.spec.width_px):
                 continue
             out.append({"hkl": hkl[n], "G": G[:, n], "I": intensity, "u": float(u[n]), "v": float(v[n]),
-                        "excitation": float(excitation[n])})
+                        "excitation": float(excitation[n]), "var": float(var[n])})
         return out
 
     def _bulk_spots(self, scene: Scene, bulk: list[dict]) -> list[RheedSpot]:
-        sigma = self._island_sigma(scene)
         return [
             RheedSpot(
                 kind="bulk", label=" ".join(str(int(x)) for x in b["hkl"]),
                 indices=[float(x) for x in b["hkl"]], hkl=[float(x) for x in b["hkl"]],
                 x_px=round(b["u"], 2), y_px=round(b["v"], 2),
-                intensity=b["I"] * math.exp(-b["excitation"] ** 2 / (2 * sigma ** 2)),
+                intensity=b["I"] * math.exp(-b["excitation"] ** 2 / (2 * b["var"])),
                 in_view=bool(scene.screen.inside(b["u"], b["v"])),
                 q=[round(float(x), 5) for x in b["G"]],
             )
@@ -357,7 +409,7 @@ class Kinematic:
 
     # --- the picture ---------------------------------------------------------------
 
-    def _render(self, scene, q, valid, qz, lattices, sigma, bulk) -> np.ndarray:
+    def _render(self, scene, q, valid, qz, lattices, spread, foot, bulk) -> np.ndarray:
         sp = scene.screen.spec
         req = scene.request
         H, W = sp.height_px, sp.width_px
@@ -370,22 +422,32 @@ class Kinematic:
             qzi = np.clip(np.rint((q[2][valid] - qz[0]) / dq).astype(int), 0, len(qz) - 1)
             flat = np.zeros(q_par.shape[1])
             for lat in lattices:
-                flat += _paint(lat, q_par, qzi, sigma)
+                flat += _paint(lat, q_par, qzi, spread, foot[:, valid])
             surface[valid] = flat
 
         if req.morphology.islands > 0 and bulk:
-            s_i = self._island_sigma(scene)
+            cov = self._island_cov(scene)
+            s_i = math.sqrt(float(np.linalg.eigvalsh(cov).max()))
             # Half-width of a spot in pixels: its angular size on the screen, plus slack
             # for the stretch a grazing exit gives it.
             half = int(math.ceil(_REACH * s_i / scene.k * sp.camera_length_mm / sp.pixel_size_mm * 3)) + 2
+            # Each pixel averages the spot over the q it covers: (H, W, 3, 3) covariances.
+            du, dv = np.gradient(q, axis=2), np.gradient(q, axis=1)
+            pix = (np.einsum("iyx,jyx->yxij", du, du) + np.einsum("iyx,jyx->yxij", dv, dv)) * _PIXEL_SIGMA ** 2
+            det0 = float(np.linalg.det(cov))
             for b in bulk:
                 u0, v0 = int(round(b["u"])), int(round(b["v"]))
                 ys = slice(max(v0 - half, 0), min(v0 + half + 1, H))
                 xs = slice(max(u0 - half, 0), min(u0 + half + 1, W))
                 if ys.start >= ys.stop or xs.start >= xs.stop:
                     continue
-                d2 = ((q[:, ys, xs] - b["G"][:, None, None]) ** 2).sum(axis=0)
-                islands[ys, xs] += b["I"] * np.exp(-d2 / (2 * s_i ** 2)) * valid[ys, xs]
+                c = cov + pix[ys, xs]
+                d = np.moveaxis(q[:, ys, xs] - b["G"][:, None, None], 0, -1)
+                m2 = np.einsum("yxi,yxi->yx", d, np.linalg.solve(c, d[..., None])[..., 0])
+                # sqrt(det cov / det c): what a pixel wider than the spot keeps of it.
+                # (The pixel adds nothing along the sphere's normal, so c is not singular.)
+                scale = np.sqrt(det0 / np.linalg.det(c))
+                islands[ys, xs] += b["I"] * scale * np.exp(-m2 / 2) * valid[ys, xs]
 
         f = req.morphology.islands
         img = (1 - f) * _unit(surface) + f * _unit(islands)
@@ -480,32 +542,67 @@ def _reached(B: np.ndarray, coeffs: np.ndarray, q_par: np.ndarray, reach: float)
     return np.isin(key(keys[:, 0], keys[:, 1]), hit)
 
 
-def _paint(lat: _Lattice, q_par: np.ndarray, qzi: np.ndarray, sigma: float) -> np.ndarray:
+def _footprint(q: np.ndarray) -> np.ndarray:
+    """The in-plane q each pixel covers, as a covariance: (3, H, W) of xx, xy, yy.
+
+    A pixel is a small square on the screen, so a parallelogram in q spanned by
+    dq/du and dq/dv. At 25 keV and the lab camera a pixel spans ~0.02 1/A across --
+    wider than the rod of a good substrate, which sampled at the pixel's centre
+    alone would show or vanish depending on where in the pixel it happens to fall.
+    The square is taken as a Gaussian _PIXEL_SIGMA wide (see there).
+    """
+    du, dv = np.gradient(q[:2], axis=2), np.gradient(q[:2], axis=1)
+    return np.stack([du[0] ** 2 + dv[0] ** 2, du[0] * du[1] + dv[0] * dv[1],
+                     du[1] ** 2 + dv[1] ** 2]) * _PIXEL_SIGMA ** 2
+
+
+def _smooth(table: np.ndarray, sigma: float) -> np.ndarray:
+    """Gaussian smoothing along axis 1, sigma in samples; the ends held flat."""
+    if sigma < 0.3:
+        return table
+    r = int(math.ceil(_REACH * sigma))
+    w = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    w /= w.sum()
+    padded = np.pad(table, ((0, 0), (r, r)), mode="edge")
+    n = table.shape[1]
+    return sum(w[i] * padded[:, i:i + n] for i in range(2 * r + 1))
+
+
+def _paint(lat: _Lattice, q_par: np.ndarray, qzi: np.ndarray, spread: _Spread,
+           foot: np.ndarray) -> np.ndarray:
     """Sum the lattice's rods over the pixels, each pixel visiting only the rods
     within reach of it (found from its own lattice coordinates, not by scanning
-    every rod), and reading the rod's profile only where one is that close."""
+    every rod), and reading the rod's profile only where one is that close.
+
+    A pixel sees a rod's Gaussian averaged over the q it covers (`foot`, from
+    _footprint): the covariances add, and the peak drops by sqrt(det rod / det sum),
+    so a rod narrower than a pixel is dimmer but never missed.
+    """
     q_par = q_par.astype(np.float32)
     f = np.linalg.solve(lat.B, q_par)
     base = np.rint(f).astype(np.int32)
-    r = math.ceil(_REACH * sigma / lat.spacing())
+    cxx, cxy, cyy = spread.var_x + foot[0], foot[1], spread.var_y + foot[2]
+    det = cxx * cyy - cxy * cxy
+    ixx, ixy, iyy = (cyy / det).astype(np.float32), (-cxy / det).astype(np.float32), (cxx / det).astype(np.float32)
+    scale = np.sqrt(spread.var_x * spread.var_y / det).astype(np.float32)
+    r = math.ceil(_REACH * math.sqrt(float((cxx + cyy).max())) / lat.spacing())
     n_m, n_n = lat.index.shape
     B = lat.B.astype(np.float32)
-    reach2 = (_REACH * sigma) ** 2
     out = np.zeros(q_par.shape[1], dtype=np.float32)
     for dm, dn in itertools.product(range(-r, r + 1), repeat=2):
         m = base[0] + dm
         n = base[1] + dn
         dx = q_par[0] - (B[0, 0] * m + B[0, 1] * n)
         dy = q_par[1] - (B[1, 0] * m + B[1, 1] * n)
-        d2 = dx * dx + dy * dy
-        near = np.flatnonzero(d2 < reach2)
+        m2 = ixx * dx * dx + 2 * ixy * dx * dy + iyy * dy * dy
+        near = np.flatnonzero(m2 < _REACH ** 2)
         if near.size == 0:
             continue
         mi, ni = m[near] - lat.m0, n[near] - lat.n0
         ok = (mi >= 0) & (mi < n_m) & (ni >= 0) & (ni < n_n)
         row = lat.index[mi[ok], ni[ok]]
         near, row = near[ok][row >= 0], row[row >= 0]
-        out[near] += lat.table[row, qzi[near]] * np.exp(-d2[near] / (2 * sigma * sigma))
+        out[near] += lat.table[row, qzi[near]] * scale[near] * np.exp(-m2[near] / 2)
     return out
 
 

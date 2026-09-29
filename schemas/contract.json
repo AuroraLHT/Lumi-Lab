@@ -15749,6 +15749,20 @@
                       "maximum": 20,
                       "title": "Incidence Deg",
                       "type": "number"
+                    },
+                    "shift_y_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Y Mm",
+                      "type": "number"
+                    },
+                    "shift_z_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Z Mm",
+                      "type": "number"
                     }
                   },
                   "title": "BeamSpec",
@@ -16166,7 +16180,9 @@
                   "default": {
                     "divergence_mrad": 0.3,
                     "energy_kev": null,
-                    "incidence_deg": 3.0
+                    "incidence_deg": 3.0,
+                    "shift_y_mm": 0.0,
+                    "shift_z_mm": 0.0
                   }
                 },
                 "morphology": {
@@ -16746,6 +16762,20 @@
                       "maximum": 20,
                       "title": "Incidence Deg",
                       "type": "number"
+                    },
+                    "shift_y_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Y Mm",
+                      "type": "number"
+                    },
+                    "shift_z_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Z Mm",
+                      "type": "number"
                     }
                   },
                   "title": "BeamSpec",
@@ -17163,7 +17193,9 @@
                   "default": {
                     "divergence_mrad": 0.3,
                     "energy_kev": null,
-                    "incidence_deg": 3.0
+                    "incidence_deg": 3.0,
+                    "shift_y_mm": 0.0,
+                    "shift_z_mm": 0.0
                   }
                 },
                 "morphology": {
@@ -17743,6 +17775,20 @@
                       "maximum": 20,
                       "title": "Incidence Deg",
                       "type": "number"
+                    },
+                    "shift_y_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Y Mm",
+                      "type": "number"
+                    },
+                    "shift_z_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Z Mm",
+                      "type": "number"
                     }
                   },
                   "title": "BeamSpec",
@@ -18160,7 +18206,9 @@
                   "default": {
                     "divergence_mrad": 0.3,
                     "energy_kev": null,
-                    "incidence_deg": 3.0
+                    "incidence_deg": 3.0,
+                    "shift_y_mm": 0.0,
+                    "shift_z_mm": 0.0
                   }
                 },
                 "morphology": {

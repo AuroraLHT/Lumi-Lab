@@ -97,8 +97,9 @@ class Scene:
         L, t = s.spec.camera_length_mm, math.tan(self.theta)
         span = (s.spec.width_px + s.spec.height_px) * s.spec.pixel_size_mm
         edge = [s.to_image(y, 0.0) for y in (-span, span)]
+        origin = s.to_image(0.0, 0.0)
         return {
-            "origin_px": [round(s.origin[0], 2), round(s.origin[1], 2)],
+            "origin_px": [round(float(origin[0]), 2), round(float(origin[1]), 2)],
             "shadow_edge_px": [[round(float(u), 2), round(float(v), 2)] for u, v in edge],
             "specular_px": [round(float(x), 2) for x in s.to_image(0.0, L * t)],
             "direct_beam_px": [round(float(x), 2) for x in s.to_image(0.0, -L * t)],
@@ -153,7 +154,8 @@ def build(req: RheedSimRequest, crystal: Crystal, screen: ScreenSpec) -> Scene:
             warnings.append("the slab was capped at 300 layers; the mean free path reaches deeper")
 
     return Scene(request=req, crystal=crystal, cell=cell, top=top, R=R,
-                 screen=Screen.resolve(screen), lam=lam, k=k, theta=theta,
+                 screen=Screen.resolve(screen).shifted(req.beam.shift_y_mm, req.beam.shift_z_mm),
+                 lam=lam, k=k, theta=theta,
                  layers=layers, warnings=warnings)
 
 

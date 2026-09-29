@@ -71,6 +71,7 @@ in `RheedSimRequest` (`lumi/contracts/payloads/simulation.py`) when the user set
 | $W, H$ | image width and height | px | `screen.width_px`, `height_px` |
 | $(u_0, v_0)$ | image position of the origin (shadow-edge centre) | px | `screen.origin_x_px`, `origin_y_px` |
 | $\rho$ | camera roll about the beam axis | rad | `screen.roll_deg` |
+| $(y_b, z_b)$ | where the beam meets the sample, off the camera axis | mm | `beam.shift_y_mm`, `shift_z_mm` |
 | $\Delta u', \Delta v'$ | pixel offsets from the origin before roll and flips | px | |
 | $\Delta u, \Delta v$ | pixel offsets from the origin after roll and flips | px | |
 
@@ -114,7 +115,9 @@ in `RheedSimRequest` (`lumi/contracts/payloads/simulation.py`) when the user set
 | $\alpha_\text{in}, \alpha_\text{out}$ | beam angle to the surface on the way in / out | rad | |
 | $\mu$ | amplitude attenuation per unit depth | Å⁻¹ | |
 | $T$ | terrace size (lateral coherence length) | Å | `morphology.terrace_nm` |
-| $\sigma$ | Gaussian width of a rod in-plane | Å⁻¹ | |
+| $\sigma_x, \sigma_y$ | Gaussian width of a rod in-plane, along the beam and across it | Å⁻¹ | |
+| $\sigma_z$ | width $\lvert\Psi\rvert^2$ is smoothed over along a rod (divergence) | Å⁻¹ | |
+| $\mathsf J$ | a pixel's footprint in $\mathbf q_\parallel$: columns $\partial\mathbf q_\parallel/\partial u$, $\partial\mathbf q_\parallel/\partial v$ | Å⁻¹/px | |
 
 **Reconstructions, islands and the image**
 
@@ -125,7 +128,7 @@ in `RheedSimRequest` (`lumi/contracts/payloads/simulation.py`) when the user set
 | $S$ | reconstruction strength | – | `reconstructions[].strength` |
 | $D$ | island size | Å | `morphology.island_nm` |
 | $F(\mathbf G)$ | bulk structure factor of one conventional cell | Å | |
-| $\sigma_i$ | Gaussian width of a transmission spot | Å⁻¹ | |
+| $\Sigma_i$ | Gaussian covariance of a transmission spot in $\mathbf q$ | Å⁻² | |
 | $\varepsilon$ | excitation error, distance of $\mathbf G$ from the Ewald sphere | Å⁻¹ | |
 | $\chi$ | share of the pattern from 3D islands | – | `morphology.islands` |
 | $\Gamma$ | diffuse background level | – | `render.background` |
@@ -202,6 +205,21 @@ and conversely a wave along $\mathbf k_\text{out}$ lands at $(y, z) = L\,(k_{\te
 (if $k_{\text{out},x}>0$). A pixel can be lit only if $k_{\text{out},z}>0$; a lower wave would have
 to leave into the sample. That region is the **shadow**.
 
+**Shifting the beam.** The equations above put the point where the beam meets the
+sample on the camera axis. If the beam is moved sideways or up by $(y_b, z_b)$, every
+ray starts from there instead, so a wave along $\mathbf k_\text{out}$ lands at
+
+$$
+(y, z) = (y_b, z_b) + L\,(k_{\text{out},y}, k_{\text{out},z})/k_{\text{out},x}
+$$
+
+The whole pattern moves rigidly by $(y_b, z_b)$: spots, shadow edge and direct beam
+alike. Angles, and so spot spacings, don't change, and nor does $L$: the shift is square
+to the beam. In the
+image that is the origin moved by $(y_b, z_b)/p$ through the roll and flips below, and
+the result's `origin_px` reports it. `screen` in the result keeps the origin you gave,
+so it can be sent back unchanged.
+
 **Screen → image.** Looking down the beam, $+y$ is to the left and $+z$ is up. Image
 rows run downward. So:
 
@@ -231,8 +249,10 @@ Purple: the first zone. Grey: shadow.*
 | direct beam | $(0,\ -L\tan\theta)$ |
 | shadow edge (horizon) | the line $z=0$ |
 
+(each moved by $(y_b, z_b)$ when the beam is shifted)
+
 **Source:** textbook geometry [IC04 ch. 2, Br99]. The pixel conventions (roll, flips,
-origin) are this code's.
+origin, beam shift) are this code's.
 
 ## 4. The crystal and its surface cell
 
@@ -559,17 +579,57 @@ spot by spot.
 
 ## 7. From rods to a picture: streaks
 
-Terraces of finite size $T$ and a divergent beam give each rod a finite in-plane width.
-The code uses a Gaussian with the two FWHMs added in quadrature:
+Terraces of finite size $T$ give each rod a finite in-plane width, the same in every
+direction. A divergent beam blurs the pattern too, but **not** the same way.
+
+**Divergence.** An incident wave tilted by a small angle $\phi$ moves
+$\mathbf q=\mathbf k_\text{out}-\mathbf k_\text{in}$ by $\lvert\mathbf k_\text{in}\rvert\phi$,
+at right angles to $\mathbf k_\text{in}$:
+
+- tilted sideways (azimuthally), $\mathbf q$ moves along $y$, across the rods;
+- tilted up or down (polar), it moves along $(\sin\theta,0,\cos\theta)$: almost
+  straight along the rod, and only $\lvert\mathbf k_\text{in}\rvert\phi\sin\theta$ along
+  $x$, about 30 times less at 2°.
+
+Averaging over the beam's spread of $\phi$ (FWHM $\delta$) therefore widens the rod
+across the beam, barely along it, and smooths $\lvert\Psi\rvert^2$ along the rod. On
+the screen that is a blur of about $\delta L/p$ pixels in every direction. It does not
+make streaks: only terraces widen a rod along $x$, and only that lets the sphere cut
+it over a long range of $q_z$.
+
+With $\sigma_T=2\pi/T$ and $\sigma_\delta=\lvert\mathbf k_\text{in}\rvert\delta$, each
+divided by $2\sqrt{2\ln2}$ to turn a FWHM into a Gaussian $\sigma$:
 
 $$
-\sigma=\frac{\sqrt{(2\pi/T)^2+(\lvert\mathbf k_\text{in}\rvert\,\delta)^2}}{2\sqrt{2\ln2}},\qquad
-I_\text{surf}=\sum_{\mathbf g}\lvert\Psi(\mathbf g,q_z)\rvert^2\,
-\exp\!\left(-\frac{\lvert\mathbf q_\parallel-\mathbf g\rvert^2}{2\sigma^2}\right)
+\sigma_x^2=\sigma_T^2+\sigma_\delta^2\sin^2\theta,\qquad
+\sigma_y^2=\sigma_T^2+\sigma_\delta^2\cos^2\theta,\qquad
+\sigma_z=\sigma_\delta\cos\theta
 $$
+
+and $\lvert\Psi\rvert^2$ along each rod is convolved with a Gaussian of $\sigma_z$ in $q_z$.
+
+**Pixels.** A pixel is not a point: it covers a patch of $\mathbf q_\parallel$ spanned
+by $\mathsf J$. At 25 keV on the lab camera one pixel is about 0.02 Å⁻¹ across, wider
+than the rod of a good substrate. Sampled at its centre only, such a rod would show or
+vanish depending on where in the pixel it falls, so mirror-image spots like (0 1) and
+(0 −1) would differ. Instead each pixel averages the rod over its patch, taken as a
+Gaussian of $s_p=0.6$ px, and the two covariances add:
+
+$$
+\mathsf C=\operatorname{diag}(\sigma_x^2,\sigma_y^2)+s_p^2\,\mathsf J\mathsf J^\mathsf T,\qquad
+I_\text{surf}=\sum_{\mathbf g}\lvert\Psi(\mathbf g,q_z)\rvert^2\,
+\frac{\sigma_x\sigma_y}{\sqrt{\det\mathsf C}}\,
+\exp\!\left(-\tfrac12(\mathbf q_\parallel-\mathbf g)^\mathsf T\mathsf C^{-1}(\mathbf q_\parallel-\mathbf g)\right)
+$$
+
+The factor $\sigma_x\sigma_y/\sqrt{\det\mathsf C}$ keeps a spot's total over the
+pixels the same: a rod narrower than a pixel comes out dimmer at its peak, never
+missing. ($s_p$ is wider than a square pixel's own $1/\sqrt{12}=0.29$ because a
+Gaussian that narrow, summed over the pixel grid, still depends on where it falls;
+from 0.6 it does not, to 0.2 %.)
 
 Each pixel has its own $\mathbf q=(\mathbf q_\parallel,q_z)$ from §3. The sum runs over
-the rods within $3\sigma$, found from the pixel's lattice coordinates
+the rods within $3\sigma$ (in the metric of $\mathsf C$), found from the pixel's lattice coordinates
 $\mathsf B_\parallel^{-1}\mathbf q_\parallel$.
 
 Because the sphere runs nearly along the rods (Fig. 3b), a wider rod is cut over a
@@ -598,7 +658,7 @@ streak where the sphere has $q_y=G_y$ and $q_z=G_z$, that is at
 $k_{\text{out},z}=G_z+k_{\text{in},z}$ and
 $k_{\text{out},x}=\sqrt{\lvert\mathbf k_\text{out}\rvert^2-G_y^2-k_{\text{out},z}^2}$.
 Its $q_x=k_{\text{out},x}-k_{\text{in},x}$ is not zero, and the point is lit only while
-that is within the rod's width $\sigma$. That is also why wide rods show streaks that no
+that is within the rod's width $\sigma_x$. That is also why wide rods show streaks that no
 exact crossing exists for: (0 ±3) in Fig. 6.
 
 Which points appear follows the structure factor of §6. Odd $k$ peaks at odd $l$
@@ -619,14 +679,16 @@ The spot list carries all of these, and Fig. 6 is drawn from it:
   $\lvert\Psi\rvert^2$ along its rod that lies within 0.15 of a bulk point in every
   index. It is placed where the sphere passes nearest the point, and listed while that
   distance $d$ is within $3\sigma$, with intensity
-  $\lvert\Psi\rvert^2 e^{-d^2/2\sigma^2}$. Narrow rods therefore list only the
+  $\lvert\Psi\rvert^2 e^{-d^2/2\sigma^2}$, where $\sigma$ is the rod's width in the
+  direction of $d$ (from $\sigma_x,\sigma_y$). Narrow rods therefore list only the
   maxima the Laue circle happens to cross; wide rods list every one along the streak.
 - **`bulk`**: the island spots, when `islands` > 0.
 
 **Source:** that terraces broaden rods into streaks is textbook [IC04 ch. 8, LC84,
 PLC85]. Those papers derive the real line shape, which is closer to Lorentzian for
-random terrace lengths. The Gaussian, the quadrature sum and the $3\sigma$ cut-off are
-modelling choices.
+random terrace lengths. Divergence as a spread of incident directions is standard
+[IC04 ch. 8]; its split into $\sigma_x,\sigma_y,\sigma_z$ is first order in the angle. The
+Gaussian shapes, the pixel's $s_p$ and the $3\sigma$ cut-off are modelling choices.
 
 ## 8. Reconstructions
 
@@ -659,18 +721,27 @@ $\mathbf G=\mathsf R\,\mathsf A^*(h,k,l)^\mathsf T$, broadened by the island siz
 
 $$
 F(\mathbf G)=\sum_{j\in\text{cell}}o_j\,f_j(s)\,e^{-B_js^2}\,e^{2\pi i\,(h,k,l)\cdot\mathbf x_j},\qquad
-\sigma_i=\frac{\sqrt{(2\pi/D)^2+(\lvert\mathbf k_\text{in}\rvert\,\delta)^2}}{2\sqrt{2\ln2}}
+\Sigma_i=\sigma_D^2\,\mathsf 1+\sigma_\delta^2\left(\hat{\mathbf p}\hat{\mathbf p}^\mathsf T+\hat{\mathbf y}\hat{\mathbf y}^\mathsf T\right)
 $$
+
+with $\sigma_D=2\pi/D$ and $\sigma_\delta$ as FWHMs turned into $\sigma$ (§7), and
+$\hat{\mathbf p}=(\sin\theta,0,\cos\theta)$: the divergence spreads a spot at right
+angles to $\mathbf k_\text{in}$ only, as it does a rod. With the pixel's footprint
+$\mathsf C=\Sigma_i+s_p^2\mathsf J_3\mathsf J_3^\mathsf T$ ($\mathsf J_3$: $\partial\mathbf q/\partial u$,
+$\partial\mathbf q/\partial v$):
 
 $$
 I_\text{isl}=\sum_{\mathbf G}\lvert F(\mathbf G)\rvert^2
-\exp\!\left(-\frac{\lvert\mathbf q-\mathbf G\rvert^2}{2\sigma_i^2}\right)
+\sqrt{\frac{\det\Sigma_i}{\det\mathsf C}}\,
+\exp\!\left(-\tfrac12(\mathbf q-\mathbf G)^\mathsf T\mathsf C^{-1}(\mathbf q-\mathbf G)\right)
 $$
 
 A point is used only if its excitation error $\varepsilon=\lvert\mathbf
-k_\text{in}+\mathbf G\rvert-\lvert\mathbf k_\text{in}\rvert$ is within $3\sigma_i$ and $(\mathbf k_\text{in}+\mathbf
+k_\text{in}+\mathbf G\rvert-\lvert\mathbf k_\text{in}\rvert$ is within $3\sigma_\varepsilon$, with
+$\sigma_\varepsilon^2=\hat{\mathbf k}_\text{out}^\mathsf T\Sigma_i\hat{\mathbf k}_\text{out}$ the
+spot's width along the sphere's normal, and $(\mathbf k_\text{in}+\mathbf
 G)_z>0$. Each such spot is listed at the pixel of $\mathbf k_\text{in}+\mathbf G$ with
-intensity $\lvert F\rvert^2e^{-\varepsilon^2/2\sigma_i^2}$. Extinctions come out of $F$
+intensity $\lvert F\rvert^2e^{-\varepsilon^2/2\sigma_\varepsilon^2}$. Extinctions come out of $F$
 by themselves (fcc: $h,k,l$ all even or all odd).
 
 **Source:** textbook kinematic diffraction [PDW04, IC04 ch. 8]. The Gaussian island
@@ -805,9 +876,9 @@ Cited from memory. Check volume and page numbers before quoting them.
 | §4 symmetry, centring, cut, slab | `crystal.py`: `expand`, `centring`; `surface.py`: `cut`, `orientation`, `slab`; `scene.py`: `build` |
 | §5 rod crossings | `kinematic.py`: `Kinematic._rod_spots` |
 | §6 amplitude, $f(s)$, $\mu$ | `kinematic.py`: `_surface`; `scene.py`: `form_factor`, `Scene.attenuation` |
-| §7 streaks, streak maxima | `kinematic.py`: `_rod_sigma`, `_paint`, `_streak_maxima` |
+| §7 streaks, streak maxima | `kinematic.py`: `_rod_spread`, `_footprint`, `_smooth`, `_paint`, `_streak_maxima` |
 | §8 reconstructions | `kinematic.py`: `_reconstruction` |
-| §9 islands | `kinematic.py`: `_island_sigma`, `_bulk_points`, `_bulk_spots` |
+| §9 islands | `kinematic.py`: `_island_cov`, `_excitation_var`, `_bulk_points`, `_bulk_spots` |
 | §10 image | `kinematic.py`: `_render`; `handlers.py`: `to_jpeg` |
 | §11 labels | `kinematic.py`: `_rod_spots`; `scene.py`: `Scene.zone_repeat` |
 | figures | `docs/scripts/plot_rheed_docs.py` |

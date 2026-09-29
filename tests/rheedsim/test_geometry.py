@@ -14,6 +14,7 @@ pytest.importorskip("gemmi")
 
 from lumi.contracts.payloads.simulation import (  # noqa: E402
     BeamSpec,
+    RenderSpec,
     RheedSimRequest,
     ScreenSpec,
     StructureSpec,
@@ -73,6 +74,42 @@ def test_specular_and_direct_beam_sit_L_tan_theta_either_side_of_the_horizon():
     assert meta.direct_beam_px == [360, pytest.approx(480 + rise, abs=0.01)]
     (edge_a, edge_b) = meta.shadow_edge_px
     assert edge_a[1] == edge_b[1] == pytest.approx(480)
+
+
+@pytest.mark.parametrize("flip_y", [False, True])
+def test_shifting_the_beam_moves_the_whole_pattern_by_as_much(flip_y):
+    """The beam 2 mm to the left (+y) and 1 mm up: every spot, the shadow edge and
+    the direct beam move 2 / 0.25 = 8 px left and 4 px up the screen (down the image
+    when the camera sees it flipped); the picture moves with them."""
+    screen = SCREEN.model_copy(update={"flip_y": flip_y, "origin_y_px": 60 if flip_y else 480})
+
+    def run(dy, dz):
+        r = req(screen=screen)
+        r.beam = r.beam.model_copy(update={"shift_y_mm": dy, "shift_z_mm": dz})
+        # No direct beam: shifted, it reaches the image's edge and would set its scale.
+        r.render = RenderSpec(direct_beam=False)
+        return simulate(r)
+
+    (m0, i0), (m1, i1) = run(0, 0), run(2.0, 1.0)
+    du, dv = -8.0, (4.0 if flip_y else -4.0)
+    moved = lambda a, b: a == pytest.approx([b[0] + du, b[1] + dv], abs=0.02)  # noqa: E731
+    assert moved(m1.origin_px, m0.origin_px)
+    assert moved(m1.specular_px, m0.specular_px) and moved(m1.direct_beam_px, m0.direct_beam_px)
+    assert all(moved(e1, e0) for e1, e0 in zip(m1.shadow_edge_px, m0.shadow_edge_px))
+    a = {(s.kind, s.label): s for s in m0.spots}
+    b = {(s.kind, s.label): s for s in m1.spots}
+    # Spots well inside the screen (at its top edge the q_z sampling ends).
+    inner = lambda s: 20 < s.x_px < 700 and 20 < s.y_px < 520  # noqa: E731
+    for key in [k for k in a.keys() & b.keys() if inner(a[k]) and inner(b[k])]:
+        assert moved([b[key].x_px, b[key].y_px], [a[key].x_px, a[key].y_px]), key
+        # (to the resolution of the q_z grid, which spans the q the screen sees)
+        assert b[key].intensity == pytest.approx(a[key].intensity, rel=1e-2, abs=1e-4), key
+    # The screen reported is the one asked for, so it can be sent back unchanged.
+    assert m1.screen == m0.screen
+    # Whole pixels: the image is the same picture, moved.
+    rows = slice(20, 520)
+    shifted = np.roll(i0, (int(dv), int(du)), axis=(0, 1))
+    assert np.abs(i1[rows, 20:700] - shifted[rows, 20:700]).max() < 0.02
 
 
 def test_the_zeroth_laue_zone_is_a_circle_through_the_specular_spot():

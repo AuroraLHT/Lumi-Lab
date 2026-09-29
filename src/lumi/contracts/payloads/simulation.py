@@ -190,8 +190,15 @@ class BeamSpec(BaseModel):
     energy_kev: float | None = Field(default=None, ge=1, le=100)
     #: Glancing angle between the beam and the surface plane.
     incidence_deg: float = Field(default=3.0, gt=0, le=20)
-    #: Angular spread of the beam; blurs every feature by about k * divergence.
+    #: Angular spread of the beam; blurs every feature by about its own angle on the
+    #: screen, divergence * camera length.
     divergence_mrad: float = Field(default=0.3, ge=0, le=20)
+    #: Where the beam meets the sample, relative to the camera axis, in lab axes: +y to
+    #: the left looking down the beam, +z up (away from the sample). Every ray starts
+    #: there, so the whole pattern -- spots, shadow edge, direct beam -- moves by the
+    #: same millimetres on the screen; angles, and so spacings, are unchanged.
+    shift_y_mm: float = Field(default=0.0, ge=-500, le=500)
+    shift_z_mm: float = Field(default=0.0, ge=-500, le=500)
 
 
 class ScreenSpec(BaseModel):
@@ -321,6 +328,8 @@ class RheedSimMeta(BaseModel):
     energy_kev: float
     wavelength_a: float
     k_inv_a: float
+    #: The shadow-edge centre on the image: the screen's origin, moved by the beam's
+    #: shift. (`screen` keeps the origin as given, so it can be sent back as it is.)
     origin_px: list[float]
     #: Two points on the shadow edge (the horizon), across the image.
     shadow_edge_px: list[list[float]]

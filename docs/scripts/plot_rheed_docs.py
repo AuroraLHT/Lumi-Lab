@@ -30,7 +30,7 @@ from lumi.contracts.payloads.simulation import (  # noqa: E402
 )
 from lumi.rheedsim import StructureStore, simulate  # noqa: E402
 from lumi.rheedsim.geometry import Screen, wavelength  # noqa: E402
-from lumi.rheedsim.kinematic import Kinematic  # noqa: E402
+from lumi.rheedsim.kinematic import Kinematic, _Spread  # noqa: E402
 from lumi.rheedsim.scene import build  # noqa: E402
 
 OUT = Path(__file__).resolve().parent.parent / "img" / "rheed_sim"
@@ -381,7 +381,7 @@ def fig_rod_profile():
         r = sto(surface=SurfaceSpec(termination=term))
         scene = build(r, StructureStore(None).get("SrTiO3"), LAB)
         qz = scene.k * math.sin(scene.theta) + np.linspace(0.05, 14, 4000)
-        (lat,) = Kinematic()._lattices(scene, np.zeros((2, 1)), qz, 0.01)
+        (lat,) = Kinematic()._lattices(scene, np.zeros((2, 1)), qz, _Spread(1e-4, 1e-4, 0.0), 0.03)
         prof = lat.table[lat.index[-lat.m0, -lat.n0]]
         ax.semilogy(qz, prof, color=color, lw=1.3, label=f"{term}-terminated")
     for order in range(3, 12):
@@ -416,7 +416,7 @@ def _rod_profiles(theta_deg: float, qz: np.ndarray | None = None):
     if qz is None:
         qz = -k_in[2] + np.linspace(0.02, 10, 3000)
     b = 2 * math.pi / A_STO
-    (lat,) = Kinematic()._lattices(scene, np.array([[0.0, 0, 0], [0, b, 2 * b]]), qz, 0.01)
+    (lat,) = Kinematic()._lattices(scene, np.array([[0.0, 0, 0], [0, b, 2 * b]]), qz, _Spread(1e-4, 1e-4, 0.0), 0.03)
     out = []
     for n in (0, 1, 2):
         prof = lat.table[lat.index[-lat.m0, n - lat.n0]]

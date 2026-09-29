@@ -23,7 +23,7 @@ from lumi.contracts.payloads.simulation import (  # noqa: E402
     SurfaceSpec,
 )
 from lumi.rheedsim import StructureStore, simulate  # noqa: E402
-from lumi.rheedsim.kinematic import Kinematic  # noqa: E402
+from lumi.rheedsim.kinematic import Kinematic, _Spread  # noqa: E402
 from lumi.rheedsim.scene import build  # noqa: E402
 
 SCREEN = ScreenSpec(camera_length_mm=300, pixel_size_mm=0.25, width_px=400, height_px=300,
@@ -49,7 +49,7 @@ def test_the_specular_rod_peaks_at_the_bragg_condition():
     r = req()
     scene = build(r, StructureStore(None).get("SrTiO3"), SCREEN)
     qz = scene.k * math.sin(scene.theta) + np.linspace(0.3, 8.0, 3000)
-    (lat,) = Kinematic()._lattices(scene, np.zeros((2, 1)), qz, 0.01)
+    (lat,) = Kinematic()._lattices(scene, np.zeros((2, 1)), qz, _Spread(1e-4, 1e-4, 0.0), 0.03)
     profile = lat.table[lat.index[-lat.m0, -lat.n0]]
     for order in (4, 6):
         bragg = 2 * math.pi * order / 3.905
@@ -166,3 +166,40 @@ def test_a_composition_two_planes_share_is_refused():
     assert simulate(ysz(oxygen[1]), image=False)[0].mesh.termination.startswith("O")
     cation = next(c for c in meta.mesh.terminations if c.startswith("Zr"))
     assert simulate(ysz(cation), image=False)[0].mesh.termination == cation
+
+
+def _window(img, s, rows=15, cols=6):
+    y, x = int(round(s.y_px)), int(round(s.x_px))
+    return img[max(y - rows, 0):y + rows + 1, max(x - cols, 0):x + cols + 1]
+
+
+@pytest.mark.parametrize("terrace_nm", [50, 1000])
+def test_mirror_spots_are_equally_bright_wherever_they_fall_in_a_pixel(terrace_nm):
+    """Rods narrower than a pixel: (0 1) and (0 -1) land at different places within
+    their pixels (the origin is off-centre), yet carry the same intensity."""
+    screen = SCREEN.model_copy(update={"origin_x_px": 200.37})
+    r = req(morphology=Morphology(terrace_nm=terrace_nm)).model_copy(update={
+        "screen": screen, "beam": BeamSpec(energy_kev=20.0, incidence_deg=3.0, divergence_mrad=0.05)})
+    meta, img = simulate(r)
+    rods = {s.label: s for s in meta.spots if s.kind == "rod"}
+    left, right = _window(img, rods["0 1"]).sum(), _window(img, rods["0 -1"]).sum()
+    assert left == pytest.approx(right, rel=0.01)
+    # ...and the specular spot is there at all, however narrow its rod.
+    assert _window(img, rods["0 0"]).max() > 0.3 * rods["0 0"].intensity
+
+
+def test_divergence_blurs_spots_rather_than_making_streaks():
+    """A divergent beam tilts k_in, which moves q across the rods and along them, but
+    hardly along the beam: the spots grow round, not into streaks, and the
+    streak's Bragg points (the transmission look) do not appear."""
+    def extent(div):
+        meta, img = simulate(req(morphology=Morphology(terrace_nm=200, mean_free_path_nm=10))
+                             .model_copy(update={"beam": BeamSpec(energy_kev=20.0, incidence_deg=3.0,
+                                                                  divergence_mrad=div)}))
+        s = next(s for s in meta.spots if s.label == "0 1" and s.kind == "rod")
+        column = img[:, int(round(s.x_px))]
+        row = img[int(round(s.y_px)), :]
+        return int((column > 0.2 * column.max()).sum()), int((row > 0.2 * row.max()).sum())
+    tall, wide = extent(4.0)
+    assert tall < 3 * wide
+    assert tall < 3 * extent(0.05)[0] + 20

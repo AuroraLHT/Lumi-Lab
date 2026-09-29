@@ -5,12 +5,15 @@ beam's direction along the surface, the screen square to x at the camera length.
 Seen looking down the beam, lab +y is to the left; an unflipped image has row 0 at
 the top, so screen +z (up) is towards row 0 and +y towards column 0. `roll_deg`
 then turns the picture and the flips mirror it, in that order.
+
+A beam shifted off the camera axis (BeamSpec.shift_y_mm, shift_z_mm) starts every
+ray from that point instead, so a wave lands `shift` further along the screen.
 """
 
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -34,6 +37,8 @@ def wavelength(energy_kev: float) -> float:
 class Screen:
     spec: ScreenSpec
     origin: tuple[float, float]
+    #: Where the beam meets the sample, (y, z) mm off the camera axis.
+    shift: tuple[float, float] = (0.0, 0.0)
 
     @classmethod
     def resolve(cls, spec: ScreenSpec) -> Screen:
@@ -48,6 +53,9 @@ class Screen:
         oy = spec.height_px / 2 - 0.4 * spec.height_px * float(dv) / norm
         return cls(spec, (spec.origin_x_px if spec.origin_x_px is not None else ox,
                           spec.origin_y_px if spec.origin_y_px is not None else oy))
+
+    def shifted(self, y_mm: float, z_mm: float) -> Screen:
+        return replace(self, shift=(float(y_mm), float(z_mm)))
 
     def filled(self) -> ScreenSpec:
         return self.spec.model_copy(update={"origin_x_px": self.origin[0], "origin_y_px": self.origin[1]})
@@ -66,7 +74,9 @@ class Screen:
         return du, dv
 
     def to_image(self, y, z):
-        du, dv = self._to_image_offset(y, z)
+        """Image pixel of a wave whose direction reaches (y, z) on the screen from the
+        camera axis; the beam's shift is added here."""
+        du, dv = self._to_image_offset(np.asarray(y) + self.shift[0], np.asarray(z) + self.shift[1])
         return du + self.origin[0], dv + self.origin[1]
 
     def to_screen(self, u, v):
@@ -78,7 +88,7 @@ class Screen:
         rho = math.radians(self.spec.roll_deg)
         du, dv = math.cos(rho) * du - math.sin(rho) * dv, math.sin(rho) * du + math.cos(rho) * dv
         p = self.spec.pixel_size_mm
-        return -du * p, -dv * p
+        return -du * p - self.shift[0], -dv * p - self.shift[1]
 
     # --- wavevectors ---------------------------------------------------------
 
