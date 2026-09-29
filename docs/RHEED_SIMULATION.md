@@ -739,12 +739,12 @@ SrTiO₃(001), beam along [100], 20 keV, $\theta=4.4°$, $L=300$ mm, $p=0.25$ mm
 | specular above the origin $L\tan\theta/p$ | $92.3$ px |
 | $N_\text{layers}$ at $\Lambda=10$ nm | 26 |
 
-The lab's test frame (`src/lumi/rheed/assets/test_frame.npy`) shows streaks 24–26 px
-apart.
-
 The example above is illustrative. The lab's defaults come from fitting two real
 recordings at the lab's 25 keV, using the zeroth-zone geometry: the specular spot, the
-first-order spots on the Laue circle, the streak columns and the shadow edge.
+first-order spots on the Laue circle, the streak columns and the shadow edge. The
+first frame of each is what the simulated RHEED camera shows (`lumi.rheed.sim_frames`,
+`start_simulation.sh --substrate sto|ysz`). `tests/rheedsim/test_sim_frames.py` checks
+that these fits still put the simulated spots on the frames' spots.
 
 | Recording | Incidence $\theta$ | Camera $L/p$ | Origin $(u_0,v_0)$ | Azimuth offset $\phi$ | Residual |
 |---|---|---|---|---|---|

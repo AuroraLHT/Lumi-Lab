@@ -169,8 +169,9 @@ class SurfaceSpec(BaseModel):
     #: Turns the sample about the normal from `azimuth`, degrees -- off a zone axis.
     azimuth_offset_deg: float = Field(default=0.0, ge=-360, le=360)
     #: Which atomic plane is on top: an index into the result's `mesh.terminations`
-    #: (0 = the first listed), or that plane's composition ("TiO2"). None = the plane
-    #: the cell puts highest.
+    #: (0 = the first listed), or that plane's composition ("TiO2"). A composition that
+    #: more than one plane has (YSZ(111)'s two O planes) is refused: use the index.
+    #: None = the plane the cell puts highest.
     termination: int | str | None = None
     reconstructions: list[Reconstruction] = Field(default=[], max_length=8)
 

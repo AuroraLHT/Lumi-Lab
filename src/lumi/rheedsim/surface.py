@@ -174,11 +174,16 @@ def pick_termination(cell: SurfaceCell, which: int | str | None) -> int:
                              f"{len(cell.planes)}: {', '.join(p.composition for p in cell.planes)}")
         return which
     want = which.replace(" ", "").lower()
-    for i, p in enumerate(cell.planes):
-        if p.composition.lower() == want:
-            return i
-    raise ValueError(f"no {which!r} plane in this surface; it has: "
-                     f"{', '.join(p.composition for p in cell.planes)}")
+    listing = ", ".join(f"{i}: {p.composition}" for i, p in enumerate(cell.planes))
+    hits = [i for i, p in enumerate(cell.planes) if p.composition.lower() == want]
+    if not hits:
+        raise ValueError(f"no {which!r} plane in this surface; it has {listing}")
+    if len(hits) > 1:
+        # Two planes of one composition are still different surfaces -- YSZ(111) has an
+        # O plane above the cations and one below -- so a name alone cannot choose.
+        raise ValueError(f"{which!r} names {len(hits)} planes of this surface "
+                         f"({', '.join(map(str, hits))}); give the index instead: {listing}")
+    return hits[0]
 
 
 def orientation(cell: SurfaceCell, azimuth, offset_deg: float) -> np.ndarray:

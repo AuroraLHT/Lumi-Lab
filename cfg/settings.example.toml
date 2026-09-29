@@ -101,7 +101,11 @@ device = 0
 fps = 30
 height = 540
 width = 720
-source = "src/lumi/rheed/assets/test_frame.npy"
+# What the simulated camera shows: "sto" (SrTiO3(001) along [100]) or "ysz" (YSZ(111)
+# along [1-10]), first frames of real recordings on the lab camera, listed with the
+# scene each shows in lumi.rheed.sim_frames -- or a path to any .npy/image.
+# `nodes/rheed.py --sim-frame` and `start_simulation.sh --substrate` override it.
+source = "sto"
 name = "Test Cam"
 idle_time = 0.0033
 queue_size = 2

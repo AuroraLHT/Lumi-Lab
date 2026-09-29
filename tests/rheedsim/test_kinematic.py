@@ -75,7 +75,7 @@ def test_the_termination_changes_intensities_not_positions():
 
 
 def test_a_missing_termination_lists_the_ones_there_are():
-    with pytest.raises(ValueError, match="TiO2, SrO"):
+    with pytest.raises(ValueError, match="0: TiO2, 1: SrO"):
         simulate(req(surface=SurfaceSpec(termination="LaO")), image=False)
 
 
@@ -150,3 +150,19 @@ def test_narrow_rods_list_only_maxima_the_laue_circle_crosses():
     assert not any(s.kind == "rod" and s.label == "0 3" for s in wide.spots)
     assert any(s.kind == "streak_max" and s.hkl[1] == 3 for s in wide.spots)
     assert not any(s.kind == "streak_max" and s.hkl[1] == 3 for s in narrow.spots)
+
+
+def test_a_composition_two_planes_share_is_refused():
+    """YSZ(111) has an O plane above the cations and one below: same composition,
+    different surfaces. A name cannot pick one; the index can."""
+    def ysz(termination):
+        return req(name="YSZ", surface=SurfaceSpec(normal=[1, 1, 1], azimuth=[1, -1, 0],
+                                                   termination=termination))
+    meta = simulate(ysz(None), image=False)[0]
+    oxygen = [i for i, c in enumerate(meta.mesh.terminations) if c.startswith("O")]
+    assert len(oxygen) == 2
+    with pytest.raises(ValueError, match="names 2 planes .*give the index"):
+        simulate(ysz(meta.mesh.terminations[oxygen[0]]), image=False)
+    assert simulate(ysz(oxygen[1]), image=False)[0].mesh.termination.startswith("O")
+    cation = next(c for c in meta.mesh.terminations if c.startswith("Zr"))
+    assert simulate(ysz(cation), image=False)[0].mesh.termination == cation

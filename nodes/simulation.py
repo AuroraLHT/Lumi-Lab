@@ -16,6 +16,7 @@ from lumi.config import settings
 from lumi.contracts.payloads.simulation import ScreenSpec
 from lumi.contracts.simulation import SIMULATION
 from lumi.node import EquipmentNode
+from lumi.rheed.sim_frames import SIM_FRAMES
 from lumi.rheedsim import StructureStore
 from lumi.rheedsim.handlers import RheedSimHandler
 
@@ -26,6 +27,12 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     cfg = settings.get("simulation.rheed", {}) or {}
     store = StructureStore(args.structures or cfg.get("structures_path") or None)
     screen = ScreenSpec(**{k.lower(): v for k, v in dict(cfg.get("screen", {}) or {}).items()})
+    if args.sim_frame:
+        # The simulated camera is showing a real frame; its shadow edge is where that
+        # recording's was, so the default screen has to put the origin there too.
+        frame = SIM_FRAMES[args.sim_frame]
+        screen = screen.model_copy(update={"origin_x_px": frame.origin_px[0],
+                                           "origin_y_px": frame.origin_px[1]})
     log.info("structures in %s; default screen %s", store.root, screen)
 
     node = EquipmentNode(
@@ -46,6 +53,10 @@ def cli() -> None:
     parser.add_argument("--instance", default=None, help="override the instance id")
     parser.add_argument("--structures", default=None,
                         help="folder for saved structures (default: simulation.rheed.structures_path)")
+    parser.add_argument("--sim-frame", choices=tuple(SIM_FRAMES), default=None,
+                        help="the simulated RHEED camera is showing this frame: use its screen "
+                             "origin as the default (the simulation stack passes the same "
+                             "--sim-frame to nodes/rheed.py)")
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 

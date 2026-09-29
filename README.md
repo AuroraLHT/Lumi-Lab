@@ -89,8 +89,9 @@ Two settings worth knowing about before you start anything:
 ### With the simulator (no hardware needed)
 
 `scripts/start_simulation.sh` brings up the whole stack against simulated sources: a
-state-model chamber, a canned RHEED video, a scratch HDF5 directory and a scratch user
-database. This is the way to exercise the system end to end before touching production.
+state-model chamber, a RHEED camera showing a real lab frame, a scratch HDF5 directory
+and a scratch user database. This is the way to exercise the system end to end before
+touching production.
 
 ```bash
 docker run -d --name lumi-rabbit -p 5672:5672 -p 15672:15672 rabbitmq:3-management
@@ -107,6 +108,9 @@ Options:
 ```
 --host HOST         broker host (default localhost)
 --chamber-speed N   simulated seconds per wall second in the chamber (default 1)
+--substrate S       what the RHEED camera shows: sto = SrTiO3(001) along [100] (default),
+                    ysz = YSZ(111) along [1-10]. Real frames from the lab camera; the
+                    simulation node's screen is set to match, so overlays line up
 --with-experiment   also start the experiment node
 --with-detection    also start the detection node (needs the deps above)
 --with-agent        also start the supervisor

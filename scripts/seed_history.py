@@ -11,8 +11,9 @@ What it writes, back-dated over the past three weeks and consistent with each ot
   measurements (in-situ RHEED metric, ex-situ XRD/AFM/transport).
 - RHEED recordings: one HDF5 per deposition in the storage node's folder, laid out by
   the real `Recorder` (frame, frame_meta, log, integration*). Frames are the simcam's
-  test frame with RHEED oscillations on the specular spot that damp faster on a
-  worse growth; the integration boxes carry the same curve at 5 Hz.
+  SrTiO3 frame (a real one from the lab camera) with RHEED oscillations on the specular
+  spot that damp faster on a worse growth; the integration boxes carry the same curve
+  at 5 Hz.
 - Chamber logs: one PASCAL-format CSV per session in the simulator's log folder.
 
 The chamber log is not drawn by hand. Each session drives the simulator's ChamberModel
@@ -56,6 +57,7 @@ from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.pascal.chamber_log import process_row
 from lumi.pascal.log_archive import LogArchive
 from lumi.pascal.sim import LOG_COLUMNS, ChamberModel, ChamberSimConfig, render_row
+from lumi.rheed.sim_frames import SIM_FRAMES
 from lumi.storage.record import Recorder, RecorderConfig
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -180,12 +182,13 @@ def utc_text(when: dt.datetime) -> str:
 
 # --- RHEED ----------------------------------------------------------------------
 
-#: (x0, y0, x1, y1) on the 720x540 test frame: the specular spot and a side spot.
-BBOXES = {0: (322, 132, 352, 162), 1: (253, 163, 283, 193)}
+#: (x0, y0, x1, y1) on the 720x540 SrTiO3 sim frame (lumi.rheed.sim_frames "sto"): the
+#: specular spot at (375, 270) and the (0 1) spot on the Laue circle at (290, 243).
+BBOXES = {0: (360, 255, 390, 285), 1: (275, 228, 305, 258)}
 
 
 class FakeRheed:
-    """The simcam test frame, modulated the way a growing film modulates RHEED.
+    """The simcam's SrTiO3 frame, modulated the way a growing film modulates RHEED.
 
     The pattern is `bg + (base - bg) * G`, where G is 1 everywhere before growth and,
     during it, oscillates on the specular spot (one period per unit cell, damping with
@@ -194,7 +197,7 @@ class FakeRheed:
 
     def __init__(self, rng: np.random.Generator) -> None:
         self.rng = rng
-        self.base = np.load(PROJECT_ROOT / "src/lumi/rheed/assets/test_frame.npy").astype(np.float32)
+        self.base = np.load(SIM_FRAMES["sto"].path).astype(np.float32)
         self.bg = float(np.percentile(self.base, 5))
         self.signal = self.base - self.bg
         h, w = self.base.shape
@@ -277,6 +280,8 @@ class Recording:
             initial_size=cfg.initial_size,
             save_frame=True, save_log=True, save_ai=False, save_integration=True,
             compression="lzf", compression_opts=None, scaleoffset=0,
+            # As the storage node records it (rheed.energy_kev, the lab's 25 keV).
+            attrs={"rheed_energy_kev": SIM_FRAMES["sto"].energy_kev},
         ))
         created = self.recorder.create_datasets()
         if not created["succ"]:

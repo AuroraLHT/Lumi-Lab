@@ -14,7 +14,11 @@
 #   scripts/start_simulation.sh [--host HOST] [--with-detection] [--with-agent]
 #                               [--with-auth] [--with-experiment] [--keep-database]
 #                               [--no-reset-broker] [--chamber-speed N]
-#                               [--experiment-speed N]
+#                               [--experiment-speed N] [--substrate sto|ysz]
+#
+# --substrate picks what the simulated RHEED camera shows: a real lab frame of
+# SrTiO3(001) along [100] (sto, the default) or YSZ(111) along [1-10] (ysz). The
+# simulation node is told too, so a simulated pattern lines up with the feed.
 #
 # --chamber-speed compresses the chamber's own clock. --experiment-speed compresses the
 # experiment node's wall-clock warm-up pacing, which the chamber's clock cannot reach --
@@ -59,6 +63,7 @@ KEEP_DATABASE=0
 RESET_BROKER=1
 CHAMBER_SPEED=
 EXPERIMENT_SPEED=
+SUBSTRATE=sto
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -71,7 +76,13 @@ while [[ $# -gt 0 ]]; do
         --no-reset-broker) RESET_BROKER=0; shift ;;
         --chamber-speed) CHAMBER_SPEED="$2"; shift 2 ;;
         --experiment-speed) EXPERIMENT_SPEED="$2"; shift 2 ;;
-        -h|--help) sed -n '3,26p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --substrate)
+            case "${2:-}" in
+                sto|ysz) SUBSTRATE="$2" ;;
+                *) echo "--substrate must be sto or ysz (got '${2:-}')" >&2; exit 1 ;;
+            esac
+            shift 2 ;;
+        -h|--help) sed -n '3,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -255,12 +266,14 @@ start_node storage "${STORAGE_ARGS[@]}"
 sleep 2
 
 start_node pascal --host "$RABBITMQ_HOST" --src sim --speed "$CHAMBER_SPEED"
-start_node rheed  --host "$RABBITMQ_HOST" --src simcam
+# The simulated camera shows a real lab frame (--substrate), and the simulation node
+# is told which, so its default screen puts the shadow edge where that frame has it.
+start_node rheed  --host "$RABBITMQ_HOST" --src simcam --sim-frame "$SUBSTRATE"
 
 # RHEED pattern simulation: no hardware, so it always runs when its extra is there.
 SIMULATION_SKIPPED=""
 if "$PYTHON" -c "import gemmi" 2>/dev/null; then
-    start_node simulation --host "$RABBITMQ_HOST"
+    start_node simulation --host "$RABBITMQ_HOST" --sim-frame "$SUBSTRATE"
 else
     SIMULATION_SKIPPED="  simulation skipped (uv sync --extra rheedsim)"
 fi
@@ -325,6 +338,10 @@ done
 [[ -n "$SIMULATION_SKIPPED" ]] && echo "$SIMULATION_SKIPPED"
 echo
 echo "API on http://localhost:8000 -- $AUTH_NOTE"
+case "$SUBSTRATE" in
+    sto) echo "RHEED camera shows SrTiO3(001) along [100] (--substrate ysz for YSZ(111))" ;;
+    ysz) echo "RHEED camera shows YSZ(111) along [1-10] (--substrate sto for SrTiO3(001))" ;;
+esac
 echo "logs in $LOG_DIR"
 echo
 echo "to make the chamber actually do something, run a growth alongside this:"
