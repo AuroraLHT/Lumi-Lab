@@ -27,13 +27,14 @@ LOG_COLUMNS = ["Time", "HT Temp moni", "Shut Stat", "time_stamp", "time"]
 N_FRAMES = 12
 
 
-def write_recording(root, name, n_frames=N_FRAMES, n_log=5, boxes=(0, 1)) -> None:
+def write_recording(root, name, n_frames=N_FRAMES, n_log=5, boxes=(0, 1), attrs=None) -> None:
     rec = Recorder(RecorderConfig(
         project_name=name, root_folder=str(root), frame_dim=(20, 30),
         frame_meta_columns=["time_stamp", "time"], log_columns=LOG_COLUMNS,
         pattern_dim=None, detection_meta_columns=None, detector_classes=None,
         classifier_classes=None, initial_size=100,
         save_frame=True, save_log=True, save_ai=False, save_integration=True,
+        attrs=attrs or {},
     ))
     assert rec.create_datasets()["succ"]
     for i in range(n_frames):

@@ -51,6 +51,11 @@ from lumi.storage.record import Recorder, RecorderConfig, RecorderServer, Record
 
 log = logging.getLogger(__name__)
 
+def default_energy_kev() -> float:
+    """The lab's usual RHEED beam energy (`rheed.energy_kev`); 25 keV if unset."""
+    return float(settings.get("rheed.energy_kev", 25.0) or 25.0)
+
+
 #: What each save option needs to be up before a recording can start.
 DEPENDENCIES = {
     "save_frame": "rheed",
@@ -256,6 +261,7 @@ class StorageHandler:
             compression="lzf",
             compression_opts=None,
             scaleoffset=0,
+            attrs={"rheed_energy_kev": float(req.rheed_energy_kev or default_energy_kev())},
         )
 
     # --- subscriptions ------------------------------------------------------

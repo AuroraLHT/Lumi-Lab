@@ -10120,6 +10120,20 @@
                   "title": "Project Name",
                   "type": "string"
                 },
+                "rheed_energy_kev": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rheed Energy Kev"
+                },
                 "save_ai": {
                   "default": true,
                   "title": "Save Ai",
@@ -14924,6 +14938,3860 @@
     "name": "rheed",
     "version": "2.0"
   },
+  "simulation": {
+    "capabilities": [
+      {
+        "kind": "rpc",
+        "name": "rheed_sim",
+        "ops": [
+          {
+            "name": "list_structures",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                },
+                "StructureSummary": {
+                  "properties": {
+                    "description": {
+                      "default": "",
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "formula": {
+                      "title": "Formula",
+                      "type": "string"
+                    },
+                    "lattice": {
+                      "$ref": "#/$defs/Lattice"
+                    },
+                    "n_atoms": {
+                      "title": "N Atoms",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "source": {
+                      "enum": [
+                        "builtin",
+                        "saved",
+                        "inline"
+                      ],
+                      "title": "Source",
+                      "type": "string"
+                    },
+                    "space_group": {
+                      "title": "Space Group",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "formula",
+                    "source",
+                    "space_group",
+                    "lattice",
+                    "n_atoms"
+                  ],
+                  "title": "StructureSummary",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "structures": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/StructureSummary"
+                  },
+                  "title": "Structures",
+                  "type": "array"
+                }
+              },
+              "title": "StructureList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_structure",
+            "request": {
+              "properties": {
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "StructureName",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "AtomSite": {
+                  "properties": {
+                    "b_iso": {
+                      "anyOf": [
+                        {
+                          "maximum": 50,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "B Iso"
+                    },
+                    "element": {
+                      "maxLength": 3,
+                      "minLength": 1,
+                      "title": "Element",
+                      "type": "string"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "occupancy": {
+                      "default": 1.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Occupancy",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    },
+                    "z": {
+                      "title": "Z",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "element",
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "title": "AtomSite",
+                  "type": "object"
+                },
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "description": {
+                  "default": "",
+                  "title": "Description",
+                  "type": "string"
+                },
+                "formula": {
+                  "title": "Formula",
+                  "type": "string"
+                },
+                "lattice": {
+                  "$ref": "#/$defs/Lattice"
+                },
+                "n_atoms": {
+                  "title": "N Atoms",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "sites": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/AtomSite"
+                  },
+                  "title": "Sites",
+                  "type": "array"
+                },
+                "source": {
+                  "enum": [
+                    "builtin",
+                    "saved",
+                    "inline"
+                  ],
+                  "title": "Source",
+                  "type": "string"
+                },
+                "space_group": {
+                  "title": "Space Group",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "formula",
+                "source",
+                "space_group",
+                "lattice",
+                "n_atoms"
+              ],
+              "title": "StructureInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "save_structure",
+            "request": {
+              "$defs": {
+                "AtomSite": {
+                  "properties": {
+                    "b_iso": {
+                      "anyOf": [
+                        {
+                          "maximum": 50,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "B Iso"
+                    },
+                    "element": {
+                      "maxLength": 3,
+                      "minLength": 1,
+                      "title": "Element",
+                      "type": "string"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "occupancy": {
+                      "default": 1.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Occupancy",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    },
+                    "z": {
+                      "title": "Z",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "element",
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "title": "AtomSite",
+                  "type": "object"
+                },
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                },
+                "ManualStructure": {
+                  "description": "A cell typed in by hand: the lattice, a space group and its asymmetric unit.\n\nGive the sites of the asymmetric unit and the space group expands them; with P1\n(the default) the sites are taken as the whole cell -- which is how to describe a\nstrained or hypothetical cell no space group fits.",
+                  "properties": {
+                    "lattice": {
+                      "$ref": "#/$defs/Lattice"
+                    },
+                    "sites": {
+                      "items": {
+                        "$ref": "#/$defs/AtomSite"
+                      },
+                      "maxItems": 2000,
+                      "minItems": 1,
+                      "title": "Sites",
+                      "type": "array"
+                    },
+                    "space_group": {
+                      "default": "P1",
+                      "title": "Space Group",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lattice",
+                    "sites"
+                  ],
+                  "title": "ManualStructure",
+                  "type": "object"
+                }
+              },
+              "description": "Keep a structure under a name, so a simulation can refer to it by that name.",
+              "properties": {
+                "cif": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4000000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Cif"
+                },
+                "description": {
+                  "default": "",
+                  "maxLength": 2000,
+                  "title": "Description",
+                  "type": "string"
+                },
+                "manual": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ManualStructure"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "overwrite": {
+                  "default": false,
+                  "title": "Overwrite",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "SaveStructure",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "AtomSite": {
+                  "properties": {
+                    "b_iso": {
+                      "anyOf": [
+                        {
+                          "maximum": 50,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "B Iso"
+                    },
+                    "element": {
+                      "maxLength": 3,
+                      "minLength": 1,
+                      "title": "Element",
+                      "type": "string"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "occupancy": {
+                      "default": 1.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Occupancy",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    },
+                    "z": {
+                      "title": "Z",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "element",
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "title": "AtomSite",
+                  "type": "object"
+                },
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "description": {
+                  "default": "",
+                  "title": "Description",
+                  "type": "string"
+                },
+                "formula": {
+                  "title": "Formula",
+                  "type": "string"
+                },
+                "lattice": {
+                  "$ref": "#/$defs/Lattice"
+                },
+                "n_atoms": {
+                  "title": "N Atoms",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "sites": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/AtomSite"
+                  },
+                  "title": "Sites",
+                  "type": "array"
+                },
+                "source": {
+                  "enum": [
+                    "builtin",
+                    "saved",
+                    "inline"
+                  ],
+                  "title": "Source",
+                  "type": "string"
+                },
+                "space_group": {
+                  "title": "Space Group",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "formula",
+                "source",
+                "space_group",
+                "lattice",
+                "n_atoms"
+              ],
+              "title": "StructureInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "delete_structure",
+            "request": {
+              "properties": {
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "StructureName",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_spots",
+            "request": {
+              "$defs": {
+                "AtomSite": {
+                  "properties": {
+                    "b_iso": {
+                      "anyOf": [
+                        {
+                          "maximum": 50,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "B Iso"
+                    },
+                    "element": {
+                      "maxLength": 3,
+                      "minLength": 1,
+                      "title": "Element",
+                      "type": "string"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "occupancy": {
+                      "default": 1.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Occupancy",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    },
+                    "z": {
+                      "title": "Z",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "element",
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "title": "AtomSite",
+                  "type": "object"
+                },
+                "BeamSpec": {
+                  "properties": {
+                    "divergence_mrad": {
+                      "default": 0.3,
+                      "maximum": 20,
+                      "minimum": 0,
+                      "title": "Divergence Mrad",
+                      "type": "number"
+                    },
+                    "energy_kev": {
+                      "anyOf": [
+                        {
+                          "maximum": 100,
+                          "minimum": 1,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Energy Kev"
+                    },
+                    "incidence_deg": {
+                      "default": 3.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 20,
+                      "title": "Incidence Deg",
+                      "type": "number"
+                    },
+                    "shift_y_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Y Mm",
+                      "type": "number"
+                    },
+                    "shift_z_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Z Mm",
+                      "type": "number"
+                    }
+                  },
+                  "title": "BeamSpec",
+                  "type": "object"
+                },
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                },
+                "ManualStructure": {
+                  "description": "A cell typed in by hand: the lattice, a space group and its asymmetric unit.\n\nGive the sites of the asymmetric unit and the space group expands them; with P1\n(the default) the sites are taken as the whole cell -- which is how to describe a\nstrained or hypothetical cell no space group fits.",
+                  "properties": {
+                    "lattice": {
+                      "$ref": "#/$defs/Lattice"
+                    },
+                    "sites": {
+                      "items": {
+                        "$ref": "#/$defs/AtomSite"
+                      },
+                      "maxItems": 2000,
+                      "minItems": 1,
+                      "title": "Sites",
+                      "type": "array"
+                    },
+                    "space_group": {
+                      "default": "P1",
+                      "title": "Space Group",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lattice",
+                    "sites"
+                  ],
+                  "title": "ManualStructure",
+                  "type": "object"
+                },
+                "Morphology": {
+                  "description": "How far the surface is from an ideal infinite flat crystal.",
+                  "properties": {
+                    "debye_waller_b": {
+                      "default": 0.5,
+                      "maximum": 50,
+                      "minimum": 0,
+                      "title": "Debye Waller B",
+                      "type": "number"
+                    },
+                    "island_nm": {
+                      "default": 5.0,
+                      "maximum": 1000,
+                      "minimum": 0.5,
+                      "title": "Island Nm",
+                      "type": "number"
+                    },
+                    "islands": {
+                      "default": 0.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Islands",
+                      "type": "number"
+                    },
+                    "layers": {
+                      "anyOf": [
+                        {
+                          "maximum": 500,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Layers"
+                    },
+                    "mean_free_path_nm": {
+                      "default": 10.0,
+                      "maximum": 1000,
+                      "minimum": 0.1,
+                      "title": "Mean Free Path Nm",
+                      "type": "number"
+                    },
+                    "terrace_nm": {
+                      "default": 50.0,
+                      "maximum": 100000,
+                      "minimum": 0.5,
+                      "title": "Terrace Nm",
+                      "type": "number"
+                    }
+                  },
+                  "title": "Morphology",
+                  "type": "object"
+                },
+                "Reconstruction": {
+                  "description": "A surface superstructure, as its mesh in units of the bulk surface mesh.\n\n`matrix` rows are the supercell's vectors in terms of the 1x1 mesh (a1, a2):\n[[2,0],[0,1]] is 2x1, [[1,1],[-1,1]] is c(2x2) (its primitive cell, sqrt2 x sqrt2\nR45). Two rotational domains are two entries. The reconstructed atoms are not\nknown to the simulator, so the fractional-order rods it adds take the specular\nrod's profile scaled by `strength` -- positions are right, intensities are a knob.",
+                  "properties": {
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "matrix": {
+                      "items": {
+                        "items": {
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "title": "Matrix",
+                      "type": "array"
+                    },
+                    "strength": {
+                      "default": 0.3,
+                      "maximum": 10,
+                      "minimum": 0,
+                      "title": "Strength",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "matrix"
+                  ],
+                  "title": "Reconstruction",
+                  "type": "object"
+                },
+                "RenderSpec": {
+                  "properties": {
+                    "background": {
+                      "default": 0.03,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Background",
+                      "type": "number"
+                    },
+                    "blur_px": {
+                      "default": 1.0,
+                      "maximum": 50,
+                      "minimum": 0,
+                      "title": "Blur Px",
+                      "type": "number"
+                    },
+                    "direct_beam": {
+                      "default": true,
+                      "title": "Direct Beam",
+                      "type": "boolean"
+                    },
+                    "noise_counts": {
+                      "default": 0.0,
+                      "maximum": 1000000.0,
+                      "minimum": 0,
+                      "title": "Noise Counts",
+                      "type": "number"
+                    },
+                    "seed": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Seed"
+                    }
+                  },
+                  "title": "RenderSpec",
+                  "type": "object"
+                },
+                "ScreenSpec": {
+                  "description": "Where the phosphor screen is and how the camera sees it.\n\n`pixel_size_mm` is the size of one image pixel *on the screen*, not on the\nsensor -- the camera's lens and distance are folded into it. The lab camera\nsees the screen upside down, which is `flip_y`.",
+                  "properties": {
+                    "camera_length_mm": {
+                      "default": 300.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 5000,
+                      "title": "Camera Length Mm",
+                      "type": "number"
+                    },
+                    "flip_x": {
+                      "default": false,
+                      "title": "Flip X",
+                      "type": "boolean"
+                    },
+                    "flip_y": {
+                      "default": false,
+                      "title": "Flip Y",
+                      "type": "boolean"
+                    },
+                    "height_px": {
+                      "default": 540,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Height Px",
+                      "type": "integer"
+                    },
+                    "origin_x_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin X Px"
+                    },
+                    "origin_y_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin Y Px"
+                    },
+                    "pixel_size_mm": {
+                      "default": 0.25,
+                      "exclusiveMinimum": 0,
+                      "maximum": 10,
+                      "title": "Pixel Size Mm",
+                      "type": "number"
+                    },
+                    "roll_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Roll Deg",
+                      "type": "number"
+                    },
+                    "width_px": {
+                      "default": 720,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Width Px",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "ScreenSpec",
+                  "type": "object"
+                },
+                "StructureSpec": {
+                  "description": "Exactly one of: a structure by name (built in, or saved with save_structure),\na CIF's text, or a manual cell.",
+                  "properties": {
+                    "cif": {
+                      "anyOf": [
+                        {
+                          "maxLength": 4000000,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Cif"
+                    },
+                    "manual": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/ManualStructure"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Name"
+                    }
+                  },
+                  "title": "StructureSpec",
+                  "type": "object"
+                },
+                "SurfaceSpec": {
+                  "properties": {
+                    "azimuth": {
+                      "default": [
+                        1,
+                        0,
+                        0
+                      ],
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "title": "Azimuth",
+                      "type": "array"
+                    },
+                    "azimuth_offset_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Azimuth Offset Deg",
+                      "type": "number"
+                    },
+                    "normal": {
+                      "default": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "title": "Normal",
+                      "type": "array"
+                    },
+                    "reconstructions": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/Reconstruction"
+                      },
+                      "maxItems": 8,
+                      "title": "Reconstructions",
+                      "type": "array"
+                    },
+                    "termination": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Termination"
+                    }
+                  },
+                  "title": "SurfaceSpec",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "beam": {
+                  "$ref": "#/$defs/BeamSpec",
+                  "default": {
+                    "divergence_mrad": 0.3,
+                    "energy_kev": null,
+                    "incidence_deg": 3.0,
+                    "shift_y_mm": 0.0,
+                    "shift_z_mm": 0.0
+                  }
+                },
+                "morphology": {
+                  "$ref": "#/$defs/Morphology",
+                  "default": {
+                    "debye_waller_b": 0.5,
+                    "island_nm": 5.0,
+                    "islands": 0.0,
+                    "layers": null,
+                    "mean_free_path_nm": 10.0,
+                    "terrace_nm": 50.0
+                  }
+                },
+                "render": {
+                  "$ref": "#/$defs/RenderSpec",
+                  "default": {
+                    "background": 0.03,
+                    "blur_px": 1.0,
+                    "direct_beam": true,
+                    "noise_counts": 0.0,
+                    "seed": null
+                  }
+                },
+                "screen": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ScreenSpec"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "structure": {
+                  "$ref": "#/$defs/StructureSpec"
+                },
+                "surface": {
+                  "$ref": "#/$defs/SurfaceSpec",
+                  "default": {
+                    "azimuth": [
+                      1,
+                      0,
+                      0
+                    ],
+                    "azimuth_offset_deg": 0.0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "reconstructions": [],
+                    "termination": null
+                  }
+                }
+              },
+              "required": [
+                "structure"
+              ],
+              "title": "RheedSimRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                },
+                "RheedSpot": {
+                  "description": "One diffraction feature where the Ewald sphere meets it.",
+                  "properties": {
+                    "hkl": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Hkl",
+                      "type": "array"
+                    },
+                    "in_view": {
+                      "default": true,
+                      "title": "In View",
+                      "type": "boolean"
+                    },
+                    "indices": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Indices",
+                      "type": "array"
+                    },
+                    "intensity": {
+                      "title": "Intensity",
+                      "type": "number"
+                    },
+                    "kind": {
+                      "enum": [
+                        "rod",
+                        "fractional",
+                        "streak_max",
+                        "bulk"
+                      ],
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "label": {
+                      "title": "Label",
+                      "type": "string"
+                    },
+                    "laue_zone": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Laue Zone"
+                    },
+                    "q": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Q",
+                      "type": "array"
+                    },
+                    "x_px": {
+                      "title": "X Px",
+                      "type": "number"
+                    },
+                    "y_px": {
+                      "title": "Y Px",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "label",
+                    "indices",
+                    "hkl",
+                    "x_px",
+                    "y_px",
+                    "intensity",
+                    "q"
+                  ],
+                  "title": "RheedSpot",
+                  "type": "object"
+                },
+                "ScreenSpec": {
+                  "description": "Where the phosphor screen is and how the camera sees it.\n\n`pixel_size_mm` is the size of one image pixel *on the screen*, not on the\nsensor -- the camera's lens and distance are folded into it. The lab camera\nsees the screen upside down, which is `flip_y`.",
+                  "properties": {
+                    "camera_length_mm": {
+                      "default": 300.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 5000,
+                      "title": "Camera Length Mm",
+                      "type": "number"
+                    },
+                    "flip_x": {
+                      "default": false,
+                      "title": "Flip X",
+                      "type": "boolean"
+                    },
+                    "flip_y": {
+                      "default": false,
+                      "title": "Flip Y",
+                      "type": "boolean"
+                    },
+                    "height_px": {
+                      "default": 540,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Height Px",
+                      "type": "integer"
+                    },
+                    "origin_x_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin X Px"
+                    },
+                    "origin_y_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin Y Px"
+                    },
+                    "pixel_size_mm": {
+                      "default": 0.25,
+                      "exclusiveMinimum": 0,
+                      "maximum": 10,
+                      "title": "Pixel Size Mm",
+                      "type": "number"
+                    },
+                    "roll_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Roll Deg",
+                      "type": "number"
+                    },
+                    "width_px": {
+                      "default": 720,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Width Px",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "ScreenSpec",
+                  "type": "object"
+                },
+                "StructureSummary": {
+                  "properties": {
+                    "description": {
+                      "default": "",
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "formula": {
+                      "title": "Formula",
+                      "type": "string"
+                    },
+                    "lattice": {
+                      "$ref": "#/$defs/Lattice"
+                    },
+                    "n_atoms": {
+                      "title": "N Atoms",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "source": {
+                      "enum": [
+                        "builtin",
+                        "saved",
+                        "inline"
+                      ],
+                      "title": "Source",
+                      "type": "string"
+                    },
+                    "space_group": {
+                      "title": "Space Group",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "formula",
+                    "source",
+                    "space_group",
+                    "lattice",
+                    "n_atoms"
+                  ],
+                  "title": "StructureSummary",
+                  "type": "object"
+                },
+                "SurfaceMesh": {
+                  "description": "The surface cell the simulator cut: the rods are its reciprocal lattice.",
+                  "properties": {
+                    "a1": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A1",
+                      "type": "array"
+                    },
+                    "a1_length": {
+                      "title": "A1 Length",
+                      "type": "number"
+                    },
+                    "a2": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A2",
+                      "type": "array"
+                    },
+                    "a2_length": {
+                      "title": "A2 Length",
+                      "type": "number"
+                    },
+                    "a3": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A3",
+                      "type": "array"
+                    },
+                    "gamma_deg": {
+                      "title": "Gamma Deg",
+                      "type": "number"
+                    },
+                    "layer_spacing": {
+                      "title": "Layer Spacing",
+                      "type": "number"
+                    },
+                    "n_layers": {
+                      "title": "N Layers",
+                      "type": "integer"
+                    },
+                    "termination": {
+                      "title": "Termination",
+                      "type": "string"
+                    },
+                    "terminations": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "title": "Terminations",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "a1",
+                    "a2",
+                    "a3",
+                    "a1_length",
+                    "a2_length",
+                    "gamma_deg",
+                    "layer_spacing",
+                    "terminations",
+                    "termination",
+                    "n_layers"
+                  ],
+                  "title": "SurfaceMesh",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "direct_beam_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Direct Beam Px",
+                  "type": "array"
+                },
+                "elapsed_ms": {
+                  "default": 0.0,
+                  "title": "Elapsed Ms",
+                  "type": "number"
+                },
+                "energy_kev": {
+                  "title": "Energy Kev",
+                  "type": "number"
+                },
+                "k_inv_a": {
+                  "title": "K Inv A",
+                  "type": "number"
+                },
+                "mesh": {
+                  "$ref": "#/$defs/SurfaceMesh"
+                },
+                "origin_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Origin Px",
+                  "type": "array"
+                },
+                "screen": {
+                  "$ref": "#/$defs/ScreenSpec"
+                },
+                "shadow_edge_px": {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Shadow Edge Px",
+                  "type": "array"
+                },
+                "specular_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Specular Px",
+                  "type": "array"
+                },
+                "spots": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/RheedSpot"
+                  },
+                  "title": "Spots",
+                  "type": "array"
+                },
+                "structure": {
+                  "$ref": "#/$defs/StructureSummary"
+                },
+                "warnings": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Warnings",
+                  "type": "array"
+                },
+                "wavelength_a": {
+                  "title": "Wavelength A",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "structure",
+                "mesh",
+                "screen",
+                "energy_kev",
+                "wavelength_a",
+                "k_inv_a",
+                "origin_px",
+                "shadow_edge_px",
+                "specular_px",
+                "direct_beam_px"
+              ],
+              "title": "RheedSimMeta",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "simulate_rheed",
+            "request": {
+              "$defs": {
+                "AtomSite": {
+                  "properties": {
+                    "b_iso": {
+                      "anyOf": [
+                        {
+                          "maximum": 50,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "B Iso"
+                    },
+                    "element": {
+                      "maxLength": 3,
+                      "minLength": 1,
+                      "title": "Element",
+                      "type": "string"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "occupancy": {
+                      "default": 1.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Occupancy",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    },
+                    "z": {
+                      "title": "Z",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "element",
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "title": "AtomSite",
+                  "type": "object"
+                },
+                "BeamSpec": {
+                  "properties": {
+                    "divergence_mrad": {
+                      "default": 0.3,
+                      "maximum": 20,
+                      "minimum": 0,
+                      "title": "Divergence Mrad",
+                      "type": "number"
+                    },
+                    "energy_kev": {
+                      "anyOf": [
+                        {
+                          "maximum": 100,
+                          "minimum": 1,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Energy Kev"
+                    },
+                    "incidence_deg": {
+                      "default": 3.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 20,
+                      "title": "Incidence Deg",
+                      "type": "number"
+                    },
+                    "shift_y_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Y Mm",
+                      "type": "number"
+                    },
+                    "shift_z_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Z Mm",
+                      "type": "number"
+                    }
+                  },
+                  "title": "BeamSpec",
+                  "type": "object"
+                },
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                },
+                "ManualStructure": {
+                  "description": "A cell typed in by hand: the lattice, a space group and its asymmetric unit.\n\nGive the sites of the asymmetric unit and the space group expands them; with P1\n(the default) the sites are taken as the whole cell -- which is how to describe a\nstrained or hypothetical cell no space group fits.",
+                  "properties": {
+                    "lattice": {
+                      "$ref": "#/$defs/Lattice"
+                    },
+                    "sites": {
+                      "items": {
+                        "$ref": "#/$defs/AtomSite"
+                      },
+                      "maxItems": 2000,
+                      "minItems": 1,
+                      "title": "Sites",
+                      "type": "array"
+                    },
+                    "space_group": {
+                      "default": "P1",
+                      "title": "Space Group",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lattice",
+                    "sites"
+                  ],
+                  "title": "ManualStructure",
+                  "type": "object"
+                },
+                "Morphology": {
+                  "description": "How far the surface is from an ideal infinite flat crystal.",
+                  "properties": {
+                    "debye_waller_b": {
+                      "default": 0.5,
+                      "maximum": 50,
+                      "minimum": 0,
+                      "title": "Debye Waller B",
+                      "type": "number"
+                    },
+                    "island_nm": {
+                      "default": 5.0,
+                      "maximum": 1000,
+                      "minimum": 0.5,
+                      "title": "Island Nm",
+                      "type": "number"
+                    },
+                    "islands": {
+                      "default": 0.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Islands",
+                      "type": "number"
+                    },
+                    "layers": {
+                      "anyOf": [
+                        {
+                          "maximum": 500,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Layers"
+                    },
+                    "mean_free_path_nm": {
+                      "default": 10.0,
+                      "maximum": 1000,
+                      "minimum": 0.1,
+                      "title": "Mean Free Path Nm",
+                      "type": "number"
+                    },
+                    "terrace_nm": {
+                      "default": 50.0,
+                      "maximum": 100000,
+                      "minimum": 0.5,
+                      "title": "Terrace Nm",
+                      "type": "number"
+                    }
+                  },
+                  "title": "Morphology",
+                  "type": "object"
+                },
+                "Reconstruction": {
+                  "description": "A surface superstructure, as its mesh in units of the bulk surface mesh.\n\n`matrix` rows are the supercell's vectors in terms of the 1x1 mesh (a1, a2):\n[[2,0],[0,1]] is 2x1, [[1,1],[-1,1]] is c(2x2) (its primitive cell, sqrt2 x sqrt2\nR45). Two rotational domains are two entries. The reconstructed atoms are not\nknown to the simulator, so the fractional-order rods it adds take the specular\nrod's profile scaled by `strength` -- positions are right, intensities are a knob.",
+                  "properties": {
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "matrix": {
+                      "items": {
+                        "items": {
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "title": "Matrix",
+                      "type": "array"
+                    },
+                    "strength": {
+                      "default": 0.3,
+                      "maximum": 10,
+                      "minimum": 0,
+                      "title": "Strength",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "matrix"
+                  ],
+                  "title": "Reconstruction",
+                  "type": "object"
+                },
+                "RenderSpec": {
+                  "properties": {
+                    "background": {
+                      "default": 0.03,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Background",
+                      "type": "number"
+                    },
+                    "blur_px": {
+                      "default": 1.0,
+                      "maximum": 50,
+                      "minimum": 0,
+                      "title": "Blur Px",
+                      "type": "number"
+                    },
+                    "direct_beam": {
+                      "default": true,
+                      "title": "Direct Beam",
+                      "type": "boolean"
+                    },
+                    "noise_counts": {
+                      "default": 0.0,
+                      "maximum": 1000000.0,
+                      "minimum": 0,
+                      "title": "Noise Counts",
+                      "type": "number"
+                    },
+                    "seed": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Seed"
+                    }
+                  },
+                  "title": "RenderSpec",
+                  "type": "object"
+                },
+                "ScreenSpec": {
+                  "description": "Where the phosphor screen is and how the camera sees it.\n\n`pixel_size_mm` is the size of one image pixel *on the screen*, not on the\nsensor -- the camera's lens and distance are folded into it. The lab camera\nsees the screen upside down, which is `flip_y`.",
+                  "properties": {
+                    "camera_length_mm": {
+                      "default": 300.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 5000,
+                      "title": "Camera Length Mm",
+                      "type": "number"
+                    },
+                    "flip_x": {
+                      "default": false,
+                      "title": "Flip X",
+                      "type": "boolean"
+                    },
+                    "flip_y": {
+                      "default": false,
+                      "title": "Flip Y",
+                      "type": "boolean"
+                    },
+                    "height_px": {
+                      "default": 540,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Height Px",
+                      "type": "integer"
+                    },
+                    "origin_x_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin X Px"
+                    },
+                    "origin_y_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin Y Px"
+                    },
+                    "pixel_size_mm": {
+                      "default": 0.25,
+                      "exclusiveMinimum": 0,
+                      "maximum": 10,
+                      "title": "Pixel Size Mm",
+                      "type": "number"
+                    },
+                    "roll_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Roll Deg",
+                      "type": "number"
+                    },
+                    "width_px": {
+                      "default": 720,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Width Px",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "ScreenSpec",
+                  "type": "object"
+                },
+                "StructureSpec": {
+                  "description": "Exactly one of: a structure by name (built in, or saved with save_structure),\na CIF's text, or a manual cell.",
+                  "properties": {
+                    "cif": {
+                      "anyOf": [
+                        {
+                          "maxLength": 4000000,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Cif"
+                    },
+                    "manual": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/ManualStructure"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Name"
+                    }
+                  },
+                  "title": "StructureSpec",
+                  "type": "object"
+                },
+                "SurfaceSpec": {
+                  "properties": {
+                    "azimuth": {
+                      "default": [
+                        1,
+                        0,
+                        0
+                      ],
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "title": "Azimuth",
+                      "type": "array"
+                    },
+                    "azimuth_offset_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Azimuth Offset Deg",
+                      "type": "number"
+                    },
+                    "normal": {
+                      "default": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "title": "Normal",
+                      "type": "array"
+                    },
+                    "reconstructions": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/Reconstruction"
+                      },
+                      "maxItems": 8,
+                      "title": "Reconstructions",
+                      "type": "array"
+                    },
+                    "termination": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Termination"
+                    }
+                  },
+                  "title": "SurfaceSpec",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "beam": {
+                  "$ref": "#/$defs/BeamSpec",
+                  "default": {
+                    "divergence_mrad": 0.3,
+                    "energy_kev": null,
+                    "incidence_deg": 3.0,
+                    "shift_y_mm": 0.0,
+                    "shift_z_mm": 0.0
+                  }
+                },
+                "morphology": {
+                  "$ref": "#/$defs/Morphology",
+                  "default": {
+                    "debye_waller_b": 0.5,
+                    "island_nm": 5.0,
+                    "islands": 0.0,
+                    "layers": null,
+                    "mean_free_path_nm": 10.0,
+                    "terrace_nm": 50.0
+                  }
+                },
+                "render": {
+                  "$ref": "#/$defs/RenderSpec",
+                  "default": {
+                    "background": 0.03,
+                    "blur_px": 1.0,
+                    "direct_beam": true,
+                    "noise_counts": 0.0,
+                    "seed": null
+                  }
+                },
+                "screen": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ScreenSpec"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "structure": {
+                  "$ref": "#/$defs/StructureSpec"
+                },
+                "surface": {
+                  "$ref": "#/$defs/SurfaceSpec",
+                  "default": {
+                    "azimuth": [
+                      1,
+                      0,
+                      0
+                    ],
+                    "azimuth_offset_deg": 0.0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "reconstructions": [],
+                    "termination": null
+                  }
+                }
+              },
+              "required": [
+                "structure"
+              ],
+              "title": "RheedSimRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                },
+                "RheedSpot": {
+                  "description": "One diffraction feature where the Ewald sphere meets it.",
+                  "properties": {
+                    "hkl": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Hkl",
+                      "type": "array"
+                    },
+                    "in_view": {
+                      "default": true,
+                      "title": "In View",
+                      "type": "boolean"
+                    },
+                    "indices": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Indices",
+                      "type": "array"
+                    },
+                    "intensity": {
+                      "title": "Intensity",
+                      "type": "number"
+                    },
+                    "kind": {
+                      "enum": [
+                        "rod",
+                        "fractional",
+                        "streak_max",
+                        "bulk"
+                      ],
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "label": {
+                      "title": "Label",
+                      "type": "string"
+                    },
+                    "laue_zone": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Laue Zone"
+                    },
+                    "q": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Q",
+                      "type": "array"
+                    },
+                    "x_px": {
+                      "title": "X Px",
+                      "type": "number"
+                    },
+                    "y_px": {
+                      "title": "Y Px",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "label",
+                    "indices",
+                    "hkl",
+                    "x_px",
+                    "y_px",
+                    "intensity",
+                    "q"
+                  ],
+                  "title": "RheedSpot",
+                  "type": "object"
+                },
+                "ScreenSpec": {
+                  "description": "Where the phosphor screen is and how the camera sees it.\n\n`pixel_size_mm` is the size of one image pixel *on the screen*, not on the\nsensor -- the camera's lens and distance are folded into it. The lab camera\nsees the screen upside down, which is `flip_y`.",
+                  "properties": {
+                    "camera_length_mm": {
+                      "default": 300.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 5000,
+                      "title": "Camera Length Mm",
+                      "type": "number"
+                    },
+                    "flip_x": {
+                      "default": false,
+                      "title": "Flip X",
+                      "type": "boolean"
+                    },
+                    "flip_y": {
+                      "default": false,
+                      "title": "Flip Y",
+                      "type": "boolean"
+                    },
+                    "height_px": {
+                      "default": 540,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Height Px",
+                      "type": "integer"
+                    },
+                    "origin_x_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin X Px"
+                    },
+                    "origin_y_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin Y Px"
+                    },
+                    "pixel_size_mm": {
+                      "default": 0.25,
+                      "exclusiveMinimum": 0,
+                      "maximum": 10,
+                      "title": "Pixel Size Mm",
+                      "type": "number"
+                    },
+                    "roll_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Roll Deg",
+                      "type": "number"
+                    },
+                    "width_px": {
+                      "default": 720,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Width Px",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "ScreenSpec",
+                  "type": "object"
+                },
+                "StructureSummary": {
+                  "properties": {
+                    "description": {
+                      "default": "",
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "formula": {
+                      "title": "Formula",
+                      "type": "string"
+                    },
+                    "lattice": {
+                      "$ref": "#/$defs/Lattice"
+                    },
+                    "n_atoms": {
+                      "title": "N Atoms",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "source": {
+                      "enum": [
+                        "builtin",
+                        "saved",
+                        "inline"
+                      ],
+                      "title": "Source",
+                      "type": "string"
+                    },
+                    "space_group": {
+                      "title": "Space Group",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "formula",
+                    "source",
+                    "space_group",
+                    "lattice",
+                    "n_atoms"
+                  ],
+                  "title": "StructureSummary",
+                  "type": "object"
+                },
+                "SurfaceMesh": {
+                  "description": "The surface cell the simulator cut: the rods are its reciprocal lattice.",
+                  "properties": {
+                    "a1": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A1",
+                      "type": "array"
+                    },
+                    "a1_length": {
+                      "title": "A1 Length",
+                      "type": "number"
+                    },
+                    "a2": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A2",
+                      "type": "array"
+                    },
+                    "a2_length": {
+                      "title": "A2 Length",
+                      "type": "number"
+                    },
+                    "a3": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A3",
+                      "type": "array"
+                    },
+                    "gamma_deg": {
+                      "title": "Gamma Deg",
+                      "type": "number"
+                    },
+                    "layer_spacing": {
+                      "title": "Layer Spacing",
+                      "type": "number"
+                    },
+                    "n_layers": {
+                      "title": "N Layers",
+                      "type": "integer"
+                    },
+                    "termination": {
+                      "title": "Termination",
+                      "type": "string"
+                    },
+                    "terminations": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "title": "Terminations",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "a1",
+                    "a2",
+                    "a3",
+                    "a1_length",
+                    "a2_length",
+                    "gamma_deg",
+                    "layer_spacing",
+                    "terminations",
+                    "termination",
+                    "n_layers"
+                  ],
+                  "title": "SurfaceMesh",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "direct_beam_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Direct Beam Px",
+                  "type": "array"
+                },
+                "elapsed_ms": {
+                  "default": 0.0,
+                  "title": "Elapsed Ms",
+                  "type": "number"
+                },
+                "energy_kev": {
+                  "title": "Energy Kev",
+                  "type": "number"
+                },
+                "k_inv_a": {
+                  "title": "K Inv A",
+                  "type": "number"
+                },
+                "mesh": {
+                  "$ref": "#/$defs/SurfaceMesh"
+                },
+                "origin_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Origin Px",
+                  "type": "array"
+                },
+                "screen": {
+                  "$ref": "#/$defs/ScreenSpec"
+                },
+                "shadow_edge_px": {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Shadow Edge Px",
+                  "type": "array"
+                },
+                "specular_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Specular Px",
+                  "type": "array"
+                },
+                "spots": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/RheedSpot"
+                  },
+                  "title": "Spots",
+                  "type": "array"
+                },
+                "structure": {
+                  "$ref": "#/$defs/StructureSummary"
+                },
+                "warnings": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Warnings",
+                  "type": "array"
+                },
+                "wavelength_a": {
+                  "title": "Wavelength A",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "structure",
+                "mesh",
+                "screen",
+                "energy_kev",
+                "wavelength_a",
+                "k_inv_a",
+                "origin_px",
+                "shadow_edge_px",
+                "specular_px",
+                "direct_beam_px"
+              ],
+              "title": "RheedSimMeta",
+              "type": "object"
+            },
+            "response_codec": "npy"
+          },
+          {
+            "name": "simulate_rheed_jpeg",
+            "request": {
+              "$defs": {
+                "AtomSite": {
+                  "properties": {
+                    "b_iso": {
+                      "anyOf": [
+                        {
+                          "maximum": 50,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "B Iso"
+                    },
+                    "element": {
+                      "maxLength": 3,
+                      "minLength": 1,
+                      "title": "Element",
+                      "type": "string"
+                    },
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "occupancy": {
+                      "default": 1.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Occupancy",
+                      "type": "number"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "number"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "number"
+                    },
+                    "z": {
+                      "title": "Z",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "element",
+                    "x",
+                    "y",
+                    "z"
+                  ],
+                  "title": "AtomSite",
+                  "type": "object"
+                },
+                "BeamSpec": {
+                  "properties": {
+                    "divergence_mrad": {
+                      "default": 0.3,
+                      "maximum": 20,
+                      "minimum": 0,
+                      "title": "Divergence Mrad",
+                      "type": "number"
+                    },
+                    "energy_kev": {
+                      "anyOf": [
+                        {
+                          "maximum": 100,
+                          "minimum": 1,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Energy Kev"
+                    },
+                    "incidence_deg": {
+                      "default": 3.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 20,
+                      "title": "Incidence Deg",
+                      "type": "number"
+                    },
+                    "shift_y_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Y Mm",
+                      "type": "number"
+                    },
+                    "shift_z_mm": {
+                      "default": 0.0,
+                      "maximum": 500,
+                      "minimum": -500,
+                      "title": "Shift Z Mm",
+                      "type": "number"
+                    }
+                  },
+                  "title": "BeamSpec",
+                  "type": "object"
+                },
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                },
+                "ManualStructure": {
+                  "description": "A cell typed in by hand: the lattice, a space group and its asymmetric unit.\n\nGive the sites of the asymmetric unit and the space group expands them; with P1\n(the default) the sites are taken as the whole cell -- which is how to describe a\nstrained or hypothetical cell no space group fits.",
+                  "properties": {
+                    "lattice": {
+                      "$ref": "#/$defs/Lattice"
+                    },
+                    "sites": {
+                      "items": {
+                        "$ref": "#/$defs/AtomSite"
+                      },
+                      "maxItems": 2000,
+                      "minItems": 1,
+                      "title": "Sites",
+                      "type": "array"
+                    },
+                    "space_group": {
+                      "default": "P1",
+                      "title": "Space Group",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "lattice",
+                    "sites"
+                  ],
+                  "title": "ManualStructure",
+                  "type": "object"
+                },
+                "Morphology": {
+                  "description": "How far the surface is from an ideal infinite flat crystal.",
+                  "properties": {
+                    "debye_waller_b": {
+                      "default": 0.5,
+                      "maximum": 50,
+                      "minimum": 0,
+                      "title": "Debye Waller B",
+                      "type": "number"
+                    },
+                    "island_nm": {
+                      "default": 5.0,
+                      "maximum": 1000,
+                      "minimum": 0.5,
+                      "title": "Island Nm",
+                      "type": "number"
+                    },
+                    "islands": {
+                      "default": 0.0,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Islands",
+                      "type": "number"
+                    },
+                    "layers": {
+                      "anyOf": [
+                        {
+                          "maximum": 500,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Layers"
+                    },
+                    "mean_free_path_nm": {
+                      "default": 10.0,
+                      "maximum": 1000,
+                      "minimum": 0.1,
+                      "title": "Mean Free Path Nm",
+                      "type": "number"
+                    },
+                    "terrace_nm": {
+                      "default": 50.0,
+                      "maximum": 100000,
+                      "minimum": 0.5,
+                      "title": "Terrace Nm",
+                      "type": "number"
+                    }
+                  },
+                  "title": "Morphology",
+                  "type": "object"
+                },
+                "Reconstruction": {
+                  "description": "A surface superstructure, as its mesh in units of the bulk surface mesh.\n\n`matrix` rows are the supercell's vectors in terms of the 1x1 mesh (a1, a2):\n[[2,0],[0,1]] is 2x1, [[1,1],[-1,1]] is c(2x2) (its primitive cell, sqrt2 x sqrt2\nR45). Two rotational domains are two entries. The reconstructed atoms are not\nknown to the simulator, so the fractional-order rods it adds take the specular\nrod's profile scaled by `strength` -- positions are right, intensities are a knob.",
+                  "properties": {
+                    "label": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Label"
+                    },
+                    "matrix": {
+                      "items": {
+                        "items": {
+                          "type": "integer"
+                        },
+                        "maxItems": 2,
+                        "minItems": 2,
+                        "type": "array"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "title": "Matrix",
+                      "type": "array"
+                    },
+                    "strength": {
+                      "default": 0.3,
+                      "maximum": 10,
+                      "minimum": 0,
+                      "title": "Strength",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "matrix"
+                  ],
+                  "title": "Reconstruction",
+                  "type": "object"
+                },
+                "RenderSpec": {
+                  "properties": {
+                    "background": {
+                      "default": 0.03,
+                      "maximum": 1,
+                      "minimum": 0,
+                      "title": "Background",
+                      "type": "number"
+                    },
+                    "blur_px": {
+                      "default": 1.0,
+                      "maximum": 50,
+                      "minimum": 0,
+                      "title": "Blur Px",
+                      "type": "number"
+                    },
+                    "direct_beam": {
+                      "default": true,
+                      "title": "Direct Beam",
+                      "type": "boolean"
+                    },
+                    "noise_counts": {
+                      "default": 0.0,
+                      "maximum": 1000000.0,
+                      "minimum": 0,
+                      "title": "Noise Counts",
+                      "type": "number"
+                    },
+                    "seed": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Seed"
+                    }
+                  },
+                  "title": "RenderSpec",
+                  "type": "object"
+                },
+                "ScreenSpec": {
+                  "description": "Where the phosphor screen is and how the camera sees it.\n\n`pixel_size_mm` is the size of one image pixel *on the screen*, not on the\nsensor -- the camera's lens and distance are folded into it. The lab camera\nsees the screen upside down, which is `flip_y`.",
+                  "properties": {
+                    "camera_length_mm": {
+                      "default": 300.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 5000,
+                      "title": "Camera Length Mm",
+                      "type": "number"
+                    },
+                    "flip_x": {
+                      "default": false,
+                      "title": "Flip X",
+                      "type": "boolean"
+                    },
+                    "flip_y": {
+                      "default": false,
+                      "title": "Flip Y",
+                      "type": "boolean"
+                    },
+                    "height_px": {
+                      "default": 540,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Height Px",
+                      "type": "integer"
+                    },
+                    "origin_x_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin X Px"
+                    },
+                    "origin_y_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin Y Px"
+                    },
+                    "pixel_size_mm": {
+                      "default": 0.25,
+                      "exclusiveMinimum": 0,
+                      "maximum": 10,
+                      "title": "Pixel Size Mm",
+                      "type": "number"
+                    },
+                    "roll_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Roll Deg",
+                      "type": "number"
+                    },
+                    "width_px": {
+                      "default": 720,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Width Px",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "ScreenSpec",
+                  "type": "object"
+                },
+                "StructureSpec": {
+                  "description": "Exactly one of: a structure by name (built in, or saved with save_structure),\na CIF's text, or a manual cell.",
+                  "properties": {
+                    "cif": {
+                      "anyOf": [
+                        {
+                          "maxLength": 4000000,
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Cif"
+                    },
+                    "manual": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/ManualStructure"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null
+                    },
+                    "name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Name"
+                    }
+                  },
+                  "title": "StructureSpec",
+                  "type": "object"
+                },
+                "SurfaceSpec": {
+                  "properties": {
+                    "azimuth": {
+                      "default": [
+                        1,
+                        0,
+                        0
+                      ],
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "title": "Azimuth",
+                      "type": "array"
+                    },
+                    "azimuth_offset_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Azimuth Offset Deg",
+                      "type": "number"
+                    },
+                    "normal": {
+                      "default": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "items": {
+                        "type": "integer"
+                      },
+                      "maxItems": 3,
+                      "minItems": 3,
+                      "title": "Normal",
+                      "type": "array"
+                    },
+                    "reconstructions": {
+                      "default": [],
+                      "items": {
+                        "$ref": "#/$defs/Reconstruction"
+                      },
+                      "maxItems": 8,
+                      "title": "Reconstructions",
+                      "type": "array"
+                    },
+                    "termination": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Termination"
+                    }
+                  },
+                  "title": "SurfaceSpec",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "beam": {
+                  "$ref": "#/$defs/BeamSpec",
+                  "default": {
+                    "divergence_mrad": 0.3,
+                    "energy_kev": null,
+                    "incidence_deg": 3.0,
+                    "shift_y_mm": 0.0,
+                    "shift_z_mm": 0.0
+                  }
+                },
+                "morphology": {
+                  "$ref": "#/$defs/Morphology",
+                  "default": {
+                    "debye_waller_b": 0.5,
+                    "island_nm": 5.0,
+                    "islands": 0.0,
+                    "layers": null,
+                    "mean_free_path_nm": 10.0,
+                    "terrace_nm": 50.0
+                  }
+                },
+                "quality": {
+                  "default": 90,
+                  "maximum": 100,
+                  "minimum": 10,
+                  "title": "Quality",
+                  "type": "integer"
+                },
+                "render": {
+                  "$ref": "#/$defs/RenderSpec",
+                  "default": {
+                    "background": 0.03,
+                    "blur_px": 1.0,
+                    "direct_beam": true,
+                    "noise_counts": 0.0,
+                    "seed": null
+                  }
+                },
+                "scale": {
+                  "default": "sqrt",
+                  "enum": [
+                    "linear",
+                    "sqrt",
+                    "log"
+                  ],
+                  "title": "Scale",
+                  "type": "string"
+                },
+                "screen": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/ScreenSpec"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "structure": {
+                  "$ref": "#/$defs/StructureSpec"
+                },
+                "surface": {
+                  "$ref": "#/$defs/SurfaceSpec",
+                  "default": {
+                    "azimuth": [
+                      1,
+                      0,
+                      0
+                    ],
+                    "azimuth_offset_deg": 0.0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "reconstructions": [],
+                    "termination": null
+                  }
+                }
+              },
+              "required": [
+                "structure"
+              ],
+              "title": "RheedJpegRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "Lattice": {
+                  "properties": {
+                    "a": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "A",
+                      "type": "number"
+                    },
+                    "alpha": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Alpha",
+                      "type": "number"
+                    },
+                    "b": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "B",
+                      "type": "number"
+                    },
+                    "beta": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Beta",
+                      "type": "number"
+                    },
+                    "c": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "title": "C",
+                      "type": "number"
+                    },
+                    "gamma": {
+                      "default": 90.0,
+                      "exclusiveMaximum": 180,
+                      "exclusiveMinimum": 0,
+                      "title": "Gamma",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "a",
+                    "b",
+                    "c"
+                  ],
+                  "title": "Lattice",
+                  "type": "object"
+                },
+                "RheedSpot": {
+                  "description": "One diffraction feature where the Ewald sphere meets it.",
+                  "properties": {
+                    "hkl": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Hkl",
+                      "type": "array"
+                    },
+                    "in_view": {
+                      "default": true,
+                      "title": "In View",
+                      "type": "boolean"
+                    },
+                    "indices": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Indices",
+                      "type": "array"
+                    },
+                    "intensity": {
+                      "title": "Intensity",
+                      "type": "number"
+                    },
+                    "kind": {
+                      "enum": [
+                        "rod",
+                        "fractional",
+                        "streak_max",
+                        "bulk"
+                      ],
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "label": {
+                      "title": "Label",
+                      "type": "string"
+                    },
+                    "laue_zone": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Laue Zone"
+                    },
+                    "q": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "Q",
+                      "type": "array"
+                    },
+                    "x_px": {
+                      "title": "X Px",
+                      "type": "number"
+                    },
+                    "y_px": {
+                      "title": "Y Px",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "label",
+                    "indices",
+                    "hkl",
+                    "x_px",
+                    "y_px",
+                    "intensity",
+                    "q"
+                  ],
+                  "title": "RheedSpot",
+                  "type": "object"
+                },
+                "ScreenSpec": {
+                  "description": "Where the phosphor screen is and how the camera sees it.\n\n`pixel_size_mm` is the size of one image pixel *on the screen*, not on the\nsensor -- the camera's lens and distance are folded into it. The lab camera\nsees the screen upside down, which is `flip_y`.",
+                  "properties": {
+                    "camera_length_mm": {
+                      "default": 300.0,
+                      "exclusiveMinimum": 0,
+                      "maximum": 5000,
+                      "title": "Camera Length Mm",
+                      "type": "number"
+                    },
+                    "flip_x": {
+                      "default": false,
+                      "title": "Flip X",
+                      "type": "boolean"
+                    },
+                    "flip_y": {
+                      "default": false,
+                      "title": "Flip Y",
+                      "type": "boolean"
+                    },
+                    "height_px": {
+                      "default": 540,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Height Px",
+                      "type": "integer"
+                    },
+                    "origin_x_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin X Px"
+                    },
+                    "origin_y_px": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Origin Y Px"
+                    },
+                    "pixel_size_mm": {
+                      "default": 0.25,
+                      "exclusiveMinimum": 0,
+                      "maximum": 10,
+                      "title": "Pixel Size Mm",
+                      "type": "number"
+                    },
+                    "roll_deg": {
+                      "default": 0.0,
+                      "maximum": 360,
+                      "minimum": -360,
+                      "title": "Roll Deg",
+                      "type": "number"
+                    },
+                    "width_px": {
+                      "default": 720,
+                      "maximum": 4096,
+                      "minimum": 16,
+                      "title": "Width Px",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "ScreenSpec",
+                  "type": "object"
+                },
+                "StructureSummary": {
+                  "properties": {
+                    "description": {
+                      "default": "",
+                      "title": "Description",
+                      "type": "string"
+                    },
+                    "formula": {
+                      "title": "Formula",
+                      "type": "string"
+                    },
+                    "lattice": {
+                      "$ref": "#/$defs/Lattice"
+                    },
+                    "n_atoms": {
+                      "title": "N Atoms",
+                      "type": "integer"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "source": {
+                      "enum": [
+                        "builtin",
+                        "saved",
+                        "inline"
+                      ],
+                      "title": "Source",
+                      "type": "string"
+                    },
+                    "space_group": {
+                      "title": "Space Group",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "formula",
+                    "source",
+                    "space_group",
+                    "lattice",
+                    "n_atoms"
+                  ],
+                  "title": "StructureSummary",
+                  "type": "object"
+                },
+                "SurfaceMesh": {
+                  "description": "The surface cell the simulator cut: the rods are its reciprocal lattice.",
+                  "properties": {
+                    "a1": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A1",
+                      "type": "array"
+                    },
+                    "a1_length": {
+                      "title": "A1 Length",
+                      "type": "number"
+                    },
+                    "a2": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A2",
+                      "type": "array"
+                    },
+                    "a2_length": {
+                      "title": "A2 Length",
+                      "type": "number"
+                    },
+                    "a3": {
+                      "items": {
+                        "type": "number"
+                      },
+                      "title": "A3",
+                      "type": "array"
+                    },
+                    "gamma_deg": {
+                      "title": "Gamma Deg",
+                      "type": "number"
+                    },
+                    "layer_spacing": {
+                      "title": "Layer Spacing",
+                      "type": "number"
+                    },
+                    "n_layers": {
+                      "title": "N Layers",
+                      "type": "integer"
+                    },
+                    "termination": {
+                      "title": "Termination",
+                      "type": "string"
+                    },
+                    "terminations": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "title": "Terminations",
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "a1",
+                    "a2",
+                    "a3",
+                    "a1_length",
+                    "a2_length",
+                    "gamma_deg",
+                    "layer_spacing",
+                    "terminations",
+                    "termination",
+                    "n_layers"
+                  ],
+                  "title": "SurfaceMesh",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "direct_beam_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Direct Beam Px",
+                  "type": "array"
+                },
+                "elapsed_ms": {
+                  "default": 0.0,
+                  "title": "Elapsed Ms",
+                  "type": "number"
+                },
+                "energy_kev": {
+                  "title": "Energy Kev",
+                  "type": "number"
+                },
+                "k_inv_a": {
+                  "title": "K Inv A",
+                  "type": "number"
+                },
+                "mesh": {
+                  "$ref": "#/$defs/SurfaceMesh"
+                },
+                "origin_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Origin Px",
+                  "type": "array"
+                },
+                "scale": {
+                  "default": "sqrt",
+                  "title": "Scale",
+                  "type": "string"
+                },
+                "screen": {
+                  "$ref": "#/$defs/ScreenSpec"
+                },
+                "shadow_edge_px": {
+                  "items": {
+                    "items": {
+                      "type": "number"
+                    },
+                    "type": "array"
+                  },
+                  "title": "Shadow Edge Px",
+                  "type": "array"
+                },
+                "specular_px": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Specular Px",
+                  "type": "array"
+                },
+                "spots": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/RheedSpot"
+                  },
+                  "title": "Spots",
+                  "type": "array"
+                },
+                "structure": {
+                  "$ref": "#/$defs/StructureSummary"
+                },
+                "warnings": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Warnings",
+                  "type": "array"
+                },
+                "wavelength_a": {
+                  "title": "Wavelength A",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "structure",
+                "mesh",
+                "screen",
+                "energy_kev",
+                "wavelength_a",
+                "k_inv_a",
+                "origin_px",
+                "shadow_edge_px",
+                "specular_px",
+                "direct_beam_px"
+              ],
+              "title": "RheedJpegMeta",
+              "type": "object"
+            },
+            "response_codec": "raw"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "simulation.rheed_sim.ctrl.*",
+          "publish": "simulation.rheed_sim.pub",
+          "request_pattern": "simulation.rheed_sim.req.*",
+          "requests": {
+            "delete_structure": "simulation.rheed_sim.req.delete_structure",
+            "get_structure": "simulation.rheed_sim.req.get_structure",
+            "list_structures": "simulation.rheed_sim.req.list_structures",
+            "rheed_spots": "simulation.rheed_sim.req.rheed_spots",
+            "save_structure": "simulation.rheed_sim.req.save_structure",
+            "simulate_rheed": "simulation.rheed_sim.req.simulate_rheed",
+            "simulate_rheed_jpeg": "simulation.rheed_sim.req.simulate_rheed_jpeg"
+          },
+          "state": "simulation.rheed_sim.state",
+          "update": "simulation.rheed_sim.update",
+          "work_queue": "q.simulation.rheed_sim.req"
+        },
+        "state": {
+          "properties": {
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "n_builtin": {
+              "default": 0,
+              "title": "N Builtin",
+              "type": "integer"
+            },
+            "n_saved": {
+              "default": 0,
+              "title": "N Saved",
+              "type": "integer"
+            },
+            "structures_path": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Structures Path"
+            }
+          },
+          "title": "RheedSimState",
+          "type": "object"
+        },
+        "stream": null,
+        "update": null
+      }
+    ],
+    "exchange": "SIMULATION",
+    "exchange_type": "topic",
+    "name": "simulation",
+    "version": "1.0"
+  },
   "storage": {
     "capabilities": [
       {
@@ -14942,6 +18810,20 @@
                 "project_name": {
                   "title": "Project Name",
                   "type": "string"
+                },
+                "rheed_energy_kev": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 200,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rheed Energy Kev"
                 },
                 "save_ai": {
                   "default": false,
@@ -15289,6 +19171,23 @@
                       "title": "Recording",
                       "type": "boolean"
                     },
+                    "rheed_energy_kev": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Energy Kev"
+                    },
+                    "rheed_energy_recorded": {
+                      "default": false,
+                      "title": "Rheed Energy Recorded",
+                      "type": "boolean"
+                    },
                     "size_bytes": {
                       "title": "Size Bytes",
                       "type": "integer"
@@ -15554,6 +19453,23 @@
                 "recording": {
                   "default": false,
                   "title": "Recording",
+                  "type": "boolean"
+                },
+                "rheed_energy_kev": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rheed Energy Kev"
+                },
+                "rheed_energy_recorded": {
+                  "default": false,
+                  "title": "Rheed Energy Recorded",
                   "type": "boolean"
                 },
                 "size_bytes": {

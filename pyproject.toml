@@ -97,6 +97,13 @@ mcp = [
     "bcrypt>=4.2",
     "pyjwt>=2.9",
 ]
+# RHEED simulation (lumi.rheedsim, nodes/simulation.py): gemmi reads CIFs, applies
+# space-group symmetry and carries the electron scattering-factor tables; OpenCV
+# blurs the picture and encodes the JPEG a browser is sent.
+rheedsim = [
+    "gemmi>=0.7",
+    "opencv-python>=4.9",
+]
 # Plotting for notebooks/*.ipynb -- both SingleDeposition and BODeposition import
 # matplotlib.pyplot directly. Split out because no node process needs it; only
 # whichever machine runs a notebook does.

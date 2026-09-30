@@ -712,6 +712,7 @@ class ExperimentHandler:
             req.project_name, req.is_dryrun,
             save_frame=req.save_frame, save_ai=req.save_ai, save_log=req.save_log,
             save_integration=req.save_integration, force_rewrite=req.force_rewrite,
+            rheed_energy_kev=req.rheed_energy_kev,
         )
         return StorageResult(**result)
 

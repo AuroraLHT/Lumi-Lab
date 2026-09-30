@@ -83,7 +83,7 @@ async def _main(args):
     width = 720
     test_camera_config = TestCameraConfig(
         frame_dims=(height, width),
-        source= Path(__file__).parent.parent / "src/lumi/rheed/assets/test_frame.npy",
+        source= Path(__file__).parent.parent / "src/lumi/rheed/assets/sto_001.npy",
         fps=30,
         queue_size=2,
     )

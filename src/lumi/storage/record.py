@@ -98,6 +98,12 @@ class RecorderConfig:
         metadata={"help": "Integer value for lossless-lossy integer or float compression. Use 0 for integer lossless compression"}
     )
 
+    attrs: dict = field(
+        default_factory=dict,
+        metadata={"help": "Written as the file's root attributes: facts about the whole "
+                          "recording, such as rheed_energy_kev"}
+    )
+
 
 class SpeedLimiter:
     def __init__(self, max_speed: float):
@@ -243,6 +249,9 @@ class Recorder(RecordDataset):
 
         open_mode = "w"
         self.h5f = h5py.File( h5_path, open_mode)
+        for key, value in self.config.attrs.items():
+            if value is not None:
+                self.h5f.attrs[key] = value
 
     def close_h5(self):
         if self.config.save_integration:

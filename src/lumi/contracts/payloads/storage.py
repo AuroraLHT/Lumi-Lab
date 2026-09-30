@@ -21,6 +21,10 @@ class StorageRequest(BaseModel):
     save_log: bool = False
     save_integration: bool = False
     force_rewrite: bool = False
+    #: The RHEED beam energy for this recording, keV, stored in the file. Nothing reads
+    #: it off the gun, so it is whatever the caller says; None = the lab's usual
+    #: (`rheed.energy_kev` in settings).
+    rheed_energy_kev: float | None = Field(default=None, gt=0, le=200)
 
 
 class StorageStatus(BaseModel):
@@ -88,6 +92,11 @@ class RecordingSummary(BaseModel):
     #: Why the file could not be summarised, if it could not -- a crashed recording
     #: can leave one the HDF5 library refuses to open. Listed rather than hidden.
     error: str | None = None
+    #: The RHEED beam energy, keV. Stored in the file since recordings began keeping it;
+    #: for an older file it is the lab's configured default, and `rheed_energy_recorded`
+    #: is false to say so.
+    rheed_energy_kev: float | None = None
+    rheed_energy_recorded: bool = False
 
 
 class RecordingList(BaseModel):

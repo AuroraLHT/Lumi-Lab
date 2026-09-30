@@ -1,6 +1,6 @@
 """The RHEED node: camera, video, integration, STFT.
 
-    python -m nodes.rheed --src simcam
+    python -m nodes.rheed --src simcam [--sim-frame sto|ysz|PATH]
 
 Was 354 lines. The hand-wiring is gone (routing keys come from the contract), the
 eight server objects are four capabilities, and the shutdown code that used to sit
@@ -18,12 +18,13 @@ from lumi.contracts.rheed import RHEED
 from lumi.node import EquipmentNode
 from lumi.rheed.handlers import IntegratorHandler, STFTHandler
 from lumi.rheed.hardware import build_camera, build_compressor, build_integrator, build_stft
+from lumi.rheed.sim_frames import SIM_FRAMES
 
 log = logging.getLogger(__name__)
 
 
 def build(args: argparse.Namespace) -> EquipmentNode:
-    camera, frame_processing, height, width = build_camera(args.src)
+    camera, frame_processing, height, width = build_camera(args.src, sim_frame=args.sim_frame)
 
     # Each consumer gets its own fan-out queue from the camera thread. This is the
     # camera's existing in-process pub/sub, and it is why one grab feeds the encoder,
@@ -56,6 +57,10 @@ def build(args: argparse.Namespace) -> EquipmentNode:
 def cli() -> None:
     parser = argparse.ArgumentParser(prog="lumi-rheed", description="RHEED camera and analysis node")
     parser.add_argument("--src", choices=("pylon", "webcam", "simcam"), default="pylon")
+    parser.add_argument("--sim-frame", default=None,
+                        help="with --src simcam: what the camera shows -- "
+                             f"{', '.join(SIM_FRAMES)} (real lab frames) or a .npy/image path. "
+                             "Default: rheed.simcam.source")
     parser.add_argument("--host", default=settings.rabbitmq.host)
     parser.add_argument("--user", default="guest")
     parser.add_argument("--password", default="guest")

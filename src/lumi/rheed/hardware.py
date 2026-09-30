@@ -11,7 +11,6 @@ should not need pypylon installed to import this module.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 
 import cv2
 
@@ -19,9 +18,10 @@ from lumi.base.camera.sim_camera import SimCamera, SimCameraConfig
 from lumi.base.camera.video_stream import VideoCompressor, VideoCompressorConfig
 from lumi.base.camera.web_camera import WebCamera, WebCameraConfig
 from lumi.config import settings
-from lumi.path import PROJECT_ROOT
 from lumi.rheed.integrator import MultiBoxIntegrator, MultiBoxIntegratorConfig
 from lumi.rheed.livefft import STFTCalculator, STFTCalculatorConfig
+from lumi.rheed.sim_frames import DEFAULT_SIM_FRAME
+from lumi.rheed.sim_frames import resolve as resolve_sim_frame
 
 log = logging.getLogger(__name__)
 
@@ -59,8 +59,12 @@ def _to_rgb(frame, frame_header=None):
     return add_time_stamp(frame, frame_header)
 
 
-def build_camera(src: str):
-    """Returns (camera, frame_processing, height, width)."""
+def build_camera(src: str, sim_frame: str | None = None):
+    """Returns (camera, frame_processing, height, width).
+
+    `sim_frame` (simcam only) picks what the simulated camera shows: a name from
+    lumi.rheed.sim_frames ("sto", "ysz") or a path. None takes `rheed.simcam.source`.
+    """
     if src == "pylon":
         # Imported here, not at module scope: only the camera host has pypylon.
         from lumi.base.camera.pylon_camera import PylonCamera, PylonCameraConfig, list_devices
@@ -109,9 +113,8 @@ def build_camera(src: str):
         return camera, add_time_stamp, cfg.height, cfg.width
 
     cfg = settings.rheed.simcam
-    source = Path(cfg.source)
-    if not source.is_absolute():
-        source = PROJECT_ROOT / source
+    source, frame = resolve_sim_frame(sim_frame or cfg.get("source") or DEFAULT_SIM_FRAME)
+    log.info("simcam shows %s", frame.description if frame else source)
     camera = SimCamera(
         config=SimCameraConfig(
             frame_dims=(cfg.height, cfg.width),
