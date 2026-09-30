@@ -171,3 +171,11 @@ def test_read_only_list_only_names_ops_that_exist():
     real = {op.name for _, cap in iter_capabilities() for op in cap.ops}
     stale = READ_ONLY_OPS - real
     assert not stale, f"READ_ONLY_OPS names ops that no longer exist: {sorted(stale)}"
+
+
+def test_nothing_the_journal_records_is_called_a_read():
+    """A journaled op is one that changes the growth -- that is why it is journaled. The
+    list is keyed by name across every contract, so this also catches a read-only name
+    on one contract colliding with a mutating op of the same name on another."""
+    journaled = {op.name for _, cap in iter_capabilities() for op in cap.ops if op.journal}
+    assert not journaled & READ_ONLY_OPS

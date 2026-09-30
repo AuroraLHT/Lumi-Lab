@@ -353,10 +353,10 @@ if [[ $WITH_EXPERIMENT -eq 1 ]]; then
     echo "                                                 #  add --skip-ramp to leave the chamber cold)"
     echo
     echo "to point a real MCP client (Claude Code, Codex) at this chamber:"
-    echo "  claude mcp add lumi-experiment -- uv run --project $PROJECT_ROOT python -m lumi.mcp"
+    echo "  claude mcp add lumi -- uv run --project $PROJECT_ROOT python -m lumi.mcp"
     echo "                                                 # stdio: local subprocess, no login needed"
     echo "  scripts/start_mcp_http.sh                      # or serve HTTP and sign in through the browser:"
-    echo "  claude mcp add --transport http lumi-experiment http://127.0.0.1:8100/mcp"
+    echo "  claude mcp add --transport http lumi http://127.0.0.1:8100/mcp"
     if [[ "${DYNACONF_AUTH__ENABLED:-}" != "true" ]]; then
         echo "                                                 # (the HTTP login checks passwords whatever"
         echo "                                                 #  --with-auth says, so it needs a real account:"

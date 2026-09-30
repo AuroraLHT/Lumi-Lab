@@ -21,7 +21,7 @@
 # A REAL MCP CLIENT DOES NOT NEED THE TOKEN THIS SCRIPT PRINTS. The server is its own
 # OAuth authorization server (lumi.mcp.oauth), so registering it with no credentials --
 #
-#     claude mcp add --transport http lumi-experiment http://127.0.0.1:8100/mcp
+#     claude mcp add --transport http lumi http://127.0.0.1:8100/mcp
 #
 # -- opens a browser login the first time it connects, and renews itself afterwards.
 # The token below is for scripts/demo_mcp.py, which cannot walk a browser flow, and for
@@ -161,7 +161,7 @@ echo "drive it from another terminal with:"
 echo "  uv run scripts/demo_mcp.py --http http://127.0.0.1:$PORT/mcp --token \"\$(cat $TOKEN_FILE)\""
 echo
 echo "or register it with a real client and let it log in as '$USERNAME' -- no token:"
-echo "  claude mcp add --transport http lumi-experiment http://127.0.0.1:$PORT/mcp"
+echo "  claude mcp add --transport http lumi http://127.0.0.1:$PORT/mcp"
 echo
 
 if [[ $TOKEN_ONLY -eq 1 ]]; then

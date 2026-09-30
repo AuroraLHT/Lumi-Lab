@@ -183,7 +183,7 @@ then add those ops or write down why not.
 ## Put TLS in front of the API bridge and the MCP server
 
 Both `nodes/api.py` (the FastAPI/websocket bridge, incl. `POST /auth/login`) and
-`python -m lumi.mcp --transport http` (`lumi.mcp.server.ExperimentMCPServer.build_http_app`)
+`python -m lumi.mcp --transport http` (`lumi.mcp.server.LumiMCPServer.build_http_app`)
 serve plain HTTP with nothing in front of them. Fine on localhost/a trusted private
 network, but not safe for a remote MCP agent:
 

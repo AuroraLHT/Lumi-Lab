@@ -350,11 +350,11 @@ node — a `to_temperature` you abandon keeps ramping, and its stale `current_ta
 still be there on your next run. And nothing stops the chamber: a script already handed to
 the controller runs to the last pulse (`docs/TODO.md`).
 
-## The MCP server — driving a growth from an LLM agent
+## The MCP server — the lab as tools for an LLM agent
 
-`src/lumi/mcp/` exposes the experiment node's ops as MCP tools, so an agent (Claude Code,
-Claude Desktop, anything speaking MCP) can run a deposition. There is no console script;
-it's a module:
+`src/lumi/mcp/` exposes the lab as MCP tools, so an agent (Claude Code, Claude Desktop,
+anything speaking MCP) can run a deposition, look back through past growths, and simulate
+RHEED patterns. There is no console script; it's a module:
 
 ```bash
 uv run python -m lumi.mcp                              # stdio, for a local MCP host
@@ -395,25 +395,45 @@ the shared template is what made `python -m lumi.mcp` reach for the lab by defau
 > (non-durable ones are dropped by a broker restart anyway).
 
 The tools are generated, one per `(contract, capability, op)`, named
-`experiment.driver.to_temperature` and so on — 49 of them today. Adding an op to
-`contracts/experiment.py` makes it a tool with no change here. The surface is
-deliberately narrower than the browser bridge's: all of `experiment`, plus read-only
-`rheed.camera` and `chamber.log` for situational awareness, and nothing else — an agent
-has no business reaching `system.supervisor.spawn` or raw MI script execution.
+`experiment.driver.to_temperature` and so on — 111 of them today. Adding an op to an
+exposed capability makes it a tool with no change here. The surface is deliberately
+narrower than the browser bridge's, and set by `EXPOSED` in `src/lumi/mcp/server.py`:
+
+| Job | Tools |
+|---|---|
+| Drive a growth | all of `experiment.driver`; `rheed.camera`; `rheed.integrator.bboxes` / `cache` (the live oscillation of each box the operator drew); `chamber.log`; `chamber.camera`; `system.registry.list_nodes` / `get_node` (which nodes are up) |
+| Read the history | the growth database through `experiment.driver` (`list_samples`, `sample_history`, `list_records`, `list_measurements`, …); the recordings through `storage.archive` (frames, RHEED integration traces, the chamber log each file carries) |
+| Simulate | all of `simulation.rheed_sim`: structures, spot positions, patterns |
+
+Nothing else: an agent has no business reaching `system.supervisor.spawn`, raw MI script
+execution (`chamber.mi_mode`), or rearranging the operator's integration boxes.
+
+- **Read-only hints.** Every tool carries MCP's `readOnlyHint`, from the same
+  classification the broker enforces (`lumi.contracts.policy`), so a host can auto-approve
+  the reads and ask before anything that changes the chamber.
+- **Pictures.** Camera frames, recorded frames and simulated patterns come back as images
+  the model can see, with the real pixel range in the text beside them.
+- **Big answers.** A result over 40,000 characters (a recording's frame times, a
+  4000-point trace) comes back with its long lists shortened and a note saying so;
+  `max_points`, `since`/`until` and `limit` get them whole.
+- **Uploads.** `experiment.driver.attach_measurement_file` takes the file as
+  `content_text` or `content_base64` beside its metadata.
+- **The journal.** Steps an agent takes are credited to `mcp` (stdio) or `mcp:<username>`
+  (HTTP) in the step journal, so `sample_history` says who did what.
 
 ### Adding it to Claude Code
 
 From the project you want to drive it from:
 
 ```bash
-claude mcp add lumi-experiment -- \
+claude mcp add lumi -- \
   uv run --project /path/to/Lumi-Lab python -m lumi.mcp
 ```
 
 `--project` matters: without it `uv run` resolves against whatever directory the MCP host
 launched from, which is usually not this repo. Then `claude mcp list` should show
 `✔ Connected`. Use `--scope project` instead of the default if you want the registration
-written to a `.mcp.json` that travels with the repo; `claude mcp remove lumi-experiment`
+written to a `.mcp.json` that travels with the repo; `claude mcp remove lumi`
 undoes it. For Claude Desktop the same command line goes in `claude_desktop_config.json`
 under `mcpServers`.
 

@@ -120,11 +120,13 @@ class CapabilityClient:
         fut.set_result((message.body, dict(message.headers or {})))
 
     async def call(
-        self, op_name: str, request: BaseModel | None = None, payload: Payload = None
+        self, op_name: str, request: BaseModel | None = None, payload: Payload = None,
+        *, actor: str | None = None,
     ) -> BaseModel | tuple[BaseModel, Payload]:
         """Issue one request. Returns the response model, or (model, payload) for a
         binary codec. Raises RemoteError if the server said no, TimeoutError if it
-        said nothing."""
+        said nothing. `actor` credits this one call to someone other than the
+        client's own `actor`, for a client shared between callers (the MCP server)."""
         if self._reply is None:
             raise RuntimeError(f"{self.name}: call start() before calling {op_name}")
 
@@ -139,7 +141,9 @@ class CapabilityClient:
         # round, so a fast reply could arrive before its own future existed.
         self._futures[cid] = fut
 
-        headers = envelope.request(self.name, op.name, str(op.request_codec), actor=self.actor, **extra)
+        headers = envelope.request(
+            self.name, op.name, str(op.request_codec), actor=actor or self.actor, **extra
+        )
         try:
             await self.exchange.publish(
                 Message(
