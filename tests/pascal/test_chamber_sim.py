@@ -844,3 +844,19 @@ def test_pumping_to_a_process_pressure_takes_about_two_minutes(model):
     assert elapsed == pytest.approx(120.0, abs=25.0), (
         f"1e-7 -> 1e-1 Torr took {elapsed:.0f}s, expected ~120s"
     )
+
+
+def test_an_old_heater_calibration_in_settings_is_refused_with_what_to_change():
+    from dynaconf.utils.boxing import DynaBox
+
+    from lumi.pascal.hardware import _check_heater_settings
+
+    current = {"ld_min": 6.5, "heater_calibration": [[7.0, 220.0], [15.25, 700.0]], "current_max": 30.0}
+    _check_heater_settings(DynaBox(current))
+
+    old = {"ld_min": 6.5, "current_at_temperature_min": 7.0, "current_at_temperature_max": 30.0,
+           "temperature_min": 220.0, "temperature_max": 1000.0}
+    with pytest.raises(RuntimeError, match="settings.example.toml") as refused:
+        _check_heater_settings(DynaBox(old))
+    assert "heater_calibration" in str(refused.value)
+    assert "current_at_temperature_min" in str(refused.value)

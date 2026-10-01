@@ -171,6 +171,30 @@ def target_angles_from_config(config_path: str | Path) -> tuple[dict[str, float]
     return angles, numbers
 
 
+_OLD_HEATER_KEYS = ("current_at_temperature_min", "current_at_temperature_max", "temperature_min", "temperature_max")
+
+
+def _check_heater_settings(cfg) -> None:
+    """Refuse a `[pascal.sim]` from before the heater became a table of points.
+
+    settings.toml is machine-local, so a checkout elsewhere keeps the old two-point
+    keys after a pull. Say what to change rather than fail on a missing key.
+    """
+    missing = [key for key in ("ld_min", "heater_calibration", "current_max") if cfg.get(key) is None]
+    stale = [key for key in _OLD_HEATER_KEYS if cfg.get(key) is not None]
+    if missing or stale:
+        problems = []
+        if missing:
+            problems.append(f"missing {', '.join(missing)}")
+        if stale:
+            problems.append(f"no longer used: {', '.join(stale)}")
+        raise RuntimeError(
+            f"cfg/settings.toml [pascal.sim] has the old heater calibration ({'; '.join(problems)}). "
+            "Copy the heater block (ld_min, heater_calibration, current_max) from "
+            "cfg/settings.example.toml into it and delete the old keys."
+        )
+
+
 def build_simulated_chamber(log_path: str | None, mi_folder: str | None, time_scale: float = 1.0):
     """The `--src sim` bundle: one model, the log writer, and the MI backend.
 
@@ -183,21 +207,15 @@ def build_simulated_chamber(log_path: str | None, mi_folder: str | None, time_sc
     folder.mkdir(parents=True, exist_ok=True)
 
     angles, numbers = target_angles_from_config(settings.pascal.config_reader.test.config_path)
-    # The heater curve defaults to the one in ChamberSimConfig, so a settings.toml
-    # written before it existed (with the old two-point keys) still gets it.
-    heater: dict = {}
-    if cfg.get("ld_min") is not None:
-        heater["ld_min"] = float(cfg.ld_min)
-    if cfg.get("heater_calibration") is not None:
-        heater["heater_calibration"] = tuple((float(i), float(t)) for i, t in cfg.heater_calibration)
-    if cfg.get("current_max") is not None:
-        heater["current_max"] = float(cfg.current_max)
+    _check_heater_settings(cfg)
     sim_config = ChamberSimConfig(
-        **heater,
         target_angles=angles,
         missed_pulse_rate=float(cfg.missed_pulse_rate),
         temperature_noise=float(cfg.temperature_noise),
-        # The rest of the measured calibration. Overridable because it is a measurement.
+        # The measured calibration. Overridable because it is a measurement.
+        ld_min=float(cfg.ld_min),
+        heater_calibration=tuple((float(i), float(t)) for i, t in cfg.heater_calibration),
+        current_max=float(cfg.current_max),
         flow_at_pressure_min=float(cfg.flow_at_pressure_min),
         flow_at_pressure_max=float(cfg.flow_at_pressure_max),
         pressure_at_flow_min=float(cfg.pressure_at_flow_min),
