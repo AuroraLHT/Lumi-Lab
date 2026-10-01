@@ -53,6 +53,7 @@ gives each one's intensity over time. The boxes carry no role, so work it out:
   brightness: the model is kinematic, so intensities are only qualitative.
 - It has no Kikuchi lines, no refraction (real spots near the shadow edge sit a little
   lower than predicted; 10–30 px off is normal), no inelastic background.
+  Details: [RHEED simulation §13](https://github.com/AuroraLHT/Lumi-Lab/blob/main/docs/RHEED_SIMULATION.md#13-what-it-leaves-out).
 - Useful for: which azimuth you are looking along (rotate the sample and match the
   spot spacing), whether an extra streak is a reconstruction, and what spacing a
   film with a different lattice should give.

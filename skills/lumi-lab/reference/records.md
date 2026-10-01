@@ -1,7 +1,7 @@
 # Keeping the growth database honest
 
 The database (`growth.db`) is what later optimisation is trained on. A wrong row costs
-more than a missing one.
+more than a missing one. Background: [Sample tracking](https://github.com/AuroraLHT/Lumi-Lab/blob/main/docs/SAMPLE_TRACKING.md).
 
 ## What is in it
 
