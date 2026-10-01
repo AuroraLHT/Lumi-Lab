@@ -458,18 +458,65 @@ It is a symlink, so pulling this repo updates it.
 
 ### The HTTP transport
 
-For a remote agent. It always requires an **operator or admin** bearer token — the same
-JWT `POST /auth/login` issues for the browser — and unlike the browser side this is *not*
-gated by `auth.enabled`, so a dev-mode bypass never opens real equipment control to the
-network. Viewer tokens are refused at the door.
+For an agent that is not on the lab machine. It always needs a logged-in **operator or
+admin** account (viewers are refused), whatever `auth.enabled` says, so a dev-mode bypass
+never opens equipment control to the network.
+
+**There is no separate MCP token to obtain.** The server runs its own login: the agent's
+host opens a browser, you sign in with a Lumi account, and the host keeps itself
+renewed. A bearer token is only the fallback for clients that cannot open a browser.
+
+**1. An account.** Operator or admin, in the user database the server reads (see
+[Accounts](#accounts)):
 
 ```bash
-uv run python scripts/create_api_user.py agent --role operator      # an API account; see Accounts
+uv run python scripts/create_api_user.py agent --role operator
+# against the simulator stack, whose users live elsewhere:
+uv run python scripts/create_api_user.py agent --role operator --database run/simulation/users.db
 ```
 
-It serves plain HTTP; put nginx/Caddy in front for TLS (`docs/TODO.md`). `--bind-host`
-defaults to `127.0.0.1` — anything else means your firewall is the only thing between the
-internet and the chamber.
+**2. Start the server.**
+
+```bash
+uv run python -m lumi.mcp --transport http --port 8100 --host <broker>
+```
+
+Against the simulator stack, run `source run/simulation/env.sh` first, so the server uses
+the stack's broker and user database rather than `cfg/`.
+
+**3. Connect: log in (the normal way).** Register it with no token and no header:
+
+```bash
+claude mcp add --transport http lumi http://127.0.0.1:8100/mcp
+```
+
+The first connection opens a browser at the server's login page. Sign in with the
+account from step 1. The host receives an access token and a refresh token and renews by
+itself from then on. Any MCP client that supports OAuth (Claude Code, Codex, …) works the
+same way.
+
+**Or: a bearer token**, for a client that cannot open a browser (a script, a headless
+agent) or a server started with `--no-oauth`. It is the same JWT `POST /auth/login`
+issues, it lasts 12 hours, and it cannot be renewed:
+
+```bash
+scripts/start_mcp_http.sh --token-only        # simulator stack, which must run --with-auth
+claude mcp add --transport http lumi http://127.0.0.1:8100/mcp \
+  --header "Authorization: Bearer $(cat run/simulation/mcp_token.txt)"
+```
+
+| symptom | cause |
+| --- | --- |
+| login page refuses a correct password | the account is a viewer, or lives in a different user database from the server's (step 2) |
+| 401 with a token from `/auth/login` | the stack runs with auth off, so the login handed back the inactive anonymous identity; restart it `--with-auth` |
+| the client reports an issuer mismatch | `--public-url` does not match the address the client used |
+
+**Off the lab machine.** The server speaks plain HTTP and the login form posts a
+password, so beyond loopback put nginx/Caddy in front for TLS and pass its `https://`
+address as `--public-url` (it becomes the OAuth issuer and every redirect target).
+`--bind-host` defaults to `127.0.0.1`; anything else means your firewall is the only
+thing between the internet and the chamber. Access tokens cannot be revoked before they
+expire; revoking a login only stops its refresh.
 
 ### Before you let an agent run a growth
 
