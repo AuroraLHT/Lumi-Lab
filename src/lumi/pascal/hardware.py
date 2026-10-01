@@ -189,10 +189,8 @@ def build_simulated_chamber(log_path: str | None, mi_folder: str | None, time_sc
         temperature_noise=float(cfg.temperature_noise),
         # The measured calibration. Overridable because it is a measurement.
         ld_min=float(cfg.ld_min),
-        current_at_temperature_min=float(cfg.current_at_temperature_min),
-        current_at_temperature_max=float(cfg.current_at_temperature_max),
-        temperature_min=float(cfg.temperature_min),
-        temperature_max=float(cfg.temperature_max),
+        heater_calibration=tuple((float(i), float(t)) for i, t in cfg.heater_calibration),
+        current_max=float(cfg.current_max),
         flow_at_pressure_min=float(cfg.flow_at_pressure_min),
         flow_at_pressure_max=float(cfg.flow_at_pressure_max),
         pressure_at_flow_min=float(cfg.pressure_at_flow_min),

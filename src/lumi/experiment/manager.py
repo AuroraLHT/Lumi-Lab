@@ -984,8 +984,15 @@ class BaseExperimentManager:
             await asyncio.sleep(2)  # let the log catch up before warming
             await self._warm_up_to_pid_limit()
 
-        await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID))
+        # Target first, then the ramp rate, then PID on. The controller then ramps from
+        # where the substrate is to where we want it. Engaging PID before the target is
+        # set lets it chase whatever setpoint it still holds -- after the manual warm-up
+        # that is the cold 160, and the substrate is pulled back down to it.
+        await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=True))
         await self.chamber_mi.execute(pcmd.TemperatureRamp(ramp_rate, state=pcmd.PascalState("ON")))
+        await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID))
+        # The same target again, without (Nowait): changes nothing, but holds the
+        # command until the substrate arrives, which is what the task waits on.
         await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=False))
         return temperature
 

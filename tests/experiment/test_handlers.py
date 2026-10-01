@@ -996,3 +996,26 @@ async def test_unknown_column_raises_rather_than_no_opping(handler):
     ))
     with pytest.raises(ValueError, match="not editable on substrate"):
         await handler.growth_db.update_row("substrate", info.substrate_id, colour="blue")
+
+
+async def test_to_temperature_sets_the_target_before_engaging_pid(handler):
+    # Target, ramp rate, then PID on: engaged first, PID would chase whatever setpoint
+    # the controller still holds (after the warm-up, the cold 160).
+    handler.sources["chamber_log"].values["HT Temp moni"] = "300.0"
+    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20))
+
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            assert event.task_result["ok"] is True
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("task never reported completion")
+
+    assert handler.sources["chamber_mi"].calls == [
+        "Temperature Set 700.0 (Nowait)\n",
+        "Temperature Ramp 20.0\n",
+        "Temperature Control PID\n",
+        "Temperature Set 700.0\n",
+    ]

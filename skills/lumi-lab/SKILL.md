@@ -23,6 +23,16 @@ else here is only as strong as you following it.
 - **[hard]** Ramp rate, by substrate area (width × height from `get_substrate`):
   10 °C/min for ≥ 75 mm², 20 °C/min for ≥ 50 mm², 30 °C/min for < 50 mm².
   The same for cooling.
+  From a cold chamber (below 220 °C) the ramp rate does not apply at first. PID only
+  works properly above 220 °C, so `to_temperature` first heats on a fixed current
+  (to `LDmin`, about 300 °C) and only then hands over to PID, which ramps from the
+  measured temperature at the rate you gave. Expect that first stretch to run faster
+  or slower than the nominal rate, and do not count it against the temperature stop
+  rule (§4) or report it as a fault.
+  Cooling is passive on the real chamber. Somewhere below 300–400 °C the substrate
+  cannot shed heat as fast as the set rate, so it falls behind the setpoint, more and
+  more the colder it gets. That is expected: as long as the temperature keeps
+  dropping, let it run. Only a temperature that stops falling (or rises) is a problem.
 - **[hard]** Do not ablate (`perform_preablation`, `perform_deposition`) unless the
   pressure has settled at its setpoint, the temperature is at its setpoint, and the
   mask is where the step needs it.
@@ -100,7 +110,9 @@ A snapshot taken by mistake is hidden with `retire_snapshot`.
 
 Stop and ask the person when any of these happen:
 
-- Temperature more than 10 °C from its setpoint for more than 30 s.
+- Temperature more than 10 °C from its setpoint for more than 30 s. Except during the
+  warm-up from cold, and while cooling below ~400 °C as long as it is still falling
+  (§1).
 - Pressure above 1.3 × or below 0.7 × its setpoint.
 - `check_logging_alive` says the log is stale, or a node drops out of `list_nodes`.
 - A tool call times out (usually a node is down; sometimes the chamber's completion

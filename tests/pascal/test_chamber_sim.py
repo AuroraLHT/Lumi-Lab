@@ -279,62 +279,113 @@ def test_the_nowait_suffix_is_what_returns_before_the_ramp_finishes(model):
 
 
 def test_the_heater_follows_the_measured_calibration(model):
-    # 6.5 A minimum on the diode; linear 7 A -> 220 degC, 30 A -> 1000 degC.
+    # Through the measured points: 7 A -> 220 on the chamber, then the two recordings.
     assert model.temperature_for_current(7.0) == pytest.approx(220.0)
-    assert model.temperature_for_current(18.5) == pytest.approx(610.0, abs=0.5)
-    assert model.temperature_for_current(30.0) == pytest.approx(1000.0)
-    assert model.current_for_temperature(220.0) == pytest.approx(7.0)
-    assert model.current_for_temperature(1000.0) == pytest.approx(30.0)
+    assert model.temperature_for_current(15.25) == pytest.approx(700.0)
+    assert model.temperature_for_current(17.88) == pytest.approx(805.0)
+    # Linear past the last point, on the slope between the two recordings.
+    slope = (805.0 - 700.0) / (17.88 - 15.25)
+    assert model.temperature_for_current(20.0) == pytest.approx(805.0 + slope * 2.12)
+    # The diode's lasing threshold is where power starts: no cliff, the curve begins
+    # at ambient there, and below it nothing is delivered.
+    assert model.temperature_for_current(6.5) == pytest.approx(model.config.ambient_temperature)
+    assert model.temperature_for_current(6.0) == pytest.approx(model.config.ambient_temperature)
+    assert model.temperature_for_current(6.6) > model.config.ambient_temperature
 
-    # Under the diode's lasing minimum nothing is delivered, so the pyrometer reads its
-    # floor rather than a temperature off the line.
-    assert model.temperature_for_current(6.0) == pytest.approx(160.0)
-    # The coldest the diode can actually hold, at ld_min itself.
-    assert model.temperature_for_current(6.5) == pytest.approx(203.0, abs=0.5)
+    for temperature in (160.0, 220.0, 450.0, 700.0, 805.0, 1000.0):
+        current = model.current_for_temperature(temperature)
+        assert model.temperature_for_current(current) == pytest.approx(temperature)
 
 
-def test_asking_for_less_than_the_diode_can_hold_turns_it_off(model):
-    """The anchor is 220 degC, so a lower setpoint is below the calibrated range.
+def test_a_calibration_that_does_not_rise_is_refused():
+    with pytest.raises(ValueError, match="rise"):
+        ChamberModel(ChamberSimConfig(heater_calibration=((7.0, 220.0), (15.0, 200.0))))
+    with pytest.raises(ValueError, match="above ld_min"):
+        ChamberModel(ChamberSimConfig(heater_calibration=((6.0, 220.0), (15.0, 700.0))))
 
-    It must map to a current under ld_min -- switching the diode off and letting the
-    substrate coast to the pyrometer floor -- rather than clamping at ld_min, which
-    would hold ~203 degC while `HT Temp set` read 160 and leave every "have we arrived?"
-    poll waiting on a setpoint the log would never reach.
+
+def _trace(model: ChamberModel, seconds: float, dt: float = 0.5) -> list[tuple[float, float]]:
+    """(setpoint, true temperature) every `dt` simulated seconds."""
+    samples = []
+    for _ in range(int(seconds / dt)):
+        model.tick(dt)
+        samples.append((model.temperature_setpoint, model.temperature_true))
+    return samples
+
+
+def test_cooling_tracks_the_setpoint_down_to_the_pyrometer_floor(model):
+    """PID cooling at 100 degC/min, all the way to `cool_down`'s 160.
+
+    This once fell freely from ~210 degC: the curve stopped at 203 degC at the 6.5 A
+    threshold and below it the diode cut out, so the substrate dropped at ~230 degC/min
+    to the floor until the setpoint caught up. With the curve starting at ambient at
+    the threshold, the current just keeps walking down.
     """
-    wanted = model.current_for_temperature(160.0)
-    assert wanted < model.config.ld_min
-    assert model.temperature_for_current(wanted) == pytest.approx(160.0)  # round-trips
+    run(model, text(
+        pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False),
+        pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID),
+        pcmd.TemperatureRamp(600.0, state=pcmd.PascalState("ON")),
+        pcmd.TemperatureSet(400.0, nowait=False),
+        pcmd.Wait(60),
+        pcmd.TemperatureRamp(100.0, state=pcmd.PascalState("ON")),
+        pcmd.TemperatureSet(160.0, nowait=True),
+    ))
+    trace = _trace(model, 240.0)
+    # Cooling, the substrate trails *above* the setpoint and never drops below it.
+    assert all(temperature >= setpoint - 1.0 for setpoint, temperature in trace)
+    assert model.temperature_setpoint == 160.0
+    assert model.at_temperature()
+    assert model.current_moni > model.config.ld_min  # holding 160, not switched off
+
+
+def test_the_configured_warm_up_target_clears_the_pid_engage_threshold(model):
+    """The cold path a growth actually takes.
+
+    `_warm_up_to_pid_limit` ramps the heating current to PLDconfig's
+    `[PIDsettings] LDmin = 8.5`, then raises "temperature stalled" unless the pyrometer
+    has passed `experiment.bounds.temperature_pid_engage_threshold = 220`. If a
+    re-measure moves the curve so 8.5 A no longer clears it, this fails rather than the
+    failure resurfacing minutes into a growth.
+    """
+    assert model.temperature_for_current(8.5) == pytest.approx(307.3, abs=0.5)
+    assert model.temperature_for_current(8.5) > 220.0 + 50.0
 
 
 def test_manual_current_warms_the_substrate_past_the_pid_engage_threshold(model):
-    # _warm_up_to_pid_limit refuses to continue unless the pyrometer passes 220 degC.
-    # On the measured calibration that needs about 8.65 A.
     run(model, text(
         pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False),
         pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL),
-        pcmd.SetHeatingCurrent(current=9.0),
-        pcmd.Wait(300),
+        pcmd.SetHeatingCurrent(current=8.5),
+        pcmd.Wait(120),
     ))
     assert model.logged_temperature > 220.0
 
 
-def test_the_configured_warm_up_target_clears_the_pid_engage_threshold(model):
-    """The cold path a growth actually takes, pinned at both ends.
+def test_pid_takes_over_from_the_warm_up_without_a_drop(model):
+    """The handover `to_temperature` does after the manual warm-up.
 
-    `_warm_up_to_pid_limit` ramps the heating current to PLDconfig's
-    `[PIDsettings] LDmin = 8.5`, then raises "temperature stalled" unless the pyrometer
-    has passed `experiment.bounds.temperature_pid_engage_threshold = 220`. On the
-    measured calibration 8.5 A is ~271 degC, comfortably clear.
-
-    This once asserted the opposite: with the earlier 7 A -> 160 degC anchor the ramp
-    reached only ~215 degC and every to_temperature() from a cold chamber raised. If a
-    re-measure moves the anchor back down, this fails rather than the failure resurfacing
-    four minutes into a growth.
+    The controller still holds the cold 160 setpoint when PID engages at ~300 degC.
+    `to_temperature` sets the target and the ramp rate first, then turns PID on, and
+    PID ramps from the measured temperature to the target.
     """
-    assert model.temperature_for_current(8.5) == pytest.approx(270.9, abs=0.5)
-    assert model.temperature_for_current(8.5) > 220.0
-    # And the margin, so a small re-measure does not silently land on the boundary.
-    assert model.current_for_temperature(220.0) == pytest.approx(7.0, abs=0.05)
+    run(model, text(
+        pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False),
+        pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL),
+        pcmd.SetHeatingCurrent(current=8.5),
+        pcmd.Wait(120),
+    ))
+    start = model.temperature_true
+    assert model.temperature_setpoint == pytest.approx(160.0)  # the stale setpoint
+
+    run(model, text(
+        pcmd.TemperatureSet(400.0, nowait=True),
+        pcmd.TemperatureRamp(100.0, state=pcmd.PascalState("ON")),
+        pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID),
+    ))
+    assert model.temperature_setpoint == pytest.approx(start, abs=1.0)
+    trace = _trace(model, 120.0)
+    assert min(temperature for _, temperature in trace) > start - 2.0
+    assert model.at_temperature()
 
 
 def test_a_cold_chamber_reads_the_pyrometer_floor(model):

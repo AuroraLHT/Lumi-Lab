@@ -74,20 +74,30 @@ Whatever replaces this should not pretend otherwise until there is a real abort.
 ## ~~`_warm_up_to_pid_limit` cannot reach the PID-engage threshold~~ (resolved)
 
 Resolved by a re-measure, not a code change: the heater calibration anchor moved from
-7 A → 160 °C to **7 A → 220 °C** (`[pascal.sim]` in `cfg/settings.toml`). PLDconfig's
-`[PIDsettings] LDmin = 8.5`, which `_warm_up_to_pid_limit` ramps to, is now ~271 °C —
-clear of `experiment.bounds.temperature_pid_engage_threshold = 220`, so a growth from a
-cold chamber gets through the warm-up.
+7 A → 160 °C to **7 A → 220 °C**. The simulator's heater is now a table of measured
+points (`heater_calibration` in `[pascal.sim]`): the 6.5 A lasing threshold at ambient,
+7 A → 220 °C, and the steady state of two recorded growths (15.25 A → 700 °C,
+17.88 A → 805 °C). PLDconfig's `[PIDsettings] LDmin = 8.5`, which
+`_warm_up_to_pid_limit` ramps to, lands at ~307 °C — clear of
+`experiment.bounds.temperature_pid_engage_threshold = 220`.
 
-`test_the_configured_warm_up_target_clears_the_pid_engage_threshold` now pins it from
-the other side: if a future re-measure moves the anchor back down, the test fails rather
-than the stall resurfacing four minutes into a growth.
+`test_the_configured_warm_up_target_clears_the_pid_engage_threshold` pins it: if a
+future re-measure moves the curve so 8.5 A no longer clears 220 °C, the test fails
+rather than the stall resurfacing minutes into a growth.
 
-One consequence to know about: 160–203 °C is a dead band. The pyrometer floor is 160,
-but the coldest the diode can hold is the calibration line extended to `ld_min`, ~203 °C.
-A setpoint in between drives the current under the lasing minimum, so the diode switches
-off and the substrate coasts to the floor — which is what makes `cool_down`'s 160 °C
-setpoint behave, but means `HT Temp moni` will never settle on a setpoint in that band.
+The earlier straight line stopped at ~203 °C at the threshold, so every cool-down fell
+freely below ~210 °C once the current crossed 6.5 A. With the curve starting at ambient
+there, PID tracks the setpoint all the way to `cool_down`'s 160 °C.
+
+## The warm-up from cold ignores the ramp rate
+
+Below `temperature_pid_engage_threshold` the pyrometer cannot be trusted (it reads 160
+at its floor), so `_warm_up_to_pid_limit` heats open-loop: it steps the current to
+`LDmin` at `warm_up_current_ramp_rate` whatever ramp rate `to_temperature` was given,
+and the substrate settles at ~300 °C before PID takes over. A growth at 250 °C
+therefore overshoots and comes back down. Stopping the current steps once the pyrometer
+passes the threshold would cut the overshoot, but it changes how the real chamber is
+warmed, so it waits for a decision.
 
 ## A dead chamber-log reader is invisible in the capability's state
 
