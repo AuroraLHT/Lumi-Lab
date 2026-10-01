@@ -8,8 +8,8 @@ description: How to run the PLD/RHEED lab through the `lumi` MCP tools safely an
 The `lumi` MCP server tells you *what each tool does*. This skill is the lab's
 judgement: what is safe, what needs a person, what a good growth looks like.
 
-**Draft.** Lines marked `TODO(lab)` need a number or rule from the people who run the
-chamber. Until one is filled in, treat that limit as unknown: ask, do not guess.
+Where this skill gives no number or rule for something, treat it as unknown: ask the
+person, do not guess.
 
 Rules are marked **[hard]** (never break it, stop and ask instead) or **[thumb]** (the
 usual choice; deviate if you say why).
@@ -103,8 +103,8 @@ Stop and ask the person when any of these happen:
 - Temperature more than 10 °C from its setpoint for more than 30 s.
 - Pressure above 1.3 × or below 0.7 × its setpoint.
 - `check_logging_alive` says the log is stale, or a node drops out of `list_nodes`.
-- A tool call times out (usually a node is down; a lost MI completion message is a
-  known issue, see `docs/TODO.md`). Do not re-issue a motion or a deposition to "try
+- A tool call times out (usually a node is down; sometimes the chamber's completion
+  message was lost). Do not re-issue a motion or a deposition to "try
   again" before you know whether the first one ran.
 - RHEED: the specular spot fades and does not come back, transmission spots appear, or
   rings appear (see `reference/rheed.md`).

@@ -8,7 +8,7 @@
   `storage.archive.recording_integration` for the traces.
 - Expected: `simulation.rheed_sim.simulate_rheed_jpeg` / `rheed_spots`.
 
-## Patterns (general physics; `TODO(lab)` add examples from this chamber)
+## Patterns
 
 | what you see | what it usually means |
 | --- | --- |
@@ -28,8 +28,22 @@
 - A sharp intensity drop over the first pulses that then recovers is normal: the surface
   coverage is changing as the new material arrives.
 - Intensity that falls and never recovers: roughening. §4 of SKILL.md: stop and ask.
-- `TODO(lab)`: which box the operator usually draws on the specular spot, and how to tell
-  from `rheed.integrator.cache` which box is which.
+
+### Which box is the specular spot
+
+`rheed.integrator.bboxes` lists the boxes the operator drew; `rheed.integrator.cache`
+gives each one's intensity over time. The boxes carry no role, so work it out:
+
+1. **Look.** Take `rheed.camera.image` and find each box on it. The specular spot is
+   the one on the mirror line of the pattern: on the zeroth Laue circle, centred
+   between the symmetric side streaks, and usually the brightest.
+2. **Check against the simulator.** `rheed_spots` for the substrate and azimuth (leave
+   `screen` out) returns `specular_px`, where the specular spot lands on the lab camera.
+   The box that contains it is the specular box. The real spot can sit 10–30 px off
+   (no refraction in the model), and the sample's height moves the whole pattern, so
+   match the pattern's spacing too, not that one point alone.
+3. If the two disagree, or no box covers the specular spot, say so and ask the person
+   rather than reading oscillations off the wrong box.
 
 ## Using the simulator
 
@@ -39,7 +53,6 @@
   brightness: the model is kinematic, so intensities are only qualitative.
 - It has no Kikuchi lines, no refraction (real spots near the shadow edge sit a little
   lower than predicted; 10–30 px off is normal), no inelastic background.
-  See `docs/RHEED_SIMULATION.md` §13.
 - Useful for: which azimuth you are looking along (rotate the sample and match the
   spot spacing), whether an extra streak is a reconstruction, and what spacing a
   film with a different lattice should give.

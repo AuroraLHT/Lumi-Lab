@@ -1,7 +1,7 @@
 # Keeping the growth database honest
 
 The database (`growth.db`) is what later optimisation is trained on. A wrong row costs
-more than a missing one. Background: `docs/SAMPLE_TRACKING.md`.
+more than a missing one.
 
 ## What is in it
 
@@ -30,8 +30,10 @@ more than a missing one. Background: `docs/SAMPLE_TRACKING.md`.
   came from a specific recording or step.
 - **[thumb]** Attach the instrument's raw file (`attach_measurement_file`) next to the
   number, so the number can be checked later.
-- Naming: `TODO(lab)` project names, recording names, measurement `kind` values
-  (fixed vocabulary? e.g. `xrd_fwhm`, `afm_rms`, `rheed_osc_count`).
+- **[thumb]** There is no fixed naming convention for projects, recordings or
+  measurement `kind`s. Ask the user what to call a new project, and before inventing a
+  measurement `kind`, check `list_measurements` for one already in use for the same
+  thing and reuse it.
 - **[hard]** A mistake in a row someone else made: propose the `update_*` / `retire_*`
   and wait for a person to agree. Rows you made in this session you may correct
   yourself; say so in your report.
