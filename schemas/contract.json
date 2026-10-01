@@ -9345,6 +9345,926 @@
             "response_codec": "json"
           },
           {
+            "name": "take_snapshot",
+            "request": {
+              "properties": {
+                "camera": {
+                  "enum": [
+                    "chamber",
+                    "rheed"
+                  ],
+                  "title": "Camera",
+                  "type": "string"
+                },
+                "note": {
+                  "anyOf": [
+                    {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Note"
+                },
+                "stage": {
+                  "enum": [
+                    "start",
+                    "heated",
+                    "depo_start",
+                    "depo_mid",
+                    "depo_end",
+                    "cooled",
+                    "other"
+                  ],
+                  "title": "Stage",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "camera",
+                "stage"
+              ],
+              "title": "TakeSnapshot",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "camera": {
+                  "title": "Camera",
+                  "type": "string"
+                },
+                "channels": {
+                  "default": 1,
+                  "title": "Channels",
+                  "type": "integer"
+                },
+                "dtype": {
+                  "title": "Dtype",
+                  "type": "string"
+                },
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "jpeg_bytes": {
+                  "title": "Jpeg Bytes",
+                  "type": "integer"
+                },
+                "note": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Note"
+                },
+                "pixel_max": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Max"
+                },
+                "pixel_min": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Min"
+                },
+                "raw_bytes": {
+                  "title": "Raw Bytes",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Id"
+                },
+                "session_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Session Id"
+                },
+                "snapshot_id": {
+                  "title": "Snapshot Id",
+                  "type": "integer"
+                },
+                "stage": {
+                  "title": "Stage",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "taken_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Taken At"
+                },
+                "taken_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Taken At Iso"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshot_id",
+                "camera",
+                "stage",
+                "width",
+                "height",
+                "dtype",
+                "raw_bytes",
+                "jpeg_bytes"
+              ],
+              "title": "SnapshotInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_snapshots",
+            "request": {
+              "properties": {
+                "camera": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "chamber",
+                        "rheed"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Camera"
+                },
+                "include_retired": {
+                  "default": false,
+                  "title": "Include Retired",
+                  "type": "boolean"
+                },
+                "limit": {
+                  "default": 100,
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Id"
+                },
+                "session_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Session Id"
+                },
+                "stage": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "start",
+                        "heated",
+                        "depo_start",
+                        "depo_mid",
+                        "depo_end",
+                        "cooled",
+                        "other"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Stage"
+                }
+              },
+              "title": "ListSnapshots",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "SnapshotInfo": {
+                  "properties": {
+                    "camera": {
+                      "title": "Camera",
+                      "type": "string"
+                    },
+                    "channels": {
+                      "default": 1,
+                      "title": "Channels",
+                      "type": "integer"
+                    },
+                    "dtype": {
+                      "title": "Dtype",
+                      "type": "string"
+                    },
+                    "height": {
+                      "title": "Height",
+                      "type": "integer"
+                    },
+                    "jpeg_bytes": {
+                      "title": "Jpeg Bytes",
+                      "type": "integer"
+                    },
+                    "note": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Note"
+                    },
+                    "pixel_max": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Max"
+                    },
+                    "pixel_min": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pixel Min"
+                    },
+                    "raw_bytes": {
+                      "title": "Raw Bytes",
+                      "type": "integer"
+                    },
+                    "sample_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Sample Id"
+                    },
+                    "session_id": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Session Id"
+                    },
+                    "snapshot_id": {
+                      "title": "Snapshot Id",
+                      "type": "integer"
+                    },
+                    "stage": {
+                      "title": "Stage",
+                      "type": "string"
+                    },
+                    "state": {
+                      "default": "active",
+                      "title": "State",
+                      "type": "string"
+                    },
+                    "taken_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Taken At"
+                    },
+                    "taken_at_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Taken At Iso"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "snapshot_id",
+                    "camera",
+                    "stage",
+                    "width",
+                    "height",
+                    "dtype",
+                    "raw_bytes",
+                    "jpeg_bytes"
+                  ],
+                  "title": "SnapshotInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "snapshots": {
+                  "items": {
+                    "$ref": "#/$defs/SnapshotInfo"
+                  },
+                  "title": "Snapshots",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "snapshots"
+              ],
+              "title": "SnapshotList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "snapshot_jpeg",
+            "request": {
+              "properties": {
+                "snapshot_id": {
+                  "title": "Snapshot Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshot_id"
+              ],
+              "title": "SnapshotId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "camera": {
+                  "title": "Camera",
+                  "type": "string"
+                },
+                "channels": {
+                  "default": 1,
+                  "title": "Channels",
+                  "type": "integer"
+                },
+                "dtype": {
+                  "title": "Dtype",
+                  "type": "string"
+                },
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "jpeg_bytes": {
+                  "title": "Jpeg Bytes",
+                  "type": "integer"
+                },
+                "note": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Note"
+                },
+                "pixel_max": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Max"
+                },
+                "pixel_min": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Min"
+                },
+                "raw_bytes": {
+                  "title": "Raw Bytes",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Id"
+                },
+                "session_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Session Id"
+                },
+                "snapshot_id": {
+                  "title": "Snapshot Id",
+                  "type": "integer"
+                },
+                "stage": {
+                  "title": "Stage",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "taken_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Taken At"
+                },
+                "taken_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Taken At Iso"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshot_id",
+                "camera",
+                "stage",
+                "width",
+                "height",
+                "dtype",
+                "raw_bytes",
+                "jpeg_bytes"
+              ],
+              "title": "SnapshotInfo",
+              "type": "object"
+            },
+            "response_codec": "raw"
+          },
+          {
+            "name": "snapshot_frame",
+            "request": {
+              "properties": {
+                "snapshot_id": {
+                  "title": "Snapshot Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshot_id"
+              ],
+              "title": "SnapshotId",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "camera": {
+                  "title": "Camera",
+                  "type": "string"
+                },
+                "channels": {
+                  "default": 1,
+                  "title": "Channels",
+                  "type": "integer"
+                },
+                "dtype": {
+                  "title": "Dtype",
+                  "type": "string"
+                },
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "jpeg_bytes": {
+                  "title": "Jpeg Bytes",
+                  "type": "integer"
+                },
+                "note": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Note"
+                },
+                "pixel_max": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Max"
+                },
+                "pixel_min": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Min"
+                },
+                "raw_bytes": {
+                  "title": "Raw Bytes",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Id"
+                },
+                "session_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Session Id"
+                },
+                "snapshot_id": {
+                  "title": "Snapshot Id",
+                  "type": "integer"
+                },
+                "stage": {
+                  "title": "Stage",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "taken_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Taken At"
+                },
+                "taken_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Taken At Iso"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshot_id",
+                "camera",
+                "stage",
+                "width",
+                "height",
+                "dtype",
+                "raw_bytes",
+                "jpeg_bytes"
+              ],
+              "title": "SnapshotInfo",
+              "type": "object"
+            },
+            "response_codec": "npy"
+          },
+          {
+            "name": "retire_snapshot",
+            "request": {
+              "properties": {
+                "retire": {
+                  "default": true,
+                  "title": "Retire",
+                  "type": "boolean"
+                },
+                "snapshot_id": {
+                  "title": "Snapshot Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshot_id"
+              ],
+              "title": "RetireSnapshot",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "camera": {
+                  "title": "Camera",
+                  "type": "string"
+                },
+                "channels": {
+                  "default": 1,
+                  "title": "Channels",
+                  "type": "integer"
+                },
+                "dtype": {
+                  "title": "Dtype",
+                  "type": "string"
+                },
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "jpeg_bytes": {
+                  "title": "Jpeg Bytes",
+                  "type": "integer"
+                },
+                "note": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Note"
+                },
+                "pixel_max": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Max"
+                },
+                "pixel_min": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Min"
+                },
+                "raw_bytes": {
+                  "title": "Raw Bytes",
+                  "type": "integer"
+                },
+                "sample_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Id"
+                },
+                "session_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Session Id"
+                },
+                "snapshot_id": {
+                  "title": "Snapshot Id",
+                  "type": "integer"
+                },
+                "stage": {
+                  "title": "Stage",
+                  "type": "string"
+                },
+                "state": {
+                  "default": "active",
+                  "title": "State",
+                  "type": "string"
+                },
+                "taken_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Taken At"
+                },
+                "taken_at_iso": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Taken At Iso"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "snapshot_id",
+                "camera",
+                "stage",
+                "width",
+                "height",
+                "dtype",
+                "raw_bytes",
+                "jpeg_bytes"
+              ],
+              "title": "SnapshotInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "get_current_log",
             "request": {
               "description": "No payload. Used for ops that take or return nothing.",
@@ -12865,6 +13785,7 @@
             "list_projects": "experiment.driver.req.list_projects",
             "list_records": "experiment.driver.req.list_records",
             "list_samples": "experiment.driver.req.list_samples",
+            "list_snapshots": "experiment.driver.req.list_snapshots",
             "list_substrates": "experiment.driver.req.list_substrates",
             "measurement_file": "experiment.driver.req.measurement_file",
             "move_mask_to_position": "experiment.driver.req.move_mask_to_position",
@@ -12881,6 +13802,7 @@
             "retire_measurement_file": "experiment.driver.req.retire_measurement_file",
             "retire_project": "experiment.driver.req.retire_project",
             "retire_record": "experiment.driver.req.retire_record",
+            "retire_snapshot": "experiment.driver.req.retire_snapshot",
             "retire_substrate": "experiment.driver.req.retire_substrate",
             "rotate_sample_by": "experiment.driver.req.rotate_sample_by",
             "rotate_sample_to": "experiment.driver.req.rotate_sample_to",
@@ -12893,9 +13815,12 @@
             "set_rheed_gain": "experiment.driver.req.set_rheed_gain",
             "set_target": "experiment.driver.req.set_target",
             "show_available_targets": "experiment.driver.req.show_available_targets",
+            "snapshot_frame": "experiment.driver.req.snapshot_frame",
+            "snapshot_jpeg": "experiment.driver.req.snapshot_jpeg",
             "start_mi_logging": "experiment.driver.req.start_mi_logging",
             "start_storage": "experiment.driver.req.start_storage",
             "stop_mi_logging": "experiment.driver.req.stop_mi_logging",
+            "take_snapshot": "experiment.driver.req.take_snapshot",
             "to_current_pixel": "experiment.driver.req.to_current_pixel",
             "to_pixel": "experiment.driver.req.to_pixel",
             "to_temperature": "experiment.driver.req.to_temperature",

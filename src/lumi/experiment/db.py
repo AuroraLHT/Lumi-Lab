@@ -292,7 +292,36 @@ class GrowthDB:
                 FOREIGN KEY (measurement_id) REFERENCES measurement(measurement_id)
             );
 
+            -- A still from the chamber or RHEED camera at a stage of a growth. The
+            -- frame is kept twice under the snapshots folder (`*_path` relative to
+            -- it): losslessly as .npy, and as a JPEG to look at.
+            CREATE TABLE IF NOT EXISTS snapshot (
+                snapshot_id INTEGER PRIMARY KEY,
+                snapshot_uuid VARCHAR(100) NOT NULL,
+                session_id INTEGER,
+                sample_id INTEGER,
+                camera VARCHAR(20) NOT NULL,
+                stage VARCHAR(20) NOT NULL,
+                note TEXT,
+                width INTEGER NOT NULL,
+                height INTEGER NOT NULL,
+                dtype VARCHAR(20) NOT NULL,
+                channels INTEGER NOT NULL DEFAULT 1,
+                pixel_min REAL,
+                pixel_max REAL,
+                raw_path TEXT NOT NULL,
+                raw_bytes INTEGER NOT NULL,
+                raw_sha256 VARCHAR(64) NOT NULL,
+                jpeg_path TEXT NOT NULL,
+                jpeg_bytes INTEGER NOT NULL,
+                taken_at TIMESTAMP NOT NULL,
+                state VARCHAR(20) NOT NULL DEFAULT 'active',
+                FOREIGN KEY (sample_id) REFERENCES sample(sample_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_meas_file ON measurement_file(measurement_id);
+            CREATE INDEX IF NOT EXISTS idx_snapshot_sample ON snapshot(sample_id, taken_at);
+            CREATE INDEX IF NOT EXISTS idx_snapshot_session ON snapshot(session_id, taken_at);
             CREATE INDEX IF NOT EXISTS idx_substrate_uuid ON substrate(substrate_uuid);
             CREATE INDEX IF NOT EXISTS idx_experiment_uuid ON experiment(experiment_uuid);
             CREATE INDEX IF NOT EXISTS idx_record_uuid ON record(record_uuid);
@@ -1027,6 +1056,55 @@ class GrowthDB:
     async def set_measurement_file_state(self, file_id: int, state: str) -> None:
         await self.conn.execute(
             "UPDATE measurement_file SET state = ? WHERE file_id = ?", (state, file_id)
+        )
+        await self.conn.commit()
+
+    # --- snapshots -----------------------------------------------------------------
+
+    _SNAPSHOT_COLUMNS = (
+        "snapshot_uuid", "session_id", "sample_id", "camera", "stage", "note", "width", "height",
+        "dtype", "channels", "pixel_min", "pixel_max", "raw_path", "raw_bytes", "raw_sha256",
+        "jpeg_path", "jpeg_bytes", "taken_at",
+    )
+
+    async def add_snapshot(self, **row) -> int:
+        row.setdefault("taken_at", utc_now())
+        columns = self._SNAPSHOT_COLUMNS
+        async with self.conn.execute(
+            f"INSERT INTO snapshot ({', '.join(columns)}) VALUES ({', '.join('?' * len(columns))})",
+            tuple(row.get(c) for c in columns),
+        ) as cursor:
+            await self.conn.commit()
+            return cursor.lastrowid
+
+    async def get_snapshot(self, snapshot_id: int):
+        async with self.conn.execute(
+            "SELECT * FROM snapshot WHERE snapshot_id = ?", (snapshot_id,)
+        ) as cursor:
+            return await cursor.fetchone()
+
+    async def list_snapshots(
+        self, *, sample_id: int | None = None, session_id: int | None = None,
+        camera: str | None = None, stage: str | None = None,
+        include_retired: bool = False, limit: int = 100,
+    ):
+        where, args = [], []
+        for column, value in (("sample_id", sample_id), ("session_id", session_id),
+                              ("camera", camera), ("stage", stage)):
+            if value is not None:
+                where.append(f"{column} = ?")
+                args.append(value)
+        if not include_retired:
+            where.append("state != 'retired'")
+        sql = "SELECT * FROM snapshot"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        async with self.conn.execute(sql + " ORDER BY snapshot_id LIMIT ?", (*args, limit)) as cursor:
+            return await cursor.fetchall()
+
+    async def set_snapshot_state(self, snapshot_id: int, state: str) -> None:
+        await self.conn.execute(
+            "UPDATE snapshot SET state = ? WHERE snapshot_id = ?", (state, snapshot_id)
         )
         await self.conn.commit()
 

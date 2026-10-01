@@ -565,6 +565,10 @@ growth_db_path = "cfg/growth.db"
 # the browser websocket both stop at 16 MiB.
 measurement_files_path = ""
 measurement_file_max_bytes = 15728640
+# Camera stills from take_snapshot: each a lossless .npy plus a JPEG to look at. Empty
+# means a `snapshots` folder beside growth.db. The cap is per file.
+snapshots_path = ""
+snapshot_max_bytes = 16777216
 
 # How long to wait for an MI script to report completion, in seconds. **0 means wait
 # indefinitely**, and that is the default because it is what the controller actually

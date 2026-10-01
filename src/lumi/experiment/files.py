@@ -44,19 +44,26 @@ class StoredFile:
 
 
 class MeasurementFileStore:
-    def __init__(self, root: str | Path, max_bytes: int) -> None:
+    def __init__(self, root: str | Path, max_bytes: int,
+                 limit_setting: str = "experiment.measurement_file_max_bytes") -> None:
         self.root = Path(root)
         self.max_bytes = max_bytes
+        #: Named in the refusal, so whoever hits the limit knows what to raise.
+        self.limit_setting = limit_setting
 
-    def save(self, data: bytes, file_name: str) -> StoredFile:
+    def save(self, data: bytes, file_name: str, *, file_uuid: str | None = None) -> StoredFile:
+        """Write one file. Passing the `file_uuid` of an earlier save puts this file in
+        the same folder -- for a record made of several files, like a snapshot's frame
+        and its JPEG."""
         if len(data) == 0:
             raise ValueError("the file is empty")
         if len(data) > self.max_bytes:
             raise ValueError(f"the file is {len(data)} bytes; the limit is {self.max_bytes} "
-                             "(experiment.measurement_file_max_bytes)")
-        file_uuid = uuid.uuid4().hex
+                             f"({self.limit_setting})")
+        shared = file_uuid is not None
+        file_uuid = file_uuid or uuid.uuid4().hex
         folder = self.root / file_uuid
-        folder.mkdir(parents=True, exist_ok=False)
+        folder.mkdir(parents=True, exist_ok=shared)
         final = folder / safe_name(file_name)
         tmp = folder / f".{final.name}.part"
         with open(tmp, "wb") as f:

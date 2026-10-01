@@ -24,11 +24,12 @@ from lumi.contracts.storage import STORAGE_NODE
 from lumi.contracts.system import SYSTEM
 from lumi.experiment.db import GrowthDB
 from lumi.experiment.files import MeasurementFileStore
-from lumi.experiment.handlers import ExperimentHandler
+from lumi.experiment.handlers import SNAPSHOT_MAX_BYTES, ExperimentHandler
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 from lumi.experiment.mi import MiCommandRunner
 from lumi.generated.clients.chamber import (
+    ChamberCameraClient,
     ChamberConfigClient,
     ChamberFiducialClient,
     ChamberLogClient,
@@ -95,6 +96,11 @@ async def main(args: argparse.Namespace) -> None:
             files_root,
             max_bytes=int(settings.experiment.get("measurement_file_max_bytes", 15 * 1024 * 1024)),
         ),
+        snapshot_store=MeasurementFileStore(
+            settings.experiment.get("snapshots_path") or str(Path(growth_db.db_path).parent / "snapshots"),
+            max_bytes=int(settings.experiment.get("snapshot_max_bytes", SNAPSHOT_MAX_BYTES)),
+            limit_setting="experiment.snapshot_max_bytes",
+        ),
     )
     await handler.load_calibration()
 
@@ -145,6 +151,7 @@ async def main(args: argparse.Namespace) -> None:
         "chamber_log": ChamberLogClient(channel, chamber_x),
         "chamber_config": ChamberConfigClient(channel, chamber_x),
         "chamber_fiducial": ChamberFiducialClient(channel, chamber_x),
+        "chamber_camera": ChamberCameraClient(channel, chamber_x),
         "rheed_camera": RheedCameraClient(channel, rheed_x),
         "storage": StorageStorageClient(channel, storage_x),
     }

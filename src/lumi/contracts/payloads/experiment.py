@@ -27,6 +27,8 @@ with one fixed server-side sequence.
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .chamber import LogEntry
@@ -1055,6 +1057,66 @@ class RetireMeasurement(BaseModel):
     retire: bool = True
 
 
+# --- snapshots ---------------------------------------------------------------------
+
+#: The stages of a growth a snapshot is taken at. A fixed list so snapshots compare
+#: across growths ("every depo_end of project X"); `note` carries anything else.
+SnapshotStage = Literal["start", "heated", "depo_start", "depo_mid", "depo_end", "cooled", "other"]
+SnapshotCamera = Literal["chamber", "rheed"]
+
+
+class TakeSnapshot(BaseModel):
+    camera: SnapshotCamera
+    stage: SnapshotStage
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class SnapshotInfo(BaseModel):
+    snapshot_id: int
+    camera: str
+    stage: str
+    note: str | None = None
+    #: The sample loaded when it was taken; None with nothing loaded.
+    sample_id: int | None = None
+    #: The chamber session, which `sample_history` (by session) shows it beside.
+    session_id: int | None = None
+    #: The frame as the camera gave it, kept losslessly (snapshot_frame).
+    width: int
+    height: int
+    dtype: str
+    channels: int = 1
+    pixel_min: float | None = None
+    pixel_max: float | None = None
+    raw_bytes: int
+    #: For looking at (snapshot_jpeg); contrast-stretched unless the frame was 8-bit.
+    jpeg_bytes: int
+    taken_at: float | None = None
+    taken_at_iso: str | None = None
+    state: str = "active"
+
+
+class SnapshotId(BaseModel):
+    snapshot_id: int
+
+
+class ListSnapshots(BaseModel):
+    sample_id: int | None = None
+    session_id: int | None = None
+    camera: SnapshotCamera | None = None
+    stage: SnapshotStage | None = None
+    include_retired: bool = False
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+class SnapshotList(BaseModel):
+    snapshots: list[SnapshotInfo]
+
+
+class RetireSnapshot(BaseModel):
+    snapshot_id: int
+    retire: bool = True
+
+
 __all__ = [
     # Re-exported from .chamber: the driver's chamber-read ops answer with the same
     # LogEntry the chamber contract defines rather than a near-copy of it.
@@ -1065,6 +1127,14 @@ __all__ = [
     "MeasurementFileInfo",
     "MeasurementSeries",
     "RetireMeasurementFile",
+    "ListSnapshots",
+    "RetireSnapshot",
+    "SnapshotCamera",
+    "SnapshotId",
+    "SnapshotInfo",
+    "SnapshotList",
+    "SnapshotStage",
+    "TakeSnapshot",
     "SeriesAxis",
     "Anneal",
     "AutoAlignMaskCenter",

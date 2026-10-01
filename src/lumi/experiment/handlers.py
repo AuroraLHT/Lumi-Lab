@@ -35,15 +35,20 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from lumi.base.mq.context import current_actor, current_source
 from lumi.contracts.payloads.camera import CameraConfig
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.experiment import (
+    AddMeasurement,
     Anneal,
+    AttachMeasurementFile,
     AutoAlignMaskCenter,
     BeginSetLaserPower,
     CenterMaskPos,
+    CheckLogging,
     ConfirmCenterMask,
     ConfirmLaserPower,
     ConfirmMaskCenter,
@@ -52,16 +57,37 @@ from lumi.contracts.payloads.experiment import (
     CurrentSubstrateResponse,
     CurrentTask,
     EndStorage,
+    ExperimentId,
+    ExperimentInfo,
+    ExperimentList,
     ExperimentReadout,
     ExperimentRecordId,
     FinishCurrentPixel,
     FinishExperimentRecord,
     LaserPowerResult,
+    LayerInfo,
+    ListExperiments,
+    ListMeasurements,
+    ListQuery,
+    ListRecords,
+    ListSamples,
+    ListSnapshots,
+    ListSteps,
+    ListSubstrates,
+    LoggingAlive,
+    LoggingStatus,
     MaskPosition,
+    MeasurementFileId,
+    MeasurementFileInfo,
+    MeasurementId,
+    MeasurementInfo,
+    MeasurementList,
+    MeasurementSeries,
     MfcQuery,
     MfcStatus,
     MotorFree,
     MoveTo,
+    PageInfo,
     PendingConfirmation,
     PendingStatus,
     PerformDeposition,
@@ -71,37 +97,15 @@ from lumi.contracts.payloads.experiment import (
     PixelMoveResult,
     PixelPosition,
     PressureReading,
-    ProjectInfo,
-    PumpStatus,
-    RegisterProject,
-    RegisterSubstrate,
-    AddMeasurement,
-    AttachMeasurementFile,
-    LayerInfo,
-    ListMeasurements,
-    ListSamples,
-    ListSteps,
-    MeasurementFileId,
-    MeasurementFileInfo,
-    MeasurementId,
-    MeasurementInfo,
-    MeasurementSeries,
-    MeasurementList,
-    CheckLogging,
-    LoggingAlive,
-    LoggingStatus,
-    ExperimentId,
-    ExperimentInfo,
-    ExperimentList,
-    ListExperiments,
-    ListQuery,
-    ListRecords,
-    PageInfo,
     ProjectId,
+    ProjectInfo,
     ProjectList,
+    PumpStatus,
     RecordId,
     RecordInfo,
     RecordList,
+    RegisterProject,
+    RegisterSubstrate,
     ReopenPosition,
     ReopenResult,
     ResolvePixelCheck,
@@ -111,34 +115,32 @@ from lumi.contracts.payloads.experiment import (
     RetireMeasurementFile,
     RetireProject,
     RetireRecord,
+    RetireSnapshot,
     RetireSubstrate,
-    SubstrateId,
-    UpdateExperiment,
-    UpdateMeasurement,
-    UpdateProject,
-    UpdateRecord,
-    UpdateSample,
     SampleAngle,
     SampleDetail,
     SampleId,
     SampleInfo,
     SampleList,
-    StepInfo,
-    StepList,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
     SetPressureControl,
     SetRheedGain,
     SetTarget,
+    SnapshotId,
+    SnapshotInfo,
+    SnapshotList,
     StartMiLogging,
     StartStorage,
+    StepInfo,
+    StepList,
     StorageResult,
+    SubstrateId,
     SubstrateInfo,
     SubstrateList,
     SubstrateSummary,
-    ListSubstrates,
-    UpdateSubstrate,
+    TakeSnapshot,
     TargetId,
     TargetMap,
     TargetName,
@@ -146,14 +148,25 @@ from lumi.contracts.payloads.experiment import (
     TaskEvent,
     TemperatureReading,
     ToTemperature,
+    UpdateExperiment,
+    UpdateMeasurement,
+    UpdateProject,
+    UpdateRecord,
+    UpdateSample,
+    UpdateSubstrate,
     ValveStatus,
 )
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration, PixelExperimentManager, Substrate
+from lumi.experiment.snapshots import decode_raw, encode_frame
 
 log = logging.getLogger(__name__)
+
+#: A snapshot's lossless frame. It reached this node as one bus message and goes back
+#: out as one (snapshot_frame), so the broker's 16 MiB message limit is the real cap.
+SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024
 
 #: What this node needs on the bus before it can drive anything. Same idiom as
 #: storage's DEPENDENCIES -- "the monitor did not answer" is deliberately not the
@@ -217,6 +230,7 @@ class ExperimentHandler:
         target_mapper: dict[str, str],
         registry_client=None,
         file_store: MeasurementFileStore | None = None,
+        snapshot_store: MeasurementFileStore | None = None,
     ) -> None:
         self.sources = sources
         self.growth_db = growth_db
@@ -224,6 +238,11 @@ class ExperimentHandler:
         #: since the two are one record and get backed up together.
         self.file_store = file_store or MeasurementFileStore(
             Path(growth_db.db_path).parent / "measurement_files", max_bytes=15 * 1024 * 1024,
+        )
+        #: Camera stills (take_snapshot), beside growth.db for the same reason.
+        self.snapshot_store = snapshot_store or MeasurementFileStore(
+            Path(growth_db.db_path).parent / "snapshots", max_bytes=SNAPSHOT_MAX_BYTES,
+            limit_setting="experiment.snapshot_max_bytes",
         )
         self.pld_config = pld_config
         self.bounds = bounds
@@ -1090,6 +1109,74 @@ class ExperimentHandler:
         # what might turn out to be the only copy of a measurement.
         await self.growth_db.set_measurement_file_state(req.file_id, "retired" if req.retire else "active")
         return self._file_info(await self._file_row(req.file_id))
+
+    # --- snapshots -----------------------------------------------------------------
+
+    @staticmethod
+    def _snapshot_info(row) -> SnapshotInfo:
+        at = row["taken_at"]
+        return SnapshotInfo(
+            snapshot_id=row["snapshot_id"], camera=row["camera"], stage=row["stage"],
+            note=row["note"], sample_id=row["sample_id"], session_id=row["session_id"],
+            width=row["width"], height=row["height"], dtype=row["dtype"], channels=row["channels"],
+            pixel_min=row["pixel_min"], pixel_max=row["pixel_max"],
+            raw_bytes=row["raw_bytes"], jpeg_bytes=row["jpeg_bytes"],
+            taken_at=to_epoch(at), taken_at_iso=to_iso(at), state=row["state"],
+        )
+
+    async def _snapshot_row(self, snapshot_id: int):
+        row = await self.growth_db.get_snapshot(snapshot_id)
+        if row is None:
+            raise ValueError(f"no snapshot with id {snapshot_id}")
+        return row
+
+    async def take_snapshot(self, req: TakeSnapshot) -> SnapshotInfo:
+        source = f"{req.camera}_camera"
+        camera = self.sources.get(source)
+        if camera is None:
+            raise RuntimeError(f"no {req.camera} camera client on this node ({source})")
+        _, frame = await camera.image()
+        encoded = await asyncio.to_thread(encode_frame, frame)
+
+        def save():
+            raw = self.snapshot_store.save(encoded.raw, f"{req.stage}.npy")
+            jpeg = self.snapshot_store.save(encoded.jpeg, f"{req.stage}.jpg", file_uuid=raw.file_uuid)
+            return raw, jpeg
+
+        raw, jpeg = await asyncio.to_thread(save)
+        snapshot_id = await self.growth_db.add_snapshot(
+            snapshot_uuid=raw.file_uuid,
+            session_id=self.journal.session_id if self.journal else None,
+            sample_id=await self.current_sample_id(),
+            camera=req.camera, stage=req.stage, note=req.note,
+            width=encoded.width, height=encoded.height, dtype=encoded.dtype, channels=encoded.channels,
+            pixel_min=encoded.pixel_min, pixel_max=encoded.pixel_max,
+            raw_path=raw.stored_path, raw_bytes=raw.size_bytes, raw_sha256=raw.sha256,
+            jpeg_path=jpeg.stored_path, jpeg_bytes=jpeg.size_bytes,
+        )
+        log.info("snapshot %s: %s camera at %s", snapshot_id, req.camera, req.stage)
+        return self._snapshot_info(await self._snapshot_row(snapshot_id))
+
+    async def list_snapshots(self, req: ListSnapshots) -> SnapshotList:
+        rows = await self.growth_db.list_snapshots(
+            sample_id=req.sample_id, session_id=req.session_id, camera=req.camera, stage=req.stage,
+            include_retired=req.include_retired, limit=req.limit,
+        )
+        return SnapshotList(snapshots=[self._snapshot_info(r) for r in rows])
+
+    async def snapshot_jpeg(self, req: SnapshotId) -> tuple[SnapshotInfo, bytes]:
+        row = await self._snapshot_row(req.snapshot_id)
+        return self._snapshot_info(row), await asyncio.to_thread(self.snapshot_store.read, row["jpeg_path"])
+
+    async def snapshot_frame(self, req: SnapshotId) -> tuple[SnapshotInfo, np.ndarray]:
+        row = await self._snapshot_row(req.snapshot_id)
+        data = await asyncio.to_thread(self.snapshot_store.read, row["raw_path"])
+        return self._snapshot_info(row), decode_raw(data)
+
+    async def retire_snapshot(self, req: RetireSnapshot) -> SnapshotInfo:
+        await self._snapshot_row(req.snapshot_id)
+        await self.growth_db.set_snapshot_state(req.snapshot_id, "retired" if req.retire else "active")
+        return self._snapshot_info(await self._snapshot_row(req.snapshot_id))
 
     # --- gated: laser power --------------------------------------------------------
 

@@ -193,3 +193,20 @@ async def test_a_simulated_pattern_comes_back_as_a_picture():
     assert not result.is_error
     assert [c.type for c in result.content] == ["image", "text"]
     assert "float32" in result.content[1].text
+
+
+async def test_a_snapshot_comes_back_as_a_picture():
+    from lumi.contracts.payloads.experiment import SnapshotInfo
+
+    info = SnapshotInfo(snapshot_id=1, camera="rheed", stage="depo_end", width=8, height=8,
+                        dtype="uint16", raw_bytes=10, jpeg_bytes=4)
+    server, _ = serve("experiment.driver.snapshot_jpeg", (info, b"\xff\xd8\xff\xe0jpeg"))
+
+    result = await server._on_call_tool(None, types.CallToolRequestParams(
+        name="experiment.driver.snapshot_jpeg", arguments={"snapshot_id": 1},
+    ))
+
+    assert not result.is_error
+    assert result.content[0].type == "image"
+    assert tools()["experiment.driver.snapshot_jpeg"].annotations.read_only_hint is True
+    assert tools()["experiment.driver.take_snapshot"].annotations.read_only_hint is False
