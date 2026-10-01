@@ -183,14 +183,21 @@ def build_simulated_chamber(log_path: str | None, mi_folder: str | None, time_sc
     folder.mkdir(parents=True, exist_ok=True)
 
     angles, numbers = target_angles_from_config(settings.pascal.config_reader.test.config_path)
+    # The heater curve defaults to the one in ChamberSimConfig, so a settings.toml
+    # written before it existed (with the old two-point keys) still gets it.
+    heater: dict = {}
+    if cfg.get("ld_min") is not None:
+        heater["ld_min"] = float(cfg.ld_min)
+    if cfg.get("heater_calibration") is not None:
+        heater["heater_calibration"] = tuple((float(i), float(t)) for i, t in cfg.heater_calibration)
+    if cfg.get("current_max") is not None:
+        heater["current_max"] = float(cfg.current_max)
     sim_config = ChamberSimConfig(
+        **heater,
         target_angles=angles,
         missed_pulse_rate=float(cfg.missed_pulse_rate),
         temperature_noise=float(cfg.temperature_noise),
-        # The measured calibration. Overridable because it is a measurement.
-        ld_min=float(cfg.ld_min),
-        heater_calibration=tuple((float(i), float(t)) for i, t in cfg.heater_calibration),
-        current_max=float(cfg.current_max),
+        # The rest of the measured calibration. Overridable because it is a measurement.
         flow_at_pressure_min=float(cfg.flow_at_pressure_min),
         flow_at_pressure_max=float(cfg.flow_at_pressure_max),
         pressure_at_flow_min=float(cfg.pressure_at_flow_min),
