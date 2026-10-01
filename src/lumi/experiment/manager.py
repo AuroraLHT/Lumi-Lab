@@ -120,6 +120,10 @@ class ExperimentBounds:
     temperature_min: float
     temperature_max: float
     temperature_pid_engage_threshold: float
+    # The heating current the manual warm-up from cold raises to before PID takes
+    # over: enough to clear temperature_pid_engage_threshold, and no more, since the
+    # warm-up runs open-loop and anything past the threshold is overshoot.
+    warm_up_current: float
     warm_up_step: float
     warm_up_current_ramp_rate: float
     warm_up_wait_interval: float
@@ -912,16 +916,16 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL))
 
         values = await self._log_values()
-        all_configs = await self.chamber_config.get_all_config()
-        ld_min = float(all_configs.configs["PIDsettings"]["LDmin"])
+        warm_up_current = b.warm_up_current
         starting_point = float(values["HT set"])
 
-        if starting_point > ld_min:
-            log.warning("warm-up starting point %.2f is above the PID limit %.2f; skipping", starting_point, ld_min)
+        if starting_point > warm_up_current:
+            log.warning("warm-up starting point %.2f is above the warm-up current %.2f; skipping",
+                        starting_point, warm_up_current)
             return False
 
         current = starting_point + b.warm_up_step
-        while current <= ld_min + b.warm_up_step * 0.5:
+        while current <= warm_up_current + b.warm_up_step * 0.5:
             await self.chamber_mi.execute(pcmd.SetHeatingCurrent(current=float(current)))
             await asyncio.sleep(b.warm_up_step / b.warm_up_current_ramp_rate)
             current += b.warm_up_step

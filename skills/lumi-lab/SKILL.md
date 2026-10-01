@@ -25,7 +25,7 @@ else here is only as strong as you following it.
   The same for cooling.
   From a cold chamber (below 220 °C) the ramp rate does not apply at first. PID only
   works properly above 220 °C, so `to_temperature` first heats on a fixed current
-  (to `LDmin`, about 300 °C) and only then hands over to PID, which ramps from the
+  (7.8 A, about 265 °C) and only then hands over to PID, which ramps from the
   measured temperature at the rate you gave. Expect that first stretch to run faster
   or slower than the nominal rate, and do not count it against the temperature stop
   rule (§4) or report it as a fault.

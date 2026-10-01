@@ -305,9 +305,9 @@ temperature_noise = 0.4
 # [amps, degC] points, interpolated linearly and extended linearly past the last. Below
 # ld_min the diode does not lase and the substrate sits at ambient; the curve starts
 # there. The points: 7 A -> 220 measured on the chamber, then the steady state of two
-# recorded growths (HZO-LSMO-022-L1 at 700, UMD_TFO_YSZ_AL_01 at 805). 8.5 A --
-# PLDconfig's [PIDsettings] LDmin, which `_warm_up_to_pid_limit` ramps to -- lands at
-# ~307 degC, clear of experiment.bounds.temperature_pid_engage_threshold = 220.
+# recorded growths (HZO-LSMO-022-L1 at 700, UMD_TFO_YSZ_AL_01 at 805).
+# experiment.bounds.warm_up_current = 7.8 A lands at ~266 degC, clear of the 220 degC
+# PID-engage threshold.
 ld_min = 6.5
 heater_calibration = [[7.0, 220.0], [15.25, 700.0], [17.88, 805.0]]
 current_max = 30.0             # A, the controller's current limit
@@ -613,6 +613,11 @@ mask_travel_max = 160.0
 temperature_min = 160.0
 temperature_max = 1000.0
 temperature_pid_engage_threshold = 220.0
+# The heating current (A) the warm-up from cold raises to before PID takes over. The
+# warm-up is open-loop, so it must clear temperature_pid_engage_threshold but anything
+# past it is overshoot: 7.8 A is the lab's usual number (~266 degC on the sim's curve).
+# PLDconfig's [PIDsettings] LDmin = 8.5 was used before and overshot to ~305 degC.
+warm_up_current = 7.8
 warm_up_step = 0.1
 warm_up_current_ramp_rate = 0.015
 warm_up_wait_interval = 0.2

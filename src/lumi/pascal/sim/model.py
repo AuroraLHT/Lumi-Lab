@@ -64,8 +64,8 @@ class ChamberSimConfig:
     # what radiative loss gives: delivered power ~ (I - 6.5 A) ~ T^4 - T_ambient^4 fits
     # all three measured points to within ~10%. A single straight line cannot: through
     # the two recordings it puts 6.5 A at ~360 degC, and through 6.5 A and 700 degC it
-    # leaves PLDconfig's `LDmin = 8.5` warm-up at ~180 degC, short of the 220 degC
-    # PID-engage threshold the lab clears every growth.
+    # leaves the lab's 7.8 A warm-up at ~125 degC, short of the 220 degC PID-engage
+    # threshold it clears every growth.
     #
     # `pyro_min` is PLDconfig [PIDsettings] Pyro_min: the pyrometer cannot *read* below
     # it, which is why an idle chamber logs a flat 160 while the substrate is colder.

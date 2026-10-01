@@ -48,7 +48,7 @@ async def handler(tmp_path):
             rheed_limit=(-3.0, 3.0), mask_block_position=75.0),
         bounds=ExperimentBounds(
             mask_travel_max=160.0, temperature_min=160.0, temperature_max=1000.0,
-            temperature_pid_engage_threshold=220.0, warm_up_step=0.1,
+            temperature_pid_engage_threshold=220.0, warm_up_current=7.8, warm_up_step=0.1,
             warm_up_current_ramp_rate=0.015, warm_up_wait_interval=0.01,
             warm_up_max_waittime=1.0, motor_ready_timeout=0.5),
         target_mapper={},

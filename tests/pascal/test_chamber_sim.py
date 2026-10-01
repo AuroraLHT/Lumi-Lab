@@ -142,7 +142,7 @@ def test_every_command_the_experiment_manager_emits_is_understood():
         pcmd.TriggerLaser(num_pulse=3000, frequency=10.0, sync=False, nowait=False),
         pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=75.0, sync=False, nowait=False),
         pcmd.SetRHEEDGunX(1.5),
-        pcmd.SetHeatingCurrent(current=8.5),
+        pcmd.SetHeatingCurrent(current=7.8),
         pcmd.HeatingLaserLock(locked=False, nowait=False),
         pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False),
         pcmd.HeatingLaserThreshold(state=pcmd.PascalState("ON")),
@@ -341,21 +341,25 @@ def test_cooling_tracks_the_setpoint_down_to_the_pyrometer_floor(model):
 def test_the_configured_warm_up_target_clears_the_pid_engage_threshold(model):
     """The cold path a growth actually takes.
 
-    `_warm_up_to_pid_limit` ramps the heating current to PLDconfig's
-    `[PIDsettings] LDmin = 8.5`, then raises "temperature stalled" unless the pyrometer
-    has passed `experiment.bounds.temperature_pid_engage_threshold = 220`. If a
-    re-measure moves the curve so 8.5 A no longer clears it, this fails rather than the
-    failure resurfacing minutes into a growth.
+    `_warm_up_to_pid_limit` raises the heating current to
+    `experiment.bounds.warm_up_current`, then raises "temperature stalled" unless the
+    pyrometer has passed `temperature_pid_engage_threshold`. If a re-measure moves the
+    curve, or the setting changes, so that it no longer clears the threshold, this
+    fails rather than the failure resurfacing minutes into a growth.
     """
-    assert model.temperature_for_current(8.5) == pytest.approx(307.3, abs=0.5)
-    assert model.temperature_for_current(8.5) > 220.0 + 50.0
+    import tomllib
+
+    bounds = tomllib.loads((PROJECT_ROOT / "cfg" / "settings.example.toml").read_text())["experiment"]["bounds"]
+    reached = model.temperature_for_current(bounds["warm_up_current"])
+    assert reached == pytest.approx(266.5, abs=0.5)
+    assert reached > bounds["temperature_pid_engage_threshold"] + 30.0
 
 
 def test_manual_current_warms_the_substrate_past_the_pid_engage_threshold(model):
     run(model, text(
         pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False),
         pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL),
-        pcmd.SetHeatingCurrent(current=8.5),
+        pcmd.SetHeatingCurrent(current=7.8),
         pcmd.Wait(120),
     ))
     assert model.logged_temperature > 220.0
@@ -364,14 +368,14 @@ def test_manual_current_warms_the_substrate_past_the_pid_engage_threshold(model)
 def test_pid_takes_over_from_the_warm_up_without_a_drop(model):
     """The handover `to_temperature` does after the manual warm-up.
 
-    The controller still holds the cold 160 setpoint when PID engages at ~300 degC.
+    The controller still holds the cold 160 setpoint when PID engages at ~265 degC.
     `to_temperature` sets the target and the ramp rate first, then turns PID on, and
     PID ramps from the measured temperature to the target.
     """
     run(model, text(
         pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False),
         pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL),
-        pcmd.SetHeatingCurrent(current=8.5),
+        pcmd.SetHeatingCurrent(current=7.8),
         pcmd.Wait(120),
     ))
     start = model.temperature_true

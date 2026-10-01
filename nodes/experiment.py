@@ -58,11 +58,18 @@ def _pld_config() -> PLDChamberConfiguration:
 
 def _bounds() -> ExperimentBounds:
     b = settings.experiment.bounds
+    if b.get("warm_up_current") is None:
+        raise RuntimeError(
+            "cfg/settings.toml [experiment.bounds] is missing warm_up_current (the heating "
+            "current the warm-up from cold raises to; it replaces PLDconfig's LDmin). Copy it "
+            "from cfg/settings.example.toml."
+        )
     return ExperimentBounds(
         mask_travel_max=b.mask_travel_max,
         temperature_min=b.temperature_min,
         temperature_max=b.temperature_max,
         temperature_pid_engage_threshold=b.temperature_pid_engage_threshold,
+        warm_up_current=b.warm_up_current,
         warm_up_step=b.warm_up_step,
         warm_up_current_ramp_rate=b.warm_up_current_ramp_rate,
         warm_up_wait_interval=b.warm_up_wait_interval,

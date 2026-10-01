@@ -77,12 +77,12 @@ Resolved by a re-measure, not a code change: the heater calibration anchor moved
 7 A → 160 °C to **7 A → 220 °C**. The simulator's heater is now a table of measured
 points (`heater_calibration` in `[pascal.sim]`): the 6.5 A lasing threshold at ambient,
 7 A → 220 °C, and the steady state of two recorded growths (15.25 A → 700 °C,
-17.88 A → 805 °C). PLDconfig's `[PIDsettings] LDmin = 8.5`, which
-`_warm_up_to_pid_limit` ramps to, lands at ~307 °C — clear of
+17.88 A → 805 °C). `experiment.bounds.warm_up_current = 7.8`, which
+`_warm_up_to_pid_limit` ramps to, lands at ~266 °C — clear of
 `experiment.bounds.temperature_pid_engage_threshold = 220`.
 
 `test_the_configured_warm_up_target_clears_the_pid_engage_threshold` pins it: if a
-future re-measure moves the curve so 8.5 A no longer clears 220 °C, the test fails
+future re-measure moves the curve so the warm-up current no longer clears 220 °C, the test fails
 rather than the stall resurfacing minutes into a growth.
 
 The earlier straight line stopped at ~203 °C at the threshold, so every cool-down fell
@@ -93,11 +93,11 @@ there, PID tracks the setpoint all the way to `cool_down`'s 160 °C.
 
 Below `temperature_pid_engage_threshold` the pyrometer cannot be trusted (it reads 160
 at its floor), so `_warm_up_to_pid_limit` heats open-loop: it steps the current to
-`LDmin` at `warm_up_current_ramp_rate` whatever ramp rate `to_temperature` was given,
-and the substrate settles at ~300 °C before PID takes over. A growth at 250 °C
-therefore overshoots and comes back down. Stopping the current steps once the pyrometer
-passes the threshold would cut the overshoot, but it changes how the real chamber is
-warmed, so it waits for a decision.
+`experiment.bounds.warm_up_current` at `warm_up_current_ramp_rate` whatever ramp rate
+`to_temperature` was given, and the substrate settles at ~266 °C (7.8 A) before PID
+takes over. It used to ramp to PLDconfig's `LDmin = 8.5` (~305 °C); 7.8 A is the lab's
+usual number and cuts the overshoot, but a growth below ~266 °C still goes past its
+target and comes back down, and the climb from cold is faster than the nominal rate.
 
 ## A dead chamber-log reader is invisible in the capability's state
 
