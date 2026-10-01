@@ -233,6 +233,22 @@ uv run python scripts/create_api_user.py agent --role operator --password <pw>
 uv run python scripts/create_api_user.py alice --admin --database run/simulation/users.db
 ```
 
+**The simulator has its own accounts.** `scripts/start_simulation.sh` points the stack
+(API, and an MCP server started with `scripts/start_mcp_http.sh`) at
+`run/simulation/users.db`, not `cfg/users.db`, so an account made with the plain command
+above does not exist there, and its login is refused. The file survives restarts. To
+create an account for the simulator, aim any of the commands at that file:
+
+```bash
+DYNACONF_AUTH__DATABASE_PATH=run/simulation/users.db \
+  uv run python -m lumi.api.manage create-user hliang16 --role admin
+# or, after the stack has started once, take its settings:
+source run/simulation/env.sh && uv run python -m lumi.api.manage create-user hliang16 --role admin
+```
+
+`start_simulation.sh --keep-database` makes the stack use `cfg/users.db` instead, so one
+set of accounts serves both, but it also writes recordings to the real HDF5 folder.
+
 **Broker account** — for a node, or a notebook/MCP session that talks to the bus
 directly. The permissions are derived from `src/lumi/contracts`, so re-run it after any
 contract change:
