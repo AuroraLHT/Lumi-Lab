@@ -395,14 +395,14 @@ the shared template is what made `python -m lumi.mcp` reach for the lab by defau
 > (non-durable ones are dropped by a broker restart anyway).
 
 The tools are generated, one per `(contract, capability, op)`, named
-`experiment.driver.to_temperature` and so on — 111 of them today. Adding an op to an
+`experiment.driver.to_temperature` and so on — 116 of them today. Adding an op to an
 exposed capability makes it a tool with no change here. The surface is deliberately
 narrower than the browser bridge's, and set by `EXPOSED` in `src/lumi/mcp/server.py`:
 
 | Job | Tools |
 |---|---|
 | Drive a growth | all of `experiment.driver`; `rheed.camera`; `rheed.integrator.bboxes` / `cache` (the live oscillation of each box the operator drew); `chamber.log`; `chamber.camera`; `system.registry.list_nodes` / `get_node` (which nodes are up) |
-| Read the history | the growth database through `experiment.driver` (`list_samples`, `sample_history`, `list_records`, `list_measurements`, …); the recordings through `storage.archive` (frames, RHEED integration traces, the chamber log each file carries) |
+| Read the history | the growth database through `experiment.driver` (`list_samples`, `sample_history`, `list_records`, `list_measurements`, `list_snapshots`, …); the recordings through `storage.archive` (frames, RHEED integration traces, the chamber log each file carries) |
 | Simulate | all of `simulation.rheed_sim`: structures, spot positions, patterns |
 
 Nothing else: an agent has no business reaching `system.supervisor.spawn`, raw MI script
@@ -413,6 +413,10 @@ execution (`chamber.mi_mode`), or rearranging the operator's integration boxes.
   the reads and ask before anything that changes the chamber.
 - **Pictures.** Camera frames, recorded frames and simulated patterns come back as images
   the model can see, with the real pixel range in the text beside them.
+  `experiment.driver.take_snapshot` keeps a frame from either camera with the growth,
+  labelled by stage (`start`, `heated`, `depo_start`, `depo_mid`, `depo_end`, `cooled`,
+  `other`): losslessly as `.npy` and as a JPEG, in a `snapshots` folder beside
+  `growth.db`.
 - **Big answers.** A result over 40,000 characters (a recording's frame times, a
   4000-point trace) comes back with its long lists shortened and a note saying so;
   `max_points`, `since`/`until` and `limit` get them whole.
@@ -439,6 +443,18 @@ under `mcpServers`.
 
 stdio needs no auth — it's a subprocess only you can spawn, the same trust level as any
 other local tool.
+
+The tools say what each op does; the **`lumi-lab` skill** (`skills/lumi-lab/`) says how
+the lab is run: the limits, which steps need a person, the growth procedures, when to
+stop, how to read RHEED, and how to keep the records honest. Install it in the same
+project you registered the server in:
+
+```bash
+/path/to/Lumi-Lab/scripts/install_skill.sh            # this project (.claude/skills)
+/path/to/Lumi-Lab/scripts/install_skill.sh --user     # every project (~/.claude/skills)
+```
+
+It is a symlink, so pulling this repo updates it.
 
 ### The HTTP transport
 
