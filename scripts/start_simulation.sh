@@ -132,7 +132,7 @@ fi
 
 # Everything above is exported into *this* process, so only the nodes started below
 # inherit it. Anything run alongside the stack from another terminal --
-# scripts/start_mcp_http.sh, a manage command, a notebook -- gets none of it, and
+# scripts/start_mcp_demo.sh, a manage command, a notebook -- gets none of it, and
 # silently talks to the settings.toml defaults instead: the wrong user database, the
 # lab broker. Write the choices down so those callers can adopt them rather than
 # each re-deriving (or re-inventing) them.
@@ -357,7 +357,7 @@ if [[ $WITH_EXPERIMENT -eq 1 ]]; then
     echo "to point a real MCP client (Claude Code, Codex) at this chamber:"
     echo "  claude mcp add lumi -- uv run --project $PROJECT_ROOT python -m lumi.mcp"
     echo "                                                 # stdio: local subprocess, no login needed"
-    echo "  scripts/start_mcp_http.sh                      # or serve HTTP and sign in through the browser:"
+    echo "  scripts/start_mcp_demo.sh                      # or serve HTTP and sign in through the browser:"
     echo "  claude mcp add --transport http lumi http://127.0.0.1:8100/mcp"
     if [[ "${DYNACONF_AUTH__ENABLED:-}" != "true" ]]; then
         echo "                                                 # (the HTTP login checks passwords whatever"

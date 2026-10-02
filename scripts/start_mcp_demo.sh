@@ -6,7 +6,7 @@
 # then runs the server in the foreground.
 #
 # Usage:
-#   scripts/start_mcp_http.sh [--port N] [--user NAME] [--password PW] [--host HOST]
+#   scripts/start_mcp_demo.sh [--port N] [--user NAME] [--password PW] [--host HOST]
 #                             [--api URL] [--db PATH] [--public-url URL] [--token-only]
 #
 #   --token-only   mint the token and exit, without starting the server

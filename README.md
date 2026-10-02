@@ -235,7 +235,7 @@ uv run python scripts/create_api_user.py alice --admin --database run/simulation
 ```
 
 **The simulator has its own accounts.** `scripts/start_simulation.sh` points the stack
-(API, and an MCP server started with `scripts/start_mcp_http.sh`) at
+(API, and an MCP server started with `scripts/start_mcp_demo.sh`) at
 `run/simulation/users.db`, not `cfg/users.db`, so an account made with the plain command
 above does not exist there, and its login is refused. The file survives restarts. To
 create an account for the simulator, aim any of the commands at that file:
@@ -517,7 +517,7 @@ agent) or a server started with `--no-oauth`. It is the same JWT `POST /auth/log
 issues, it lasts 12 hours, and it cannot be renewed:
 
 ```bash
-scripts/start_mcp_http.sh --token-only        # simulator stack, which must run --with-auth
+scripts/start_mcp_demo.sh --token-only        # simulator stack, which must run --with-auth
 claude mcp add --transport http lumi http://127.0.0.1:8100/mcp \
   --header "Authorization: Bearer $(cat run/simulation/mcp_token.txt)"
 ```

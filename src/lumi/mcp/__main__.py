@@ -26,7 +26,7 @@ renewed from there. Register it with no secrets at all --
     claude mcp add --transport http lumi http://127.0.0.1:8100/mcp
 
 -- and log in when it asks. A hand-minted bearer token still works if you would
-rather pass one (scripts/start_mcp_http.sh --token-only); `--no-oauth` turns the
+rather pass one (scripts/start_mcp_demo.sh --token-only); `--no-oauth` turns the
 login flow off and leaves only that.
 
 HTTP serves plain HTTP; put a reverse proxy (nginx/Caddy) in front for TLS, and
@@ -120,7 +120,7 @@ def cli() -> None:
         help=(
             "do not act as an OAuth authorization server: no login page, no client "
             "registration. Clients must then present a bearer token minted elsewhere "
-            "(scripts/start_mcp_http.sh --token-only), which is how this worked before"
+            "(scripts/start_mcp_demo.sh --token-only), which is how this worked before"
         ),
     )
     parser.add_argument("-v", "--verbose", action="store_true")

@@ -2,7 +2,7 @@
 *log in* instead of being handed a token out of band.
 
 Why this exists: the HTTP transport has always demanded an operator bearer token,
-and the only way to get one was to run `scripts/start_mcp_http.sh --token-only`
+and the only way to get one was to run `scripts/start_mcp_demo.sh --token-only`
 and paste the result into the host's config. That is not how anyone uses an MCP
 server, and it has a second problem -- the token expires in 12 hours, so the
 pasted copy goes stale by the next morning with no way to renew it.
