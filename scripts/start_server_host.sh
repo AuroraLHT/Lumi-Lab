@@ -269,7 +269,7 @@ while IFS='|' read -r level message; do
                 warn "$message (--allow-plain-http): logins cross the network unencrypted"
             else
                 fail "$message -- logins and /ws would cross the network unencrypted."
-                echo "        scripts/tailscale_cert.sh --install-cron, then [tls] in cfg/.secrets.toml" >&2
+                echo "        scripts/tailscale_cert.sh --install-cron, then [tls] in cfg/.secrets.toml -- docs/HTTPS.md" >&2
                 echo "        (or pass --allow-plain-http on an isolated bench network)." >&2
             fi ;;
         *) fail "TLS check: $level $message" ;;

@@ -162,35 +162,22 @@ host's producers publish into. Give the instrument host a real broker account (s
 refuses to start with `auth.enabled = false` or the placeholder signing key
 (`--allow-insecure-auth` overrides, for an isolated bench network).
 
-**HTTPS.** The API (and so `/ws`, as `wss://`) and the MCP server serve TLS themselves,
-with a [Tailscale](https://tailscale.com) certificate: a real Let's Encrypt one for this
-machine's tailnet name, so browsers, phones and Claude Code trust it with nothing
-installed. Clients only need to be on the tailnet. One-time setup:
+**HTTPS.** The API (and so `/ws`, as `wss://`) and the MCP server serve HTTPS with a
+[Tailscale](https://tailscale.com) certificate. It's a real Let's Encrypt certificate, so
+browsers, phones and Claude Code trust it with nothing installed on the client, and it
+renews itself. Clients connect by the machine's `.ts.net` name. The one-time setup is
+five short steps, each with a check:
+**[docs/HTTPS.md](docs/HTTPS.md)**. In brief:
 
-1. Tailscale admin console → **DNS**: MagicDNS on, **HTTPS Certificates** enabled.
-2. On the server host: `sudo tailscale set --operator=$USER`
-3. `scripts/tailscale_cert.sh --install-cron`. This fetches the certificate into `cfg/tls/`
-   and adds a daily renewal to your crontab that signals the running servers to reload it.
-   Renewals need no restart and drop no `/ws` session.
-4. In `cfg/.secrets.toml`:
+```bash
+# Tailscale admin console -> DNS: enable MagicDNS and HTTPS Certificates (once per tailnet)
+sudo tailscale set --operator=$USER          # once per server
+scripts/tailscale_cert.sh --install-cron     # fetch the certificate and renew it daily
+# then add [tls] to cfg/.secrets.toml (see the guide)
+```
 
-   ```toml
-   [tls]
-   enabled = true
-   certfile = "cfg/tls/tailscale.crt"
-   keyfile = "cfg/tls/tailscale.key"
-   ```
-
-The certificate is valid for the MagicDNS name only (`<machine>.<tailnet>.ts.net`), not
-for any IP, so that name is what Lumi-Deck, the MCP client and phones use:
-`https://<machine>.<tailnet>.ts.net:8000`. `start_server_host.sh` refuses to serve plain
-HTTP (`--allow-plain-http` overrides), and checks that the certificate covers that name
-and isn't close to expiry. Set `api.allow_origins` to the origin(s) Lumi-Deck is served from.
-
-No Tailscale? `scripts/make_lab_cert.sh` makes a lab CA and a certificate for the LAN
-address instead. That works too, but every client then has to trust `cfg/tls/ca.crt` by
-hand (`NODE_EXTRA_CA_CERTS` for Claude Code), which is impractical on phones, and it does
-not renew itself. The simulation stack always runs plain HTTP on loopback.
+`start_server_host.sh` refuses to serve plain HTTP (`--allow-plain-http` overrides). The
+simulation stack always runs plain HTTP on loopback.
 
 To run a node by hand instead, in the order consumers-before-producers:
 
@@ -531,8 +518,7 @@ scripts/start_mcp_server.sh                           # https://<tailscale name>
 scripts/start_mcp_server.sh --public-url https://lumi.lab.example:8100   # a DNS name
 ```
 
-It serves HTTPS with the same certificate as the API (see **HTTPS** under
-[Against real hardware](#against-real-hardware)). It has to: the login is OAuth, and the
+It serves HTTPS with the same certificate as the API (setup: [docs/HTTPS.md](docs/HTTPS.md)). It has to: the login is OAuth, and the
 MCP SDK refuses an `http://` issuer anywhere but loopback ("Issuer URL must be HTTPS").
 It runs a preflight first (`--check` runs only that): it refuses the placeholder signing
 key, a user database with no active operator/admin, a public URL the SDK would reject, and

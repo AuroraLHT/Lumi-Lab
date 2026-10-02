@@ -15,6 +15,8 @@
 #   --name          the certificate name (default: this machine's MagicDNS name)
 #   --out           where the files go (default cfg/tls, git-ignored)
 #
+# Step-by-step guide with checks and troubleshooting: docs/HTTPS.md
+#
 # One-time setup, outside this repo:
 #   1. Tailscale admin console -> DNS: MagicDNS on, "HTTPS Certificates" enabled
 #   2. sudo tailscale set --operator=$USER    (lets this user fetch certificates)

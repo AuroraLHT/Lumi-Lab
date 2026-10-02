@@ -112,7 +112,7 @@ case "$PUBLIC_URL" in
     # (RFC 8414), raising "Issuer URL must be HTTPS" at startup -- say so here instead.
     https://*|http://localhost[:/]*|http://localhost|http://127.0.0.1[:/]*|http://127.0.0.1|http://\[::1\]*) ;;
     *) fail "--public-url $PUBLIC_URL is plain HTTP off loopback; the OAuth login requires https."
-       echo "        scripts/tailscale_cert.sh --install-cron, then [tls] in cfg/.secrets.toml" >&2
+       echo "        scripts/tailscale_cert.sh --install-cron, then [tls] in cfg/.secrets.toml -- docs/HTTPS.md" >&2
        echo "        (or bind --bind-host 127.0.0.1 and have clients reach it over an SSH tunnel)." >&2 ;;
 esac
 
