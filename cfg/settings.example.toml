@@ -301,21 +301,16 @@ temperature_noise = 0.4
 # Measured chamber calibration. These are the numbers to change after a re-measure --
 # everything else in the model is shape, this is scale.
 #
-# Heater: the laser diode does not lase below ld_min, and substrate temperature is
-# linear in drive current between the two points below. 8.5 A -- PLDconfig's
-# [PIDsettings] LDmin, which `_warm_up_to_pid_limit` ramps to -- lands at ~271 degC,
-# clear of experiment.bounds.temperature_pid_engage_threshold = 220, so a growth from
-# a cold chamber gets past the warm-up.
-#
-# temperature_min is the calibration anchor at current_at_temperature_min, not a floor:
-# the pyrometer floor is pyro_min (160). The coldest the diode can hold is the line
-# extended to ld_min, ~203 degC; ask for less and it switches off and the substrate
-# coasts down to the floor.
+# Heater: steady-state substrate temperature against heating-laser drive current, as
+# [amps, degC] points, interpolated linearly and extended linearly past the last. Below
+# ld_min the diode does not lase and the substrate sits at ambient; the curve starts
+# there. The points: 7 A -> 220 measured on the chamber, then the steady state of two
+# recorded growths (HZO-LSMO-022-L1 at 700, UMD_TFO_YSZ_AL_01 at 805).
+# experiment.bounds.warm_up_current = 7.8 A lands at ~266 degC, clear of the 220 degC
+# PID-engage threshold.
 ld_min = 6.5
-current_at_temperature_min = 7.0
-current_at_temperature_max = 30.0
-temperature_min = 220.0
-temperature_max = 1000.0
+heater_calibration = [[7.0, 220.0], [15.25, 700.0], [17.88, 805.0]]
+current_max = 30.0             # A, the controller's current limit
 
 # Measured axis speeds. The carousel angles come from PLDconfig's [TGsettings] (the
 # shipped file has the slots 51.5 degrees apart), so at 10 deg/s a slot-to-slot move
@@ -559,12 +554,20 @@ flip_y = true
 exchange = "EXPERIMENT"
 exchange_type = "topic"
 growth_db_path = "cfg/growth.db"
+# The real chamber's pressure is set by a person at the gauge, so set_pressure raises a
+# `pressure` pending confirmation for them instead of commanding the controller.
+# start_simulation.sh turns this off: the simulator sets the pressure directly.
+pressure_by_hand = true
 # Files attached to measurements (raw instrument files, AFM images). Empty means a
 # `measurement_files` folder beside growth.db -- keep the two together, they are one
 # record. The size cap is per file: an upload is one bus message, and RabbitMQ 4 and
 # the browser websocket both stop at 16 MiB.
 measurement_files_path = ""
 measurement_file_max_bytes = 15728640
+# Camera stills from take_snapshot: each a lossless .npy plus a JPEG to look at. Empty
+# means a `snapshots` folder beside growth.db. The cap is per file.
+snapshots_path = ""
+snapshot_max_bytes = 16777216
 
 # How long to wait for an MI script to report completion, in seconds. **0 means wait
 # indefinitely**, and that is the default because it is what the controller actually
@@ -614,6 +617,11 @@ mask_travel_max = 160.0
 temperature_min = 160.0
 temperature_max = 1000.0
 temperature_pid_engage_threshold = 220.0
+# The heating current (A) the warm-up from cold raises to before PID takes over. The
+# warm-up is open-loop, so it must clear temperature_pid_engage_threshold but anything
+# past it is overshoot: 7.8 A is the lab's usual number (~266 degC on the sim's curve).
+# PLDconfig's [PIDsettings] LDmin = 8.5 was used before and overshot to ~305 degC.
+warm_up_current = 7.8
 warm_up_step = 0.1
 warm_up_current_ramp_rate = 0.015
 warm_up_wait_interval = 0.2

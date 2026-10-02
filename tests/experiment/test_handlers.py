@@ -22,7 +22,9 @@ from lumi.contracts.payloads.experiment import (
     AnnealStep,
     BeginSetLaserPower,
     ConfirmLaserPower,
+    ConfirmProceed,
     MoveTo,
+    PerformDeposition,
     FinishCurrentPixel,
     AddMeasurement,
     ExperimentId,
@@ -162,7 +164,7 @@ async def handler(tmp_path):
     )
     bounds = ExperimentBounds(
         mask_travel_max=160.0, temperature_min=160.0, temperature_max=1000.0,
-        temperature_pid_engage_threshold=220.0, warm_up_step=0.1,
+        temperature_pid_engage_threshold=220.0, warm_up_current=7.8, warm_up_step=0.1,
         warm_up_current_ramp_rate=0.015, warm_up_wait_interval=0.01, warm_up_max_waittime=1.0,
         motor_ready_timeout=0.5,
     )
@@ -359,6 +361,7 @@ async def test_set_mfc_control_opens_and_closes_the_master_gate(handler):
 
 
 async def test_set_pressure_and_pressure_control_are_separate(handler):
+    handler.pressure_by_hand = False  # the simulator: set_pressure commands the controller
     await handler.set_pressure(SetPressure(pressure=20.0e-3))
     await handler.set_pressure_control(SetPressureControl(on=True))
     await handler.set_pressure_control(SetPressureControl(on=False))
@@ -996,3 +999,102 @@ async def test_unknown_column_raises_rather_than_no_opping(handler):
     ))
     with pytest.raises(ValueError, match="not editable on substrate"):
         await handler.growth_db.update_row("substrate", info.substrate_id, colour="blue")
+
+
+async def test_to_temperature_sets_the_target_before_engaging_pid(handler):
+    # Target, ramp rate, then PID on: engaged first, PID would chase whatever setpoint
+    # the controller still holds (after the warm-up, the cold 160).
+    handler.sources["chamber_log"].values["HT Temp moni"] = "300.0"
+    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20))
+
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            assert event.task_result["ok"] is True
+            break
+        await asyncio.sleep(0.01)
+    else:
+        pytest.fail("task never reported completion")
+
+    assert handler.sources["chamber_mi"].calls == [
+        "Temperature Set 700.0 (Nowait)\n",
+        "Temperature Ramp 20.0\n",
+        "Temperature Control PID\n",
+        "Temperature Set 700.0\n",
+    ]
+
+
+# --- motion: one move at a time -------------------------------------------------
+
+
+class SlowMi(FakeMi):
+    """Every MI command takes `delay` seconds, like a carousel that is revolving."""
+
+    def __init__(self, delay: float) -> None:
+        super().__init__()
+        self.delay = delay
+
+    async def execute(self, cmd, timeout: float = 30.0):
+        await asyncio.sleep(self.delay)
+        return await super().execute(cmd, timeout)
+
+
+async def test_a_second_move_is_refused_while_the_first_is_running(handler):
+    handler.manager.chamber_mi = SlowMi(0.2)
+    first = asyncio.create_task(handler.rotate_sample_to(SampleAngle(angle=90.0)))
+    await asyncio.sleep(0.05)
+
+    # A caller that retried after a timeout must not start a second move under the first.
+    with pytest.raises(RuntimeError, match="rotate_sample_to is still moving"):
+        await handler.set_target(SetTarget(target_id="A", rotation_mode="AUTO", twist_mode="AUTO"))
+    await first
+
+    # Released once it finished, and after a move that failed too.
+    handler.manager.chamber_mi = FakeMi()
+    await handler.rotate_sample_by(SampleAngle(angle=10.0))
+    handler.manager.chamber_mi = None
+    with pytest.raises(AttributeError):
+        await handler.rotate_sample_by(SampleAngle(angle=10.0))
+    assert handler._motion is None
+
+
+async def test_nothing_else_moves_while_a_deposition_runs(handler):
+    handler.manager.chamber_mi = SlowMi(0.1)
+    await handler.perform_deposition(PerformDeposition(
+        num_pulse=10, laser_repetition_rate=5.0, target_id="A", is_dryrun=True,
+    ))
+    with pytest.raises(RuntimeError, match="perform_deposition is still moving"):
+        await handler.move_mask_to_position(MoveTo(position=50.0))
+
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            break
+        await asyncio.sleep(0.01)
+    assert handler._motion is None
+    handler.manager.chamber_mi = FakeMi()
+    await handler.move_mask_to_position(MoveTo(position=50.0))
+
+
+# --- pressure: by hand on the real chamber, direct in the simulator ----------------
+
+
+async def test_set_pressure_asks_a_person_on_the_real_chamber(handler):
+    assert handler.pressure_by_hand  # the default: a real chamber
+    await handler.set_pressure(SetPressure(pressure=0.1))
+
+    pending = handler.readout().pending_confirmation
+    assert pending is not None and pending.kind == "pressure"
+    assert "0.1 Torr" in pending.message
+    # Nothing commanded: the person sets it at the gauge.
+    assert handler.sources["chamber_mi"].calls == []
+
+    await handler.confirm(ConfirmProceed(confirmation_id=pending.id))
+    assert handler.readout().pending_confirmation is None
+
+
+async def test_set_pressure_sets_it_directly_in_the_simulator(handler):
+    handler.pressure_by_hand = False
+    await handler.set_pressure(SetPressure(pressure=0.1))
+    assert handler.readout().pending_confirmation is None
+    assert handler.sources["chamber_mi"].calls == ["Set Pressure= 1.00E-1\n"]

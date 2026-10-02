@@ -83,7 +83,8 @@ opt = [
     "gpytorch>=1.11",
     "pandas>=2.2",
 ]
-# The MCP server that exposes the experiment node's ops as tools for an LLM agent.
+# The MCP server that exposes the lab (the experiment node, the archive, the
+# simulator) as tools for an LLM agent.
 # A separate extra from `experiment` itself: the node needs aiosqlite, the MCP
 # server (a distinct process) needs the SDK, and neither host has to install both.
 # uvicorn/bcrypt/pyjwt/aiosqlite are here (duplicating parts of `api`) because the

@@ -120,15 +120,19 @@ class CapabilityClient:
         fut.set_result((message.body, dict(message.headers or {})))
 
     async def call(
-        self, op_name: str, request: BaseModel | None = None, payload: Payload = None
+        self, op_name: str, request: BaseModel | None = None, payload: Payload = None,
+        *, actor: str | None = None,
     ) -> BaseModel | tuple[BaseModel, Payload]:
         """Issue one request. Returns the response model, or (model, payload) for a
         binary codec. Raises RemoteError if the server said no, TimeoutError if it
-        said nothing."""
+        said nothing. `actor` credits this one call to someone other than the
+        client's own `actor`, for a client shared between callers (the MCP server)."""
         if self._reply is None:
             raise RuntimeError(f"{self.name}: call start() before calling {op_name}")
 
         op = self.cap.op(op_name)
+        # An op that blocks on something slow (a motor move) declares how long to wait.
+        timeout = max(self.timeout, op.timeout_s or 0.0)
         req = request if request is not None else op.request()
         body, extra = encode(req, op.request_codec, payload)
 
@@ -139,7 +143,9 @@ class CapabilityClient:
         # round, so a fast reply could arrive before its own future existed.
         self._futures[cid] = fut
 
-        headers = envelope.request(self.name, op.name, str(op.request_codec), actor=self.actor, **extra)
+        headers = envelope.request(
+            self.name, op.name, str(op.request_codec), actor=actor or self.actor, **extra
+        )
         try:
             await self.exchange.publish(
                 Message(
@@ -155,11 +161,11 @@ class CapabilityClient:
             )
             # Always bounded. PubSubClient.request() had no timeout at all: a lost
             # response hung the caller forever.
-            raw_body, raw_headers = await asyncio.wait_for(fut, self.timeout)
+            raw_body, raw_headers = await asyncio.wait_for(fut, timeout)
         except TimeoutError:
             self._futures.pop(cid, None)
             raise TimeoutError(
-                f"{self.target}.{op.name} did not answer within {self.timeout}s"
+                f"{self.target}.{op.name} did not answer within {timeout}s"
             ) from None
         finally:
             self._futures.pop(cid, None)

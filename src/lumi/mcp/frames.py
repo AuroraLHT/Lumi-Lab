@@ -98,8 +98,13 @@ def _to_uint8(array: np.ndarray, low: float, high: float) -> tuple[np.ndarray, b
     return (((array.astype(np.float32) - low) / (high - low)) * 255).astype(np.uint8), True
 
 
-def binary_content(payload: Any, codec: str) -> tuple[list[types.ContentBlock], str]:
+def binary_content(
+    payload: Any, codec: str, *, text_budget: int = 40_000
+) -> tuple[list[types.ContentBlock], str]:
     """What to send for an op whose body is not JSON: `(content, note)`.
+
+    A body that is UTF-8 text -- a CSV or a data export attached to a measurement --
+    goes back as text, cut at `text_budget` characters with the note saying so.
 
     Anything that is not a renderable image degrades to a sentence saying what
     came back instead. The previous behaviour -- dropping the payload and
@@ -128,9 +133,27 @@ def binary_content(payload: Any, codec: str) -> tuple[list[types.ContentBlock], 
                         type="image", data=base64.b64encode(raw).decode("ascii"), mime_type=mime
                     )
                 ], f"{mime}, {len(raw)} bytes"
-        return [], f"{len(raw)} bytes of opaque {codec} body, not an image"
+        text = _as_text(raw)
+        if text is not None:
+            note = f"{len(raw)} bytes of text"
+            if len(text) > text_budget:
+                note += f", cut to its first {text_budget:,} of {len(text):,} characters"
+                text = text[:text_budget]
+            return [types.TextContent(type="text", text=text)], note
+        return [], f"{len(raw)} bytes of opaque {codec} body, not an image or text"
 
     if isinstance(payload, dict):  # Codec.NPZ: named arrays, no single picture to show
         return [], f"{codec} payload with arrays: {', '.join(sorted(payload))}"
 
     return [], f"{codec} payload of type {type(payload).__name__}, not renderable"
+
+
+def _as_text(raw: bytes) -> str | None:
+    """The body as text, if it is text: valid UTF-8 with no NUL bytes (which every
+    binary format of any size has, and no text file does)."""
+    if b"\x00" in raw:
+        return None
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None

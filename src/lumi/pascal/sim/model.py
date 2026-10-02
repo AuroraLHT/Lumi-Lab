@@ -6,10 +6,12 @@ issued, on a timescale close enough to the real machine that timeouts, ramp wait
 "has it got there yet?" polls behave the way they will in the lab. Where a real number
 was available it is anchored to one:
 
-- the heater is the chamber's measured calibration: a 6.5 A minimum on the heating
-  laser diode, and temperature linear in drive current from 7 A -> 160 degC to
-  30 A -> 1000 degC. The floor is `PLDconfig.ini`'s `[PIDsettings] Pyro_min=160`, which
-  is exactly why a cold chamber logs a flat 160 in the recorded asset;
+- the heater follows measured (drive current, substrate temperature) points: the
+  diode's 6.5 A lasing threshold, a 7 A -> 220 degC bench point, and the steady state
+  of two recorded growths (15.25 A -> 700 degC, 17.88 A -> 805 degC). Piecewise linear
+  between them, extended linearly past the last. The pyrometer floor is
+  `PLDconfig.ini`'s `[PIDsettings] Pyro_min=160`, which is exactly why a cold chamber
+  logs a flat 160 in the recorded asset;
 - the gas line likewise: pressure linear in MFC flow from 0.5 sccm -> 1 mTorr to
   30 sccm -> 200 mTorr;
 - the process gauge's ~1.1e-3 Torr zero offset is read off the recorded asset, where an
@@ -49,26 +51,32 @@ class ChamberSimConfig:
     """Everything the model needs. Populated from `[pascal.sim]` in settings.toml."""
 
     # --- heater -------------------------------------------------------------
-    # Measured on the chamber: the heating laser diode has a 6.5 A minimum, and the
-    # substrate temperature is linear in drive current from 7 A -> 220 degC to
-    # 30 A -> 1000 degC.
+    # Steady-state substrate temperature against heating-laser drive current, as
+    # (amps, degC) points, interpolated linearly and extended linearly past the last
+    # one. Where each point comes from:
     #
-    # Note the calibration anchor (220 at 7 A) is not the pyrometer floor. `pyro_min`
-    # is PLDconfig [PIDsettings] Pyro_min -- the pyrometer cannot *read* below it, which
-    # is why an idle chamber logs a flat 160 -- while the lowest temperature the diode
-    # can actually hold is the anchor extended down to `ld_min`, about 203 degC. Between
-    # the two the substrate is simply cold and the pyrometer says 160.
+    #   6.5 A  -> ambient  the diode's lasing threshold: no optical power yet
+    #   7.0 A  -> 220      measured on the chamber
+    #   15.25 A -> 700     HZO-LSMO-022-L1 (2026-03-09), mean `HT moni` while holding 700
+    #   17.88 A -> 805     UMD_TFO_YSZ_AL_01 (2025-09-19), likewise at 805
     #
-    # The anchor matters beyond realism: `_warm_up_to_pid_limit` ramps to PLDconfig's
-    # `[PIDsettings] LDmin = 8.5`, and the growth only proceeds if that clears
-    # `experiment.bounds.temperature_pid_engage_threshold = 220`. 8.5 A is 271 degC
-    # here, so it does.
+    # The curve is concave -- steep just above threshold, flatter when hot -- which is
+    # what radiative loss gives: delivered power ~ (I - 6.5 A) ~ T^4 - T_ambient^4 fits
+    # all three measured points to within ~10%. A single straight line cannot: through
+    # the two recordings it puts 6.5 A at ~360 degC, and through 6.5 A and 700 degC it
+    # leaves the lab's 7.8 A warm-up at ~125 degC, short of the 220 degC PID-engage
+    # threshold it clears every growth.
+    #
+    # `pyro_min` is PLDconfig [PIDsettings] Pyro_min: the pyrometer cannot *read* below
+    # it, which is why an idle chamber logs a flat 160 while the substrate is colder.
     pyro_min: float = 160.0
+    ambient_temperature: float = 25.0
     ld_min: float = 6.5
-    current_at_temperature_min: float = 7.0
-    current_at_temperature_max: float = 30.0
-    temperature_min: float = 220.0
-    temperature_max: float = 1000.0
+    heater_calibration: tuple[tuple[float, float], ...] = (
+        (7.0, 220.0), (15.25, 700.0), (17.88, 805.0),
+    )
+    # The controller's current limit (`Set Maximum Current` overrides it at run time).
+    current_max: float = 30.0
     heater_tau: float = 8.0
     current_tau: float = 1.0
     temperature_noise: float = 0.4
@@ -204,10 +212,14 @@ class ChamberModel:
         self._rng = random.Random(self.config.seed)
 
         c = self.config
-        # degC per amp, from the two measured calibration points.
-        self._temp_slope = (c.temperature_max - c.temperature_min) / (
-            c.current_at_temperature_max - c.current_at_temperature_min
-        )
+        # The heater curve: the lasing threshold at ambient, then the measured points.
+        points = sorted(c.heater_calibration)
+        if not points or points[0][0] <= c.ld_min:
+            raise ValueError("heater_calibration needs points above ld_min")
+        self._heater_curve = [(c.ld_min, c.ambient_temperature), *points]
+        temperatures = [t for _, t in self._heater_curve]
+        if temperatures != sorted(temperatures) or len(set(temperatures)) != len(temperatures):
+            raise ValueError("heater_calibration must rise with current")
         # Torr per sccm, likewise.
         self._pressure_slope = (c.pressure_at_flow_max - c.pressure_at_flow_min) / (
             c.flow_at_pressure_max - c.flow_at_pressure_min
@@ -225,11 +237,9 @@ class ChamberModel:
         self.manual_current = 0.18  # the recorded asset's idle standby current
         self.current_command = 0.18
         self.current_moni = 0.0
-        self.temperature_true = c.pyro_min
+        self.temperature_true = c.ambient_temperature
         self.min_current = 0.0
-        # The top of the calibrated range: 30 A is 1000 degC, and there is no measured
-        # curve past it. `Set Maximum Current` overrides.
-        self.max_current = c.current_at_temperature_max
+        self.max_current = c.current_max
 
         # --- laser
         self.laser_hz = 0.0
@@ -297,28 +307,21 @@ class ChamberModel:
     # --- the measured calibration curves ------------------------------------
 
     def temperature_for_current(self, current: float) -> float:
-        """Steady-state substrate temperature for a heating-laser drive current.
+        """Steady-state substrate temperature (true, not as logged) for a drive current.
 
-        Linear between the two measured points, floored at the pyrometer minimum.
-        Below `ld_min` the diode is under its lasing threshold and delivers nothing.
+        Piecewise linear through the heater curve, extended linearly past its last
+        point. Below `ld_min` the diode is under its lasing threshold and delivers
+        nothing, so the substrate sits at ambient.
         """
-        c = self.config
-        if current < c.ld_min:
-            return c.pyro_min
-        temperature = c.temperature_min + self._temp_slope * (current - c.current_at_temperature_min)
-        return max(c.pyro_min, temperature)
+        if current <= self.config.ld_min:
+            return self.config.ambient_temperature
+        return _piecewise_linear(self._heater_curve, current)
 
     def current_for_temperature(self, temperature: float) -> float:
-        """The inverse, extended below the calibration anchor rather than clamped to it.
-
-        Asking for less than the anchor's 220 degC returns a current under `ld_min`,
-        which `temperature_for_current` maps back to the pyrometer floor -- so the pair
-        round-trips, and a setpoint the diode cannot hold turns it off instead of
-        pinning it at its lasing threshold and overshooting the setpoint forever.
-        """
-        c = self.config
-        current = c.current_at_temperature_min + (temperature - c.temperature_min) / self._temp_slope
-        return max(0.0, current)
+        """The inverse. Ambient or colder needs no power: the threshold current."""
+        if temperature <= self.config.ambient_temperature:
+            return self.config.ld_min
+        return _piecewise_linear([(t, i) for i, t in self._heater_curve], temperature)
 
     def pressure_for_flow(self, flow: float) -> float:
         """Chamber pressure in Torr for a total MFC flow in sccm."""
@@ -346,7 +349,12 @@ class ChamberModel:
 
     def set_temperature_control(self, mode: str) -> None:
         with self._lock:
-            self.temperature_mode = "PID" if mode.upper() == "PID" else "Manual"
+            mode = "PID" if mode.upper() == "PID" else "Manual"
+            if mode == "PID" and self.temperature_mode != "PID":
+                # Engaging PID starts the ramp from the measured temperature, so the
+                # substrate goes from where it is to the target set beforehand.
+                self.temperature_setpoint = self.logged_temperature
+            self.temperature_mode = mode
 
     def set_temperature_ramp(self, rate: float | None, enabled: bool) -> None:
         with self._lock:
@@ -566,15 +574,10 @@ class ChamberModel:
             # nothing, so this shows in the log and heats nothing.
             self.current_command = min(self.manual_current, c.ld_min)
         elif self.temperature_mode == "PID":
+            # Feed-forward off the curve: the current that holds the ramped setpoint.
+            # The curve reaches ambient at ld_min, so cooling to `cool_down`'s 160 degC
+            # is a smooth walk down the current, not the diode cutting out.
             wanted = self.current_for_temperature(self.temperature_setpoint)
-            # No ld_min floor here, deliberately. The calibrated range now bottoms out
-            # at 220 degC (7 A), so a setpoint below that -- `cool_down` asks for 160 --
-            # wants a current under the diode's 6.5 A lasing minimum. Clamping up to
-            # ld_min would hold the substrate at ~203 degC while `HT Temp set` read 160,
-            # so `HT Temp moni` would sit permanently above the setpoint and every
-            # "have we arrived?" poll in the recipes would wait forever. Letting the
-            # command fall below ld_min switches the diode off, which is what the real
-            # controller does and what lets the substrate coast to the floor.
             self.current_command = min(self.max_current, max(0.0, wanted))
         else:
             self.current_command = max(self.min_current, min(self.max_current, self.manual_current))
@@ -582,7 +585,7 @@ class ChamberModel:
         self.current_moni += (self.current_command - self.current_moni) * _alpha(dt, c.current_tau)
         # The heating laser is what puts power into the substrate; with it off the
         # standby current still shows in the log but the substrate coasts back down to
-        # the pyrometer floor.
+        # ambient (logged as the pyrometer floor).
         delivered = self.current_moni if self.heating_laser_on else 0.0
         target_temperature = self.temperature_for_current(delivered)
         self.temperature_true += (target_temperature - self.temperature_true) * _alpha(dt, c.heater_tau)
@@ -761,6 +764,19 @@ class ChamberModel:
         if self.target_rotation_mode in ("ON", "AUTO"):
             word |= 0x0002
         return word
+
+
+def _piecewise_linear(points: list[tuple[float, float]], x: float) -> float:
+    """Interpolate through `points` (sorted by x), extending the end segments."""
+    if x <= points[1][0]:
+        (x0, y0), (x1, y1) = points[0], points[1]
+    elif x >= points[-2][0]:
+        (x0, y0), (x1, y1) = points[-2], points[-1]
+    else:
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            if x <= x1:
+                break
+    return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
 
 
 def _alpha(dt: float, tau: float) -> float:

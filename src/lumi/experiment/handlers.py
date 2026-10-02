@@ -28,6 +28,7 @@ connected client does not have to poll state in a loop to notice a transition.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -35,15 +36,20 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from lumi.base.mq.context import current_actor, current_source
 from lumi.contracts.payloads.camera import CameraConfig
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.experiment import (
+    AddMeasurement,
     Anneal,
+    AttachMeasurementFile,
     AutoAlignMaskCenter,
     BeginSetLaserPower,
     CenterMaskPos,
+    CheckLogging,
     ConfirmCenterMask,
     ConfirmLaserPower,
     ConfirmMaskCenter,
@@ -52,16 +58,37 @@ from lumi.contracts.payloads.experiment import (
     CurrentSubstrateResponse,
     CurrentTask,
     EndStorage,
+    ExperimentId,
+    ExperimentInfo,
+    ExperimentList,
     ExperimentReadout,
     ExperimentRecordId,
     FinishCurrentPixel,
     FinishExperimentRecord,
     LaserPowerResult,
+    LayerInfo,
+    ListExperiments,
+    ListMeasurements,
+    ListQuery,
+    ListRecords,
+    ListSamples,
+    ListSnapshots,
+    ListSteps,
+    ListSubstrates,
+    LoggingAlive,
+    LoggingStatus,
     MaskPosition,
+    MeasurementFileId,
+    MeasurementFileInfo,
+    MeasurementId,
+    MeasurementInfo,
+    MeasurementList,
+    MeasurementSeries,
     MfcQuery,
     MfcStatus,
     MotorFree,
     MoveTo,
+    PageInfo,
     PendingConfirmation,
     PendingStatus,
     PerformDeposition,
@@ -71,37 +98,15 @@ from lumi.contracts.payloads.experiment import (
     PixelMoveResult,
     PixelPosition,
     PressureReading,
-    ProjectInfo,
-    PumpStatus,
-    RegisterProject,
-    RegisterSubstrate,
-    AddMeasurement,
-    AttachMeasurementFile,
-    LayerInfo,
-    ListMeasurements,
-    ListSamples,
-    ListSteps,
-    MeasurementFileId,
-    MeasurementFileInfo,
-    MeasurementId,
-    MeasurementInfo,
-    MeasurementSeries,
-    MeasurementList,
-    CheckLogging,
-    LoggingAlive,
-    LoggingStatus,
-    ExperimentId,
-    ExperimentInfo,
-    ExperimentList,
-    ListExperiments,
-    ListQuery,
-    ListRecords,
-    PageInfo,
     ProjectId,
+    ProjectInfo,
     ProjectList,
+    PumpStatus,
     RecordId,
     RecordInfo,
     RecordList,
+    RegisterProject,
+    RegisterSubstrate,
     ReopenPosition,
     ReopenResult,
     ResolvePixelCheck,
@@ -111,34 +116,32 @@ from lumi.contracts.payloads.experiment import (
     RetireMeasurementFile,
     RetireProject,
     RetireRecord,
+    RetireSnapshot,
     RetireSubstrate,
-    SubstrateId,
-    UpdateExperiment,
-    UpdateMeasurement,
-    UpdateProject,
-    UpdateRecord,
-    UpdateSample,
     SampleAngle,
     SampleDetail,
     SampleId,
     SampleInfo,
     SampleList,
-    StepInfo,
-    StepList,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
     SetPressureControl,
     SetRheedGain,
     SetTarget,
+    SnapshotId,
+    SnapshotInfo,
+    SnapshotList,
     StartMiLogging,
     StartStorage,
+    StepInfo,
+    StepList,
     StorageResult,
+    SubstrateId,
     SubstrateInfo,
     SubstrateList,
     SubstrateSummary,
-    ListSubstrates,
-    UpdateSubstrate,
+    TakeSnapshot,
     TargetId,
     TargetMap,
     TargetName,
@@ -146,14 +149,25 @@ from lumi.contracts.payloads.experiment import (
     TaskEvent,
     TemperatureReading,
     ToTemperature,
+    UpdateExperiment,
+    UpdateMeasurement,
+    UpdateProject,
+    UpdateRecord,
+    UpdateSample,
+    UpdateSubstrate,
     ValveStatus,
 )
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration, PixelExperimentManager, Substrate
+from lumi.experiment.snapshots import decode_raw, encode_frame
 
 log = logging.getLogger(__name__)
+
+#: A snapshot's lossless frame. It reached this node as one bus message and goes back
+#: out as one (snapshot_frame), so the broker's 16 MiB message limit is the real cap.
+SNAPSHOT_MAX_BYTES = 16 * 1024 * 1024
 
 #: What this node needs on the bus before it can drive anything. Same idiom as
 #: storage's DEPENDENCIES -- "the monitor did not answer" is deliberately not the
@@ -217,13 +231,24 @@ class ExperimentHandler:
         target_mapper: dict[str, str],
         registry_client=None,
         file_store: MeasurementFileStore | None = None,
+        snapshot_store: MeasurementFileStore | None = None,
+        pressure_by_hand: bool = True,
     ) -> None:
         self.sources = sources
+        #: The real chamber's pressure is set by a person at the gauge: set_pressure
+        #: asks them (a `pressure` pending confirmation) instead of commanding the
+        #: controller. The simulator sets it directly. Defaults to the real chamber.
+        self.pressure_by_hand = pressure_by_hand
         self.growth_db = growth_db
         #: Measurement attachments. Beside growth.db unless the node says otherwise,
         #: since the two are one record and get backed up together.
         self.file_store = file_store or MeasurementFileStore(
             Path(growth_db.db_path).parent / "measurement_files", max_bytes=15 * 1024 * 1024,
+        )
+        #: Camera stills (take_snapshot), beside growth.db for the same reason.
+        self.snapshot_store = snapshot_store or MeasurementFileStore(
+            Path(growth_db.db_path).parent / "snapshots", max_bytes=SNAPSHOT_MAX_BYTES,
+            limit_setting="experiment.snapshot_max_bytes",
         )
         self.pld_config = pld_config
         self.bounds = bounds
@@ -243,6 +268,10 @@ class ExperimentHandler:
         self._pending: PendingConfirmation | None = None
         self._current_task: CurrentTask | None = None
         self._updates: asyncio.Queue[TaskEvent] = asyncio.Queue()
+        # The op currently moving a motor, if any. Requests are not serialised (the
+        # server dispatches each as it arrives), so without this a caller that retried
+        # after a timeout would start a second carousel or stage move under the first.
+        self._motion: str | None = None
 
         # Set by nodes/experiment.py once the growth database is open. None in tests
         # and anywhere the journal is not wanted; every call site tolerates that.
@@ -343,6 +372,52 @@ class ExperimentHandler:
             log.warning("registry unreachable: %s", exc, exc_info=True)
             return None
         return {n.equipment for n in listing.nodes if n.status == "up"}
+
+    # --- motion: one move at a time ------------------------------------------------
+
+    def _claim_motion(self, what: str) -> None:
+        """Refuse to start a move while another is still running."""
+        if self._motion is not None:
+            raise RuntimeError(
+                f"{self._motion} is still moving the chamber; wait for it to finish and "
+                f"read the position back before {what}"
+            )
+        self._motion = what
+
+    def _release_motion(self) -> None:
+        self._motion = None
+
+    @contextlib.asynccontextmanager
+    async def _moving(self, what: str):
+        self._claim_motion(what)
+        try:
+            yield
+        finally:
+            self._release_motion()
+
+    async def _start_moving_task(self, kind: str, coro, detail: dict | None = None) -> TaskAck:
+        """`_start_task` for a task that moves a motor: holds the motion claim until
+        the task ends, so nothing else moves under a deposition or an alignment."""
+        try:
+            self._claim_motion(kind)
+        except RuntimeError:
+            coro.close()
+            raise
+
+        async def moving():
+            try:
+                return await coro
+            finally:
+                self._release_motion()
+
+        wrapped = moving()
+        try:
+            return await self._start_task(kind, wrapped, detail)
+        except BaseException:
+            wrapped.close()
+            coro.close()
+            self._release_motion()
+            raise
 
     # --- long-running ops: fire-and-return, tracked via current_task -------------
 
@@ -453,7 +528,7 @@ class ExperimentHandler:
             return None
 
     async def perform_preablation(self, req: PerformPreablation) -> TaskAck:
-        return await self._start_task(
+        return await self._start_moving_task(
             "perform_preablation",
             self.manager.perform_preablation(
                 req.target_id, req.num_pulse, req.frequency, req.is_dryrun, req.move_mask_to_block_position,
@@ -466,7 +541,7 @@ class ExperimentHandler:
         )
 
     async def perform_deposition(self, req: PerformDeposition) -> TaskAck:
-        return await self._start_task(
+        return await self._start_moving_task(
             "perform_deposition",
             self.manager.perform_deposition(req.num_pulse, req.laser_repetition_rate, req.target_id, req.is_dryrun),
             {
@@ -639,7 +714,8 @@ class ExperimentHandler:
     # --- fast hardware control ---------------------------------------------------
 
     async def set_target(self, req: SetTarget) -> Ack:
-        await self.manager.set_target(req.target_id, req.rotation_mode, req.twist_mode)
+        async with self._moving("set_target"):
+            await self.manager.set_target(req.target_id, req.rotation_mode, req.twist_mode)
         return Ack()
 
     async def start_mi_logging(self, req: StartMiLogging) -> LoggingStatus:
@@ -651,30 +727,36 @@ class ExperimentHandler:
         return Ack()
 
     async def move_mask_to_position(self, req: MoveTo) -> Ack:
-        await self.manager.move_mask_to_position(req.position)
+        async with self._moving("move_mask_to_position"):
+            await self.manager.move_mask_to_position(req.position)
         return Ack()
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
-        await self.manager.move_rheed_to_position(req.position)
+        async with self._moving("move_rheed_to_position"):
+            await self.manager.move_rheed_to_position(req.position)
         return Ack()
 
     async def rotate_sample_to(self, req: SampleAngle) -> Ack:
-        await self.manager.rotate_sample_to(req.angle)
+        async with self._moving("rotate_sample_to"):
+            await self.manager.rotate_sample_to(req.angle)
         return Ack()
 
     async def rotate_sample_by(self, req: SampleAngle) -> Ack:
-        await self.manager.rotate_sample_by(req.angle)
+        async with self._moving("rotate_sample_by"):
+            await self.manager.rotate_sample_by(req.angle)
         return Ack()
 
     async def to_pixel(self, req: PixelIndex) -> PixelMoveResult:
-        result = await self.manager.to_pixel(req.index)
+        async with self._moving("to_pixel"):
+            result = await self.manager.to_pixel(req.index)
         if result is None:
             raise ValueError(f"pixel index {req.index} is out of range")
         mask_position, rheed_position = result
         return PixelMoveResult(index=req.index, mask_position=mask_position, rheed_position=rheed_position)
 
     async def to_current_pixel(self, req: Empty) -> PixelMoveResult:
-        result = await self.manager.to_current_pixel()
+        async with self._moving("to_current_pixel"):
+            result = await self.manager.to_current_pixel()
         if result is None:
             raise ValueError("no current pixel to move to (no substrate registered, or positions exhausted)")
         mask_position, rheed_position = result
@@ -692,6 +774,12 @@ class ExperimentHandler:
         return Ack()
 
     async def set_pressure(self, req: SetPressure) -> Ack:
+        if self.pressure_by_hand:
+            await self._set_pending(
+                "pressure",
+                f"Set the chamber pressure to {req.pressure:.3g} Torr by hand, then confirm",
+            )
+            return Ack()
         await self.manager.set_pressure(req.pressure)
         return Ack()
 
@@ -1091,10 +1179,79 @@ class ExperimentHandler:
         await self.growth_db.set_measurement_file_state(req.file_id, "retired" if req.retire else "active")
         return self._file_info(await self._file_row(req.file_id))
 
+    # --- snapshots -----------------------------------------------------------------
+
+    @staticmethod
+    def _snapshot_info(row) -> SnapshotInfo:
+        at = row["taken_at"]
+        return SnapshotInfo(
+            snapshot_id=row["snapshot_id"], camera=row["camera"], stage=row["stage"],
+            note=row["note"], sample_id=row["sample_id"], session_id=row["session_id"],
+            width=row["width"], height=row["height"], dtype=row["dtype"], channels=row["channels"],
+            pixel_min=row["pixel_min"], pixel_max=row["pixel_max"],
+            raw_bytes=row["raw_bytes"], jpeg_bytes=row["jpeg_bytes"],
+            taken_at=to_epoch(at), taken_at_iso=to_iso(at), state=row["state"],
+        )
+
+    async def _snapshot_row(self, snapshot_id: int):
+        row = await self.growth_db.get_snapshot(snapshot_id)
+        if row is None:
+            raise ValueError(f"no snapshot with id {snapshot_id}")
+        return row
+
+    async def take_snapshot(self, req: TakeSnapshot) -> SnapshotInfo:
+        source = f"{req.camera}_camera"
+        camera = self.sources.get(source)
+        if camera is None:
+            raise RuntimeError(f"no {req.camera} camera client on this node ({source})")
+        _, frame = await camera.image()
+        encoded = await asyncio.to_thread(encode_frame, frame)
+
+        def save():
+            raw = self.snapshot_store.save(encoded.raw, f"{req.stage}.npy")
+            jpeg = self.snapshot_store.save(encoded.jpeg, f"{req.stage}.jpg", file_uuid=raw.file_uuid)
+            return raw, jpeg
+
+        raw, jpeg = await asyncio.to_thread(save)
+        snapshot_id = await self.growth_db.add_snapshot(
+            snapshot_uuid=raw.file_uuid,
+            session_id=self.journal.session_id if self.journal else None,
+            sample_id=await self.current_sample_id(),
+            camera=req.camera, stage=req.stage, note=req.note,
+            width=encoded.width, height=encoded.height, dtype=encoded.dtype, channels=encoded.channels,
+            pixel_min=encoded.pixel_min, pixel_max=encoded.pixel_max,
+            raw_path=raw.stored_path, raw_bytes=raw.size_bytes, raw_sha256=raw.sha256,
+            jpeg_path=jpeg.stored_path, jpeg_bytes=jpeg.size_bytes,
+        )
+        log.info("snapshot %s: %s camera at %s", snapshot_id, req.camera, req.stage)
+        return self._snapshot_info(await self._snapshot_row(snapshot_id))
+
+    async def list_snapshots(self, req: ListSnapshots) -> SnapshotList:
+        rows = await self.growth_db.list_snapshots(
+            sample_id=req.sample_id, session_id=req.session_id, camera=req.camera, stage=req.stage,
+            include_retired=req.include_retired, limit=req.limit,
+        )
+        return SnapshotList(snapshots=[self._snapshot_info(r) for r in rows])
+
+    async def snapshot_jpeg(self, req: SnapshotId) -> tuple[SnapshotInfo, bytes]:
+        row = await self._snapshot_row(req.snapshot_id)
+        return self._snapshot_info(row), await asyncio.to_thread(self.snapshot_store.read, row["jpeg_path"])
+
+    async def snapshot_frame(self, req: SnapshotId) -> tuple[SnapshotInfo, np.ndarray]:
+        row = await self._snapshot_row(req.snapshot_id)
+        data = await asyncio.to_thread(self.snapshot_store.read, row["raw_path"])
+        return self._snapshot_info(row), decode_raw(data)
+
+    async def retire_snapshot(self, req: RetireSnapshot) -> SnapshotInfo:
+        await self._snapshot_row(req.snapshot_id)
+        await self.growth_db.set_snapshot_state(req.snapshot_id, "retired" if req.retire else "active")
+        return self._snapshot_info(await self._snapshot_row(req.snapshot_id))
+
     # --- gated: laser power --------------------------------------------------------
 
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:
-        already_satisfied, _ = await self.manager.begin_set_laser_power(req.laser_power, req.target_id, req.force)
+        async with self._moving("begin_set_laser_power"):
+            already_satisfied, _ = await self.manager.begin_set_laser_power(req.laser_power, req.target_id, req.force)
         if not already_satisfied:
             await self._set_pending("laser_power", f"Set laser power to {req.laser_power:.2f} W and read the meter")
         return Ack()
@@ -1108,7 +1265,8 @@ class ExperimentHandler:
     # --- gated: mask-center calibration --------------------------------------------
 
     async def begin_align_center_mask(self, req: Empty) -> Ack:
-        await self.manager.begin_align_center_mask()
+        async with self._moving("begin_align_center_mask"):
+            await self.manager.begin_align_center_mask()
         await self._set_pending(
             "mask_center_alignment",
             "Align the mask center to the RHEED cathode luminescence center, then confirm the position",
@@ -1117,7 +1275,8 @@ class ExperimentHandler:
 
     async def confirm_center_mask(self, req: ConfirmCenterMask) -> Ack:
         self._require_pending("mask_center_alignment")
-        await self.manager.confirm_center_mask(req.position)
+        async with self._moving("confirm_center_mask"):
+            await self.manager.confirm_center_mask(req.position)
         await self._clear_pending()
         return Ack()
 
@@ -1147,7 +1306,7 @@ class ExperimentHandler:
             await self._await_mask_center_role(req.role_wait_timeout_s)
             return await self.manager.auto_align_center_mask(**params)
 
-        return await self._start_task("auto_align_center_mask", run(), req.model_dump())
+        return await self._start_moving_task("auto_align_center_mask", run(), req.model_dump())
 
     async def _await_mask_center_role(self, timeout_s: float, poll: float = 1.0) -> None:
         """Hold the alignment until a marker is tagged `mask-center`, asking for it
@@ -1183,13 +1342,15 @@ class ExperimentHandler:
     # --- gated: mask-center check loop ----------------------------------------------
 
     async def begin_check_mask_center(self, req: Empty) -> Ack:
-        await self.manager.begin_check_mask_center()
+        async with self._moving("begin_check_mask_center"):
+            await self.manager.begin_check_mask_center()
         await self._set_pending("mask_center_check", "Is the mask centered on camera?")
         return Ack()
 
     async def confirm_mask_center(self, req: ConfirmMaskCenter) -> PendingStatus:
         self._require_pending("mask_center_check")
-        still_pending = await self.manager.confirm_mask_center(req.aligned, req.corrected_position)
+        async with self._moving("confirm_mask_center"):
+            still_pending = await self.manager.confirm_mask_center(req.aligned, req.corrected_position)
         if still_pending:
             await self._push()
             return PendingStatus(pending=self._pending)

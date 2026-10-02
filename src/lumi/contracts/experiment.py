@@ -22,7 +22,9 @@ from __future__ import annotations
 
 from .payloads.common import Ack, Empty
 from .payloads.experiment import (
+    AddMeasurement,
     Anneal,
+    AttachMeasurementFile,
     AutoAlignMaskCenter,
     BeginSetLaserPower,
     CenterMaskPos,
@@ -34,16 +36,32 @@ from .payloads.experiment import (
     CoolDown,
     CurrentSubstrateResponse,
     EndStorage,
+    ExperimentId,
+    ExperimentInfo,
+    ExperimentList,
     ExperimentRecordId,
     ExperimentState,
     FinishCurrentPixel,
     FinishExperimentRecord,
     LaserPowerResult,
+    ListExperiments,
+    ListMeasurements,
+    ListQuery,
+    ListRecords,
+    ListSamples,
+    ListSnapshots,
+    ListSteps,
+    ListSubstrates,
     LogEntry,
     LoggingAlive,
     LoggingStatus,
     MaskAlignResult,
     MaskPosition,
+    MeasurementFileId,
+    MeasurementFileInfo,
+    MeasurementId,
+    MeasurementInfo,
+    MeasurementList,
     MfcQuery,
     MfcStatus,
     MotorFree,
@@ -55,16 +73,10 @@ from .payloads.experiment import (
     PixelIndex,
     PixelMoveResult,
     PressureReading,
-    ProjectInfo,
-    PumpStatus,
-    ExperimentId,
-    ExperimentInfo,
-    ExperimentList,
-    ListExperiments,
-    ListQuery,
-    ListRecords,
     ProjectId,
+    ProjectInfo,
     ProjectList,
+    PumpStatus,
     RecordId,
     RecordInfo,
     RecordList,
@@ -79,43 +91,31 @@ from .payloads.experiment import (
     RetireMeasurementFile,
     RetireProject,
     RetireRecord,
+    RetireSnapshot,
     RetireSubstrate,
-    SubstrateId,
-    UpdateExperiment,
-    UpdateMeasurement,
-    UpdateProject,
-    UpdateRecord,
-    UpdateSample,
     SampleAngle,
     SampleDetail,
     SampleId,
     SampleInfo,
     SampleList,
-    ListSamples,
-    ListSteps,
-    StepList,
-    AddMeasurement,
-    AttachMeasurementFile,
-    MeasurementFileId,
-    MeasurementFileInfo,
-    MeasurementId,
-    MeasurementInfo,
-    MeasurementList,
-    ListMeasurements,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
     SetPressureControl,
     SetRheedGain,
     SetTarget,
+    SnapshotId,
+    SnapshotInfo,
+    SnapshotList,
     StartMiLogging,
     StartStorage,
+    StepList,
     StorageResult,
+    SubstrateId,
     SubstrateInfo,
     SubstrateList,
     SubstrateSummary,
-    ListSubstrates,
-    UpdateSubstrate,
+    TakeSnapshot,
     TargetId,
     TargetMap,
     TargetName,
@@ -123,9 +123,21 @@ from .payloads.experiment import (
     TaskEvent,
     TemperatureReading,
     ToTemperature,
+    UpdateExperiment,
+    UpdateMeasurement,
+    UpdateProject,
+    UpdateRecord,
+    UpdateSample,
+    UpdateSubstrate,
     ValveStatus,
 )
 from .spec import Capability, Codec, EquipmentContract, Kind, Op, StreamSpec
+
+#: How long a caller waits on an op that blocks on a motor move: up to
+#: `experiment.bounds.motor_ready_timeout` (60 s) for the holding lock, then the move
+#: itself -- a carousel revolve or a sample rotation at 10 deg/s takes up to ~36 s, and
+#: confirm_mask_center makes two moves.
+MOTION_TIMEOUT_S = 120.0
 
 DRIVER = Capability(
     name="driver",
@@ -253,6 +265,20 @@ DRIVER = Capability(
         Op("retire_measurement_file", RetireMeasurementFile, MeasurementFileInfo, journal=True,
            doc="Hide a mistaken upload. The bytes stay on disk."),
 
+        # --- snapshots: a still from a camera, kept with the growth it belongs to.
+        Op("take_snapshot", TakeSnapshot, SnapshotInfo, journal=True,
+           doc="Save the current frame of the chamber or RHEED camera, labelled with the "
+               "growth stage, against the loaded sample and this chamber session. Kept "
+               "twice: losslessly (snapshot_frame) and as a JPEG to look at (snapshot_jpeg)."),
+        Op("list_snapshots", ListSnapshots, SnapshotList,
+           doc="Snapshots, oldest first, narrowed by sample, session, camera or stage."),
+        Op("snapshot_jpeg", SnapshotId, SnapshotInfo, response_codec=Codec.RAW,
+           doc="A snapshot as a JPEG, to look at."),
+        Op("snapshot_frame", SnapshotId, SnapshotInfo, response_codec=Codec.NPY,
+           doc="A snapshot's frame exactly as the camera gave it, for analysis."),
+        Op("retire_snapshot", RetireSnapshot, SnapshotInfo, journal=True,
+           doc="Hide a mistaken snapshot from listings. The files stay on disk."),
+
         # --- chamber reads: domain interpretation of the raw log row (gauge
         # fallback, field-name mapping) that today only exists in manager.py.
         Op("get_current_log", Empty, LogEntry),
@@ -273,7 +299,7 @@ DRIVER = Capability(
                "start_mi_logging(interval_s=1) drops it to 1s)."),
 
         # --- fast hardware control
-        Op("set_target", SetTarget, Ack, journal=True),
+        Op("set_target", SetTarget, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("start_mi_logging", StartMiLogging, LoggingStatus,
            doc="Start PASCAL data logging at a fixed whole-second row interval "
                "(`Log Interval` + `Data Logging File=`). The controller powers up "
@@ -287,20 +313,20 @@ DRIVER = Capability(
                "OFF`). Needed before start_mi_logging can point at a new file: an "
                "already-running logger makes start_mi_logging ack without switching.",
            journal=True),
-        Op("move_mask_to_position", MoveTo, Ack, journal=True),
-        Op("move_rheed_to_position", MoveTo, Ack, journal=True),
+        Op("move_mask_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("move_rheed_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_to", SampleAngle, Ack,
            doc="Rotate the sample stage to an absolute angle in degrees (PASCAL "
                "`Set Sample Position`). Blocks until the move completes. Refused "
                "while the motor holding lock is released (see is_motor_free).",
-           journal=True),
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_by", SampleAngle, Ack,
            doc="Rotate the sample stage by a signed delta in degrees (PASCAL "
                "`Rotate Sample`); negative turns the other way. Blocks until the "
                "move completes. Refused while the motor holding lock is released.",
-           journal=True),
-        Op("to_pixel", PixelIndex, PixelMoveResult, journal=True),
-        Op("to_current_pixel", Empty, PixelMoveResult, journal=True),
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("to_pixel", PixelIndex, PixelMoveResult, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("to_current_pixel", Empty, PixelMoveResult, journal=True, timeout_s=MOTION_TIMEOUT_S),
         # --- gas. The setpoint ops and the gates are deliberately separate, because
         # `MFC Control` is a single master enable with no channel argument: folding it
         # into set_mfc_flow would mean set_mfc_flow(2, 0) silently shuts MFC1 too.
@@ -318,10 +344,13 @@ DRIVER = Capability(
                "their flow setpoints untouched. Not needed under pressure control, "
                "which drives the control MFC itself.", journal=True),
         Op("set_pressure", SetPressure, Ack,
-           doc="Set the closed-loop pressure setpoint in Torr. Takes effect only "
-               "once set_pressure_control(on=True) is on; the controller then trims "
-               "the control MFC's flow to hold it, overriding set_mfc_flow on that "
-               "channel.", journal=True),
+           doc="Set the chamber pressure in Torr. On the real chamber a person sets "
+               "it by hand: this raises a `pressure` pending confirmation for them, "
+               "resolved with confirm once they have; read it back with "
+               "get_current_pressure. In the simulator it sets the closed-loop "
+               "setpoint directly, which takes effect once "
+               "set_pressure_control(on=True) is on (the controller then trims the "
+               "control MFC's flow to hold it).", journal=True),
         Op("set_pressure_control", SetPressureControl, Ack,
            doc="Turn closed-loop pressure control on or off. On: the controller owns "
                "the control MFC and holds set_pressure's setpoint. Off: flow reverts "
@@ -348,14 +377,14 @@ DRIVER = Capability(
         Op("anneal", Anneal, TaskAck, journal=True),
 
         # --- gated: laser power (unread physical meter)
-        Op("begin_set_laser_power", BeginSetLaserPower, Ack, journal=True),
+        Op("begin_set_laser_power", BeginSetLaserPower, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult, journal=True),
 
         # --- gated: mask-center calibration / check (visual judgement)
-        Op("begin_align_center_mask", Empty, Ack, journal=True),
-        Op("confirm_center_mask", ConfirmCenterMask, Ack, journal=True),
-        Op("begin_check_mask_center", Empty, Ack, journal=True),
-        Op("confirm_mask_center", ConfirmMaskCenter, PendingStatus, journal=True),
+        Op("begin_align_center_mask", Empty, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("confirm_center_mask", ConfirmCenterMask, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("begin_check_mask_center", Empty, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("confirm_mask_center", ConfirmMaskCenter, PendingStatus, journal=True, timeout_s=MOTION_TIMEOUT_S),
         # --- automatic: the same calibration, read off the chamber camera
         Op("set_center_mask_pos", CenterMaskPos, Ack,
            doc="Set center_mask_pos without moving the mask -- e.g. to keep a "

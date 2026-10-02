@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 5edbcfaecf925dc2
+# contract_hash: 50d3d5d1ce2739a1
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CenterMaskPos, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CenterMaskPos, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -177,6 +177,28 @@ class ExperimentDriverClient(CapabilityClient):
         """Hide a mistaken upload. The bytes stay on disk."""
         return await self.call("retire_measurement_file", req)  # type: ignore[return-value]
 
+    async def take_snapshot(self, req: TakeSnapshot) -> SnapshotInfo:
+        """Save the current frame of the chamber or RHEED camera, labelled with the growth stage, against the loaded sample and this chamber session. Kept twice: losslessly (snapshot_frame) and as a JPEG to look at (snapshot_jpeg)."""
+        return await self.call("take_snapshot", req)  # type: ignore[return-value]
+
+    async def list_snapshots(self, req: ListSnapshots) -> SnapshotList:
+        """Snapshots, oldest first, narrowed by sample, session, camera or stage."""
+        return await self.call("list_snapshots", req)  # type: ignore[return-value]
+
+    async def snapshot_jpeg(self, req: SnapshotId) -> tuple[SnapshotInfo, bytes]:
+        """A snapshot as a JPEG, to look at."""
+        # Returns (metadata, bytes); the array never passes through JSON.
+        return await self.call("snapshot_jpeg", req)  # type: ignore[return-value]
+
+    async def snapshot_frame(self, req: SnapshotId) -> tuple[SnapshotInfo, np.ndarray]:
+        """A snapshot's frame exactly as the camera gave it, for analysis."""
+        # Returns (metadata, np.ndarray); the array never passes through JSON.
+        return await self.call("snapshot_frame", req)  # type: ignore[return-value]
+
+    async def retire_snapshot(self, req: RetireSnapshot) -> SnapshotInfo:
+        """Hide a mistaken snapshot from listings. The files stay on disk."""
+        return await self.call("retire_snapshot", req)  # type: ignore[return-value]
+
     async def get_current_log(self) -> LogEntry:
         """Call driver.get_current_log."""
         return await self.call("get_current_log")  # type: ignore[return-value]
@@ -258,7 +280,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("set_mfc_control", req)  # type: ignore[return-value]
 
     async def set_pressure(self, req: SetPressure) -> Ack:
-        """Set the closed-loop pressure setpoint in Torr. Takes effect only once set_pressure_control(on=True) is on; the controller then trims the control MFC's flow to hold it, overriding set_mfc_flow on that channel."""
+        """Set the chamber pressure in Torr. On the real chamber a person sets it by hand: this raises a `pressure` pending confirmation for them, resolved with confirm once they have; read it back with get_current_pressure. In the simulator it sets the closed-loop setpoint directly, which takes effect once set_pressure_control(on=True) is on (the controller then trims the control MFC's flow to hold it)."""
         return await self.call("set_pressure", req)  # type: ignore[return-value]
 
     async def set_pressure_control(self, req: SetPressureControl) -> Ack:

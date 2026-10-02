@@ -1,4 +1,4 @@
-"""Run the experiment MCP server.
+"""Run the lab MCP server.
 
     python -m lumi.mcp                                   # stdio, for a local MCP host
     python -m lumi.mcp --transport http --port 8100       # streamable HTTP, for a remote agent
@@ -47,12 +47,12 @@ import logging
 import sys
 
 from lumi.config import settings
-from lumi.mcp.server import ExperimentMCPServer
+from lumi.mcp.server import LumiMCPServer
 
 log = logging.getLogger(__name__)
 
 
-async def run_stdio(server: ExperimentMCPServer) -> None:
+async def run_stdio(server: LumiMCPServer) -> None:
     from mcp.server.stdio import stdio_server
 
     async with stdio_server() as (read_stream, write_stream):
@@ -60,7 +60,7 @@ async def run_stdio(server: ExperimentMCPServer) -> None:
 
 
 async def run_http(
-    server: ExperimentMCPServer, *, bind_host: str, port: int, public_url: str, oauth: bool
+    server: LumiMCPServer, *, bind_host: str, port: int, public_url: str, oauth: bool
 ) -> None:
     import uvicorn
 
@@ -72,7 +72,7 @@ async def run_http(
 
 
 async def main(args: argparse.Namespace) -> None:
-    server = ExperimentMCPServer(host=args.host, user=args.user, password=args.password)
+    server = LumiMCPServer(host=args.host, user=args.user, password=args.password)
     await server.connect()
     try:
         if args.transport == "stdio":

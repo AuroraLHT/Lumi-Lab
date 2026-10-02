@@ -24,11 +24,12 @@ from lumi.contracts.storage import STORAGE_NODE
 from lumi.contracts.system import SYSTEM
 from lumi.experiment.db import GrowthDB
 from lumi.experiment.files import MeasurementFileStore
-from lumi.experiment.handlers import ExperimentHandler
+from lumi.experiment.handlers import SNAPSHOT_MAX_BYTES, ExperimentHandler
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 from lumi.experiment.mi import MiCommandRunner
 from lumi.generated.clients.chamber import (
+    ChamberCameraClient,
     ChamberConfigClient,
     ChamberFiducialClient,
     ChamberLogClient,
@@ -57,11 +58,18 @@ def _pld_config() -> PLDChamberConfiguration:
 
 def _bounds() -> ExperimentBounds:
     b = settings.experiment.bounds
+    if b.get("warm_up_current") is None:
+        raise RuntimeError(
+            "cfg/settings.toml [experiment.bounds] is missing warm_up_current (the heating "
+            "current the warm-up from cold raises to; it replaces PLDconfig's LDmin). Copy it "
+            "from cfg/settings.example.toml."
+        )
     return ExperimentBounds(
         mask_travel_max=b.mask_travel_max,
         temperature_min=b.temperature_min,
         temperature_max=b.temperature_max,
         temperature_pid_engage_threshold=b.temperature_pid_engage_threshold,
+        warm_up_current=b.warm_up_current,
         warm_up_step=b.warm_up_step,
         warm_up_current_ramp_rate=b.warm_up_current_ramp_rate,
         warm_up_wait_interval=b.warm_up_wait_interval,
@@ -88,6 +96,11 @@ async def main(args: argparse.Namespace) -> None:
     # the index and the bytes are one record.
     files_root = settings.experiment.get("measurement_files_path") or str(
         Path(growth_db.db_path).parent / "measurement_files")
+    if settings.experiment.get("pressure_by_hand") is None:
+        raise RuntimeError(
+            "cfg/settings.toml [experiment] is missing pressure_by_hand (true on the real "
+            "chamber: set_pressure asks a person). Copy it from cfg/settings.example.toml."
+        )
     handler = ExperimentHandler(
         sources={}, growth_db=growth_db, pld_config=_pld_config(), bounds=_bounds(),
         target_mapper=dict(settings.experiment.target_mapper), registry_client=None,
@@ -95,6 +108,12 @@ async def main(args: argparse.Namespace) -> None:
             files_root,
             max_bytes=int(settings.experiment.get("measurement_file_max_bytes", 15 * 1024 * 1024)),
         ),
+        snapshot_store=MeasurementFileStore(
+            settings.experiment.get("snapshots_path") or str(Path(growth_db.db_path).parent / "snapshots"),
+            max_bytes=int(settings.experiment.get("snapshot_max_bytes", SNAPSHOT_MAX_BYTES)),
+            limit_setting="experiment.snapshot_max_bytes",
+        ),
+        pressure_by_hand=bool(settings.experiment.pressure_by_hand),
     )
     await handler.load_calibration()
 
@@ -145,6 +164,7 @@ async def main(args: argparse.Namespace) -> None:
         "chamber_log": ChamberLogClient(channel, chamber_x),
         "chamber_config": ChamberConfigClient(channel, chamber_x),
         "chamber_fiducial": ChamberFiducialClient(channel, chamber_x),
+        "chamber_camera": ChamberCameraClient(channel, chamber_x),
         "rheed_camera": RheedCameraClient(channel, rheed_x),
         "storage": StorageStorageClient(channel, storage_x),
     }

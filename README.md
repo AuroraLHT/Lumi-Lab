@@ -233,6 +233,22 @@ uv run python scripts/create_api_user.py agent --role operator --password <pw>
 uv run python scripts/create_api_user.py alice --admin --database run/simulation/users.db
 ```
 
+**The simulator has its own accounts.** `scripts/start_simulation.sh` points the stack
+(API, and an MCP server started with `scripts/start_mcp_http.sh`) at
+`run/simulation/users.db`, not `cfg/users.db`, so an account made with the plain command
+above does not exist there, and its login is refused. The file survives restarts. To
+create an account for the simulator, aim any of the commands at that file:
+
+```bash
+DYNACONF_AUTH__DATABASE_PATH=run/simulation/users.db \
+  uv run python -m lumi.api.manage create-user hliang16 --role admin
+# or, after the stack has started once, take its settings:
+source run/simulation/env.sh && uv run python -m lumi.api.manage create-user hliang16 --role admin
+```
+
+`start_simulation.sh --keep-database` makes the stack use `cfg/users.db` instead, so one
+set of accounts serves both, but it also writes recordings to the real HDF5 folder.
+
 **Broker account** — for a node, or a notebook/MCP session that talks to the bus
 directly. The permissions are derived from `src/lumi/contracts`, so re-run it after any
 contract change:
@@ -350,11 +366,11 @@ node — a `to_temperature` you abandon keeps ramping, and its stale `current_ta
 still be there on your next run. And nothing stops the chamber: a script already handed to
 the controller runs to the last pulse (`docs/TODO.md`).
 
-## The MCP server — driving a growth from an LLM agent
+## The MCP server — the lab as tools for an LLM agent
 
-`src/lumi/mcp/` exposes the experiment node's ops as MCP tools, so an agent (Claude Code,
-Claude Desktop, anything speaking MCP) can run a deposition. There is no console script;
-it's a module:
+`src/lumi/mcp/` exposes the lab as MCP tools, so an agent (Claude Code, Claude Desktop,
+anything speaking MCP) can run a deposition, look back through past growths, and simulate
+RHEED patterns. There is no console script; it's a module:
 
 ```bash
 uv run python -m lumi.mcp                              # stdio, for a local MCP host
@@ -395,45 +411,128 @@ the shared template is what made `python -m lumi.mcp` reach for the lab by defau
 > (non-durable ones are dropped by a broker restart anyway).
 
 The tools are generated, one per `(contract, capability, op)`, named
-`experiment.driver.to_temperature` and so on — 49 of them today. Adding an op to
-`contracts/experiment.py` makes it a tool with no change here. The surface is
-deliberately narrower than the browser bridge's: all of `experiment`, plus read-only
-`rheed.camera` and `chamber.log` for situational awareness, and nothing else — an agent
-has no business reaching `system.supervisor.spawn` or raw MI script execution.
+`experiment.driver.to_temperature` and so on — 116 of them today. Adding an op to an
+exposed capability makes it a tool with no change here. The surface is deliberately
+narrower than the browser bridge's, and set by `EXPOSED` in `src/lumi/mcp/server.py`:
+
+| Job | Tools |
+|---|---|
+| Drive a growth | all of `experiment.driver`; `rheed.camera`; `rheed.integrator.bboxes` / `cache` (the live oscillation of each box the operator drew); `chamber.log`; `chamber.camera`; `system.registry.list_nodes` / `get_node` (which nodes are up) |
+| Read the history | the growth database through `experiment.driver` (`list_samples`, `sample_history`, `list_records`, `list_measurements`, `list_snapshots`, …); the recordings through `storage.archive` (frames, RHEED integration traces, the chamber log each file carries) |
+| Simulate | all of `simulation.rheed_sim`: structures, spot positions, patterns |
+
+Nothing else: an agent has no business reaching `system.supervisor.spawn`, raw MI script
+execution (`chamber.mi_mode`), or rearranging the operator's integration boxes.
+
+- **Read-only hints.** Every tool carries MCP's `readOnlyHint`, from the same
+  classification the broker enforces (`lumi.contracts.policy`), so a host can auto-approve
+  the reads and ask before anything that changes the chamber.
+- **Pictures.** Camera frames, recorded frames and simulated patterns come back as images
+  the model can see, with the real pixel range in the text beside them.
+  `experiment.driver.take_snapshot` keeps a frame from either camera with the growth,
+  labelled by stage (`start`, `heated`, `depo_start`, `depo_mid`, `depo_end`, `cooled`,
+  `other`): losslessly as `.npy` and as a JPEG, in a `snapshots` folder beside
+  `growth.db`.
+- **Big answers.** A result over 40,000 characters (a recording's frame times, a
+  4000-point trace) comes back with its long lists shortened and a note saying so;
+  `max_points`, `since`/`until` and `limit` get them whole.
+- **Uploads.** `experiment.driver.attach_measurement_file` takes the file as
+  `content_text` or `content_base64` beside its metadata.
+- **The journal.** Steps an agent takes are credited to `mcp` (stdio) or `mcp:<username>`
+  (HTTP) in the step journal, so `sample_history` says who did what.
 
 ### Adding it to Claude Code
 
 From the project you want to drive it from:
 
 ```bash
-claude mcp add lumi-experiment -- \
+claude mcp add lumi -- \
   uv run --project /path/to/Lumi-Lab python -m lumi.mcp
 ```
 
 `--project` matters: without it `uv run` resolves against whatever directory the MCP host
 launched from, which is usually not this repo. Then `claude mcp list` should show
 `✔ Connected`. Use `--scope project` instead of the default if you want the registration
-written to a `.mcp.json` that travels with the repo; `claude mcp remove lumi-experiment`
+written to a `.mcp.json` that travels with the repo; `claude mcp remove lumi`
 undoes it. For Claude Desktop the same command line goes in `claude_desktop_config.json`
 under `mcpServers`.
 
 stdio needs no auth — it's a subprocess only you can spawn, the same trust level as any
 other local tool.
 
-### The HTTP transport
-
-For a remote agent. It always requires an **operator or admin** bearer token — the same
-JWT `POST /auth/login` issues for the browser — and unlike the browser side this is *not*
-gated by `auth.enabled`, so a dev-mode bypass never opens real equipment control to the
-network. Viewer tokens are refused at the door.
+The tools say what each op does; the **`lumi-lab` skill** (`skills/lumi-lab/`) says how
+the lab is run: the limits, which steps need a person, the growth procedures, when to
+stop, how to read RHEED, and how to keep the records honest. Install it in the same
+project you registered the server in:
 
 ```bash
-uv run python scripts/create_api_user.py agent --role operator      # an API account; see Accounts
+/path/to/Lumi-Lab/scripts/install_skill.sh            # this project (.claude/skills)
+/path/to/Lumi-Lab/scripts/install_skill.sh --user     # every project (~/.claude/skills)
 ```
 
-It serves plain HTTP; put nginx/Caddy in front for TLS (`docs/TODO.md`). `--bind-host`
-defaults to `127.0.0.1` — anything else means your firewall is the only thing between the
-internet and the chamber.
+It is a symlink, so pulling this repo updates it.
+
+### The HTTP transport
+
+For an agent that is not on the lab machine. It always needs a logged-in **operator or
+admin** account (viewers are refused), whatever `auth.enabled` says, so a dev-mode bypass
+never opens equipment control to the network.
+
+**There is no separate MCP token to obtain.** The server runs its own login: the agent's
+host opens a browser, you sign in with a Lumi account, and the host keeps itself
+renewed. A bearer token is only the fallback for clients that cannot open a browser.
+
+**1. An account.** Operator or admin, in the user database the server reads (see
+[Accounts](#accounts)):
+
+```bash
+uv run python scripts/create_api_user.py agent --role operator
+# against the simulator stack, whose users live elsewhere:
+uv run python scripts/create_api_user.py agent --role operator --database run/simulation/users.db
+```
+
+**2. Start the server.**
+
+```bash
+uv run python -m lumi.mcp --transport http --port 8100 --host <broker>
+```
+
+Against the simulator stack, run `source run/simulation/env.sh` first, so the server uses
+the stack's broker and user database rather than `cfg/`.
+
+**3. Connect: log in (the normal way).** Register it with no token and no header:
+
+```bash
+claude mcp add --transport http lumi http://127.0.0.1:8100/mcp
+```
+
+The first connection opens a browser at the server's login page. Sign in with the
+account from step 1. The host receives an access token and a refresh token and renews by
+itself from then on. Any MCP client that supports OAuth (Claude Code, Codex, …) works the
+same way.
+
+**Or: a bearer token**, for a client that cannot open a browser (a script, a headless
+agent) or a server started with `--no-oauth`. It is the same JWT `POST /auth/login`
+issues, it lasts 12 hours, and it cannot be renewed:
+
+```bash
+scripts/start_mcp_http.sh --token-only        # simulator stack, which must run --with-auth
+claude mcp add --transport http lumi http://127.0.0.1:8100/mcp \
+  --header "Authorization: Bearer $(cat run/simulation/mcp_token.txt)"
+```
+
+| symptom | cause |
+| --- | --- |
+| login page refuses a correct password | the account is a viewer, or lives in a different user database from the server's (step 2) |
+| 401 with a token from `/auth/login` | the stack runs with auth off, so the login handed back the inactive anonymous identity; restart it `--with-auth` |
+| the client reports an issuer mismatch | `--public-url` does not match the address the client used |
+
+**Off the lab machine.** The server speaks plain HTTP and the login form posts a
+password, so beyond loopback put nginx/Caddy in front for TLS and pass its `https://`
+address as `--public-url` (it becomes the OAuth issuer and every redirect target).
+`--bind-host` defaults to `127.0.0.1`; anything else means your firewall is the only
+thing between the internet and the chamber. Access tokens cannot be revoked before they
+expire; revoking a login only stops its refresh.
 
 ### Before you let an agent run a growth
 
