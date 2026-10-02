@@ -256,8 +256,8 @@ class LumiMCPServer:
         auth wired to the same JWT/user store the browser bridge uses. Always
         requires a valid operator-or-admin token -- unlike the browser side, this
         is not gated by settings.auth.enabled, since the whole point of this
-        transport is letting a remote agent reach real equipment control. Run it
-        behind a reverse proxy that terminates TLS; this returns a plain-HTTP app.
+        transport is letting a remote agent reach real equipment control. TLS is
+        not this app's job: the uvicorn serving it terminates it (lumi.tls).
 
         With `oauth` on (the default) it is also its own authorization server: an
         unauthenticated client is told where to log in and walks the browser flow

@@ -110,6 +110,9 @@ export LUMI_AMQP_URL="amqp://guest:guest@$RABBITMQ_HOST:5672/"
 # One uvicorn worker: the sim is single-machine, and the default (10) just
 # multiplies broker connections and log noise.
 export DYNACONF_API__WORKERS=1
+# Plain HTTP on loopback, whatever [tls] this host's .secrets.toml turns on for the
+# production servers: the sim's clients (demo scripts, a local Lumi-Deck) expect it.
+export DYNACONF_TLS__ENABLED=false
 
 # Keep the simulation off the real user database: point auth at a scratch sqlite
 # file under the run dir unless asked to keep it.
@@ -145,6 +148,7 @@ fi
     echo "export LUMI_SIM_BROKER_HOST=$(printf '%q' "$RABBITMQ_HOST")"
     echo "export LUMI_AMQP_URL=$(printf '%q' "$LUMI_AMQP_URL")"
     echo "export DYNACONF_AUTH__ENABLED=${DYNACONF_AUTH__ENABLED}"
+    echo "export DYNACONF_TLS__ENABLED=${DYNACONF_TLS__ENABLED}"
     # Only set when the stack redirected it; with --keep-database the settings.toml
     # default applies and saying nothing here is what keeps the two agreeing.
     if [[ -n "${DYNACONF_AUTH__DATABASE_PATH:-}" ]]; then

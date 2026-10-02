@@ -19,7 +19,7 @@
 #                                [--no-detection] [--no-monitor]
 #                                [--with-experiment|--no-experiment]
 #                                [--with-rheed-sim|--no-rheed-sim]
-#                                [--allow-insecure-auth] [--check]
+#                                [--allow-insecure-auth] [--allow-plain-http] [--check]
 #
 #   --host        broker host (default localhost -- the broker runs here)
 #   --user/-p     broker credentials (default guest/guest; guest only works
@@ -32,6 +32,10 @@
 #   --with-rheed-sim / --no-rheed-sim
 #                 start (default) or skip the simulation node -- RHEED patterns
 #                 computed from a crystal structure. Needs `uv sync --extra rheedsim`
+#   --allow-plain-http
+#                 serve the API over plain HTTP when [tls] is off. Without it that is
+#                 a preflight failure: logins and the /ws traffic would cross the
+#                 network unencrypted. See scripts/tailscale_cert.sh
 #   --check       run the preflight checks and exit without starting anything
 #
 # Unlike start_simulation.sh this writes to the REAL HDF5 root and the REAL user
@@ -63,6 +67,7 @@ WITH_MONITOR=1
 WITH_EXPERIMENT=1
 WITH_RHEED_SIM=1
 ALLOW_INSECURE_AUTH=0
+ALLOW_PLAIN_HTTP=0
 CHECK_ONLY=0
 
 while [[ $# -gt 0 ]]; do
@@ -79,8 +84,9 @@ while [[ $# -gt 0 ]]; do
         --with-rheed-sim) WITH_RHEED_SIM=1; shift ;;
         --no-rheed-sim) WITH_RHEED_SIM=0; shift ;;
         --allow-insecure-auth) ALLOW_INSECURE_AUTH=1; shift ;;
+        --allow-plain-http) ALLOW_PLAIN_HTTP=1; shift ;;
         --check) CHECK_ONLY=1; shift ;;
-        -h|--help) sed -n '3,39p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '3,43p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -244,6 +250,31 @@ if [[ "$ORIGINS" == "*" ]]; then
 else
     ok "api.allow_origins = $ORIGINS"
 fi
+
+# ---- TLS ---------------------------------------------------------------------
+# The api node serves HTTPS/WSS itself when [tls] is on (lumi.tls). The certificate
+# has to cover the address clients use, or every browser and agent refuses it. That
+# address is the certificate's own name when it has one (a Tailscale cert is valid for
+# the MagicDNS name only, never the IP), else this host's LAN address.
+API_IP="$("$PYTHON" -m lumi.tls --default-host 2>/dev/null || true)"
+API_IP="${API_IP:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+API_SCHEME="http"
+while IFS='|' read -r level message; do
+    case "$level" in
+        ok)   ok "$message"; API_SCHEME="https" ;;
+        warn) warn "$message"; API_SCHEME="https" ;;
+        fail) fail "$message" ;;
+        off)
+            if [[ $ALLOW_PLAIN_HTTP -eq 1 ]]; then
+                warn "$message (--allow-plain-http): logins cross the network unencrypted"
+            else
+                fail "$message -- logins and /ws would cross the network unencrypted."
+                echo "        scripts/tailscale_cert.sh --install-cron, then [tls] in cfg/.secrets.toml" >&2
+                echo "        (or pass --allow-plain-http on an isolated bench network)." >&2
+            fi ;;
+        *) fail "TLS check: $level $message" ;;
+    esac
+done < <("$PYTHON" -m lumi.tls "$API_IP" 2>&1 || echo "fail|could not run the TLS check")
 
 # ---- HDF5 root ---------------------------------------------------------------
 # The tracked `database` symlink points at the lab share. If it is not mounted the
@@ -424,8 +455,7 @@ done
 [[ $WITH_EXPERIMENT -eq 0 ]] && echo "  experiment skipped (--no-experiment)"
 [[ $WITH_RHEED_SIM  -eq 0 ]] && echo "  simulation skipped (--no-rheed-sim)"
 echo
-API_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
-echo "API on http://${API_IP:-<this host>}:8000 -- contract $CONTRACT_HASH"
+echo "API on $API_SCHEME://${API_IP:-<this host>}:8000 -- contract $CONTRACT_HASH"
 echo "logs in $LOG_DIR"
 echo
 echo "now start the instrument host (pascal + rheed) against this broker:"
