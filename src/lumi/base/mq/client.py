@@ -131,6 +131,8 @@ class CapabilityClient:
             raise RuntimeError(f"{self.name}: call start() before calling {op_name}")
 
         op = self.cap.op(op_name)
+        # An op that blocks on something slow (a motor move) declares how long to wait.
+        timeout = max(self.timeout, op.timeout_s or 0.0)
         req = request if request is not None else op.request()
         body, extra = encode(req, op.request_codec, payload)
 
@@ -159,11 +161,11 @@ class CapabilityClient:
             )
             # Always bounded. PubSubClient.request() had no timeout at all: a lost
             # response hung the caller forever.
-            raw_body, raw_headers = await asyncio.wait_for(fut, self.timeout)
+            raw_body, raw_headers = await asyncio.wait_for(fut, timeout)
         except TimeoutError:
             self._futures.pop(cid, None)
             raise TimeoutError(
-                f"{self.target}.{op.name} did not answer within {self.timeout}s"
+                f"{self.target}.{op.name} did not answer within {timeout}s"
             ) from None
         finally:
             self._futures.pop(cid, None)

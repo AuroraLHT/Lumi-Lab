@@ -6,6 +6,7 @@
 | Only the mask will not move; everything else does | The sample holder is too low, and the interlock blocks the mask so it cannot hit the holder. | Ask a person to check the holder and raise it to the right height. |
 | A call hangs, then times out (~120 s) | An MI completion message was lost. | Do not re-issue the move or the deposition. Read the state back first (`get_current_mask_position`, `get_current_log`) to see whether it ran, and tell a person. |
 | A tool call times out at once | Its node is down. | `system.registry.list_nodes`. |
+| A move is refused: "... is still moving the chamber" | Another move (or a deposition, pre-ablation or auto-alignment) is still running. Moves run one at a time. | Wait for it to finish, read the position back, then decide whether the move is still needed. Do not loop on the refusal. |
 | `to_temperature` is refused | The heating laser is off. | `initiate_heating_laser` first. |
 | Chamber readings stop changing | PASCAL stopped writing its log. | `check_logging_alive`; if the log is dead, `start_mi_logging`, or ask a person. |
 | The mask is off centre after alignment | The alignment algorithm got it wrong, or the motor is not energised (`is_motor_free` says free). | Check `is_motor_free` first. Then re-run `auto_align_center_mask`, or align by hand with a person (`begin_align_center_mask`). |

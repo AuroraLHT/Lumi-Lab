@@ -28,6 +28,7 @@ connected client does not have to poll state in a loop to notice a transition.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -262,6 +263,10 @@ class ExperimentHandler:
         self._pending: PendingConfirmation | None = None
         self._current_task: CurrentTask | None = None
         self._updates: asyncio.Queue[TaskEvent] = asyncio.Queue()
+        # The op currently moving a motor, if any. Requests are not serialised (the
+        # server dispatches each as it arrives), so without this a caller that retried
+        # after a timeout would start a second carousel or stage move under the first.
+        self._motion: str | None = None
 
         # Set by nodes/experiment.py once the growth database is open. None in tests
         # and anywhere the journal is not wanted; every call site tolerates that.
@@ -362,6 +367,52 @@ class ExperimentHandler:
             log.warning("registry unreachable: %s", exc, exc_info=True)
             return None
         return {n.equipment for n in listing.nodes if n.status == "up"}
+
+    # --- motion: one move at a time ------------------------------------------------
+
+    def _claim_motion(self, what: str) -> None:
+        """Refuse to start a move while another is still running."""
+        if self._motion is not None:
+            raise RuntimeError(
+                f"{self._motion} is still moving the chamber; wait for it to finish and "
+                f"read the position back before {what}"
+            )
+        self._motion = what
+
+    def _release_motion(self) -> None:
+        self._motion = None
+
+    @contextlib.asynccontextmanager
+    async def _moving(self, what: str):
+        self._claim_motion(what)
+        try:
+            yield
+        finally:
+            self._release_motion()
+
+    async def _start_moving_task(self, kind: str, coro, detail: dict | None = None) -> TaskAck:
+        """`_start_task` for a task that moves a motor: holds the motion claim until
+        the task ends, so nothing else moves under a deposition or an alignment."""
+        try:
+            self._claim_motion(kind)
+        except RuntimeError:
+            coro.close()
+            raise
+
+        async def moving():
+            try:
+                return await coro
+            finally:
+                self._release_motion()
+
+        wrapped = moving()
+        try:
+            return await self._start_task(kind, wrapped, detail)
+        except BaseException:
+            wrapped.close()
+            coro.close()
+            self._release_motion()
+            raise
 
     # --- long-running ops: fire-and-return, tracked via current_task -------------
 
@@ -472,7 +523,7 @@ class ExperimentHandler:
             return None
 
     async def perform_preablation(self, req: PerformPreablation) -> TaskAck:
-        return await self._start_task(
+        return await self._start_moving_task(
             "perform_preablation",
             self.manager.perform_preablation(
                 req.target_id, req.num_pulse, req.frequency, req.is_dryrun, req.move_mask_to_block_position,
@@ -485,7 +536,7 @@ class ExperimentHandler:
         )
 
     async def perform_deposition(self, req: PerformDeposition) -> TaskAck:
-        return await self._start_task(
+        return await self._start_moving_task(
             "perform_deposition",
             self.manager.perform_deposition(req.num_pulse, req.laser_repetition_rate, req.target_id, req.is_dryrun),
             {
@@ -658,7 +709,8 @@ class ExperimentHandler:
     # --- fast hardware control ---------------------------------------------------
 
     async def set_target(self, req: SetTarget) -> Ack:
-        await self.manager.set_target(req.target_id, req.rotation_mode, req.twist_mode)
+        async with self._moving("set_target"):
+            await self.manager.set_target(req.target_id, req.rotation_mode, req.twist_mode)
         return Ack()
 
     async def start_mi_logging(self, req: StartMiLogging) -> LoggingStatus:
@@ -670,30 +722,36 @@ class ExperimentHandler:
         return Ack()
 
     async def move_mask_to_position(self, req: MoveTo) -> Ack:
-        await self.manager.move_mask_to_position(req.position)
+        async with self._moving("move_mask_to_position"):
+            await self.manager.move_mask_to_position(req.position)
         return Ack()
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
-        await self.manager.move_rheed_to_position(req.position)
+        async with self._moving("move_rheed_to_position"):
+            await self.manager.move_rheed_to_position(req.position)
         return Ack()
 
     async def rotate_sample_to(self, req: SampleAngle) -> Ack:
-        await self.manager.rotate_sample_to(req.angle)
+        async with self._moving("rotate_sample_to"):
+            await self.manager.rotate_sample_to(req.angle)
         return Ack()
 
     async def rotate_sample_by(self, req: SampleAngle) -> Ack:
-        await self.manager.rotate_sample_by(req.angle)
+        async with self._moving("rotate_sample_by"):
+            await self.manager.rotate_sample_by(req.angle)
         return Ack()
 
     async def to_pixel(self, req: PixelIndex) -> PixelMoveResult:
-        result = await self.manager.to_pixel(req.index)
+        async with self._moving("to_pixel"):
+            result = await self.manager.to_pixel(req.index)
         if result is None:
             raise ValueError(f"pixel index {req.index} is out of range")
         mask_position, rheed_position = result
         return PixelMoveResult(index=req.index, mask_position=mask_position, rheed_position=rheed_position)
 
     async def to_current_pixel(self, req: Empty) -> PixelMoveResult:
-        result = await self.manager.to_current_pixel()
+        async with self._moving("to_current_pixel"):
+            result = await self.manager.to_current_pixel()
         if result is None:
             raise ValueError("no current pixel to move to (no substrate registered, or positions exhausted)")
         mask_position, rheed_position = result
@@ -1181,7 +1239,8 @@ class ExperimentHandler:
     # --- gated: laser power --------------------------------------------------------
 
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:
-        already_satisfied, _ = await self.manager.begin_set_laser_power(req.laser_power, req.target_id, req.force)
+        async with self._moving("begin_set_laser_power"):
+            already_satisfied, _ = await self.manager.begin_set_laser_power(req.laser_power, req.target_id, req.force)
         if not already_satisfied:
             await self._set_pending("laser_power", f"Set laser power to {req.laser_power:.2f} W and read the meter")
         return Ack()
@@ -1195,7 +1254,8 @@ class ExperimentHandler:
     # --- gated: mask-center calibration --------------------------------------------
 
     async def begin_align_center_mask(self, req: Empty) -> Ack:
-        await self.manager.begin_align_center_mask()
+        async with self._moving("begin_align_center_mask"):
+            await self.manager.begin_align_center_mask()
         await self._set_pending(
             "mask_center_alignment",
             "Align the mask center to the RHEED cathode luminescence center, then confirm the position",
@@ -1204,7 +1264,8 @@ class ExperimentHandler:
 
     async def confirm_center_mask(self, req: ConfirmCenterMask) -> Ack:
         self._require_pending("mask_center_alignment")
-        await self.manager.confirm_center_mask(req.position)
+        async with self._moving("confirm_center_mask"):
+            await self.manager.confirm_center_mask(req.position)
         await self._clear_pending()
         return Ack()
 
@@ -1234,7 +1295,7 @@ class ExperimentHandler:
             await self._await_mask_center_role(req.role_wait_timeout_s)
             return await self.manager.auto_align_center_mask(**params)
 
-        return await self._start_task("auto_align_center_mask", run(), req.model_dump())
+        return await self._start_moving_task("auto_align_center_mask", run(), req.model_dump())
 
     async def _await_mask_center_role(self, timeout_s: float, poll: float = 1.0) -> None:
         """Hold the alignment until a marker is tagged `mask-center`, asking for it
@@ -1270,13 +1331,15 @@ class ExperimentHandler:
     # --- gated: mask-center check loop ----------------------------------------------
 
     async def begin_check_mask_center(self, req: Empty) -> Ack:
-        await self.manager.begin_check_mask_center()
+        async with self._moving("begin_check_mask_center"):
+            await self.manager.begin_check_mask_center()
         await self._set_pending("mask_center_check", "Is the mask centered on camera?")
         return Ack()
 
     async def confirm_mask_center(self, req: ConfirmMaskCenter) -> PendingStatus:
         self._require_pending("mask_center_check")
-        still_pending = await self.manager.confirm_mask_center(req.aligned, req.corrected_position)
+        async with self._moving("confirm_mask_center"):
+            still_pending = await self.manager.confirm_mask_center(req.aligned, req.corrected_position)
         if still_pending:
             await self._push()
             return PendingStatus(pending=self._pending)

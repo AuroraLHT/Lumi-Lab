@@ -126,6 +126,13 @@ class Op:
     #: `task_result` carries, beside `ok`, when it succeeds. Declared so the generated
     #: clients name the type -- otherwise codegen only ever sees the TaskAck.
     result: type[BaseModel] | None = None
+    #: How long a caller waits for the answer, when the client's default (10 s) is
+    #: too short: an op that blocks on a motor move (a carousel revolve or a stage
+    #: rotation can take well over 10 s, plus the motor-enable wait). The answer then
+    #: arrives after the caller gave up, the move has happened, and a retry would start
+    #: a second one. `CapabilityClient.call` waits for the longer of its own timeout and
+    #: this. Like `journal`, not part of the wire surface (no hash change).
+    timeout_s: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

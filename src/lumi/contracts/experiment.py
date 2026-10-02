@@ -133,6 +133,12 @@ from .payloads.experiment import (
 )
 from .spec import Capability, Codec, EquipmentContract, Kind, Op, StreamSpec
 
+#: How long a caller waits on an op that blocks on a motor move: up to
+#: `experiment.bounds.motor_ready_timeout` (60 s) for the holding lock, then the move
+#: itself -- a carousel revolve or a sample rotation at 10 deg/s takes up to ~36 s, and
+#: confirm_mask_center makes two moves.
+MOTION_TIMEOUT_S = 120.0
+
 DRIVER = Capability(
     name="driver",
     kind=Kind.PUBSUB,
@@ -293,7 +299,7 @@ DRIVER = Capability(
                "start_mi_logging(interval_s=1) drops it to 1s)."),
 
         # --- fast hardware control
-        Op("set_target", SetTarget, Ack, journal=True),
+        Op("set_target", SetTarget, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("start_mi_logging", StartMiLogging, LoggingStatus,
            doc="Start PASCAL data logging at a fixed whole-second row interval "
                "(`Log Interval` + `Data Logging File=`). The controller powers up "
@@ -307,20 +313,20 @@ DRIVER = Capability(
                "OFF`). Needed before start_mi_logging can point at a new file: an "
                "already-running logger makes start_mi_logging ack without switching.",
            journal=True),
-        Op("move_mask_to_position", MoveTo, Ack, journal=True),
-        Op("move_rheed_to_position", MoveTo, Ack, journal=True),
+        Op("move_mask_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("move_rheed_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_to", SampleAngle, Ack,
            doc="Rotate the sample stage to an absolute angle in degrees (PASCAL "
                "`Set Sample Position`). Blocks until the move completes. Refused "
                "while the motor holding lock is released (see is_motor_free).",
-           journal=True),
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_by", SampleAngle, Ack,
            doc="Rotate the sample stage by a signed delta in degrees (PASCAL "
                "`Rotate Sample`); negative turns the other way. Blocks until the "
                "move completes. Refused while the motor holding lock is released.",
-           journal=True),
-        Op("to_pixel", PixelIndex, PixelMoveResult, journal=True),
-        Op("to_current_pixel", Empty, PixelMoveResult, journal=True),
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("to_pixel", PixelIndex, PixelMoveResult, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("to_current_pixel", Empty, PixelMoveResult, journal=True, timeout_s=MOTION_TIMEOUT_S),
         # --- gas. The setpoint ops and the gates are deliberately separate, because
         # `MFC Control` is a single master enable with no channel argument: folding it
         # into set_mfc_flow would mean set_mfc_flow(2, 0) silently shuts MFC1 too.
@@ -368,14 +374,14 @@ DRIVER = Capability(
         Op("anneal", Anneal, TaskAck, journal=True),
 
         # --- gated: laser power (unread physical meter)
-        Op("begin_set_laser_power", BeginSetLaserPower, Ack, journal=True),
+        Op("begin_set_laser_power", BeginSetLaserPower, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult, journal=True),
 
         # --- gated: mask-center calibration / check (visual judgement)
-        Op("begin_align_center_mask", Empty, Ack, journal=True),
-        Op("confirm_center_mask", ConfirmCenterMask, Ack, journal=True),
-        Op("begin_check_mask_center", Empty, Ack, journal=True),
-        Op("confirm_mask_center", ConfirmMaskCenter, PendingStatus, journal=True),
+        Op("begin_align_center_mask", Empty, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("confirm_center_mask", ConfirmCenterMask, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("begin_check_mask_center", Empty, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("confirm_mask_center", ConfirmMaskCenter, PendingStatus, journal=True, timeout_s=MOTION_TIMEOUT_S),
         # --- automatic: the same calibration, read off the chamber camera
         Op("set_center_mask_pos", CenterMaskPos, Ack,
            doc="Set center_mask_pos without moving the mask -- e.g. to keep a "

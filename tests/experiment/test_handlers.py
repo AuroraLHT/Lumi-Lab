@@ -23,6 +23,7 @@ from lumi.contracts.payloads.experiment import (
     BeginSetLaserPower,
     ConfirmLaserPower,
     MoveTo,
+    PerformDeposition,
     FinishCurrentPixel,
     AddMeasurement,
     ExperimentId,
@@ -1019,3 +1020,55 @@ async def test_to_temperature_sets_the_target_before_engaging_pid(handler):
         "Temperature Control PID\n",
         "Temperature Set 700.0\n",
     ]
+
+
+# --- motion: one move at a time -------------------------------------------------
+
+
+class SlowMi(FakeMi):
+    """Every MI command takes `delay` seconds, like a carousel that is revolving."""
+
+    def __init__(self, delay: float) -> None:
+        super().__init__()
+        self.delay = delay
+
+    async def execute(self, cmd, timeout: float = 30.0):
+        await asyncio.sleep(self.delay)
+        return await super().execute(cmd, timeout)
+
+
+async def test_a_second_move_is_refused_while_the_first_is_running(handler):
+    handler.manager.chamber_mi = SlowMi(0.2)
+    first = asyncio.create_task(handler.rotate_sample_to(SampleAngle(angle=90.0)))
+    await asyncio.sleep(0.05)
+
+    # A caller that retried after a timeout must not start a second move under the first.
+    with pytest.raises(RuntimeError, match="rotate_sample_to is still moving"):
+        await handler.set_target(SetTarget(target_id="A", rotation_mode="AUTO", twist_mode="AUTO"))
+    await first
+
+    # Released once it finished, and after a move that failed too.
+    handler.manager.chamber_mi = FakeMi()
+    await handler.rotate_sample_by(SampleAngle(angle=10.0))
+    handler.manager.chamber_mi = None
+    with pytest.raises(AttributeError):
+        await handler.rotate_sample_by(SampleAngle(angle=10.0))
+    assert handler._motion is None
+
+
+async def test_nothing_else_moves_while_a_deposition_runs(handler):
+    handler.manager.chamber_mi = SlowMi(0.1)
+    await handler.perform_deposition(PerformDeposition(
+        num_pulse=10, laser_repetition_rate=5.0, target_id="A", is_dryrun=True,
+    ))
+    with pytest.raises(RuntimeError, match="perform_deposition is still moving"):
+        await handler.move_mask_to_position(MoveTo(position=50.0))
+
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            break
+        await asyncio.sleep(0.01)
+    assert handler._motion is None
+    handler.manager.chamber_mi = FakeMi()
+    await handler.move_mask_to_position(MoveTo(position=50.0))
