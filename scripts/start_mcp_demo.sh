@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 #
+# SIMULATION / DEMO ONLY. For the real chamber use scripts/start_mcp_server.sh: this
+# script creates an operator account with a well-known default password and writes a
+# bearer token to disk, both fine on a loopback sim stack and neither fine in production.
+#
 # Serve the experiment MCP server over streamable HTTP, with a token you can actually
 # use. This is "terminal 2" of the --http flow in scripts/demo_mcp.py: it makes sure an
 # operator account exists, logs in for a JWT, writes it where the demo can find it, and
 # then runs the server in the foreground.
 #
 # Usage:
-#   scripts/start_mcp_http.sh [--port N] [--user NAME] [--password PW] [--host HOST]
+#   scripts/start_mcp_demo.sh [--port N] [--user NAME] [--password PW] [--host HOST]
 #                             [--api URL] [--db PATH] [--public-url URL] [--token-only]
 #
 #   --token-only   mint the token and exit, without starting the server
@@ -73,7 +77,7 @@ while [[ $# -gt 0 ]]; do
         --db) DB_PATH="$2"; shift 2 ;;
         --public-url) PUBLIC_URL="$2"; shift 2 ;;
         --token-only) TOKEN_ONLY=1; shift ;;
-        -h|--help) sed -n '3,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '3,36p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done

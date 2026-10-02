@@ -26,17 +26,18 @@ renewed from there. Register it with no secrets at all --
     claude mcp add --transport http lumi http://127.0.0.1:8100/mcp
 
 -- and log in when it asks. A hand-minted bearer token still works if you would
-rather pass one (scripts/start_mcp_http.sh --token-only); `--no-oauth` turns the
+rather pass one (scripts/start_mcp_demo.sh --token-only); `--no-oauth` turns the
 login flow off and leaves only that.
 
-HTTP serves plain HTTP; put a reverse proxy (nginx/Caddy) in front for TLS, and
-pass its address as --public-url so the OAuth issuer and every redirect match the
-address clients actually use. Note the login form posts a password, so without
-TLS that password crosses the network in the clear -- fine on loopback, not
-otherwise. Binding --bind-host to anything other than 127.0.0.1/localhost means
-the proxy (or whatever network path reaches this port) is the only thing standing
-between the internet and real lab equipment control, so double-check your
-firewall before doing that.
+HTTP serves HTTPS itself when `[tls]` is enabled (lumi.tls; scripts/make_lab_cert.sh
+makes the certificate), and plain HTTP otherwise. Off loopback it has to be HTTPS:
+the login form posts a password, and the MCP SDK refuses a plain-HTTP OAuth issuer
+anywhere but localhost. --public-url is the address clients actually use, published
+as the OAuth issuer and baked into every redirect; the certificate must cover its
+host. Binding --bind-host to anything other than 127.0.0.1/localhost means the
+network path to this port is the only thing standing between the internet and real
+lab equipment control, so double-check your firewall before doing that.
+scripts/start_mcp_server.sh wraps all of this for the server host.
 """
 
 from __future__ import annotations
@@ -48,6 +49,7 @@ import sys
 
 from lumi.config import settings
 from lumi.mcp.server import LumiMCPServer
+from lumi.tls import reloading_server, scheme, uvicorn_ssl_kwargs
 
 log = logging.getLogger(__name__)
 
@@ -67,8 +69,10 @@ async def run_http(
     app = await server.build_http_app(bind_host=bind_host, public_url=public_url, oauth=oauth)
     if oauth:
         log.info("clients with no token will be sent to %s/login to sign in", public_url.rstrip("/"))
-    config = uvicorn.Config(app, host=bind_host, port=port, log_level="info")
-    await uvicorn.Server(config).serve()
+    # HTTPS when [tls] is enabled (lumi.tls); raises rather than falling back to HTTP.
+    # SIGHUP reloads a renewed certificate (scripts/tailscale_cert.sh sends it).
+    config = uvicorn.Config(app, host=bind_host, port=port, log_level="info", **uvicorn_ssl_kwargs())
+    await reloading_server(config)
 
 
 async def main(args: argparse.Namespace) -> None:
@@ -82,7 +86,7 @@ async def main(args: argparse.Namespace) -> None:
                 server,
                 bind_host=args.bind_host,
                 port=args.port,
-                public_url=args.public_url or f"http://{args.bind_host}:{args.port}",
+                public_url=args.public_url or f"{scheme()}://{args.bind_host}:{args.port}",
                 oauth=not args.no_oauth,
             )
     finally:
@@ -120,7 +124,7 @@ def cli() -> None:
         help=(
             "do not act as an OAuth authorization server: no login page, no client "
             "registration. Clients must then present a bearer token minted elsewhere "
-            "(scripts/start_mcp_http.sh --token-only), which is how this worked before"
+            "(scripts/start_mcp_demo.sh --token-only), which is how this worked before"
         ),
     )
     parser.add_argument("-v", "--verbose", action="store_true")

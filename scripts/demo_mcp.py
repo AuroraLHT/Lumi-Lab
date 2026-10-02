@@ -19,7 +19,7 @@ reachable and that the tool descriptions say so.
 
 With --http URL it drives the streamable-HTTP transport instead, which additionally
 exercises the bearer-token auth in lumi.mcp.auth. That transport always requires an
-operator-or-admin token, so getting one is most of the work -- scripts/start_mcp_http.sh
+operator-or-admin token, so getting one is most of the work -- scripts/start_mcp_demo.sh
 does all of it (account, login, token file, server).
 
 Note this is the *script's* way in, not a real client's. A proper MCP host (Claude
@@ -31,7 +31,7 @@ the token it presents is the same JWT either route ends at. What it proves is th
 transport accepts one; what an operator should actually do is log in.
 
     scripts/start_simulation.sh --chamber-speed 30 --with-experiment --with-auth
-    scripts/start_mcp_http.sh                                         # terminal 2
+    scripts/start_mcp_demo.sh                                         # terminal 2
     uv run scripts/demo_mcp.py --http http://127.0.0.1:8100/mcp \
         --token "$(cat run/simulation/mcp_token.txt)"                 # terminal 3
 

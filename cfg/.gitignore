@@ -45,3 +45,7 @@ chamber_fiducials.json.corrupt
 # Structures saved through the simulation node (`simulation.rheed.structures_path`):
 # whatever CIFs this lab uploaded, local like the rest of this folder's data.
 rheed_structures/
+
+# TLS material from scripts/tailscale_cert.sh / make_lab_cert.sh: private keys for
+# the server (and the lab CA). Machine-local and secret.
+tls/

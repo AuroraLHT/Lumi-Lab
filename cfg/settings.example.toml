@@ -18,6 +18,27 @@ ws_max_bytes = 67108864
 max_request_payload_bytes = 16515072
 workers = 10
 
+[tls]
+# HTTPS for the API bridge (and so wss:// for /ws) and the MCP server's HTTP
+# transport, served by uvicorn itself (lumi.tls). Off here so a fresh checkout and
+# the simulation stack run plain HTTP on loopback. On the server host, fetch a
+# certificate with scripts/tailscale_cert.sh --install-cron (publicly trusted, renewed
+# daily) and turn it on in cfg/.secrets.toml:
+#
+#     [tls]
+#     enabled = true
+#     certfile = "cfg/tls/tailscale.crt"
+#     keyfile = "cfg/tls/tailscale.key"
+#
+# The defaults below are the files scripts/make_lab_cert.sh writes, the fallback for
+# a host without Tailscale (clients must then trust its CA by hand).
+#
+# With it on, both servers refuse to start if a file below is missing rather than
+# falling back to plain HTTP. Relative paths are from the project root.
+enabled = false
+certfile = "cfg/tls/server.crt"
+keyfile = "cfg/tls/server.key"
+
 [auth]
 # false = run the backend wide open: the /ws token check is skipped and every
 # connection is treated as an administrator. Anyone who can reach this host can
