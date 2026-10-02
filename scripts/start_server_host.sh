@@ -5,7 +5,8 @@
 #   monitor    presence registry (see --no-monitor)
 #   storage    HDF5 recorder, and the node that declares the exchanges
 #   detection  RHEED spot detection (see --no-detection)
-#   experiment PLD growth driver -- off by default (see --with-experiment)
+#   experiment PLD growth driver (see --no-experiment)
+#   simulation RHEED pattern simulation from crystal structures (see --no-rheed-sim)
 #   api        FastAPI + the /ws bridge the browser connects to
 #
 # The instrument-side half (pascal, rheed) runs on the other machine --
@@ -15,7 +16,9 @@
 # Usage:
 #   scripts/start_server_host.sh [--host HOST] [--user U] [--password P]
 #                                [--root DIR] [--workers N]
-#                                [--no-detection] [--no-monitor] [--with-experiment]
+#                                [--no-detection] [--no-monitor]
+#                                [--with-experiment|--no-experiment]
+#                                [--with-rheed-sim|--no-rheed-sim]
 #                                [--allow-insecure-auth] [--check]
 #
 #   --host        broker host (default localhost -- the broker runs here)
@@ -23,10 +26,12 @@
 #                 over loopback, which is exactly the case this script defaults to)
 #   --root        HDF5 output directory (default storage.hdf5_recorder.database_path)
 #   --workers     uvicorn workers for the api node (default: api.workers in settings)
-#   --with-experiment
-#                 also start the experiment node -- the PLD growth driver the
-#                 notebooks and the MCP server talk to. Off by default: the browser
-#                 stack does not need it.
+#   --with-experiment / --no-experiment
+#                 start (default) or skip the experiment node -- the PLD growth
+#                 driver the notebooks and the MCP server talk to
+#   --with-rheed-sim / --no-rheed-sim
+#                 start (default) or skip the simulation node -- RHEED patterns
+#                 computed from a crystal structure. Needs `uv sync --extra rheedsim`
 #   --check       run the preflight checks and exit without starting anything
 #
 # Unlike start_simulation.sh this writes to the REAL HDF5 root and the REAL user
@@ -55,7 +60,8 @@ STORAGE_ROOT=""
 API_WORKERS=""
 WITH_DETECTION=1
 WITH_MONITOR=1
-WITH_EXPERIMENT=0
+WITH_EXPERIMENT=1
+WITH_RHEED_SIM=1
 ALLOW_INSECURE_AUTH=0
 CHECK_ONLY=0
 
@@ -69,9 +75,12 @@ while [[ $# -gt 0 ]]; do
         --no-detection) WITH_DETECTION=0; shift ;;
         --no-monitor) WITH_MONITOR=0; shift ;;
         --with-experiment) WITH_EXPERIMENT=1; shift ;;
+        --no-experiment) WITH_EXPERIMENT=0; shift ;;
+        --with-rheed-sim) WITH_RHEED_SIM=1; shift ;;
+        --no-rheed-sim) WITH_RHEED_SIM=0; shift ;;
         --allow-insecure-auth) ALLOW_INSECURE_AUTH=1; shift ;;
         --check) CHECK_ONLY=1; shift ;;
-        -h|--help) sed -n '3,34p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '3,39p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -307,9 +316,16 @@ if [[ $WITH_EXPERIMENT -eq 1 ]]; then
         ok "experiment config present ([experiment] in cfg/settings.toml)"
     else
         fail "experiment: no usable [experiment] block in the config -- cannot start the node."
-        echo "        Copy the [experiment] section from cfg/settings.example.toml, or drop" >&2
-        echo "        --with-experiment." >&2
+        echo "        Copy the [experiment] section from cfg/settings.example.toml, or pass" >&2
+        echo "        --no-experiment." >&2
     fi
+fi
+
+# ---- rheed simulation -------------------------------------------------------
+# gemmi is the one dep outside the base install (the `rheedsim` extra). Without it
+# the node dies on an ImportError in its own log, so catch it here.
+if [[ $WITH_RHEED_SIM -eq 1 ]]; then
+    check_import gemmi "rheedsim extra (gemmi)" "uv sync --extra rheedsim, or pass --no-rheed-sim"
 fi
 
 if [[ $FAILED -ne 0 ]]; then
@@ -384,9 +400,14 @@ fi
 
 # The growth driver the notebooks and the MCP server talk to. A consumer of
 # chamber/rheed/storage, like storage is of rheed/chamber -- it needs them already
-# up, which they are by here. Off unless asked for: the browser stack does not use it.
+# up, which they are by here.
 if [[ $WITH_EXPERIMENT -eq 1 ]]; then
     start_node experiment --host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS"
+fi
+
+# RHEED pattern simulation: no hardware and no other node to wait for.
+if [[ $WITH_RHEED_SIM -eq 1 ]]; then
+    start_node simulation --host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS"
 fi
 
 # The bridge last, so the browser only reaches a stack whose consumers are up.
@@ -400,7 +421,8 @@ for i in "${!NAMES[@]}"; do
 done
 [[ $WITH_MONITOR    -eq 0 ]] && echo "  monitor    skipped (--no-monitor: the UI's presence panel stays empty)"
 [[ $WITH_DETECTION  -eq 0 ]] && echo "  detection  skipped (--no-detection)"
-[[ $WITH_EXPERIMENT -eq 0 ]] && echo "  experiment skipped (pass --with-experiment for the notebook / MCP driver)"
+[[ $WITH_EXPERIMENT -eq 0 ]] && echo "  experiment skipped (--no-experiment)"
+[[ $WITH_RHEED_SIM  -eq 0 ]] && echo "  simulation skipped (--no-rheed-sim)"
 echo
 API_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo "API on http://${API_IP:-<this host>}:8000 -- contract $CONTRACT_HASH"

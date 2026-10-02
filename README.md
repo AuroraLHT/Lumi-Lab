@@ -141,10 +141,11 @@ preflight first (`--check` runs only the preflight) and refuse to start anything
 fails, rather than leaving a half-dead stack behind:
 
 ```bash
-# On the server machine -- monitor, storage, detection, api. The broker lives here.
-uv sync --extra api --extra storage --extra detection
+# On the server machine -- monitor, storage, detection, experiment, simulation, api.
+# The broker lives here.
+uv sync --extra api --extra storage --extra detection --extra rheedsim
 scripts/install_detection_deps.sh          # detection host only
-scripts/start_server_host.sh               # add --with-experiment for the notebook / MCP driver
+scripts/start_server_host.sh               # --no-experiment / --no-rheed-sim to skip those
 
 # On the instrument machine -- pascal and rheed. --host is required: the broker is
 # on the other machine, and RabbitMQ refuses `guest` off loopback.
