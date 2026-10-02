@@ -7,6 +7,8 @@
 # edit your copy -- broker address, auth toggles, hardware paths are all
 # host-specific and must not go back into the tracked file.
 settings.toml
+# ...and backups of it, taken before migrating to a newer settings.example.toml.
+settings.toml.bak
 
 # Local user database: account rows and bcrypt password hashes. Created on
 # first run by UserStore.connect(), never meant to be shared.
