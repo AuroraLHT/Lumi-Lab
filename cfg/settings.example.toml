@@ -554,6 +554,10 @@ flip_y = true
 exchange = "EXPERIMENT"
 exchange_type = "topic"
 growth_db_path = "cfg/growth.db"
+# The real chamber's pressure is set by a person at the gauge, so set_pressure raises a
+# `pressure` pending confirmation for them instead of commanding the controller.
+# start_simulation.sh turns this off: the simulator sets the pressure directly.
+pressure_by_hand = true
 # Files attached to measurements (raw instrument files, AFM images). Empty means a
 # `measurement_files` folder beside growth.db -- keep the two together, they are one
 # record. The size cap is per file: an upload is one bus message, and RabbitMQ 4 and

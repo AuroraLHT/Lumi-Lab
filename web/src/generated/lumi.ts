@@ -2774,7 +2774,7 @@ export class ExperimentDriverClient {
     return this.t.call<Ack>(ExperimentDriverClient.target, "set_mfc_control", req);
   }
 
-  /** Set the closed-loop pressure setpoint in Torr. Takes effect only once set_pressure_control(on=True) is on; the controller then trims the control MFC's flow to hold it, overriding set_mfc_flow on that channel. */
+  /** Set the chamber pressure in Torr. On the real chamber a person sets it by hand: this raises a `pressure` pending confirmation for them, resolved with confirm once they have; read it back with get_current_pressure. In the simulator it sets the closed-loop setpoint directly, which takes effect once set_pressure_control(on=True) is on (the controller then trims the control MFC's flow to hold it). */
   async set_pressure(req: SetPressure): Promise<Ack> {
     return this.t.call<Ack>(ExperimentDriverClient.target, "set_pressure", req);
   }

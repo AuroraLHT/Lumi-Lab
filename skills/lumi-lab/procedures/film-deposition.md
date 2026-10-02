@@ -22,7 +22,8 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
 ## Each layer
 
 5. If the temperature changes from the last layer, `to_temperature` (wait, read back).
-6. A person sets the pressure; read it back with `get_current_pressure` and wait until it
+6. `set_pressure` (the person sets it on the real chamber, then `confirm`); read it back
+   with `get_current_pressure` and wait until it
    is within tolerance (SKILL.md §4).
 7. A person sets the excimer to ON. `begin_set_laser_power` → the person reads the meter
    → `confirm_laser_power` with their value.

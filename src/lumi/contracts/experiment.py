@@ -344,10 +344,13 @@ DRIVER = Capability(
                "their flow setpoints untouched. Not needed under pressure control, "
                "which drives the control MFC itself.", journal=True),
         Op("set_pressure", SetPressure, Ack,
-           doc="Set the closed-loop pressure setpoint in Torr. Takes effect only "
-               "once set_pressure_control(on=True) is on; the controller then trims "
-               "the control MFC's flow to hold it, overriding set_mfc_flow on that "
-               "channel.", journal=True),
+           doc="Set the chamber pressure in Torr. On the real chamber a person sets "
+               "it by hand: this raises a `pressure` pending confirmation for them, "
+               "resolved with confirm once they have; read it back with "
+               "get_current_pressure. In the simulator it sets the closed-loop "
+               "setpoint directly, which takes effect once "
+               "set_pressure_control(on=True) is on (the controller then trims the "
+               "control MFC's flow to hold it).", journal=True),
         Op("set_pressure_control", SetPressureControl, Ack,
            doc="Turn closed-loop pressure control on or off. On: the controller owns "
                "the control MFC and holds set_pressure's setpoint. Off: flow reverts "

@@ -54,13 +54,15 @@ being asked, wait, and pass their answer on.
 | `rheed_gain` | judges the RHEED image | `set_rheed_gain`, `confirm_rheed_gain` |
 | `pixel_check` | checks each position on the camera | `resolve_pixel_check` |
 | `fiducial_role` | tags the mask-center marker in the UI | (continues by itself) |
+| `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure` on the real chamber) | `confirm`, then read it back with `get_current_pressure` |
 | `proceed` | a plain go/no-go | `confirm` |
 
 Also by hand, with no tool: excimer ON/standby, RHEED gun and sample-stage adjustment,
-pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released, and
-setting the pressure. **[hard]** Do not use `set_pressure` on the real chamber: it does
-not work in a real run yet. Ask the person to set the pressure, then read it back with
-`get_current_pressure`.
+and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.
+The pressure too, on the real chamber: `set_pressure` there does not command the
+controller, it raises a `pressure` confirmation asking the person to set it. In the
+simulator it sets the pressure directly. Either way, read it back with
+`get_current_pressure` before going on.
 
 ## 3. Growing
 

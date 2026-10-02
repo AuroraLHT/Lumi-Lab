@@ -96,6 +96,11 @@ async def main(args: argparse.Namespace) -> None:
     # the index and the bytes are one record.
     files_root = settings.experiment.get("measurement_files_path") or str(
         Path(growth_db.db_path).parent / "measurement_files")
+    if settings.experiment.get("pressure_by_hand") is None:
+        raise RuntimeError(
+            "cfg/settings.toml [experiment] is missing pressure_by_hand (true on the real "
+            "chamber: set_pressure asks a person). Copy it from cfg/settings.example.toml."
+        )
     handler = ExperimentHandler(
         sources={}, growth_db=growth_db, pld_config=_pld_config(), bounds=_bounds(),
         target_mapper=dict(settings.experiment.target_mapper), registry_client=None,
@@ -108,6 +113,7 @@ async def main(args: argparse.Namespace) -> None:
             max_bytes=int(settings.experiment.get("snapshot_max_bytes", SNAPSHOT_MAX_BYTES)),
             limit_setting="experiment.snapshot_max_bytes",
         ),
+        pressure_by_hand=bool(settings.experiment.pressure_by_hand),
     )
     await handler.load_calibration()
 

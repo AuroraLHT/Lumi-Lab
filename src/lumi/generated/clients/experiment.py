@@ -280,7 +280,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("set_mfc_control", req)  # type: ignore[return-value]
 
     async def set_pressure(self, req: SetPressure) -> Ack:
-        """Set the closed-loop pressure setpoint in Torr. Takes effect only once set_pressure_control(on=True) is on; the controller then trims the control MFC's flow to hold it, overriding set_mfc_flow on that channel."""
+        """Set the chamber pressure in Torr. On the real chamber a person sets it by hand: this raises a `pressure` pending confirmation for them, resolved with confirm once they have; read it back with get_current_pressure. In the simulator it sets the closed-loop setpoint directly, which takes effect once set_pressure_control(on=True) is on (the controller then trims the control MFC's flow to hold it)."""
         return await self.call("set_pressure", req)  # type: ignore[return-value]
 
     async def set_pressure_control(self, req: SetPressureControl) -> Ack:

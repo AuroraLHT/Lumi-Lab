@@ -16,7 +16,8 @@ aligned by `auto_align_center_mask` rather than by a person.
 
 4. `current_substrate`: which position is next. None left → the substrate is done.
 5. Align the mask (below), then `to_current_pixel`: mask and RHEED to the position.
-6. A person sets the pressure; read it back and wait until it is within tolerance.
+6. `set_pressure` (the person sets it on the real chamber, then `confirm`); read it back
+   and wait until it is within tolerance.
 7. `begin_set_laser_power` → the person reads the meter → `confirm_laser_power`. (Skipped
    by the driver if the laser power is already set.)
 8. `initiate_heating_laser` if it is off, then `to_temperature` at the substrate's ramp

@@ -232,8 +232,13 @@ class ExperimentHandler:
         registry_client=None,
         file_store: MeasurementFileStore | None = None,
         snapshot_store: MeasurementFileStore | None = None,
+        pressure_by_hand: bool = True,
     ) -> None:
         self.sources = sources
+        #: The real chamber's pressure is set by a person at the gauge: set_pressure
+        #: asks them (a `pressure` pending confirmation) instead of commanding the
+        #: controller. The simulator sets it directly. Defaults to the real chamber.
+        self.pressure_by_hand = pressure_by_hand
         self.growth_db = growth_db
         #: Measurement attachments. Beside growth.db unless the node says otherwise,
         #: since the two are one record and get backed up together.
@@ -769,6 +774,12 @@ class ExperimentHandler:
         return Ack()
 
     async def set_pressure(self, req: SetPressure) -> Ack:
+        if self.pressure_by_hand:
+            await self._set_pending(
+                "pressure",
+                f"Set the chamber pressure to {req.pressure:.3g} Torr by hand, then confirm",
+            )
+            return Ack()
         await self.manager.set_pressure(req.pressure)
         return Ack()
 

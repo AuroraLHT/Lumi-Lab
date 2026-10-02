@@ -22,6 +22,7 @@ from lumi.contracts.payloads.experiment import (
     AnnealStep,
     BeginSetLaserPower,
     ConfirmLaserPower,
+    ConfirmProceed,
     MoveTo,
     PerformDeposition,
     FinishCurrentPixel,
@@ -360,6 +361,7 @@ async def test_set_mfc_control_opens_and_closes_the_master_gate(handler):
 
 
 async def test_set_pressure_and_pressure_control_are_separate(handler):
+    handler.pressure_by_hand = False  # the simulator: set_pressure commands the controller
     await handler.set_pressure(SetPressure(pressure=20.0e-3))
     await handler.set_pressure_control(SetPressureControl(on=True))
     await handler.set_pressure_control(SetPressureControl(on=False))
@@ -1072,3 +1074,27 @@ async def test_nothing_else_moves_while_a_deposition_runs(handler):
     assert handler._motion is None
     handler.manager.chamber_mi = FakeMi()
     await handler.move_mask_to_position(MoveTo(position=50.0))
+
+
+# --- pressure: by hand on the real chamber, direct in the simulator ----------------
+
+
+async def test_set_pressure_asks_a_person_on_the_real_chamber(handler):
+    assert handler.pressure_by_hand  # the default: a real chamber
+    await handler.set_pressure(SetPressure(pressure=0.1))
+
+    pending = handler.readout().pending_confirmation
+    assert pending is not None and pending.kind == "pressure"
+    assert "0.1 Torr" in pending.message
+    # Nothing commanded: the person sets it at the gauge.
+    assert handler.sources["chamber_mi"].calls == []
+
+    await handler.confirm(ConfirmProceed(confirmation_id=pending.id))
+    assert handler.readout().pending_confirmation is None
+
+
+async def test_set_pressure_sets_it_directly_in_the_simulator(handler):
+    handler.pressure_by_hand = False
+    await handler.set_pressure(SetPressure(pressure=0.1))
+    assert handler.readout().pending_confirmation is None
+    assert handler.sources["chamber_mi"].calls == ["Set Pressure= 1.00E-1\n"]

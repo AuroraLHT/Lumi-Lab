@@ -50,7 +50,7 @@ _STRICT = ConfigDict(extra="forbid")
 class PendingConfirmation(BaseModel):
     id: str
     kind: str  # "proceed" | "laser_power" | "mask_center_alignment" | "mask_center_check"
-    # | "rheed_gain" | "pixel_check" | "fiducial_role"
+    # | "rheed_gain" | "pixel_check" | "fiducial_role" | "pressure"
     message: str
     requested_at: float
 

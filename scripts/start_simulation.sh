@@ -319,6 +319,8 @@ if [[ $WITH_EXPERIMENT -eq 1 ]]; then
         echo "  ramp rate ${DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_CURRENT_RAMP_RATE} A/s," \
              "max wait ${DYNACONF_EXPERIMENT__BOUNDS__WARM_UP_MAX_WAITTIME}s"
     fi
+    # The simulator sets the pressure itself; on the real chamber a person does.
+    export DYNACONF_EXPERIMENT__PRESSURE_BY_HAND=false
     # A consumer of chamber/rheed/storage, like storage is of rheed/chamber -- needs
     # them already up, which they are by this point in the script.
     start_node experiment --host "$RABBITMQ_HOST"
