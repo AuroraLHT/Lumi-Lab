@@ -37,6 +37,7 @@ as the OAuth issuer and baked into every redirect; the certificate must cover it
 host. Binding --bind-host to anything other than 127.0.0.1/localhost means the
 network path to this port is the only thing standing between the internet and real
 lab equipment control, so double-check your firewall before doing that.
+scripts/start_mcp_server.sh wraps all of this for the server host.
 """
 
 from __future__ import annotations

@@ -162,6 +162,36 @@ host's producers publish into. Give the instrument host a real broker account (s
 refuses to start with `auth.enabled = false` or the placeholder signing key
 (`--allow-insecure-auth` overrides, for an isolated bench network).
 
+**HTTPS.** The API (and so `/ws`, as `wss://`) and the MCP server serve TLS themselves,
+with a [Tailscale](https://tailscale.com) certificate: a real Let's Encrypt one for this
+machine's tailnet name, so browsers, phones and Claude Code trust it with nothing
+installed. Clients only need to be on the tailnet. One-time setup:
+
+1. Tailscale admin console → **DNS**: MagicDNS on, **HTTPS Certificates** enabled.
+2. On the server host: `sudo tailscale set --operator=$USER`
+3. `scripts/tailscale_cert.sh --install-cron`. This fetches the certificate into `cfg/tls/`
+   and adds a daily renewal to your crontab that signals the running servers to reload it.
+   Renewals need no restart and drop no `/ws` session.
+4. In `cfg/.secrets.toml`:
+
+   ```toml
+   [tls]
+   enabled = true
+   certfile = "cfg/tls/tailscale.crt"
+   keyfile = "cfg/tls/tailscale.key"
+   ```
+
+The certificate is valid for the MagicDNS name only (`<machine>.<tailnet>.ts.net`), not
+for any IP, so that name is what Lumi-Deck, the MCP client and phones use:
+`https://<machine>.<tailnet>.ts.net:8000`. `start_server_host.sh` refuses to serve plain
+HTTP (`--allow-plain-http` overrides), and checks that the certificate covers that name
+and isn't close to expiry. Set `api.allow_origins` to the origin(s) Lumi-Deck is served from.
+
+No Tailscale? `scripts/make_lab_cert.sh` makes a lab CA and a certificate for the LAN
+address instead. That works too, but every client then has to trust `cfg/tls/ca.crt` by
+hand (`NODE_EXTRA_CA_CERTS` for Claude Code), which is impractical on phones, and it does
+not renew itself. The simulation stack always runs plain HTTP on loopback.
+
 To run a node by hand instead, in the order consumers-before-producers:
 
 ```bash
@@ -494,6 +524,24 @@ uv run python scripts/create_api_user.py agent --role operator --database run/si
 
 **2. Start the server.**
 
+On the production server host, next to `scripts/start_server_host.sh`:
+
+```bash
+scripts/start_mcp_server.sh                           # https://<tailscale name>:8100
+scripts/start_mcp_server.sh --public-url https://lumi.lab.example:8100   # a DNS name
+```
+
+It serves HTTPS with the same certificate as the API (see **HTTPS** under
+[Against real hardware](#against-real-hardware)). It has to: the login is OAuth, and the
+MCP SDK refuses an `http://` issuer anywhere but loopback ("Issuer URL must be HTTPS").
+It runs a preflight first (`--check` runs only that): it refuses the placeholder signing
+key, a user database with no active operator/admin, a public URL the SDK would reject, and
+a certificate that does not cover the public URL's host. It creates no account and mints
+no token. `scripts/start_mcp_demo.sh` does both, which is why it is
+for the simulator stack and demos only.
+
+By hand, the same thing is:
+
 ```bash
 uv run python -m lumi.mcp --transport http --port 8100 --host <broker>
 ```
@@ -527,12 +575,13 @@ claude mcp add --transport http lumi http://127.0.0.1:8100/mcp \
 | login page refuses a correct password | the account is a viewer, or lives in a different user database from the server's (step 2) |
 | 401 with a token from `/auth/login` | the stack runs with auth off, so the login handed back the inactive anonymous identity; restart it `--with-auth` |
 | the client reports an issuer mismatch | `--public-url` does not match the address the client used |
+| `Hostname/IP does not match certificate's altnames` | connect by the certificate's name (the `*.ts.net` one), not an IP |
+| `self-signed certificate in certificate chain` / `UNABLE_TO_VERIFY_LEAF_SIGNATURE` | a `make_lab_cert.sh` certificate the client does not trust: `NODE_EXTRA_CA_CERTS=/path/to/ca.crt` for Claude Code, import it for a browser |
 
-**Off the lab machine.** The server speaks plain HTTP and the login form posts a
-password, so beyond loopback put nginx/Caddy in front for TLS and pass its `https://`
-address as `--public-url` (it becomes the OAuth issuer and every redirect target).
-`--bind-host` defaults to `127.0.0.1`; anything else means your firewall is the only
-thing between the internet and the chamber. Access tokens cannot be revoked before they
+**Off the lab machine.** Serve HTTPS (`[tls]`, above) and pass the address clients use as
+`--public-url` (it becomes the OAuth issuer and every redirect target). `python -m
+lumi.mcp` binds `127.0.0.1` by default and `start_mcp_server.sh` binds `0.0.0.0`; anything
+off loopback means your firewall is the only thing between the internet and the chamber. Access tokens cannot be revoked before they
 expire; revoking a login only stops its refresh.
 
 ### Before you let an agent run a growth

@@ -11,7 +11,7 @@
 #   --dns   a hostname clients connect to (repeatable). `localhost` and this host's
 #           name are always included.
 #   --days  server certificate lifetime (default 365). Rerun before it runs out;
-#           start_server_host.sh warns 30 days ahead.
+#           start_server_host.sh / start_mcp_server.sh warn 30 days ahead.
 #   --out   where the files go (default cfg/tls, git-ignored)
 #
 # The CA is made once (ca.crt / ca.key, valid 10 years) and reused on every rerun, so
