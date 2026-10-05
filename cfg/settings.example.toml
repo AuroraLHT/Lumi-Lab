@@ -17,6 +17,13 @@ ws_max_bytes = 67108864
 # for the headers.
 max_request_payload_bytes = 16515072
 workers = 10
+# Browser origins (scheme://host:port the page is served from) allowed to call the
+# API. Unset means "*" (any site), which start_server_host.sh warns about. To
+# restrict it, list every address Lumi-Deck is opened at: its dev server listens on
+# 5173, and localhost and 127.0.0.1 count as different origins. For example:
+#
+# allow_origins = ["http://localhost:5173", "http://127.0.0.1:5173",
+#                  "http://<machine>.<tailnet>.ts.net:5173", "http://<lan ip>:5173"]
 
 [tls]
 # HTTPS for the API bridge (and so wss:// for /ws) and the MCP server's HTTP
