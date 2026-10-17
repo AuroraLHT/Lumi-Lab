@@ -35,12 +35,13 @@ from dataclasses import dataclass
 from math import floor
 
 from lumi.contracts.payloads.chamber import SectionQuery
+from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.experiment import MaskAlignPass, MaskAlignResult, MaskSweepPoint
 from lumi.contracts.payloads.fiducial import MASK_CENTER_ROLE
 from lumi.contracts.payloads.storage import StorageRequest
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, utc_now
 from lumi.experiment.mask_align import locate_slit
-from lumi.experiment.mi import MiCommandRunner
+from lumi.experiment.mi import MiCommandRunner, brief as mi_brief
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
@@ -131,6 +132,10 @@ class ExperimentBounds:
     # How long to wait for the motor holding lock to re-engage before a commanded
     # move. Bounded so a chamber left on manual/unpowered raises instead of hanging.
     motor_ready_timeout: float = 60.0
+    # The hottest the substrate may read when the heating laser is turned off. Cutting
+    # the laser hot drops the sample from setpoint at once, the rapid cooling a ramp is
+    # there to avoid. 160 degC is the pyrometer's floor, so this is "cooled down".
+    heating_laser_off_max_temperature: float = 165.0
 
 
 class Substrate:
@@ -265,7 +270,6 @@ class BaseExperimentManager:
         self._laser_power_set: float | None = None
         self._laser_power_real: float | None = None
         # Stashed between begin_set_laser_power() and confirm_laser_power().
-        self._pending_laser_target_id: str | None = None
         self._pending_laser_power: float | None = None
         # Stashed between begin_check_rheed_pixels() and resolve_pixel_check().
         self._pixel_check_index: int = 0
@@ -631,6 +635,21 @@ class BaseExperimentManager:
         valid = [section.values.get(f) for f in self.target_mapper.values()]
         raise ValueError(f"target {target_name!r} not found; valid targets: {valid}")
 
+    async def get_current_target(self) -> tuple[int, str | None, str | None]:
+        """The carousel position the chamber log reports, as (TG No., slot, name).
+
+        `TG No.` counts from 0 in slot order: 0 is A (TG1name), 6 is Clear (TG7name),
+        7 is Monitor (TG8name). The slot is None for a number no `target_mapper`
+        entry maps to; the name is the material PLDconfig.ini gives that slot."""
+        number = int(float((await self._log_values())["TG No."]))
+        slot = next(
+            (s for s, field in self.target_mapper.items()
+             if str(field).removeprefix("TG").removesuffix("name") == str(number + 1)),
+            None,
+        )
+        name = await self.get_target_name_by_id(slot) if slot is not None else None
+        return number, slot, name
+
     async def show_available_targets(self) -> dict[str, str]:
         section = await self.chamber_config.get_configs_by_section(SectionQuery(section="TGsettings"))
         rev = {v: k for k, v in self.target_mapper.items()}
@@ -793,11 +812,56 @@ class BaseExperimentManager:
             await asyncio.sleep(poll)
         raise RuntimeError(f"heating laser did not report on within {timeout:.0f}s of initiate_heating_laser")
 
-    async def turn_off_heating_laser(self) -> None:
+    async def turn_off_heating_laser(self, force: bool = False) -> None:
+        if not force:
+            current = await self.get_current_temperature()
+            limit = self.bounds.heating_laser_off_max_temperature
+            if current > limit:
+                raise RuntimeError(
+                    f"the substrate reads {current:.0f}C, above {limit:.0f}C -- turning the "
+                    "heating laser off now cools it all at once. cool_down first and wait "
+                    "for it to read cold (a to_temperature with wait=false returns before "
+                    "the ramp ends); force=true overrides"
+                )
         await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL))
         await self.chamber_mi.execute(pcmd.HeatingLaserThreshold(state=pcmd.PascalState("OFF")))
         await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("OFF"), nowait=False))
         await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=True, nowait=False))
+
+    async def check_mi_mode(self, timeout: float = 10.0) -> tuple[str, str]:
+        """Whether PASCAL is taking MI commands, as (status, message).
+
+        Nothing in the chamber log says whether MI Mode is on: with it off, PASCAL
+        never picks a script up and every command just hangs until it times out. So
+        send one that does nothing (`Wait 0 sec`) and see whether it completes.
+        "busy" when another script is running -- the probe would only queue behind it.
+        """
+        running = [
+            e for e in (await self.chamber_mi.client.list_execution(Empty())).executions
+            if not e.is_execution_finished
+        ]
+        probe = pcmd.Wait(0).to_text()
+        if running and running[0].commands == probe:
+            # An earlier probe that PASCAL never picked up. It holds the queue, so a new
+            # one would only sit behind it -- and it still being there is the answer.
+            return "off", (
+                "an earlier MI Mode probe is still waiting for PASCAL to pick it up: MI "
+                "Mode is still off. Ask a person to switch PASCAL to MI Mode"
+            )
+        if running:
+            return "busy", (
+                f"another MI script is running ({mi_brief(running[0].commands)}); the probe "
+                "would queue behind it, so MI Mode cannot be checked until it finishes"
+            )
+        try:
+            await self.chamber_mi.execute(probe, timeout=timeout, raise_on_abort=False)
+        except TimeoutError:
+            return "off", (
+                f"PASCAL did not run a no-op script within {timeout:.0f}s: MI Mode is "
+                "probably off. Ask a person to switch PASCAL to MI Mode. The probe stays "
+                "queued and runs harmlessly once it is on"
+            )
+        return "on", "PASCAL ran a no-op script: MI Mode is on"
 
     async def _await_motor_ready(self, poll: float = 0.5) -> None:
         """Block until the motor holding lock is engaged, so a commanded move has
@@ -951,7 +1015,11 @@ class BaseExperimentManager:
         values = await self._log_values()
         return _truthy(values["ON/OFF monitor in PS"])
 
-    async def to_temperature(self, temperature: float, ramp_rate: float = 20.0) -> float:
+    async def to_temperature(self, temperature: float, ramp_rate: float = 20.0, wait: bool = True) -> float:
+        """Ramp to `temperature`. With `wait` the call returns once the substrate
+        arrives; without it, once the ramp is set going. PASCAL runs one command at a
+        time and the arrival wait is a command, so `wait` holds every other chamber
+        command (moves, target, shutter) until the ramp ends."""
         b = self.bounds
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
 
@@ -970,7 +1038,7 @@ class BaseExperimentManager:
             # success that leaves the chamber where it was. PID stays out of it --
             # the controller cannot hold this setpoint, the substrate coasts to it.
             await self.chamber_mi.execute(pcmd.TemperatureRamp(ramp_rate, state=pcmd.PascalState("ON")))
-            await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=False))
+            await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=not wait))
             return temperature
 
         # With the laser off, PID has nothing to drive: the setpoint climbs, the diode
@@ -997,7 +1065,8 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID))
         # The same target again, without (Nowait): changes nothing, but holds the
         # command until the substrate arrives, which is what the task waits on.
-        await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=False))
+        if wait:
+            await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=False))
         return temperature
 
     async def cool_down(self, ramp_rate: float = 20.0) -> None:
@@ -1092,28 +1161,23 @@ class BaseExperimentManager:
 
     # --- gated: laser power --------------------------------------------------------
 
-    async def begin_set_laser_power(self, laser_power: float, target_id: str | None = None, force: bool = False) -> tuple[bool, float | None]:
+    async def begin_set_laser_power(self, laser_power: float, force: bool = False) -> tuple[bool, float | None]:
         """Returns (already_satisfied, cached_measured_power). If already_satisfied,
         no confirmation is needed -- the caller should skip straight to the cached
-        value rather than opening a pending gate for nothing."""
+        value rather than opening a pending gate for nothing.
+
+        Always measured at Clear: the meter reads the beam at the exit port, which
+        only the empty slot lets through."""
         if not force and self._laser_power_set == laser_power:
             return True, self._laser_power_real
 
         await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("OFF")))
-        if target_id is not None:
-            await self.set_target(target_id, "ON", "ON")
-        else:
-            await self._await_motor_ready()  # SelectTarget revolves the carousel
-            await self.chamber_mi.execute(pcmd.SelectTarget(pcmd.Targets("Clear"), nowait=False))
-        # Stashed for confirm_laser_power, which the caller invokes with only the
-        # measured value -- it has no other way to know what this begin() targeted.
-        self._pending_laser_target_id = target_id
+        await self._await_motor_ready()  # SelectTarget revolves the carousel
+        await self.chamber_mi.execute(pcmd.SelectTarget(pcmd.Targets.Clear, nowait=False))
         self._pending_laser_power = laser_power
         return False, None
 
     async def confirm_laser_power(self, measured_power: float) -> float:
-        if self._pending_laser_target_id is not None:
-            await self.set_target(self._pending_laser_target_id, "AUTO", "AUTO")
         self._laser_power_set = self._pending_laser_power
         self._laser_power_real = measured_power
         return measured_power

@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 50d3d5d1ce2739a1
+# contract_hash: dd4840d2bf343d87
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CenterMaskPos, CheckLogging, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -63,6 +63,10 @@ class ExperimentDriverClient(CapabilityClient):
     async def get_target_id_by_name(self, req: TargetName) -> TargetId:
         """Call driver.get_target_id_by_name."""
         return await self.call("get_target_id_by_name", req)  # type: ignore[return-value]
+
+    async def get_current_target(self) -> CurrentTarget:
+        """Which carousel slot is in front of the laser now, read from the chamber log's `TG No.`. The log counts from 0: 0-5 are targets A-F, 6 is Clear, 7 is Monitor. The chamber camera only sees the sample with Clear or Monitor in place; at any other slot the target is in the way."""
+        return await self.call("get_current_target")  # type: ignore[return-value]
 
     async def current_substrate(self) -> CurrentSubstrateResponse:
         """Call driver.current_substrate."""
@@ -235,6 +239,10 @@ class ExperimentDriverClient(CapabilityClient):
         """Probe whether the chamber log is still being written: read the newest row's timestamp, wait up to timeout_s, and report whether it advanced (with last_stamp, the timestamp seen). A frozen timestamp means the log-reader thread died or PASCAL stopped writing -- every downstream read is then stale. timeout_s must exceed the controller's Log Interval (60s at power-up; start_mi_logging(interval_s=1) drops it to 1s)."""
         return await self.call("check_logging_alive", req)  # type: ignore[return-value]
 
+    async def check_mi_mode(self, req: CheckMiMode) -> MiModeStatus:
+        """Check that PASCAL is in MI Mode, i.e. taking commands from this software. Nothing in the chamber log says so: with MI Mode off every command hangs until it times out. This sends a no-op script (`Wait 0 sec`) and reports `on` if it ran within timeout_s, `off` if not (ask a person to switch PASCAL to MI Mode), or `busy` if another script is running and the probe cannot tell. Run it before a growth."""
+        return await self.call("check_mi_mode", req)  # type: ignore[return-value]
+
     async def set_target(self, req: SetTarget) -> Ack:
         """Call driver.set_target."""
         return await self.call("set_target", req)  # type: ignore[return-value]
@@ -291,9 +299,9 @@ class ExperimentDriverClient(CapabilityClient):
         """Call driver.initiate_heating_laser."""
         return await self.call("initiate_heating_laser")  # type: ignore[return-value]
 
-    async def turn_off_heating_laser(self) -> Ack:
-        """Call driver.turn_off_heating_laser."""
-        return await self.call("turn_off_heating_laser")  # type: ignore[return-value]
+    async def turn_off_heating_laser(self, req: TurnOffHeatingLaser) -> Ack:
+        """Turn the heating laser off. Refused while the substrate reads above 165 C (experiment.bounds.heating_laser_off_max_temperature): cutting the laser hot cools the sample all at once. cool_down first and wait until the temperature reads cold -- a to_temperature with wait=false ends its task before the substrate gets there. force=true overrides."""
+        return await self.call("turn_off_heating_laser", req)  # type: ignore[return-value]
 
     async def start_storage(self, req: StartStorage) -> StorageResult:
         """Call driver.start_storage."""
@@ -308,7 +316,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("finish_experiment_record", req)  # type: ignore[return-value]
 
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
-        """Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach. A setpoint below the PID-engage threshold is not holdable: from a hot chamber it is commanded as a cooldown (no PID), and from an already-cold one it is a no-op, since a room-temperature growth runs with the diode off."""
+        """Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach. wait=true (the default): the task ends when the substrate arrives, and PASCAL runs no other command (moves, target, shutter) until then. wait=false: the task ends once the ramp is under way and the chamber is free for other commands; read get_current_temperature until it is within tolerance before relying on it, and never follow it with turn_off_heating_laser while still hot. A setpoint below the PID-engage threshold is not holdable: from a hot chamber it is commanded as a cooldown (no PID), and from an already-cold one it is a no-op, since a room-temperature growth runs with the diode off."""
         return await self.call("to_temperature", req)  # type: ignore[return-value]
 
     async def cool_down(self, req: CoolDown) -> TaskAck:
@@ -328,7 +336,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("anneal", req)  # type: ignore[return-value]
 
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:
-        """Call driver.begin_set_laser_power."""
+        """Start a laser energy check: closes the sample shutter and turns the carousel to Clear, so the beam reaches the meter at the exit port, then raises a `laser_power` pending confirmation for the person reading the meter. Call nothing else until confirm_laser_power: any op that selects a target (set_target, perform_preablation, perform_deposition) moves the carousel off Clear and spoils the reading. Skipped, with no confirmation, when this power was already confirmed (force=true redoes it)."""
         return await self.call("begin_set_laser_power", req)  # type: ignore[return-value]
 
     async def confirm_laser_power(self, req: ConfirmLaserPower) -> LaserPowerResult:

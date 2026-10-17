@@ -196,13 +196,13 @@ async def run_ensure_motor_ready(
 
 
 async def run_set_laser_power(
-    exp: ExperimentSession, laser_power: float, *, target_id: str | None = None, force: bool = False,
+    exp: ExperimentSession, laser_power: float, *, force: bool = False,
     value_provider: ValueProvider = default_value_provider,
 ) -> float:
     """Port of BaseExperimentManager.set_laser_power. Returns the measured power --
     the cached value immediately if already set to `laser_power` and not `force`d,
     otherwise the value the human reports off the meter."""
-    await exp.driver.begin_set_laser_power(BeginSetLaserPower(laser_power=laser_power, target_id=target_id, force=force))
+    await exp.driver.begin_set_laser_power(BeginSetLaserPower(laser_power=laser_power, force=force))
     state = await exp.driver.get_state()
     if state.pending_confirmation is None or state.pending_confirmation.kind != "laser_power":
         return state.laser_power_real  # begin_set_laser_power short-circuited: already set

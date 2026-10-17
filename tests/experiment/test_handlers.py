@@ -59,7 +59,10 @@ from lumi.contracts.payloads.experiment import (
     SetTarget,
     StartMiLogging,
     ToTemperature,
+    TurnOffHeatingLaser,
+    CheckMiMode,
 )
+from lumi.contracts.payloads.chamber import MIExecution, MIExecutionList
 from lumi.contracts.payloads.storage import StorageStatus
 from lumi.experiment.db import GrowthDB
 from lumi.experiment.handlers import ExperimentHandler
@@ -999,6 +1002,101 @@ async def test_unknown_column_raises_rather_than_no_opping(handler):
     ))
     with pytest.raises(ValueError, match="not editable on substrate"):
         await handler.growth_db.update_row("substrate", info.substrate_id, colour="blue")
+
+
+async def _task_result(handler) -> dict:
+    for _ in range(200):
+        event = await handler.next_update()
+        if event is not None and event.task_result is not None:
+            return event.task_result
+        await asyncio.sleep(0.01)
+    pytest.fail("task never reported completion")
+
+
+async def test_to_temperature_without_wait_leaves_pascal_free(handler):
+    # wait=false drops the trailing blocking `Temperature Set`, the command that holds
+    # PASCAL's queue until the substrate arrives.
+    handler.sources["chamber_log"].values["HT Temp moni"] = "300.0"
+    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20, wait=False))
+    assert (await _task_result(handler))["ok"] is True
+    assert handler.sources["chamber_mi"].calls == [
+        "Temperature Set 700.0 (Nowait)\n",
+        "Temperature Ramp 20.0\n",
+        "Temperature Control PID\n",
+    ]
+
+
+async def test_turning_the_heating_laser_off_hot_is_refused(handler):
+    handler.sources["chamber_log"].values["HT Temp moni"] = "650.0"
+    with pytest.raises(RuntimeError, match="cool_down first"):
+        await handler.turn_off_heating_laser(TurnOffHeatingLaser())
+    assert handler.sources["chamber_mi"].calls == []
+
+    await handler.turn_off_heating_laser(TurnOffHeatingLaser(force=True))
+    assert "Heating Laser OFF" in "".join(handler.sources["chamber_mi"].calls)
+
+
+async def test_turning_the_heating_laser_off_cold_goes_through(handler):
+    handler.sources["chamber_log"].values["HT Temp moni"] = "160.0"
+    await handler.turn_off_heating_laser(TurnOffHeatingLaser())
+    assert handler.sources["chamber_mi"].calls
+
+
+async def test_laser_power_check_always_goes_to_clear(handler):
+    await handler.begin_set_laser_power(BeginSetLaserPower(laser_power=1.8))
+    calls = handler.sources["chamber_mi"].calls
+    assert "Select Target Clear\n" in calls
+    sent = len(calls)
+    await handler.confirm_laser_power(ConfirmLaserPower(measured_power=1.75))
+    # Confirming sends nothing: the carousel stays at Clear.
+    assert len(calls) == sent
+
+
+@pytest.mark.parametrize("tg_no, slot, name", [(0, "A", "SRO"), (6, "Clear", "Clear"), (3, None, None)])
+async def test_current_target_reads_the_zero_based_log_number(handler, tg_no, slot, name):
+    handler.manager.target_mapper = {"A": "TG1name", "Clear": "TG7name"}
+    handler.sources["chamber_config"].tg_values = {"TG1name": "SRO", "TG7name": "Clear"}
+    handler.sources["chamber_log"].values["TG No."] = str(tg_no)
+    current = await handler.get_current_target(Empty())
+    assert (current.tg_no, current.target_id, current.target_name) == (tg_no, slot, name)
+
+
+class _MiClient:
+    def __init__(self, executions: list[MIExecution]) -> None:
+        self.executions = executions
+
+    async def list_execution(self, req) -> MIExecutionList:
+        return MIExecutionList(executions=self.executions)
+
+
+class ProbeMi(FakeMi):
+    def __init__(self, *, runs: bool, executions: list[MIExecution] | None = None) -> None:
+        super().__init__()
+        self.runs = runs
+        self.client = _MiClient(executions or [])
+
+    async def execute(self, cmd, timeout: float = 30.0, raise_on_abort: bool = True):
+        await super().execute(cmd, timeout)
+        if not self.runs:
+            raise TimeoutError("MI command did not finish")
+
+
+@pytest.mark.parametrize("mi, status", [
+    (ProbeMi(runs=True), "on"),
+    (ProbeMi(runs=False), "off"),
+    (ProbeMi(runs=True, executions=[MIExecution(commands="Wait 600 sec (0)\n", commands_uuid="x",
+                                                state="Running")]), "busy"),
+    # The probe from an earlier "off" still queued: still off, and no second probe.
+    (ProbeMi(runs=True, executions=[MIExecution(commands="Wait 0 sec (0)\n", commands_uuid="y",
+                                                state="")]), "off-queued"),
+])
+async def test_check_mi_mode(handler, mi, status):
+    handler.manager.chamber_mi = mi
+    result = await handler.check_mi_mode(CheckMiMode(timeout_s=1))
+    assert result.status == status.removesuffix("-queued")
+    # Busy never sends the probe: it would only queue behind the running script.
+    sends = status in ("on", "off")
+    assert mi.calls == (["Wait 0 sec (0)\n"] if sends else [])
 
 
 async def test_to_temperature_sets_the_target_before_engaging_pid(handler):

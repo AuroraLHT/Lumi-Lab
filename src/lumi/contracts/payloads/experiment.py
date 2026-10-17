@@ -412,6 +412,17 @@ class TargetName(BaseModel):
     target_name: str
 
 
+class CurrentTarget(BaseModel):
+    """The carousel position the chamber log reports."""
+
+    #: `TG No.` as logged: counts from 0, so 0 is A, 5 is F, 6 is Clear, 7 is Monitor.
+    tg_no: int
+    #: The slot letter (A-F, Clear, Monitor); None if no target_mapper entry maps tg_no.
+    target_id: str | None = None
+    #: What PLDconfig.ini says is loaded in that slot.
+    target_name: str | None = None
+
+
 class FinishCurrentPixel(BaseModel):
     material: str | None = None
     thickness: float | None = None
@@ -461,6 +472,19 @@ class CheckLogging(BaseModel):
     # the log stale. Must exceed the controller's `Log Interval` (powers up at
     # 60s; start_mi_logging(1) drops it to 1s).
     timeout_s: float = 5.0
+
+
+class CheckMiMode(BaseModel):
+    model_config = _STRICT
+    #: How long to wait for PASCAL to run the no-op probe.
+    timeout_s: float = Field(default=10.0, gt=0, le=120)
+
+
+class MiModeStatus(BaseModel):
+    #: "on", "off" (the probe did not run in time), or "busy" (another script is
+    #: running, so the probe cannot tell).
+    status: str
+    message: str = ""
 
 
 class LoggingAlive(BaseModel):
@@ -586,6 +610,17 @@ class ExperimentRecordId(BaseModel):
 class ToTemperature(BaseModel):
     temperature: float
     ramp_rate: float = 20.0
+    #: True: the task ends when the substrate arrives, and PASCAL takes no other
+    #: command until then. False: the task ends once the ramp is set going, leaving
+    #: the chamber free for other commands; read the temperature back to know when it
+    #: has arrived.
+    wait: bool = True
+
+
+class TurnOffHeatingLaser(BaseModel):
+    #: Turn it off even with the substrate still hot. Without this the driver refuses
+    #: above experiment.bounds.heating_laser_off_max_temperature (165 C).
+    force: bool = False
 
 
 class CoolDown(BaseModel):
@@ -622,7 +657,6 @@ class Anneal(BaseModel):
 
 class BeginSetLaserPower(BaseModel):
     laser_power: float
-    target_id: str | None = None
     force: bool = False
 
 
@@ -1219,6 +1253,7 @@ __all__ = [
     "SetPressureControl",
     "SetRheedGain",
     "SetTarget",
+    "TurnOffHeatingLaser",
     "StartMiLogging",
     "StartStorage",
     "StepInfo",
@@ -1229,6 +1264,9 @@ __all__ = [
     "SubstrateList",
     "SubstrateSummary",
     "TargetId",
+    "CurrentTarget",
+    "CheckMiMode",
+    "MiModeStatus",
     "TargetMap",
     "TargetName",
     "TaskAck",

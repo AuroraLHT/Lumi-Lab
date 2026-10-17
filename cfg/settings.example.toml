@@ -658,6 +658,9 @@ warm_up_max_waittime = 180.0
 # ("Motor free" -> false in the chamber log) before giving up. A chamber left on manual
 # or unpowered raises after this instead of hanging.
 motor_ready_timeout = 60.0
+# turn_off_heating_laser refuses while the substrate reads hotter than this (degC):
+# cutting the laser hot cools the sample all at once. 160 is the pyrometer's floor.
+heating_laser_off_max_temperature = 165.0
 
 # PASCAL target-carousel slot -> chamber-log field name. Chamber-specific; was a
 # hardcoded dict (_target_id_mapper) inside BaseExperimentManager.__init__.

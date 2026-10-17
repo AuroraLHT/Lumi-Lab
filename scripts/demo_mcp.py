@@ -267,7 +267,9 @@ async def heater(mcp: Mcp, checks: Checks, args: argparse.Namespace) -> None:
     # to_temperature checks the heater in the handler, before the task is spawned, and
     # the agent gets an error on the tool call. If this ever regresses to a task-level
     # failure the call below starts "succeeding" and the chamber sits cold.
-    await mcp.expect("experiment.driver.turn_off_heating_laser")
+    # force: a previous run may have left the sim chamber hot, and the driver refuses
+    # to cut the laser above 165 degC. Harmless on the simulator, never on the chamber.
+    await mcp.expect("experiment.driver.turn_off_heating_laser", force=True)
     await asyncio.sleep(2.0)  # let the log catch up with the heater going off
     ok, payload = await mcp.call("experiment.driver.to_temperature", temperature=300.0, ramp_rate=20.0)
     checks.ok(not ok, "to_temperature is refused while the heating laser is off",
@@ -355,7 +357,8 @@ async def cleanup(mcp: Mcp, args: argparse.Namespace) -> None:
         ("experiment.driver.set_pressure_control", {"on": False}),
         ("experiment.driver.set_mfc_flow", {"mfc_id": "1", "flow": 0.0}),
         ("experiment.driver.set_mfc_control", {"enabled": False}),
-        ("experiment.driver.turn_off_heating_laser", {}),
+        # Still hot after the ramp; force past the 165 degC refusal (simulator only).
+        ("experiment.driver.turn_off_heating_laser", {"force": True}),
     ):
         ok, payload = await mcp.call(name, **arguments)
         if not ok:

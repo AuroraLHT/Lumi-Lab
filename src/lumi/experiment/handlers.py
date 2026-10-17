@@ -44,6 +44,10 @@ from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.experiment import (
     AddMeasurement,
+    CheckMiMode,
+    CurrentTarget,
+    MiModeStatus,
+    TurnOffHeatingLaser,
     Anneal,
     AttachMeasurementFile,
     AutoAlignMaskCenter,
@@ -487,8 +491,8 @@ class ExperimentHandler:
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
         await self._require_heating_laser(req.temperature)
         return await self._start_task(
-            "to_temperature", self.manager.to_temperature(req.temperature, req.ramp_rate),
-            {"temperature": req.temperature, "ramp_rate": req.ramp_rate},
+            "to_temperature", self.manager.to_temperature(req.temperature, req.ramp_rate, req.wait),
+            {"temperature": req.temperature, "ramp_rate": req.ramp_rate, "wait": req.wait},
         )
 
     async def cool_down(self, req: CoolDown) -> TaskAck:
@@ -625,6 +629,10 @@ class ExperimentHandler:
     async def get_target_id_by_name(self, req: TargetName) -> TargetId:
         return TargetId(target_id=await self.manager.get_target_id_by_name(req.target_name))
 
+    async def get_current_target(self, req: Empty) -> CurrentTarget:
+        tg_no, target_id, target_name = await self.manager.get_current_target()
+        return CurrentTarget(tg_no=tg_no, target_id=target_id, target_name=target_name)
+
     async def current_substrate(self, req: Empty) -> CurrentSubstrateResponse:
         substrate = self.manager.current_substrate
         return CurrentSubstrateResponse(substrate=self._substrate_info(substrate) if substrate else None)
@@ -711,6 +719,10 @@ class ExperimentHandler:
         alive, waited, last_stamp = await self.manager.check_logging_alive(req.timeout_s)
         return LoggingAlive(alive=alive, waited_s=waited, last_stamp=last_stamp)
 
+    async def check_mi_mode(self, req: CheckMiMode) -> MiModeStatus:
+        status, message = await self.manager.check_mi_mode(req.timeout_s)
+        return MiModeStatus(status=status, message=message)
+
     # --- fast hardware control ---------------------------------------------------
 
     async def set_target(self, req: SetTarget) -> Ack:
@@ -791,8 +803,8 @@ class ExperimentHandler:
         await self.manager.initiate_heating_laser()
         return Ack()
 
-    async def turn_off_heating_laser(self, req: Empty) -> Ack:
-        await self.manager.turn_off_heating_laser()
+    async def turn_off_heating_laser(self, req: TurnOffHeatingLaser) -> Ack:
+        await self.manager.turn_off_heating_laser(force=req.force)
         return Ack()
 
     async def start_storage(self, req: StartStorage) -> StorageResult:
@@ -1251,7 +1263,7 @@ class ExperimentHandler:
 
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:
         async with self._moving("begin_set_laser_power"):
-            already_satisfied, _ = await self.manager.begin_set_laser_power(req.laser_power, req.target_id, req.force)
+            already_satisfied, _ = await self.manager.begin_set_laser_power(req.laser_power, req.force)
         if not already_satisfied:
             await self._set_pending("laser_power", f"Set laser power to {req.laser_power:.2f} W and read the meter")
         return Ack()
