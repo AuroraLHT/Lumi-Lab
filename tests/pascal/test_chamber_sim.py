@@ -464,7 +464,8 @@ def test_pressure_follows_the_gas_flow(model):
 
 def test_selecting_a_target_moves_the_carousel_to_its_configured_angle(model):
     run(model, text(pcmd.SelectTarget("C", nowait=False)))
-    assert model.target_number == 3
+    # The log counts from 0: A is 0, so C is 2.
+    assert model.target_number == 2
     # PLDconfig_07102025.ini [TGsettings] TG3angle.
     assert model.rotation.position == pytest.approx(154.5)
     assert model.motor_free
@@ -490,11 +491,11 @@ def test_the_target_number_changes_on_arrival_not_on_command(model):
     run(model, text(pcmd.SelectTarget("A", nowait=False)))
     model.select_target("D")
     # Mid-rotation the log still reports the target actually under the plume.
-    assert model.target_number == 1
+    assert model.target_number == 0
     model.tick(0.5)
-    assert model.target_number == 1 and not model.motor_free
+    assert model.target_number == 0 and not model.motor_free
     model.tick(60.0)
-    assert model.target_number == 4 and model.motor_free
+    assert model.target_number == 3 and model.motor_free
 
 
 def test_the_rep_rate_column_is_zero_while_the_laser_is_idle(model):
@@ -599,7 +600,7 @@ def test_the_mi_backend_runs_the_script_it_was_handed(tmp_path: Path):
     backend.execute_pending()
 
     assert (mi_folder / "Completed_assist.txt").exists()
-    assert model.target_number == 2
+    assert model.target_number == 1
     assert model.shutter_open
     assert model.laser_pulses == 50
 

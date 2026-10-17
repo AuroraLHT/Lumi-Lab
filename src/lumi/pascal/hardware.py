@@ -162,9 +162,9 @@ def target_angles_from_config(config_path: str | Path) -> tuple[dict[str, float]
         return angles, {}
 
     for slot, field in settings.experiment.target_mapper.items():
-        # "TG3name" -> 3
+        # "TG3name" -> 3. The log's `TG No.` counts from 0, so slot C is 2.
         index = int(str(field).removeprefix("TG").removesuffix("name"))
-        numbers[slot] = index
+        numbers[slot] = index - 1
         angle = parsed.get(f"TG{index}angle")
         if angle is not None:
             angles[slot] = float(angle)
