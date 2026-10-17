@@ -20,16 +20,19 @@ aligned by `auto_align_center_mask` rather than by a person.
    and wait until it is within tolerance.
 7. `begin_set_laser_power` → the person reads the meter → `confirm_laser_power`. (Skipped
    by the driver if the laser power is already set.)
-8. `initiate_heating_laser` if it is off, then `to_temperature` at the substrate's ramp
-   rate. Wait, read back. **Snapshot: chamber `heated`.** If the temperature
+8. Ask the person (first pixel only): heat in gas or in vacuum? `initiate_heating_laser`
+   if it is off, then `to_temperature` at the substrate's ramp rate with `wait: false`
+   (SKILL.md §3). Poll the temperature until it is within tolerance. **Snapshot: chamber `heated`.** If the temperature
    changed, align the mask again (thermal expansion moves the holder), then
    `to_current_pixel`.
 9. A person sets the excimer to ON and adjusts the RHEED gun and stage.
    `begin_adjust_rheed_gain` → the person sets and confirms the gain. Look at
    `rheed.camera.image`: a good pattern for this position? If not, stop and say so.
+   (Skipped while the RHEED is down for maintenance.)
 10. `perform_preablation` with `move_mask_to_block_position: false` (the mask is already
     over the position). Wait.
-11. `start_storage`; it must return `ok`.
+11. `start_storage`; it must return `ok`. With the RHEED down, `save_frame`, `save_ai`
+    and `save_integration` all `false`.
 12. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
     chamber + RHEED `depo_end`.** Stop on anything in SKILL.md §4.
 13. `end_storage`, then `finish_experiment_record` with the measured pressure and laser
@@ -51,7 +54,8 @@ whether to align by hand (`begin_check_mask_center`).
 ## After the last pixel
 
 15. A person sets the excimer to standby.
-16. `cool_down` at the substrate's ramp rate in the right atmosphere.
-    **Snapshot: chamber `cooled`.**
-17. Report: `list_samples` for the substrate (every grown position should say so), plus
+16. `cool_down` at the substrate's ramp rate in the right atmosphere. Wait until
+    `get_current_temperature` reads 165 °C or less. **Snapshot: chamber `cooled`.**
+17. `turn_off_heating_laser`, only now (SKILL.md §1).
+18. Report: `list_samples` for the substrate (every grown position should say so), plus
     what each snapshot showed.
