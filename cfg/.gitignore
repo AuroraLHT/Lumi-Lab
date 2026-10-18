@@ -49,3 +49,7 @@ rheed_structures/
 # TLS material from scripts/tailscale_cert.sh / make_lab_cert.sh: private keys for
 # the server (and the lab CA). Machine-local and secret.
 tls/
+
+# Camera stills from take_snapshot, when experiment.snapshots_path is left empty (the
+# old default put them beside growth.db). Lab data, not config.
+snapshots/

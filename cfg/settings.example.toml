@@ -592,9 +592,12 @@ pressure_by_hand = true
 # the browser websocket both stop at 16 MiB.
 measurement_files_path = ""
 measurement_file_max_bytes = 15728640
-# Camera stills from take_snapshot: each a lossless .npy plus a JPEG to look at. Empty
-# means a `snapshots` folder beside growth.db. The cap is per file.
-snapshots_path = ""
+# Camera stills from take_snapshot: each a lossless .npy plus a JPEG to look at. Kept
+# with the storage recordings (storage.database_path), not in cfg/: they are lab data.
+# growth.db stores each still's path relative to this folder: after changing it, move
+# the stills with scripts/move_snapshots.py (experiment node stopped). Empty means a
+# `snapshots` folder beside growth.db (the old default). The cap is per file.
+snapshots_path = "database/snapshots"
 snapshot_max_bytes = 16777216
 
 # How long to wait for an MI script to report completion, in seconds. **0 means wait
