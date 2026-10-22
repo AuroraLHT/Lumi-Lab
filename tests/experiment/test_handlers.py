@@ -260,6 +260,18 @@ async def test_set_target_refuses_while_the_holding_lock_is_released(handler):
     assert handler.sources["chamber_mi"].calls == []
 
 
+async def test_set_target_always_leaves_rotation_and_twist_on_auto(handler):
+    # A target that is not rastering is ablated in one spot, so there is no OFF:
+    # an old caller still sending the modes has them ignored, and AUTO goes out.
+    await handler.set_target(SetTarget(target_id="Clear"))
+    await handler.set_target(SetTarget.model_validate(
+        {"target_id": "A", "rotation_mode": "OFF", "twist_mode": "OFF"}))
+    calls = handler.sources["chamber_mi"].calls
+    assert [c for c in calls if "Mode" in c] == [
+        "Target Rotation Mode AUTO\n", "Target Twist Mode AUTO\n"] * 2
+    assert not any("OFF" in c for c in calls)
+
+
 async def test_begin_check_mask_center_refuses_while_the_holding_lock_is_released(handler):
     # The gated calibration ops drive the mask/carousel too; they front their moves
     # with the same interlock.
@@ -1144,7 +1156,7 @@ async def test_a_second_move_is_refused_while_the_first_is_running(handler):
 
     # A caller that retried after a timeout must not start a second move under the first.
     with pytest.raises(RuntimeError, match="rotate_sample_to is still moving"):
-        await handler.set_target(SetTarget(target_id="A", rotation_mode="AUTO", twist_mode="AUTO"))
+        await handler.set_target(SetTarget(target_id="A"))
     await first
 
     # Released once it finished, and after a move that failed too.

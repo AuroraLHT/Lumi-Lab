@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: dd4840d2bf343d87
+# contract_hash: 19cdd099e66db588
 
 """Generated clients for the experiment node."""
 
@@ -244,7 +244,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("check_mi_mode", req)  # type: ignore[return-value]
 
     async def set_target(self, req: SetTarget) -> Ack:
-        """Call driver.set_target."""
+        """Revolve the carousel to a target slot (A-F, Clear, Monitor) and set target rotation and twist to AUTO, so the target rasters whenever the laser fires. The modes cannot be turned off from here. Refused while the motor holding lock is released (see is_motor_free)."""
         return await self.call("set_target", req)  # type: ignore[return-value]
 
     async def start_mi_logging(self, req: StartMiLogging) -> LoggingStatus:

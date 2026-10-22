@@ -10641,18 +10641,8 @@
             "name": "set_target",
             "request": {
               "properties": {
-                "rotation_mode": {
-                  "default": "AUTO",
-                  "title": "Rotation Mode",
-                  "type": "string"
-                },
                 "target_id": {
                   "title": "Target Id",
-                  "type": "string"
-                },
-                "twist_mode": {
-                  "default": "AUTO",
-                  "title": "Twist Mode",
                   "type": "string"
                 }
               },

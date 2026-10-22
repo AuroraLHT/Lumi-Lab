@@ -500,9 +500,9 @@ class LoggingAlive(BaseModel):
 
 
 class SetTarget(BaseModel):
+    # No rotation/twist mode: set_target always leaves both on AUTO. A target that
+    # sits still while the laser fires is ablated in one spot, so OFF is not offered.
     target_id: str
-    rotation_mode: str = "AUTO"
-    twist_mode: str = "AUTO"
 
 
 class MoveTo(BaseModel):

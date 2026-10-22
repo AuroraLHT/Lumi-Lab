@@ -714,8 +714,7 @@ class Seeder:
         def select():
             m.select_target(g.target)
             ch.until(lambda: m.motor_free, limit=60, step=0.2)
-        await self.step("set_target", {"target_id": g.target, "rotation_mode": "AUTO",
-                                       "twist_mode": "AUTO"}, run=select)
+        await self.step("set_target", {"target_id": g.target}, run=select)
         ch.pause(5, 20)
 
         measured = round(g.laser_power + self.rng.uniform(-0.04, 0.04), 3)

@@ -926,13 +926,15 @@ class BaseExperimentManager:
         await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SetRHEEDGunX(position))
 
-    async def set_target(self, target_id: str, rotation_mode: str = "AUTO", twist_mode: str = "AUTO") -> None:
+    async def set_target(self, target_id: str) -> None:
         # SelectTarget revolves the carousel and the mode commands spin the target;
         # the holding lock frees the target motor too, so gate this like a mask move.
+        # Rotation and twist are always AUTO, never OFF: a target that is not
+        # rastering gets hit in one spot.
         await self._await_motor_ready()
         await self.chamber_mi.execute(pcmd.SelectTarget(target_id, nowait=False))
-        await self.chamber_mi.execute(pcmd.TargetRotationMode(mode=rotation_mode))
-        await self.chamber_mi.execute(pcmd.TargetTwistMode(mode=twist_mode))
+        await self.chamber_mi.execute(pcmd.TargetRotationMode(mode=pcmd.TargetRotationModeType.AUTO))
+        await self.chamber_mi.execute(pcmd.TargetTwistMode(mode=pcmd.TargetTwistModeType.AUTO))
 
     async def rotate_sample_to(self, angle: float) -> None:
         """Absolute sample-stage rotation (`Set Sample Position`), in degrees.
@@ -962,7 +964,7 @@ class BaseExperimentManager:
             original_mask_position = await self.get_current_mask_position()
             await self.move_mask_to_position(self.pld_config.mask_block_position)
 
-        await self.set_target(target_id, "AUTO", "AUTO")
+        await self.set_target(target_id)
 
         before = await self._log_values()
         if not is_dryrun:
@@ -1074,7 +1076,7 @@ class BaseExperimentManager:
         await self.chamber_mi.execute(pcmd.TemperatureSet(self.bounds.temperature_min, nowait=False))
 
     async def perform_deposition(self, num_pulse: int, laser_repetition_rate: float, target_id: str, is_dryrun: bool = False) -> None:
-        await self.set_target(target_id, "AUTO", "AUTO")
+        await self.set_target(target_id)
         await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("ON")))
         if not is_dryrun:
             await self.chamber_mi.execute(pcmd.TriggerLaser(num_pulse=num_pulse, frequency=laser_repetition_rate, sync=False, nowait=False))
