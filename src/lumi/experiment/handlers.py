@@ -727,7 +727,7 @@ class ExperimentHandler:
 
     async def set_target(self, req: SetTarget) -> Ack:
         async with self._moving("set_target"):
-            await self.manager.set_target(req.target_id, req.rotation_mode, req.twist_mode)
+            await self.manager.set_target(req.target_id)
         return Ack()
 
     async def start_mi_logging(self, req: StartMiLogging) -> LoggingStatus:

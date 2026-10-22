@@ -317,7 +317,12 @@ DRIVER = Capability(
            timeout_s=MOTION_TIMEOUT_S),
 
         # --- fast hardware control
-        Op("set_target", SetTarget, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("set_target", SetTarget, Ack,
+           doc="Revolve the carousel to a target slot (A-F, Clear, Monitor) and set "
+               "target rotation and twist to AUTO, so the target rasters whenever the "
+               "laser fires. The modes cannot be turned off from here. Refused while "
+               "the motor holding lock is released (see is_motor_free).",
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("start_mi_logging", StartMiLogging, LoggingStatus,
            doc="Start PASCAL data logging at a fixed whole-second row interval "
                "(`Log Interval` + `Data Logging File=`). The controller powers up "
