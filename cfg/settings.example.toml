@@ -592,9 +592,12 @@ pressure_by_hand = true
 # the browser websocket both stop at 16 MiB.
 measurement_files_path = ""
 measurement_file_max_bytes = 15728640
-# Camera stills from take_snapshot: each a lossless .npy plus a JPEG to look at. Empty
-# means a `snapshots` folder beside growth.db. The cap is per file.
-snapshots_path = ""
+# Camera stills from take_snapshot: each a lossless .npy plus a JPEG to look at. Kept
+# with the storage recordings (storage.database_path), not in cfg/: they are lab data.
+# growth.db stores each still's path relative to this folder: after changing it, move
+# the stills with scripts/move_snapshots.py (experiment node stopped). Empty means a
+# `snapshots` folder beside growth.db (the old default). The cap is per file.
+snapshots_path = "database/snapshots"
 snapshot_max_bytes = 16777216
 
 # How long to wait for an MI script to report completion, in seconds. **0 means wait
@@ -658,6 +661,9 @@ warm_up_max_waittime = 180.0
 # ("Motor free" -> false in the chamber log) before giving up. A chamber left on manual
 # or unpowered raises after this instead of hanging.
 motor_ready_timeout = 60.0
+# turn_off_heating_laser refuses while the substrate reads hotter than this (degC):
+# cutting the laser hot cools the sample all at once. 160 is the pyrometer's floor.
+heating_laser_off_max_temperature = 165.0
 
 # PASCAL target-carousel slot -> chamber-log field name. Chamber-specific; was a
 # hardcoded dict (_target_id_mapper) inside BaseExperimentManager.__init__.

@@ -719,8 +719,7 @@ class Seeder:
         ch.pause(5, 20)
 
         measured = round(g.laser_power + self.rng.uniform(-0.04, 0.04), 3)
-        await self.step("begin_set_laser_power", {"laser_power": g.laser_power, "target_id": g.target,
-                                                  "force": False})
+        await self.step("begin_set_laser_power", {"laser_power": g.laser_power, "force": False})
         ch.pause(30, 90)  # someone reading the power meter
         await self.step("confirm_laser_power", {"measured_power": measured},
                         result={"measured_power": measured})

@@ -13,11 +13,13 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
 1. Check the lab is alive (SKILL.md §3). **Snapshot: chamber `start`.**
 2. `current_substrate`: the substrate to grow on. If none, `register_substrate`, or
    `resume_substrate` if it is already in the database. Never register one twice.
-3. `initiate_heating_laser`, then `to_temperature` to the first layer's temperature at
-   the substrate's ramp rate (SKILL.md §1). Wait for the task, read the temperature back.
-   **Snapshot: chamber `heated`.**
+3. Ask the person: heat in gas or in vacuum? If gas, `set_pressure` first (step 6).
+   `initiate_heating_laser`, then `to_temperature` to the first layer's temperature at
+   the substrate's ramp rate (SKILL.md §1), with `wait: false` (SKILL.md §3). Poll the
+   temperature until it is within tolerance. **Snapshot: chamber `heated`.**
 4. A person adjusts the RHEED gun and sample stage. Look at `rheed.camera.image`: is it a
-   good substrate pattern (`reference/rheed.md`)? If not, stop and say so.
+   good substrate pattern (`reference/rheed.md`)? If not, stop and say so. (Skipped
+   while the RHEED is down for maintenance.)
 
 ## Each layer
 
@@ -28,7 +30,8 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
 7. A person sets the excimer to ON. `begin_set_laser_power` → the person reads the meter
    → `confirm_laser_power` with their value.
 8. `perform_preablation` with this layer's target (SKILL.md §3 for pulses and rate). Wait.
-9. `start_storage`; it must return `ok`. One recording per layer.
+9. `start_storage`; it must return `ok`. One recording per layer. With the RHEED down,
+   `save_frame`, `save_ai` and `save_integration` all `false`.
 10. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
     chamber + RHEED `depo_end`.** Watch `rheed.integrator.cache`
     while it runs; stop on anything in SKILL.md §4.
@@ -42,8 +45,9 @@ and finishing it after the first leaves nothing to grow the next on.
 
 12. A person sets the excimer to standby.
 13. `anneal` if the stack calls for it, then `cool_down` at the substrate's ramp rate in
-    the right atmosphere (O2 for oxides).
-    **Snapshot: chamber `cooled`.**
-14. `finish_substrate`.
-15. Report: `get_sample` (the layer stack should match the plan), plus what each snapshot
+    the right atmosphere (O2 for oxides). Wait until `get_current_temperature` reads
+    165 °C or less. **Snapshot: chamber `cooled`.**
+14. `turn_off_heating_laser`, only now (SKILL.md §1).
+15. `finish_substrate`.
+16. Report: `get_sample` (the layer stack should match the plan), plus what each snapshot
     showed (`list_snapshots` for the sample).

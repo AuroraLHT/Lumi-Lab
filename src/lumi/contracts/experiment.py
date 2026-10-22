@@ -29,12 +29,14 @@ from .payloads.experiment import (
     BeginSetLaserPower,
     CenterMaskPos,
     CheckLogging,
+    CheckMiMode,
     ConfirmCenterMask,
     ConfirmLaserPower,
     ConfirmMaskCenter,
     ConfirmProceed,
     CoolDown,
     CurrentSubstrateResponse,
+    CurrentTarget,
     EndStorage,
     ExperimentId,
     ExperimentInfo,
@@ -63,6 +65,7 @@ from .payloads.experiment import (
     MeasurementInfo,
     MeasurementList,
     MfcQuery,
+    MiModeStatus,
     MfcStatus,
     MotorFree,
     MoveTo,
@@ -123,6 +126,7 @@ from .payloads.experiment import (
     TaskEvent,
     TemperatureReading,
     ToTemperature,
+    TurnOffHeatingLaser,
     UpdateExperiment,
     UpdateMeasurement,
     UpdateProject,
@@ -154,6 +158,11 @@ DRIVER = Capability(
         Op("show_available_targets", Empty, TargetMap),
         Op("get_target_name_by_id", TargetId, TargetName),
         Op("get_target_id_by_name", TargetName, TargetId),
+        Op("get_current_target", Empty, CurrentTarget,
+           doc="Which carousel slot is in front of the laser now, read from the chamber "
+               "log's `TG No.`. The log counts from 0: 0-5 are targets A-F, 6 is Clear, "
+               "7 is Monitor. The chamber camera only sees the sample with Clear or "
+               "Monitor in place; at any other slot the target is in the way."),
         Op("current_substrate", Empty, CurrentSubstrateResponse),
         Op("finish_substrate", Empty, Ack, journal=True),
         Op("finish_current_pixel", FinishCurrentPixel, Ack, journal=True),
@@ -298,6 +307,15 @@ DRIVER = Capability(
                "exceed the controller's Log Interval (60s at power-up; "
                "start_mi_logging(interval_s=1) drops it to 1s)."),
 
+        Op("check_mi_mode", CheckMiMode, MiModeStatus,
+           doc="Check that PASCAL is in MI Mode, i.e. taking commands from this "
+               "software. Nothing in the chamber log says so: with MI Mode off every "
+               "command hangs until it times out. This sends a no-op script (`Wait 0 "
+               "sec`) and reports `on` if it ran within timeout_s, `off` if not (ask a "
+               "person to switch PASCAL to MI Mode), or `busy` if another script is "
+               "running and the probe cannot tell. Run it before a growth.",
+           timeout_s=MOTION_TIMEOUT_S),
+
         # --- fast hardware control
         Op("set_target", SetTarget, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("start_mi_logging", StartMiLogging, LoggingStatus,
@@ -356,7 +374,13 @@ DRIVER = Capability(
                "the control MFC and holds set_pressure's setpoint. Off: flow reverts "
                "to whatever set_mfc_flow last set, gated by set_mfc_control.", journal=True),
         Op("initiate_heating_laser", Empty, Ack, journal=True),
-        Op("turn_off_heating_laser", Empty, Ack, journal=True),
+        Op("turn_off_heating_laser", TurnOffHeatingLaser, Ack,
+           doc="Turn the heating laser off. Refused while the substrate reads above "
+               "165 C (experiment.bounds.heating_laser_off_max_temperature): cutting "
+               "the laser hot cools the sample all at once. cool_down first and wait "
+               "until the temperature reads cold -- a to_temperature with wait=false "
+               "ends its task before the substrate gets there. "
+               "force=true overrides.", journal=True),
         Op("start_storage", StartStorage, StorageResult, journal=True),
         Op("end_storage", EndStorage, StorageResult, journal=True),
         Op("finish_experiment_record", FinishExperimentRecord, ExperimentRecordId, journal=True),
@@ -367,6 +391,12 @@ DRIVER = Capability(
            doc="Ramp to a temperature and engage PID. Requires the heating laser to "
                "be on already -- call initiate_heating_laser first, or this fails "
                "immediately rather than setting a setpoint no current can reach. "
+               "wait=true (the default): the task ends when the substrate arrives, and "
+               "PASCAL runs no other command (moves, target, shutter) until then. "
+               "wait=false: the task ends once the ramp is under way and the chamber is "
+               "free for other commands; read get_current_temperature until it is "
+               "within tolerance before relying on it, and never follow it with "
+               "turn_off_heating_laser while still hot. "
                "A setpoint below the PID-engage threshold is not holdable: from a hot "
                "chamber it is commanded as a cooldown (no PID), and from an already-"
                "cold one it is a no-op, since a room-temperature growth runs with the "
@@ -377,7 +407,15 @@ DRIVER = Capability(
         Op("anneal", Anneal, TaskAck, journal=True),
 
         # --- gated: laser power (unread physical meter)
-        Op("begin_set_laser_power", BeginSetLaserPower, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("begin_set_laser_power", BeginSetLaserPower, Ack,
+           doc="Start a laser energy check: closes the sample shutter and turns the "
+               "carousel to Clear, so the beam reaches the meter at the exit port, then "
+               "raises a `laser_power` pending confirmation for the person reading the "
+               "meter. Call nothing else until confirm_laser_power: any op that selects "
+               "a target (set_target, perform_preablation, perform_deposition) moves "
+               "the carousel off Clear and spoils the reading. Skipped, with no "
+               "confirmation, when this power was already confirmed (force=true redoes it).",
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult, journal=True),
 
         # --- gated: mask-center calibration / check (visual judgement)

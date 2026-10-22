@@ -75,6 +75,7 @@ def _bounds() -> ExperimentBounds:
         warm_up_wait_interval=b.warm_up_wait_interval,
         warm_up_max_waittime=b.warm_up_max_waittime,
         motor_ready_timeout=b.get("motor_ready_timeout", 60.0),
+        heating_laser_off_max_temperature=b.get("heating_laser_off_max_temperature", 165.0),
     )
 
 

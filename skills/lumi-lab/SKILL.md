@@ -38,6 +38,13 @@ else here is only as strong as you following it.
   mask is where the step needs it.
 - **[hard]** `to_temperature` needs the heating laser on (`initiate_heating_laser`);
   with it off the node refuses. Do not "fix" a refusal by retrying at another value.
+- **[hard]** Before heating, ask the person whether to heat in gas or in vacuum, and if
+  in gas, which gas and what pressure. Set the pressure first when it is gas.
+- **[hard]** Turn the heating laser off (`turn_off_heating_laser`) only once
+  `get_current_temperature` reads cold (165 °C or less; 160 °C is the pyrometer's
+  floor). Cutting it hot cools the sample all at once. The driver refuses above 165 °C;
+  never pass `force` to get round that. In particular, a `to_temperature` with `wait: false` ends its
+  task as soon as the ramp starts, so its finishing says nothing about the temperature.
 - **[hard]** Use `is_dryrun: true` unless a person is present or a human user has asked
   for a real run, and the lab has not said otherwise for this session.
 
@@ -76,11 +83,22 @@ Pick the procedure, read it, and follow it in order:
 What applies to both:
 
 - **Before starting**, check the lab is alive: `system.registry.list_nodes`,
-  `check_logging_alive`, `get_pump_status`, `get_valve_status`, `is_motor_free`.
+  `check_mi_mode`, `check_logging_alive`, `get_pump_status`, `get_valve_status`,
+  `is_motor_free`. `check_mi_mode` answering `off` means PASCAL is not taking commands:
+  ask the person to switch it to MI Mode, and do not send anything else until it says
+  `on`. `busy` means another script is running; check again once it finishes.
 - **[hard]** Long-running ops (`to_temperature`, `cool_down`, `perform_preablation`,
   `perform_deposition`, `anneal`, `auto_align_center_mask`) return at once with a
   `task_id`. Poll until `current_task` clears, then check the step **succeeded**: read the
   temperature or pressure back. The recipes do not stop on a failed step, so you must.
+- **[thumb]** Heating takes a long time, and while `to_temperature` waits for the
+  substrate PASCAL runs no other command. Pass `wait: false` so its task ends once the
+  ramp is under way, do other set-up meanwhile (registering the substrate, setting the
+  pressure), and poll `get_current_temperature` until it is within 10 °C of the
+  setpoint before any step that needs it there. The laser-off rule in §1 still holds.
+- Targets: the carousel slots are A–F plus Clear and Monitor. The chamber log's `TG No.`
+  counts from 0: 0 = A, 1 = B, 2 = C, 3 = D, 4 = E, 5 = F, 6 = Clear, 7 = Monitor.
+  `get_current_target` does the conversion and names what is loaded there.
 - **[hard]** Never deposit without `start_storage` returning `ok`: the growth would leave
   no record.
 - **[hard]** `finish_experiment_record` gets the **measured** pressure and laser power,
@@ -103,6 +121,14 @@ What applies to both:
 | `depo_end` | yes | yes |
 | `cooled` | yes | |
 | `other` (anything else; say what in `note`) | as needed | as needed |
+
+The chamber camera only sees the sample when the carousel is at Clear or Monitor; at
+any other slot the target is in the way. Check `get_current_target` before a chamber
+snapshot or any visual check; if it is at a target, the picture shows the target, not
+the sample (during a deposition that is expected: say so in the `note`).
+
+When the RHEED is down for maintenance, skip every RHEED snapshot and the RHEED pattern
+checks, and record without it (`reference/equipment.md`).
 
 Each is kept against the loaded sample and the chamber session. Look at each one
 (`snapshot_jpeg`): does it show what that stage should? Say what you saw in your report.

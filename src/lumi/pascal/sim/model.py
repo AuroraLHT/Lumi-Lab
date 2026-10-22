@@ -41,8 +41,10 @@ DEFAULT_TARGET_ANGLES: dict[str, float] = {
     "A": 51.5, "B": 103.0, "C": 154.5, "D": 205.5, "E": 257.0, "F": 308.5,
     "Clear": 0.0, "Monitor": 0.0,
 }
+# What the real chamber log writes in `TG No.` for each slot: zero-based, one less
+# than the `TG<n>` index in PLDconfig.ini (A = TG1name = 0, Clear = TG7name = 6).
 DEFAULT_TARGET_NUMBERS: dict[str, int] = {
-    "A": 1, "B": 2, "C": 3, "D": 4, "E": 5, "F": 6, "Clear": 7, "Monitor": 8,
+    "A": 0, "B": 1, "C": 2, "D": 3, "E": 4, "F": 5, "Clear": 6, "Monitor": 7,
 }
 
 
@@ -263,7 +265,7 @@ class ChamberModel:
 
         # --- motion
         self.target_slot = "A"
-        self.target_number = c.target_numbers.get("A", 1)
+        self.target_number = c.target_numbers.get("A", 0)
         self._pending_slot: str | None = None
         self.rotation = _Axis(c.target_angles.get("A", 0.0), c.target_rotation_speed, rotary=True)
         self.mask1 = _Axis(0.0, c.mask_speed, limit=c.mask1_travel_max)

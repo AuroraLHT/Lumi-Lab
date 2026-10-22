@@ -3875,6 +3875,55 @@
             "response_codec": "json"
           },
           {
+            "name": "get_current_target",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "The carousel position the chamber log reports.",
+              "properties": {
+                "target_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Target Id"
+                },
+                "target_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Target Name"
+                },
+                "tg_no": {
+                  "title": "Tg No",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "tg_no"
+              ],
+              "title": "CurrentTarget",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "current_substrate",
             "request": {
               "description": "No payload. Used for ops that take or return nothing.",
@@ -10552,6 +10601,43 @@
             "response_codec": "json"
           },
           {
+            "name": "check_mi_mode",
+            "request": {
+              "additionalProperties": false,
+              "properties": {
+                "timeout_s": {
+                  "default": 10.0,
+                  "exclusiveMinimum": 0,
+                  "maximum": 120,
+                  "title": "Timeout S",
+                  "type": "number"
+                }
+              },
+              "title": "CheckMiMode",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "status": {
+                  "title": "Status",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status"
+              ],
+              "title": "MiModeStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "set_target",
             "request": {
               "properties": {
@@ -11002,9 +11088,14 @@
           {
             "name": "turn_off_heating_laser",
             "request": {
-              "description": "No payload. Used for ops that take or return nothing.",
-              "properties": {},
-              "title": "Empty",
+              "properties": {
+                "force": {
+                  "default": false,
+                  "title": "Force",
+                  "type": "boolean"
+                }
+              },
+              "title": "TurnOffHeatingLaser",
               "type": "object"
             },
             "request_codec": "json",
@@ -11332,6 +11423,11 @@
                 "temperature": {
                   "title": "Temperature",
                   "type": "number"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -11583,18 +11679,6 @@
                 "laser_power": {
                   "title": "Laser Power",
                   "type": "number"
-                },
-                "target_id": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "default": null,
-                  "title": "Target Id"
                 }
               },
               "required": [
@@ -13752,6 +13836,7 @@
             "begin_check_rheed_pixels": "experiment.driver.req.begin_check_rheed_pixels",
             "begin_set_laser_power": "experiment.driver.req.begin_set_laser_power",
             "check_logging_alive": "experiment.driver.req.check_logging_alive",
+            "check_mi_mode": "experiment.driver.req.check_mi_mode",
             "confirm": "experiment.driver.req.confirm",
             "confirm_center_mask": "experiment.driver.req.confirm_center_mask",
             "confirm_laser_power": "experiment.driver.req.confirm_laser_power",
@@ -13766,6 +13851,7 @@
             "get_current_log": "experiment.driver.req.get_current_log",
             "get_current_mask_position": "experiment.driver.req.get_current_mask_position",
             "get_current_pressure": "experiment.driver.req.get_current_pressure",
+            "get_current_target": "experiment.driver.req.get_current_target",
             "get_current_temperature": "experiment.driver.req.get_current_temperature",
             "get_experiment": "experiment.driver.req.get_experiment",
             "get_measurement": "experiment.driver.req.get_measurement",

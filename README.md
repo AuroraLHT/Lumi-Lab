@@ -429,7 +429,7 @@ the shared template is what made `python -m lumi.mcp` reach for the lab by defau
 > (non-durable ones are dropped by a broker restart anyway).
 
 The tools are generated, one per `(contract, capability, op)`, named
-`experiment.driver.to_temperature` and so on — 116 of them today. Adding an op to an
+`experiment.driver.to_temperature` and so on — 118 of them today. Adding an op to an
 exposed capability makes it a tool with no change here. The surface is deliberately
 narrower than the browser bridge's, and set by `EXPOSED` in `src/lumi/mcp/server.py`:
 
@@ -580,6 +580,20 @@ happily deposit at whatever temperature the substrate actually reached. Same fai
 as the recipe issue in `docs/TODO.md`, with an LLM driving. Ops needing a human (laser
 power, mask alignment, RHEED gain) come back with `pending_confirmation` and block until
 the matching `confirm_*` tool resolves them.
+
+Heating is the slow step. By default `to_temperature`'s task ends only when the substrate
+arrives, and until then PASCAL runs no other command, because that wait is itself a PASCAL
+command. `wait: false` ends the task once the ramp is under way, so the agent can carry on
+with other set-up and poll `get_current_temperature` instead. The skill tells the agent to
+do this. The default stays `true`, so recipes and notebooks behave as before. With the
+task ending early, its finishing no longer means the substrate is hot, so the driver
+guards the dangerous follow-up itself: `turn_off_heating_laser` is refused while the
+substrate reads above 165 °C (`experiment.bounds.heating_laser_off_max_temperature`),
+unless called with `force: true`.
+
+`check_mi_mode` answers the one thing the chamber log cannot: whether PASCAL is in MI
+Mode. It sends a no-op script (`Wait 0 sec`) and reports `on`, `off`, or `busy` if another
+script is running.
 
 ## Tests
 
