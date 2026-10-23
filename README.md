@@ -123,8 +123,8 @@ Run it **directly**, never `source`d — sourcing breaks the Ctrl-C cleanup and 
 every node (the script explains why and refuses). If you do end up with orphans:
 
 ```bash
-scripts/stop_nodes.sh --dry-run     # see what's still running
-scripts/stop_nodes.sh
+scripts/stop_nodes.sh --dry-run     # see what's still running (nodes and the MCP server)
+scripts/stop_nodes.sh               # --keep-mcp to leave the MCP server up
 ```
 
 `--chamber-speed` is worth turning up. At the default `1`, a 700 °C ramp at 20 °C/min

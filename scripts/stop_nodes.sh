@@ -6,27 +6,37 @@
 # `source`d into an interactive shell -- see the comment in start_simulation.sh
 # about why that breaks its Ctrl-C handler).
 #
-# Usage:
-#   scripts/stop_nodes.sh [--force] [--dry-run]
+# The MCP server (`python -m lumi.mcp`, from start_mcp_server.sh or
+# start_mcp_demo.sh) is stopped too: it is not a node, but one left running keeps
+# port 8100 and the next start_mcp_server.sh cannot bind it.
 #
-#   --dry-run  list the matching processes without killing anything
-#   --force    skip the SIGTERM grace period and go straight to SIGKILL
+# Usage:
+#   scripts/stop_nodes.sh [--force] [--dry-run] [--keep-mcp]
+#
+#   --dry-run   list the matching processes without killing anything
+#   --force     skip the SIGTERM grace period and go straight to SIGKILL
+#   --keep-mcp  leave the MCP server running (only the nodes are stopped)
 
 set -euo pipefail
 
 FORCE=0
 DRY_RUN=0
+KEEP_MCP=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --force) FORCE=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
-        -h|--help) sed -n '3,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        --keep-mcp) KEEP_MCP=1; shift ;;
+        -h|--help) sed -n '3,18p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
 PATTERN='nodes/(monitor|storage|pascal|rheed|detection|api|agent|experiment|simulation)\.py'
+# `-m lumi.mcp` followed by a space or the end, so lumi.mcp.<anything> run as a
+# module (a test, a one-off) is not caught.
+[[ $KEEP_MCP -eq 0 ]] && PATTERN="$PATTERN|-m lumi\.mcp( |\$)"
 
 mapfile -t MATCHES < <(pgrep -af "$PATTERN" || true)
 
@@ -35,7 +45,7 @@ if [[ ${#MATCHES[@]} -eq 0 ]]; then
     exit 0
 fi
 
-echo "found ${#MATCHES[@]} node process(es):"
+echo "found ${#MATCHES[@]} lumi process(es):"
 printf '  %s\n' "${MATCHES[@]}"
 
 if [[ $DRY_RUN -eq 1 ]]; then
