@@ -2926,7 +2926,7 @@ export class ExperimentDriverClient {
     return this.t.call<PixelCheckStatus>(ExperimentDriverClient.target, "resolve_pixel_check", req);
   }
 
-  /** Every sample on a substrate (or all of them), with its position and state. A sample exists per growable position from registration, so this answers 'which positions are left' without any in-memory state. */
+  /** Every sample on a substrate, or on all of them when substrate_id is left out (it does not default to the current substrate), with its position and state. A sample exists per growable position from registration, so this answers 'which positions are left' without any in-memory state. */
   async list_samples(req: ListSamples): Promise<SampleList> {
     return this.t.call<SampleList>(ExperimentDriverClient.target, "list_samples", req);
   }

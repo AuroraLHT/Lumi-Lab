@@ -388,7 +388,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("resolve_pixel_check", req)  # type: ignore[return-value]
 
     async def list_samples(self, req: ListSamples) -> SampleList:
-        """Every sample on a substrate (or all of them), with its position and state. A sample exists per growable position from registration, so this answers 'which positions are left' without any in-memory state."""
+        """Every sample on a substrate, or on all of them when substrate_id is left out (it does not default to the current substrate), with its position and state. A sample exists per growable position from registration, so this answers 'which positions are left' without any in-memory state."""
         return await self.call("list_samples", req)  # type: ignore[return-value]
 
     async def get_sample(self, req: SampleId) -> SampleDetail:

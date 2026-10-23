@@ -999,6 +999,26 @@ async def test_update_sample_renames_without_touching_geometry(handler):
     assert any(s.sample_name == "corner-piece" for s in listed.samples)
 
 
+async def test_list_samples_without_substrate_id_lists_every_substrate(handler):
+    """Leaving substrate_id out is the history view's "all substrates": it must not
+    quietly narrow to the substrate currently in the chamber, and a search with it
+    has to reach every substrate too."""
+    first = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    second = await handler.register_substrate(RegisterSubstrate(
+        materials="LaAlO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    sample_id = (await handler.growth_db.find_sample(first.substrate_id, 1))[0]
+    await handler.update_sample(UpdateSample(sample_id=sample_id, sample_name="corner-piece"))
+
+    listed = await handler.list_samples(ListSamples())
+    assert {s.substrate_id for s in listed.samples} >= {first.substrate_id, second.substrate_id}
+
+    found = await handler.list_samples(ListSamples(search="corner-piece"))
+    assert [s.sample_id for s in found.samples] == [sample_id]
+
+
 async def test_steps_are_not_editable(handler):
     """The journal is the audit trail: it gets a reader and no writer, so what
     happened cannot be quietly rewritten after the fact."""
