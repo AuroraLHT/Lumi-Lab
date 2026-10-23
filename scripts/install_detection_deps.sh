@@ -117,7 +117,10 @@ if [[ $FORCE -eq 0 ]] && "$PYTHON" -c "import mmengine, mmcv, mmdet" >/dev/null 
     echo "==> mmengine/mmcv/mmdet already installed, skipping (--force to reinstall)"
 else
     echo "==> installing openmim, then mmengine, mmcv, mmdet in order"
-    uv pip install -U openmim
+    # --upgrade-package, never -U: uv's -U re-resolves every dependency too, and
+    # openmim -> opendatalab -> openxlab reaches pandas, so -U pulled in a pandas
+    # that refuses numpy<2 and the storage and detection nodes died on import.
+    uv pip install --upgrade-package openmim openmim
     # openmim's own dependency resolution drags setuptools back down to an old,
     # pre-3.12-safe version -- re-pin before invoking mim.
     pin_setuptools
@@ -145,13 +148,16 @@ else
 fi
 
 echo "==> forcing numpy<2 (torch==$TORCH_VERSION predates NumPy 2.0 ABI support)"
-uv pip install "numpy<2"
+# pandas goes in the same resolve: uv does not re-check installed packages that
+# depend on numpy, so a pandas built for numpy>=2 would stay and fail to import.
+uv pip install "numpy<2" pandas
 
 echo
 echo "detection stack installed:"
 "$PYTHON" -c "
-import numpy, torch, torchvision, mmengine, mmcv, mmdet, rhana
+import numpy, pandas, torch, torchvision, mmengine, mmcv, mmdet, rhana
 print(f'  numpy       {numpy.__version__}')
+print(f'  pandas      {pandas.__version__}')
 print(f'  torch       {torch.__version__} (cuda available: {torch.cuda.is_available()})')
 print(f'  torchvision {torchvision.__version__}')
 print(f'  mmengine    {mmengine.__version__}')
