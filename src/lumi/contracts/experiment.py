@@ -458,8 +458,9 @@ DRIVER = Capability(
         # hold, plus the one write a client needs: attaching a measurement. growth.db
         # is on this node's host, so these are how a notebook elsewhere reaches it.
         Op("list_samples", ListSamples, SampleList,
-           doc="Every sample on a substrate (or all of them), with its position and "
-               "state. A sample exists per growable position from registration, so "
+           doc="Every sample on a substrate, or on all of them when substrate_id is "
+               "left out (it does not default to the current substrate), with its "
+               "position and state. A sample exists per growable position from registration, so "
                "this answers 'which positions are left' without any in-memory state."),
         Op("get_sample", SampleId, SampleDetail,
            doc="One sample plus its layer stack, bottom-up. The stack is derived from "

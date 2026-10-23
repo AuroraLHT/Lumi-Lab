@@ -57,5 +57,5 @@ whether to align by hand (`begin_check_mask_center`).
 16. `cool_down` at the substrate's ramp rate in the right atmosphere. Wait until
     `get_current_temperature` reads 165 °C or less. **Snapshot: chamber `cooled`.**
 17. `turn_off_heating_laser`, only now (SKILL.md §1).
-18. Report: `list_samples` for the substrate (every grown position should say so), plus
-    what each snapshot showed.
+18. Report: `list_samples` with this substrate's `substrate_id` (every grown position
+    should say so; left out, it lists every substrate), plus what each snapshot showed.

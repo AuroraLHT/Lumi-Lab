@@ -1008,11 +1008,9 @@ class ExperimentHandler:
         )
 
     async def list_samples(self, req: ListSamples) -> SampleList:
-        substrate_id = req.substrate_id
-        if substrate_id is None:
-            substrate = self.manager.current_substrate if self.manager else None
-            substrate_id = substrate.db_id if substrate else None
-        filters = {"substrate_id": substrate_id, "kind": req.kind, "state": req.state}
+        # No substrate_id means every substrate, not the current one: a history view's
+        # "all substrates" (and a search across them) depends on it.
+        filters = {"substrate_id": req.substrate_id, "kind": req.kind, "state": req.state}
         rows = await self.growth_db.list_rows("sample", **self._query(req, **filters))
         return SampleList(
             samples=[self._sample_info(r) for r in rows],
