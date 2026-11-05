@@ -22,7 +22,10 @@ from lumi.contracts.payloads.pld import (
     PldControlRequest,
     PldEventQuery,
     PldFireRequest,
+    PldLaserEnergyRequest,
     PldLaserHvRequest,
+    PldLaserModeRequest,
+    PldLaserOnRequest,
     PldLoggingRequest,
     PldPositionRequest,
     PldPressureRequest,
@@ -221,3 +224,105 @@ async def test_every_handler_serves_its_whole_capability(driver):
     ):
         server = CapabilityServer(cap, "chamber", h, channel=None, exchange=None, instance_id="t")
         assert set(server._ops) == {op.name for op in cap.ops}
+
+
+# --- the excimer ------------------------------------------------------------------
+
+
+async def _state_where(handler, predicate):
+    for _ in range(100):
+        latest = handler.state_monitor.latest
+        if latest is not None and predicate(latest):
+            return latest
+        await asyncio.sleep(0.02)
+    raise AssertionError("the monitor never saw that state")
+
+
+async def test_without_cm_every_laser_op_is_refused_and_names_the_switch(driver):
+    handler, _, service = driver
+    await _state_where(handler, lambda s: s.excimer.present)
+    assert handler.readout().laser_control is False  # the twin starts at CM=1
+    for reply in (
+        await handler.laser_off(Empty()),
+        await handler.laser_on(PldLaserOnRequest(wait=True)),
+        await handler.set_laser_energy(PldLaserEnergyRequest(mj=200)),
+    ):
+        assert not reply.ok
+        assert "excimer.control is false" in reply.message and "take_laser_control" in reply.message
+    assert service.servicer.excimer["control"] is False  # never taken on its own
+    assert service.servicer.excimer["opmode"] == "OFF"
+
+
+async def test_laser_on_waits_through_off_wait(driver):
+    handler, _, service = driver
+    assert (await handler.take_laser_control(Empty())).ok
+    await _state_where(handler, lambda s: s.excimer.control)
+    assert handler.readout().laser_control is True
+
+    service.servicer.time_scale = 1.0  # a real 8 s warm-up, to see it
+    assert (await handler.laser_on(PldLaserOnRequest(wait=False))).ok
+    state = await handler.chamber_state(Empty())
+    assert state.excimer.opmode == "OFF,WAIT" and state.excimer.waiting
+    service.servicer.time_scale = SPEED
+
+    reply = await handler.laser_on(PldLaserOnRequest(wait=True))
+    assert reply.ok, reply.message
+    state = await handler.chamber_state(Empty())
+    assert state.excimer.opmode == "ON" and not state.excimer.waiting
+    assert state.excimer.energy == pytest.approx(state.excimer.energy_set)
+    assert (await handler.laser_standby(Empty())).ok
+    assert (await handler.laser_off(Empty())).ok
+    assert (await handler.release_laser(Empty())).ok
+    await _state_where(handler, lambda s: not s.excimer.control)
+    assert handler.readout().laser_control is False
+
+
+async def test_laser_modes_and_caps(driver):
+    handler, _, _ = driver
+    await handler.take_laser_control(Empty())
+    assert not (await handler.set_laser_hv(PldLaserHvRequest(kv=26.0))).ok
+    assert not (await handler.set_laser_energy(PldLaserEnergyRequest(mj=450))).ok
+    assert (await handler.set_laser_mode(PldLaserModeRequest(mode="energy"))).ok
+    reply = await handler.set_laser_hv(PldLaserHvRequest(kv=20.0))
+    assert not reply.ok and "hv mode" in reply.message
+    assert (await handler.set_laser_energy(PldLaserEnergyRequest(mj=250))).ok
+    with pytest.raises(ValueError):  # the payload admits hv and energy only
+        PldLaserModeRequest(mode="combi")
+    state = await handler.chamber_state(Empty())
+    assert state.excimer.mode == "EGY PGR" and state.excimer.energy_set == 250
+    assert (state.excimer.hv_min, state.excimer.hv_max) == (18.5, 25.5)
+
+
+async def test_an_interlock_fails_the_preflight_and_shows_in_the_state(driver):
+    handler, _, service = driver
+    await handler.take_laser_control(Empty())
+    service.servicer.set_laser_interlock(16, "remote interlock switch open")
+    reply = await handler.laser_on(PldLaserOnRequest(wait=True))
+    assert not reply.ok and "16" in reply.message
+    state = await handler.chamber_state(Empty())
+    assert "laser 16 remote interlock switch open" in state.interlocks
+    assert state.excimer.status.startswith("OFF (16") and state.excimer.codes[0].code == 16
+    service.servicer.set_laser_interlock(0, "")
+    assert (await handler.laser_on(PldLaserOnRequest(wait=True))).ok
+
+
+async def test_nothing_goes_to_the_laser_at_shutdown(driver):
+    handler, _, service = driver
+    await handler.take_laser_control(Empty())
+    assert (await handler.laser_on(PldLaserOnRequest(wait=True))).ok
+    await _state_where(handler, lambda s: s.controller == "lumi-pascal")
+    handler.release_on_shutdown()
+    assert service.servicer.controller == ""  # service control handed back ...
+    assert service.servicer.excimer["control"] is True  # ... but CM and OPMODE untouched
+    assert service.servicer.excimer["opmode"] == "ON"
+
+
+async def test_read_only_sends_nothing(driver):
+    handler, _, service = driver
+    service.servicer.read_only = True
+    await _state_where(handler, lambda s: s.read_only)
+    for reply in (await handler.take_laser_control(Empty()), await handler.select_target(PldTargetRequest(target="B"))):
+        assert not reply.ok and "read-only" in reply.message
+    assert service.servicer.controller == ""  # not even AcquireControl went out
+    assert service.servicer.excimer["control"] is False
+    assert handler.readout().read_only is True

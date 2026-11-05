@@ -64,7 +64,12 @@ being asked, wait, and pass their answer on.
 | `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure` on the real chamber) | `confirm`, then read it back with `get_current_pressure` |
 | `proceed` | a plain go/no-go | `confirm` |
 
-Also by hand, with no tool: excimer ON/standby, RHEED gun and sample-stage adjustment,
+The excimer can be switched (`chamber.pld.laser_on` / `laser_standby` / `laser_off`, mode,
+HV, energy) only while `chamber_state.excimer.control` is true; otherwise the second PC
+holds it and every laser op is refused. Moving it (`take_laser_control`,
+`release_laser`) is the person's call: ask first. Under `--use-legacy-mi-mode` it stays by hand.
+
+Also by hand, with no tool: RHEED gun and sample-stage adjustment,
 and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.
 The pressure too, on the real chamber: `set_pressure` there does not command the
 controller, it raises a `pressure` confirmation asking the person to set it. In the

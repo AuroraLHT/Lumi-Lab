@@ -180,6 +180,9 @@ class PldReadout(BaseModel):
     controller: str = ""
     holds_control: bool = Field(False, description="This node (client 'lumi-pascal') holds control")
     read_only: bool = False
+    laser_control: bool | None = Field(
+        None, description="excimer.control: the laser takes settings from the PLD PC (CM=2). False = the "
+                          "second PC has them and every laser op is refused; None = no laser link")
     log_file: str | None = Field(None, description="The growth-log CSV this node is writing")
 
 

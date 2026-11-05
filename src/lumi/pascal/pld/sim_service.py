@@ -18,7 +18,10 @@ driver depends on them --
   MV10 closed in the high regime;
 - the pyrometer reads NaN below its range, as the real one does (the legacy simulator
   floors it at Pyro_min instead, which is PLD Controller's display);
-- the excimer refuses settings until TakeLaserControl, and keeps its caps.
+- the excimer refuses every operation until TakeLaserControl (it starts at CM=1, the
+  second PC), keeps its caps, and LaserOn runs the preflight, spends LASER_WARMUP_S in
+  OFF,WAIT and with `wait` returns once ON (LASER_ON_TIMEOUT_S at most). An interlock is
+  injected with `set_laser_interlock(code, meaning)`.
 
 Everything else (valves beyond MV10, the excimer's tube) is bookkeeping, not physics.
 """
@@ -44,6 +47,8 @@ LOW_REGIME_MAX = 2e-4
 HIGH_REGIME_MIN = 3e-3
 HV_CAPS = (18.5, 25.5)
 ENERGY_CAPS = (100.0, 400.0)
+LASER_WARMUP_S = 8.0  # OFF,WAIT after OPMODE=ON
+LASER_ON_TIMEOUT_S = 20.0
 
 
 class ModelTicker(threading.Thread):
@@ -83,6 +88,9 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self.auto_spin, self.auto_twist = True, False
         self.flow_limits = (0.0, 30.0)
         self.excimer = {"control": False, "opmode": "OFF", "mode": "HV PGR", "hv": 22.0, "energy_set": 200.0}
+        self._laser_on_at: float | None = None  # monotonic time OFF,WAIT ends
+        self.laser_interlock: tuple[int, str] | None = None
+        self.read_only = False  # reported only, as hardware without --allow-operations would
         self._subscribers: list[queue.Queue] = []
 
     # --- helpers ------------------------------------------------------------------
@@ -190,14 +198,42 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
                     flow_min=self.flow_limits[0], flow_max=self.flow_limits[1],
                 ),
                 sample_shutter_away=m.shutter_open,
-                excimer=pb.Excimer(
-                    present=True, connected=True, opmode=self.excimer["opmode"], status=self.excimer["opmode"],
-                    mode=self.excimer["mode"], hv=self.excimer["hv"], energy_set=self.excimer["energy_set"],
-                    energy=self.excimer["energy_set"] if self.excimer["opmode"] == "ON" else 0.0,
-                    control=self.excimer["control"], trigger="EXT", hv_min=HV_CAPS[0], hv_max=HV_CAPS[1],
-                    energy_min=ENERGY_CAPS[0], energy_max=ENERGY_CAPS[1], version="lumi-sim",
-                ),
+                interlocks=[f"laser {code} {meaning}" for code, meaning in filter(None, [self.laser_interlock])],
+                excimer=self._excimer(), read_only=self.read_only,
             )
+
+    def _excimer_opmode(self) -> tuple[str, bool]:
+        """(OPMODE, waiting), resolving OFF,WAIT into ON once the warm-up is over."""
+        if self.laser_interlock is not None:
+            self._laser_on_at = None
+            self.excimer["opmode"] = "OFF"
+        elif self._laser_on_at is not None:
+            if time.monotonic() < self._laser_on_at:
+                return "OFF,WAIT", True
+            self._laser_on_at = None
+            self.excimer["opmode"] = "ON"
+        return self.excimer["opmode"], False
+
+    def _excimer(self) -> pb.Excimer:
+        opmode, waiting = self._excimer_opmode()
+        status, codes = opmode, []
+        if self.laser_interlock is not None:
+            code, meaning = self.laser_interlock
+            status = f"OFF ({code} {meaning})"
+            codes = [pb.LaserCode(code=code, kind="interlock-hw", meaning=meaning)]
+        return pb.Excimer(
+            present=True, connected=True, opmode=opmode, waiting=waiting, status=status, codes=codes,
+            mode=self.excimer["mode"], hv=self.excimer["hv"], energy_set=self.excimer["energy_set"],
+            energy=self.excimer["energy_set"] if opmode == "ON" else 0.0,
+            control=self.excimer["control"], trigger="EXT", hv_min=HV_CAPS[0], hv_max=HV_CAPS[1],
+            energy_min=ENERGY_CAPS[0], energy_max=ENERGY_CAPS[1], version="lumi-sim",
+        )
+
+    def set_laser_interlock(self, code: int, meaning: str) -> None:
+        """Open (code > 0) or clear (code 0) a laser interlock; it drops the laser to OFF."""
+        self.laser_interlock = (code, meaning) if code else None
+        if code:
+            self._emit("interlock", f"laser {code} {meaning}")
 
     def GetState(self, request, context):
         return self._state()
@@ -458,14 +494,50 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self.excimer["control"] = False
         return self._ok("CM=1")
 
+    def _laser_preflight(self) -> str | None:
+        if self.laser_interlock is not None:
+            code, meaning = self.laser_interlock
+            return f"laser interlock {code} {meaning}"
+        mode = self.excimer["mode"]
+        if mode == "HV PGR":
+            if not HV_CAPS[0] <= self.excimer["hv"] <= HV_CAPS[1]:
+                return f"HV set point {self.excimer['hv']:g} kV is outside {HV_CAPS[0]}..{HV_CAPS[1]} kV"
+        elif mode == "EGY PGR":
+            if not ENERGY_CAPS[0] <= self.excimer["energy_set"] <= ENERGY_CAPS[1]:
+                return (f"energy set point {self.excimer['energy_set']:g} mJ is outside "
+                        f"{ENERGY_CAPS[0]:g}..{ENERGY_CAPS[1]:g} mJ")
+        else:
+            return f"running mode {mode!r} is not HV PGR or EGY PGR"
+        return None
+
     def LaserOn(self, request, context):
-        return self._laser(context, lambda: self.excimer.update(opmode="ON"))
+        def change():
+            problem = self._laser_preflight()
+            if problem:
+                return problem
+            if self._excimer_opmode()[0] != "ON":
+                self._laser_on_at = time.monotonic() + LASER_WARMUP_S / self.time_scale
+            return None
+        reply = self._laser(context, change)
+        if not reply.ok or not request.wait:
+            return reply
+        if not self._wait(lambda: self._excimer_opmode()[0] == "ON" or self.laser_interlock is not None,
+                          LASER_ON_TIMEOUT_S / self.time_scale):
+            return self._no(f"laser not ON after {LASER_ON_TIMEOUT_S:g} s")
+        if self.laser_interlock is not None:
+            code, meaning = self.laser_interlock
+            return self._no(f"laser interlock {code} {meaning} while switching on")
+        return self._ok("ON")
 
     def LaserStandby(self, request, context):
-        return self._laser(context, lambda: self.excimer.update(opmode="STANDBY"))
+        return self._laser(context, lambda: self._laser_to("STANDBY"))
 
     def LaserOff(self, request, context):
-        return self._laser(context, lambda: self.excimer.update(opmode="OFF"))
+        return self._laser(context, lambda: self._laser_to("OFF"))
+
+    def _laser_to(self, opmode: str) -> None:
+        self._laser_on_at = None
+        self.excimer["opmode"] = opmode
 
     def SetLaserMode(self, request, context):
         modes = {"hv": "HV PGR", "energy": "EGY PGR"}

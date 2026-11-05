@@ -8,6 +8,12 @@ No new port is opened on the PLD PC.
 
 Every operation is a blocking gRPC call (a `wait=true` move or ramp blocks until the
 chamber arrives), so each runs in a worker thread and the node's event loop stays free.
+
+The excimer takes settings only from the port its CM names. This handler never moves CM
+on its own: take_laser_control and release_laser are the only ops that do, nothing is
+sent to the laser when the node stops, and a laser op refused for want of CM comes back
+as that refusal, naming `excimer.control`. With the service read-only (hardware without
+--allow-operations) every operation is refused here and nothing is sent.
 """
 
 from __future__ import annotations
@@ -32,6 +38,11 @@ from lumi.pascal.pld.monitor import GrowthLog, PldEventMonitor, PldStateMonitor
 from lumi.pascal.pld.proto import pld_pb2 as pb
 
 log = logging.getLogger(__name__)
+
+# The excimer ops that need CM=2 (this PC); TakeLaserControl is how it is got.
+LASER_RPCS = frozenset({
+    "LaserOn", "LaserStandby", "LaserOff", "SetLaserMode", "SetLaserHv", "SetLaserEnergy", "ReleaseLaser",
+})
 
 
 def _op(rpc: str, build):
@@ -89,9 +100,17 @@ class PldHandler:
     # --- operations ---------------------------------------------------------------
 
     async def _operate(self, rpc: str, request) -> PldReply:
+        latest = self.state_monitor.latest
+        if latest is not None and latest.read_only:
+            return PldReply(ok=False, message=(
+                f"{rpc} not sent: pld-service is read-only (hardware without --allow-operations)"))
         ok, message = await asyncio.to_thread(self.client.call, rpc, request)
         if not ok:
             log.warning("pld-service refused %s: %s", rpc, message)
+            latest = self.state_monitor.latest
+            if rpc in LASER_RPCS and latest is not None and not latest.excimer.control:
+                message += ("; excimer.control is false -- the second PC holds the laser's settings "
+                            "port (CM=1). take_laser_control moves it to this PC (CM=2).")
         return PldReply(ok=ok, message=message)
 
     set_valve = _op("SetValve", lambda r: pb.ValveRequest(valve=r.valve, open=r.open, wait=r.wait))
@@ -159,6 +178,7 @@ class PldHandler:
             controller=latest.controller if latest is not None else "",
             holds_control=latest is not None and latest.controller == self.client.client,
             read_only=bool(latest.read_only) if latest is not None else False,
+            laser_control=latest.excimer.control if latest is not None and latest.excimer.present else None,
             log_file=str(self.growth_log.path) if self.growth_log.active else None,
         )
 

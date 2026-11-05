@@ -3192,6 +3192,19 @@
               "title": "Is Streaming",
               "type": "boolean"
             },
+            "laser_control": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "excimer.control: the laser takes settings from the PLD PC (CM=2). False = the second PC has them and every laser op is refused; None = no laser link",
+              "title": "Laser Control"
+            },
             "log_file": {
               "anyOf": [
                 {
