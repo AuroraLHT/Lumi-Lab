@@ -228,7 +228,9 @@ class PldCommandRunner:
             self._target_c = float(c.temperature)
             # As on PASCAL, a setpoint with PID off is only stored; engaging PID uses it.
             # There is nothing to wait for -- no controller is driving towards it.
-            return PldReply(ok=True, message=f"{self._target_c:g} C stored; PID is off, so it applies when PID engages")
+            message = f"{self._target_c:g} C stored; PID is off, so it applies when PID engages"
+            log.info("Temperature Set %s", message)  # not sent: say so, so it is not silently lost
+            return PldReply(ok=True, message=message)
         return await self._call("set_temperature", PldTemperatureRequest(
             celsius=float(c.temperature), ramp_c_per_min=self._ramp_c_per_min, wait=not c.nowait))
 
