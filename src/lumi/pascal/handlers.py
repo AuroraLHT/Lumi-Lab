@@ -1,4 +1,5 @@
-"""Chamber handlers: the growth log, PLDconfig.ini, MI mode, and fiducial markers."""
+"""Chamber handlers: the growth log, PLDconfig.ini, MI mode, fiducial markers, and the
+stand-in for whichever chamber driver the node is not running."""
 
 from __future__ import annotations
 
@@ -278,6 +279,36 @@ class MIModeHandler:
             num_executions=len(executions),
             current_execution=running[0]["commands_uuid"] if running else None,
         )
+
+
+class DisabledCapability:
+    """Stands in for the driver this node is not running, so the contract is still
+    served whole: every op is refused with a message naming the flag that turns it on.
+
+    The node serves every capability its contract declares (`EquipmentNode.start`), so
+    the one not in use cannot simply be left unmounted.
+    """
+
+    def __init__(self, capability, reason: str, readout) -> None:
+        self._reason = reason
+        self._readout = readout
+        # One refusing method per op, named explicitly rather than via __getattr__: the
+        # server and the node probe handlers for optional attributes (`journal`,
+        # `journals_own`), which a catch-all would answer with a function.
+        for op in capability.ops:
+            setattr(self, op.name, self._refuse)
+
+    async def _refuse(self, req=None):
+        raise RuntimeError(self._reason)
+
+    async def next(self):
+        return None
+
+    async def next_update(self):
+        return None
+
+    def readout(self):
+        return self._readout
 
 
 def _stamp(header: dict) -> dict:

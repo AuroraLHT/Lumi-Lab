@@ -5,9 +5,11 @@
 # comes from the simulated sources bundled under src/lumi/*/assets. The monitor
 # node tracks presence; the API bridges the browser to the bus over /ws.
 #
-# The chamber runs the state-model simulator (`nodes/pascal.py --src sim`): MI
-# commands drive a chamber model and the growth log is rendered from it, so a
-# deposition really does advance LaserPuls and a temperature set really does ramp.
+# The chamber runs the state-model simulator (`nodes/pascal.py --src sim`) behind a
+# stand-in pld-service, so the chamber driver's operations drive a chamber model and
+# the growth log is rendered from it: a deposition really does advance LaserPuls and
+# a temperature set really does ramp. --use-legacy-mi-mode drives the same model
+# through the simulated MI backend instead (chamber and experiment nodes both).
 # --chamber-speed compresses simulated time for impatient end-to-end runs.
 #
 # Usage:
@@ -15,6 +17,7 @@
 #                               [--with-auth] [--with-experiment] [--keep-database]
 #                               [--no-reset-broker] [--chamber-speed N]
 #                               [--experiment-speed N] [--substrate sto|ysz]
+#                               [--use-legacy-mi-mode]
 #
 # --substrate picks what the simulated RHEED camera shows: a real lab frame of
 # SrTiO3(001) along [100] (sto, the default) or YSZ(111) along [1-10] (ysz). The
@@ -64,6 +67,7 @@ RESET_BROKER=1
 CHAMBER_SPEED=
 EXPERIMENT_SPEED=
 SUBSTRATE=sto
+LEGACY_MI=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -76,13 +80,14 @@ while [[ $# -gt 0 ]]; do
         --no-reset-broker) RESET_BROKER=0; shift ;;
         --chamber-speed) CHAMBER_SPEED="$2"; shift 2 ;;
         --experiment-speed) EXPERIMENT_SPEED="$2"; shift 2 ;;
+        --use-legacy-mi-mode) LEGACY_MI=1; shift ;;
         --substrate)
             case "${2:-}" in
                 sto|ysz) SUBSTRATE="$2" ;;
                 *) echo "--substrate must be sto or ysz (got '${2:-}')" >&2; exit 1 ;;
             esac
             shift 2 ;;
-        -h|--help) sed -n '3,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '3,35p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -269,7 +274,14 @@ start_node monitor --host "$RABBITMQ_HOST"
 start_node storage "${STORAGE_ARGS[@]}"
 sleep 2
 
-start_node pascal --host "$RABBITMQ_HOST" --src sim --speed "$CHAMBER_SPEED"
+PASCAL_ARGS=(--host "$RABBITMQ_HOST" --src sim --speed "$CHAMBER_SPEED")
+if [[ $LEGACY_MI -eq 1 ]]; then
+    PASCAL_ARGS+=(--use-legacy-mi-mode)
+elif ! "$PYTHON" -c "import grpc" 2>/dev/null; then
+    echo "the chamber driver needs grpcio -- uv sync --extra pld (or pass --use-legacy-mi-mode)" >&2
+    exit 1
+fi
+start_node pascal "${PASCAL_ARGS[@]}"
 # The simulated camera shows a real lab frame (--substrate), and the simulation node
 # is told which, so its default screen puts the shadow edge where that frame has it.
 start_node rheed  --host "$RABBITMQ_HOST" --src simcam --sim-frame "$SUBSTRATE"
@@ -327,7 +339,9 @@ if [[ $WITH_EXPERIMENT -eq 1 ]]; then
     export DYNACONF_EXPERIMENT__PRESSURE_BY_HAND=false
     # A consumer of chamber/rheed/storage, like storage is of rheed/chamber -- needs
     # them already up, which they are by this point in the script.
-    start_node experiment --host "$RABBITMQ_HOST"
+    EXPERIMENT_ARGS=(--host "$RABBITMQ_HOST")
+    [[ $LEGACY_MI -eq 1 ]] && EXPERIMENT_ARGS+=(--use-legacy-mi-mode)
+    start_node experiment "${EXPERIMENT_ARGS[@]}"
 fi
 
 sleep 2

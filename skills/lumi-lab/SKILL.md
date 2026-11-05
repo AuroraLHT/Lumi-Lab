@@ -84,9 +84,11 @@ What applies to both:
 
 - **Before starting**, check the lab is alive: `system.registry.list_nodes`,
   `check_mi_mode`, `check_logging_alive`, `get_pump_status`, `get_valve_status`,
-  `is_motor_free`. `check_mi_mode` answering `off` means PASCAL is not taking commands:
-  ask the person to switch it to MI Mode, and do not send anything else until it says
-  `on`. `busy` means another script is running; check again once it finishes.
+  `is_motor_free`. `check_mi_mode` answering `off` means the chamber is not taking
+  commands: its message says why (pld-service down or read-only on hardware, or, under
+  the legacy MI driver, PASCAL not in MI Mode). Ask the person to fix that, and do not
+  send anything else until it says `on`. `busy` means someone else is driving (the REA
+  GUI holds control, or another MI script is running); check again once they finish.
 - **[hard]** Long-running ops (`to_temperature`, `cool_down`, `perform_preablation`,
   `perform_deposition`, `anneal`, `auto_align_center_mask`) return at once with a
   `task_id`. Poll until `current_task` clears, then check the step **succeeded**: read the

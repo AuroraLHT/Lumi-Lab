@@ -2,7 +2,7 @@
 #
 # Start the instrument-side half of the production stack on ONE machine:
 #
-#   pascal   the PLD chamber -- growth log, PLDconfig.ini, MI mode, chamber webcam
+#   pascal   the PLD chamber -- growth log, PLDconfig.ini, the chamber driver, chamber webcam
 #   rheed    RHEED camera acquisition (Basler/Pylon)
 #
 # The server-side half (monitor, storage, detection, api) runs on the other machine
@@ -13,15 +13,24 @@
 #
 # Usage:
 #   scripts/start_instrument_host.sh --host BROKER [--user U] [--password P]
-#                                    [--log DIR] [--mi DIR] [--pld-config FILE]
+#                                    [--log DIR] [--pld-address HOST:PORT]
+#                                    [--use-legacy-mi-mode --mi DIR] [--pld-config FILE]
 #                                    [--src path|sim|test] [--rheed-src pylon|webcam|simcam]
 #                                    [--speed N] [--no-rheed] [--no-pascal] [--check]
 #
 #   --host        broker host (required -- it lives on the server machine)
 #   --user/-p     broker credentials. RabbitMQ refuses 'guest' off loopback, so a
 #                 real account is required here; see scripts/apply_broker_permissions.py
-#   --log         folder PASCAL writes the chamber log into   (required for --src path)
-#   --mi          the real MI mode folder                     (required for --src path)
+#   --log         the growth-log folder                       (required for --src path)
+#                 The node writes it from pld-service's state; with
+#                 --use-legacy-mi-mode, PLD Controller writes it.
+#   --pld-address pld-service's gRPC address (default 127.0.0.1:50051; it only listens
+#                 on loopback, so it runs on this machine). Start it first -- the twin
+#                 for testing, `--hardware` only by a person at the chamber.
+#   --use-legacy-mi-mode
+#                 drive PLD Controller through MI mode instead of pld-service. Start
+#                 the experiment node with the same flag (start_server_host.sh).
+#   --mi          the real MI mode folder      (required with --use-legacy-mi-mode)
 #   --pld-config  PLDconfig.ini (default: the Windows path in cfg/settings.toml)
 #   --src         chamber source; 'path' is the real chamber and is the default here
 #   --rheed-src   RHEED camera source (default pylon)
@@ -50,6 +59,8 @@ BROKER_USER="guest"
 BROKER_PASS="guest"
 CHAMBER_LOG=""
 MI_FOLDER=""
+PLD_ADDRESS=""
+LEGACY_MI=0
 PLD_CONFIG=""
 CHAMBER_SRC="path"
 RHEED_SRC="pylon"
@@ -65,6 +76,8 @@ while [[ $# -gt 0 ]]; do
         --password|-p) BROKER_PASS="$2"; shift 2 ;;
         --log) CHAMBER_LOG="$2"; shift 2 ;;
         --mi) MI_FOLDER="$2"; shift 2 ;;
+        --pld-address) PLD_ADDRESS="$2"; shift 2 ;;
+        --use-legacy-mi-mode) LEGACY_MI=1; shift ;;
         --pld-config) PLD_CONFIG="$2"; shift 2 ;;
         --src) CHAMBER_SRC="$2"; shift 2 ;;
         --rheed-src) RHEED_SRC="$2"; shift 2 ;;
@@ -72,7 +85,7 @@ while [[ $# -gt 0 ]]; do
         --no-rheed) WITH_RHEED=0; shift ;;
         --no-pascal) WITH_PASCAL=0; shift ;;
         --check) CHECK_ONLY=1; shift ;;
-        -h|--help) sed -n '3,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '3,40p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -80,7 +93,7 @@ done
 if [[ -z "$RABBITMQ_HOST" ]]; then
     echo "error: --host is required -- the broker runs on the server machine, not here." >&2
     echo "  scripts/start_instrument_host.sh --host <server ip> --user <node user> --password <pw> \\" >&2
-    echo "      --log <chamber log folder> --mi <MI mode folder>" >&2
+    echo "      --log <growth log folder>" >&2
     exit 1
 fi
 
@@ -100,7 +113,7 @@ echo "preflight (instrument host):"
 # ---- interpreter and packages ----------------------------------------------
 if [[ ! -x "$PYTHON" ]]; then
     echo "  FAIL  no virtualenv at .venv" >&2
-    echo "        uv sync --extra pascal --extra camera" >&2
+    echo "        uv sync --extra pascal --extra camera --extra pld" >&2
     exit 1
 fi
 ok "venv at .venv ($("$PYTHON" -V 2>&1))"
@@ -116,6 +129,9 @@ check_import() {
 if [[ $WITH_PASCAL -eq 1 ]]; then
     check_import watchdog "pascal extra (watchdog)" "uv sync --extra pascal"
     check_import pandas   "pascal extra (pandas)"   "uv sync --extra pascal"
+    if [[ $LEGACY_MI -eq 0 ]]; then
+        check_import grpc "pld extra (grpcio)" "uv sync --extra pld"
+    fi
 fi
 if [[ $WITH_RHEED -eq 1 || $WITH_PASCAL -eq 1 ]]; then
     check_import cv2 "camera extra (opencv)" "uv sync --extra camera"
@@ -160,26 +176,53 @@ if [[ $WITH_PASCAL -eq 1 ]]; then
     esac
 
     if [[ "$CHAMBER_SRC" == "path" ]]; then
-        # The node raises FileNotFoundError on a missing log and ValueError on a missing
-        # --mi, both after it has already connected. Catch them here instead.
-        if [[ -z "$CHAMBER_LOG" ]]; then
-            fail "--log is required with --src path (the folder PASCAL writes the growth log into)"
-        elif [[ ! -e "$CHAMBER_LOG" ]]; then
-            fail "chamber log path does not exist: $CHAMBER_LOG"
-        else
-            ok "chamber log $CHAMBER_LOG"
-        fi
+        if [[ $LEGACY_MI -eq 1 ]]; then
+            # The node raises FileNotFoundError on a missing log and ValueError on a
+            # missing --mi, both after it has already connected. Catch them here instead.
+            if [[ -z "$CHAMBER_LOG" ]]; then
+                fail "--log is required with --src path (the folder PASCAL writes the growth log into)"
+            elif [[ ! -e "$CHAMBER_LOG" ]]; then
+                fail "chamber log path does not exist: $CHAMBER_LOG"
+            else
+                ok "chamber log $CHAMBER_LOG"
+            fi
 
-        if [[ -z "$MI_FOLDER" ]]; then
-            fail "--mi is required with --src path (the MI mode folder the controller reads)"
-        elif [[ ! -d "$MI_FOLDER" ]]; then
-            fail "MI mode folder does not exist: $MI_FOLDER"
-        elif [[ ! -w "$MI_FOLDER" ]]; then
-            fail "MI mode folder is not writable: $MI_FOLDER"
-            echo "        The node writes the script and assist files there; read-only means" >&2
-            echo "        every command silently fails to reach the controller." >&2
+            if [[ -z "$MI_FOLDER" ]]; then
+                fail "--mi is required with --use-legacy-mi-mode (the MI mode folder the controller reads)"
+            elif [[ ! -d "$MI_FOLDER" ]]; then
+                fail "MI mode folder does not exist: $MI_FOLDER"
+            elif [[ ! -w "$MI_FOLDER" ]]; then
+                fail "MI mode folder is not writable: $MI_FOLDER"
+                echo "        The node writes the script and assist files there; read-only means" >&2
+                echo "        every command silently fails to reach the controller." >&2
+            else
+                ok "MI mode folder $MI_FOLDER (writable)"
+            fi
+            warn "legacy MI mode: start the experiment node with --use-legacy-mi-mode too"
         else
-            ok "MI mode folder $MI_FOLDER (writable)"
+            # The node writes the growth log itself under pld-service; the folder only
+            # has to be named and writable (it is created if missing).
+            if [[ -z "$CHAMBER_LOG" ]]; then
+                fail "--log is required with --src path (the folder this node writes the growth log into)"
+            elif mkdir -p "$CHAMBER_LOG" 2>/dev/null && [[ -w "$CHAMBER_LOG" ]]; then
+                ok "growth log folder $CHAMBER_LOG (writable)"
+            else
+                fail "growth log folder is not writable: $CHAMBER_LOG"
+            fi
+            [[ -n "$MI_FOLDER" ]] && warn "--mi is ignored without --use-legacy-mi-mode"
+
+            # Up and answering? Not fatal: the node keeps retrying, and chamber.pld says
+            # connected=false until it answers.
+            PLD_PROBE="$("$PYTHON" -m lumi.pascal.pld.probe "${PLD_ADDRESS:-}" 2>&1)" || true
+            IFS='|' read -r PLD_STATUS PLD_ADDR PLD_A PLD_B PLD_C <<< "$PLD_PROBE"
+            if [[ "$PLD_STATUS" == "up" ]]; then
+                ok "pld-service at $PLD_ADDR ($PLD_A, $PLD_B, control: $PLD_C)"
+                [[ "$PLD_B" == "read-only" ]] && warn "pld-service is read-only: every operation will be refused until it is restarted with --allow-operations"
+            elif [[ "$PLD_STATUS" == "down" ]]; then
+                warn "pld-service not answering at $PLD_ADDR -- start it (twin: rea-twin + pld-service --twin); the node will keep retrying"
+            else
+                warn "could not probe pld-service: $PLD_PROBE"
+            fi
         fi
 
         # PLDconfig.ini gives the carousel geometry, so `Select Target C` resolves to an
@@ -281,7 +324,11 @@ start_node() {
 if [[ $WITH_PASCAL -eq 1 ]]; then
     PASCAL_ARGS=(--host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS" --src "$CHAMBER_SRC")
     [[ -n "$CHAMBER_LOG" ]] && PASCAL_ARGS+=(--log "$CHAMBER_LOG")
-    [[ -n "$MI_FOLDER"   ]] && PASCAL_ARGS+=(--mi "$MI_FOLDER")
+    if [[ $LEGACY_MI -eq 1 ]]; then
+        PASCAL_ARGS+=(--use-legacy-mi-mode)
+        [[ -n "$MI_FOLDER" ]] && PASCAL_ARGS+=(--mi "$MI_FOLDER")
+    fi
+    [[ -n "$PLD_ADDRESS" ]] && PASCAL_ARGS+=(--pld-address "$PLD_ADDRESS")
     [[ "$CHAMBER_SRC" == "sim" ]] && PASCAL_ARGS+=(--speed "$CHAMBER_SPEED")
     start_node pascal "${PASCAL_ARGS[@]}"
 fi

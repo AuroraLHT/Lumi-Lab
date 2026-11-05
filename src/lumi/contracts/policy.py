@@ -70,6 +70,9 @@ READ_ONLY_OPS = frozenset({
     "initial_fragments_size",
     "video_fragment",
     "list_execution",
+    # The chamber driver's readings (chamber.pld); every other pld op operates it.
+    "chamber_state",
+    "recent_events",
     "list_nodes",
     "get_node",
     "wait_for",

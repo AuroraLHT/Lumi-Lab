@@ -1,5 +1,5 @@
-"""The Pascal chamber node: growth log, chamber config, MI mode, chamber camera,
-fiducial markers."""
+"""The Pascal chamber node: growth log, chamber config, the chamber driver (pld-service,
+or MI mode as the legacy fallback), chamber camera, fiducial markers."""
 
 from __future__ import annotations
 
@@ -36,6 +36,35 @@ from .payloads.fiducial import (
     RoleAssignment,
     RoleMap,
     RoleQuery,
+)
+from .payloads.pld import (
+    PldAutoMotionRequest,
+    PldAxisRequest,
+    PldChamberState,
+    PldControlReply,
+    PldControlRequest,
+    PldCurrentLimitsRequest,
+    PldCurrentRequest,
+    PldEventList,
+    PldEventQuery,
+    PldFireRequest,
+    PldFlowLimitsRequest,
+    PldFlowRequest,
+    PldIonGaugeRequest,
+    PldLaserEnergyRequest,
+    PldLaserHvRequest,
+    PldLaserModeRequest,
+    PldLaserOnRequest,
+    PldLoggingRequest,
+    PldPositionRequest,
+    PldPressureRequest,
+    PldReply,
+    PldShutterRequest,
+    PldState,
+    PldSwitchRequest,
+    PldTargetRequest,
+    PldTemperatureRequest,
+    PldValveRequest,
 )
 from .spec import Capability, Codec, EquipmentContract, Kind, Op, StreamSpec
 
@@ -74,7 +103,9 @@ MI_MODE = Capability(
     kind=Kind.PUBSUB,
     doc="Machine-instruction mode: submit a command script, get an immediate "
         "acknowledgement, and receive the execution result later on the update "
-        "channel, correlated by commands_uuid. The one genuinely pub/sub capability.",
+        "channel, correlated by commands_uuid. The one genuinely pub/sub capability. "
+        "The legacy driver, through PLD Controller: live only when the chamber node runs "
+        "--use-legacy-mi-mode, and refused otherwise (pld drives the chamber).",
     state=MIModeState,
     ops=(
         Op("register_commands", MICommands, MIExecution,
@@ -82,6 +113,109 @@ MI_MODE = Capability(
         Op("list_execution", Empty, MIExecutionList),
     ),
     update=StreamSpec("execution", MIExecution),
+)
+
+#: How long a caller waits on an op that can block until the chamber gets there
+#: (`wait=true`). A move is well under this; a 20 C/min ramp to 800 C, a long pulse
+#: train or a pressure regime switch is not, hence the longer one.
+_MOVE_S = 600.0
+_LONG_S = 4 * 3600.0
+
+
+def _pld_op(name: str, request, doc: str, *, timeout_s: float | None = None) -> Op:
+    return Op(name, request, PldReply, doc=doc, journal=True, timeout_s=timeout_s)
+
+
+PLD = Capability(
+    name="pld",
+    kind=Kind.DUPLEX,
+    doc="The chamber driver: pld-service, the REA control service on the PLD PC, which "
+        "owns the serial ports (PLC, gauges, pyrometer, excimer) and enforces every "
+        "safety rule itself. One op per service operation. Every op answers "
+        "{ok, message}; ok=false is a refusal (an interlock, a limit, read-only "
+        "hardware, another client holding control) with the reason in message. "
+        "Operations need control, which this node takes as client 'lumi-pascal' on "
+        "first use. When the node runs --use-legacy-mi-mode every op here is refused "
+        "and mi_mode drives the chamber instead.",
+    state=PldState,
+    ops=(
+        Op("chamber_state", Empty, PldChamberState,
+           doc="The latest poll of the chamber: valves, pressures, heater, motion, the "
+               "laser trigger train, gas and pressure control, interlocks, the excimer. "
+               "`read_only` true means the service was started on hardware without "
+               "--allow-operations: every operation will be refused."),
+        Op("recent_events", PldEventQuery, PldEventList,
+           doc="The service's latest discrete events (valve_changed, move_done, "
+               "interlock, laser_done, error, control), oldest first."),
+        Op("acquire_control", PldControlRequest, PldControlReply, journal=True,
+           doc="Take control of the chamber as 'lumi-pascal'. Operations do this "
+               "themselves; call it to see who holds control, or with force=true to take "
+               "it from another client (logged by the service; never the default)."),
+        Op("release_control", Empty, PldControlReply, journal=True,
+           doc="Hand control back, e.g. so the REA GUI can drive. Release it when a run ends."),
+        _pld_op("set_valve", PldValveRequest, "Open or close a valve by its reference name.",
+                timeout_s=_MOVE_S),
+        _pld_op("select_target", PldTargetRequest, "Revolve the carousel to target A..F or Clear.",
+                timeout_s=_MOVE_S),
+        _pld_op("set_mask_position", PldPositionRequest, "Mask1 to an absolute position, mm.",
+                timeout_s=_MOVE_S),
+        _pld_op("set_sample_position", PldPositionRequest, "Sample rotation to an absolute angle, 0..360 degrees.",
+                timeout_s=_MOVE_S),
+        _pld_op("set_rheed_gun_x", PldPositionRequest, "RHEED gun X to an absolute position, mm.",
+                timeout_s=_MOVE_S),
+        _pld_op("home_axis", PldAxisRequest, "Home TG, Mask1 or RHEED gun X.", timeout_s=_MOVE_S),
+        _pld_op("set_target_spin", PldSwitchRequest, "Target spin on or off."),
+        _pld_op("set_target_twist", PldSwitchRequest, "Target twist on or off."),
+        _pld_op("set_motor_free", PldSwitchRequest, "Release (on) or engage (off) the motor holding lock."),
+        _pld_op("set_target_auto_motion", PldAutoMotionRequest,
+                "Auto mode: the chosen motions go on with each fire_laser and off when the "
+                "train ends. Service default: spin on, twist off."),
+        _pld_op("set_heater_key", PldSwitchRequest, "Heater LD key (MI: Heating Laser Lock ACTIVE/LOCKED)."),
+        _pld_op("set_heater_start", PldSwitchRequest, "Heater LD start (MI: Heating Laser ON/OFF)."),
+        _pld_op("set_heater_threshold", PldSwitchRequest, "Heater LD idle threshold current (MI: Heating Laser Threshold)."),
+        _pld_op("set_heating_current", PldCurrentRequest, "Manual LD current, A. Switches the temperature PID off."),
+        _pld_op("set_heater_current_limits", PldCurrentLimitsRequest, "Limits on the PID output current, A."),
+        _pld_op("set_temperature", PldTemperatureRequest,
+                "PID towards `celsius` at `ramp_c_per_min` (0 = jump); with wait, returns "
+                "once within `tolerance`.", timeout_s=_LONG_S),
+        _pld_op("set_temperature_control", PldSwitchRequest,
+                "on = PID holding the present temperature (or the last setpoint); off = "
+                "manual at the present current."),
+        _pld_op("set_sample_shutter", PldShutterRequest, "Sample shutter in front of the holder, or away.",
+                timeout_s=_MOVE_S),
+        _pld_op("fire_laser", PldFireRequest,
+                "A PLC trigger train of `pulses` at `rate_hz`. The excimer makes light only "
+                "when it is ON; this does not check it.", timeout_s=_LONG_S),
+        _pld_op("set_mfc_flow", PldFlowRequest, "MFC setpoint, sccm (MFC1 only in this chamber)."),
+        _pld_op("set_pressure", PldPressureRequest,
+                "Pressure-control setpoint, Torr. The setpoint picks the regime: low "
+                "(<= 2e-4, IG1, flow table) or high (3e-3..1, CDG, PID); between them is "
+                "refused. Switching regimes moves valves and the ion gauge first.",
+                timeout_s=_LONG_S),
+        _pld_op("set_pressure_control", PldSwitchRequest, "Pressure control on or off."),
+        _pld_op("set_pressure_flow_limits", PldFlowLimitsRequest, "Flow limits for pressure control, sccm."),
+        _pld_op("tune_pressure", PldSwitchRequest, "Relay auto-tune of the high-regime PID (off cancels)."),
+        _pld_op("set_ion_gauge", PldIonGaugeRequest, "IG1 or IG3 filament on or off."),
+        _pld_op("take_laser_control", Empty,
+                "Take the excimer's settings port from the second PC (CM=2). Every other "
+                "laser op is refused without it."),
+        _pld_op("laser_on", PldLaserOnRequest, "Excimer preflight, then OPMODE=ON (about 8 s in OFF,WAIT).",
+                timeout_s=60.0),
+        _pld_op("laser_standby", Empty, "Excimer to STANDBY."),
+        _pld_op("laser_off", Empty, "Excimer OFF."),
+        _pld_op("set_laser_mode", PldLaserModeRequest, "Excimer running mode: hv (HV PGR) or energy (EGY PGR)."),
+        _pld_op("set_laser_hv", PldLaserHvRequest, "Excimer HV set point, 18.5..25.5 kV (hv mode only)."),
+        _pld_op("set_laser_energy", PldLaserEnergyRequest, "Excimer energy set point, 100..400 mJ."),
+        _pld_op("release_laser", Empty, "Hand the excimer's settings port back to the second PC (CM=1)."),
+        Op("start_logging", PldLoggingRequest, PldReply, journal=True,
+           doc="Start a new growth-log CSV in the chamber's log folder, one row every "
+               "interval_s, written by this node from the service's state (PLD "
+               "Controller's columns). `message` is the file's path."),
+        Op("stop_logging", Empty, PldReply, journal=True,
+           doc="Close the growth-log CSV. Nothing is logged until start_logging."),
+    ),
+    stream=StreamSpec("state", PldChamberState,
+                      doc="Every poll of the chamber, as chamber_state returns it, at about 1 Hz."),
 )
 
 CAMERA = Capability(
@@ -151,5 +285,5 @@ CHAMBER = EquipmentContract(
     name="chamber",
     exchange="CHAMBER",
     version="2.0",
-    capabilities=(LOG, CONFIG, MI_MODE, CAMERA, FIDUCIAL),
+    capabilities=(LOG, CONFIG, PLD, MI_MODE, CAMERA, FIDUCIAL),
 )

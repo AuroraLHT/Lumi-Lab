@@ -195,17 +195,10 @@ def _check_heater_settings(cfg) -> None:
         )
 
 
-def build_simulated_chamber(log_path: str | None, mi_folder: str | None, time_scale: float = 1.0):
-    """The `--src sim` bundle: one model, the log writer, and the MI backend.
-
-    Returns `(model, log_writer, mi_server, mi_backend)`. The log *reader* is built
-    separately by `build_log_reader("sim", ...)` -- it is the production reader tailing
-    what the writer produces, and knows nothing about the simulator.
-    """
+def sim_model_config() -> ChamberSimConfig:
+    """The chamber simulator's parameters from `[pascal.sim]`: the measured heater and
+    pressure calibrations, the axis speeds, and the target layout of the bundled INI."""
     cfg = settings.pascal.sim
-    folder = sim_mi_folder(mi_folder)
-    folder.mkdir(parents=True, exist_ok=True)
-
     angles, numbers = target_angles_from_config(settings.pascal.config_reader.test.config_path)
     _check_heater_settings(cfg)
     sim_config = ChamberSimConfig(
@@ -232,6 +225,21 @@ def build_simulated_chamber(log_path: str | None, mi_folder: str | None, time_sc
     )
     if numbers:
         sim_config.target_numbers = numbers
+    return sim_config
+
+
+def build_simulated_chamber(log_path: str | None, mi_folder: str | None, time_scale: float = 1.0):
+    """The `--src sim --use-legacy-mi-mode` bundle: one model, the log writer, and the
+    MI backend.
+
+    Returns `(model, log_writer, mi_server, mi_backend)`. The log *reader* is built
+    separately by `build_log_reader("sim", ...)` -- it is the production reader tailing
+    what the writer produces, and knows nothing about the simulator.
+    """
+    cfg = settings.pascal.sim
+    folder = sim_mi_folder(mi_folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    sim_config = sim_model_config()
 
     mi_config = _mi_config(folder)
     model, writer, backend = build_chamber_sim(
@@ -367,3 +375,54 @@ def build_fiducials(camera_queue, store_path: str | None = None):
         daemon=True,
     )
     return store, worker
+
+
+# --- the pld-service driver --------------------------------------------------------
+
+
+def build_sim_pld_service(time_scale: float = 1.0):
+    """`--src sim`/`test` under the pld driver: the chamber simulator behind a stand-in
+    pld-service on an ephemeral loopback port. Returns `(model, service)`; connect a
+    PldClient to `service.address`."""
+    from lumi.pascal.pld.sim_service import SimPldService
+
+    cfg = settings.pascal.sim
+    model = ChamberModel(sim_model_config())
+    service = SimPldService(
+        model, time_scale=time_scale, tick_interval=float(cfg.tick_interval),
+        command_timeout=float(cfg.command_timeout),
+    )
+    return model, service
+
+
+def build_pld_driver(address: str, log_dir: str | Path | None):
+    """The pld driver's pieces against a pld-service at `address`: the gRPC client, the
+    state and event monitors, the growth-log writer (into `log_dir`, which the log
+    reader watches; None for --src test, whose log is a replay), and the handler.
+
+    Returns `(handler, workers)`; the workers are threads for `node.thread`.
+    """
+    from lumi.pascal.pld.client import PldClient
+    from lumi.pascal.pld.handler import PldHandler
+    from lumi.pascal.pld.monitor import GrowthLog, PldEventMonitor, PldStateMonitor
+
+    cfg = settings.pascal.get("pld", {})
+    interval = float(cfg.get("log_interval", 1.0))
+    client = PldClient(address, client=str(cfg.get("client", "lumi-pascal")))
+    growth_log = GrowthLog(log_dir if log_dir is not None else PROJECT_ROOT / "run" / "pld_unused_log")
+    if log_dir is not None:
+        # PLD Controller is not running under this driver, so nothing else writes the
+        # log every consumer reads. Start one now rather than waiting for a
+        # start_logging: the experiment node reads its every reading from it.
+        growth_log.start()
+    state_monitor = PldStateMonitor(client, growth_log, interval_s=interval,
+                                    rate_hz=float(cfg.get("state_rate_hz", 2.0)))
+    event_monitor = PldEventMonitor(client)
+    handler = PldHandler(client, state_monitor, event_monitor, growth_log)
+    if client.wait_ready(timeout=float(cfg.get("connect_timeout", 5.0))):
+        log.info("pld-service at %s is up", address)
+    else:
+        # Not fatal: the monitors keep retrying, and `chamber.pld` reports connected=false
+        # until it answers. The service may simply be started after the node.
+        log.warning("pld-service at %s is not answering yet; will keep trying", address)
+    return handler, [state_monitor, event_monitor]

@@ -5,7 +5,7 @@
 .DESCRIPTION
     Starts the two instrument nodes:
 
-        pascal   the PLD chamber -- growth log, PLDconfig.ini, MI mode, chamber webcam
+        pascal   the PLD chamber -- growth log, PLDconfig.ini, the chamber driver, chamber webcam
         rheed    RHEED camera acquisition (Basler/Pylon)
 
     The server-side half (monitor, storage, detection, api) runs on the other
@@ -33,10 +33,20 @@
     Broker password. Alias: -p.
 
 .PARAMETER Log
-    Folder PASCAL writes the chamber growth log into (required for -Src path).
+    The growth-log folder (required for -Src path). The pascal node writes it from
+    pld-service's state; with -UseLegacyMiMode, PLD Controller writes it.
+
+.PARAMETER PldAddress
+    pld-service's gRPC address (default 127.0.0.1:50051). It listens on loopback only,
+    so it runs on this machine. Start it first: the twin for testing
+    (rea-twin + pld-service --twin); --hardware only by a person at the chamber.
+
+.PARAMETER UseLegacyMiMode
+    Drive PLD Controller through MI mode instead of pld-service. Start the experiment
+    node with the same flag (start_server_host.sh --use-legacy-mi-mode).
 
 .PARAMETER Mi
-    The real MI mode folder (required for -Src path).
+    The real MI mode folder (required with -UseLegacyMiMode).
 
 .PARAMETER PldConfig
     PLDconfig.ini (default: the path in cfg/settings.toml).
@@ -61,7 +71,11 @@
 
 .EXAMPLE
     scripts\start_instrument_host.ps1 -BrokerHost <broker-ip> -User lumi-node -Password pw `
-        -Log 'D:\PASCAL\logs\growth.csv' -Mi 'D:\PASCAL\MI'
+        -Log 'D:\PASCAL\logs'
+
+.EXAMPLE
+    scripts\start_instrument_host.ps1 -BrokerHost <broker-ip> -User lumi-node -Password pw `
+        -UseLegacyMiMode -Log 'D:\PASCAL\logs\growth.csv' -Mi 'D:\PASCAL\MI'
 #>
 
 [CmdletBinding()]
@@ -77,6 +91,10 @@ param(
     [string]$Log,
 
     [string]$Mi,
+
+    [string]$PldAddress,
+
+    [switch]$UseLegacyMiMode,
 
     [string]$PldConfig,
 
@@ -146,7 +164,7 @@ Write-Host "preflight (instrument host):"
 # ---- interpreter and packages --------------------------------------------------
 if (-not (Test-Path $Python)) {
     Write-Host "  FAIL  no virtualenv at .venv" -ForegroundColor Red
-    Write-Host "        uv sync --extra pascal --extra camera"
+    Write-Host "        uv sync --extra pascal --extra camera --extra pld"
     exit 1
 }
 Ok ("venv at .venv (" + (Invoke-Py @('-V')).Out + ")")
@@ -180,7 +198,7 @@ if ($brokerUnset) {
         Write-Host "  or pass it explicitly:"
     }
     Write-Host "  scripts\start_instrument_host.ps1 -BrokerHost <server ip> -User <node user> -Password <pw> ``"
-    Write-Host "      -Log <chamber log folder> -Mi <MI mode folder>"
+    Write-Host "      -Log <growth log folder>"
     exit 1
 }
 
@@ -191,6 +209,9 @@ if ($BrokerHostFromSettings) {
 if ($WithPascal) {
     Check-Import 'watchdog' 'pascal extra (watchdog)' 'uv sync --extra pascal'
     Check-Import 'pandas'   'pascal extra (pandas)'   'uv sync --extra pascal'
+    if (-not $UseLegacyMiMode) {
+        Check-Import 'grpc' 'pld extra (grpcio)' 'uv sync --extra pld'
+    }
 }
 if ($WithRheed -or $WithPascal) {
     Check-Import 'cv2' 'camera extra (opencv)' 'uv sync --extra camera'
@@ -236,30 +257,68 @@ if ($BrokerHost -in @('localhost', '127.0.0.1', '::1')) {
 # ---- chamber ---------------------------------------------------------------
 if ($WithPascal) {
     if ($Src -eq 'path') {
-        # The node raises FileNotFoundError on a missing log and ValueError on a
-        # missing -Mi, both after it has already connected. Catch them here instead.
-        if (-not $Log) {
-            Fail "-Log is required with -Src path (the folder PASCAL writes the growth log into)"
-        } elseif (-not (Test-Path $Log)) {
-            Fail "chamber log path does not exist: $Log"
-        } else {
-            Ok "chamber log $Log"
-        }
+        if ($UseLegacyMiMode) {
+            # The node raises FileNotFoundError on a missing log and ValueError on a
+            # missing -Mi, both after it has already connected. Catch them here instead.
+            if (-not $Log) {
+                Fail "-Log is required with -Src path (the folder PASCAL writes the growth log into)"
+            } elseif (-not (Test-Path $Log)) {
+                Fail "chamber log path does not exist: $Log"
+            } else {
+                Ok "chamber log $Log"
+            }
 
-        if (-not $Mi) {
-            Fail "-Mi is required with -Src path (the MI mode folder the controller reads)"
-        } elseif (-not (Test-Path $Mi -PathType Container)) {
-            Fail "MI mode folder does not exist: $Mi"
+            if (-not $Mi) {
+                Fail "-Mi is required with -UseLegacyMiMode (the MI mode folder the controller reads)"
+            } elseif (-not (Test-Path $Mi -PathType Container)) {
+                Fail "MI mode folder does not exist: $Mi"
+            } else {
+                $probe = Join-Path $Mi ([System.IO.Path]::GetRandomFileName())
+                try {
+                    [System.IO.File]::WriteAllText($probe, '')
+                    Remove-Item $probe -Force
+                    Ok "MI mode folder $Mi (writable)"
+                } catch {
+                    Fail "MI mode folder is not writable: $Mi"
+                    Write-Host "        The node writes the script and assist files there; read-only means"
+                    Write-Host "        every command silently fails to reach the controller."
+                }
+            }
+            Warn "legacy MI mode: start the experiment node with --use-legacy-mi-mode too"
         } else {
-            $probe = Join-Path $Mi ([System.IO.Path]::GetRandomFileName())
-            try {
-                [System.IO.File]::WriteAllText($probe, '')
-                Remove-Item $probe -Force
-                Ok "MI mode folder $Mi (writable)"
-            } catch {
-                Fail "MI mode folder is not writable: $Mi"
-                Write-Host "        The node writes the script and assist files there; read-only means"
-                Write-Host "        every command silently fails to reach the controller."
+            # The node writes the growth log itself under pld-service; the folder only
+            # has to be named and writable (it is created if missing).
+            if (-not $Log) {
+                Fail "-Log is required with -Src path (the folder this node writes the growth log into)"
+            } else {
+                try {
+                    New-Item -ItemType Directory -Force -Path $Log | Out-Null
+                    $probe = Join-Path $Log ([System.IO.Path]::GetRandomFileName())
+                    [System.IO.File]::WriteAllText($probe, '')
+                    Remove-Item $probe -Force
+                    Ok "growth log folder $Log (writable)"
+                } catch {
+                    Fail "growth log folder is not writable: $Log"
+                }
+            }
+            if ($Mi) { Warn "-Mi is ignored without -UseLegacyMiMode" }
+
+            # Up and answering? Not fatal: the node keeps retrying, and chamber.pld says
+            # connected=false until it answers.
+            # No empty-string argument: Invoke-Py's mandatory string[] would refuse it.
+            $probeArgs = @('-m', 'lumi.pascal.pld.probe')
+            if ($PldAddress) { $probeArgs += $PldAddress }
+            $probe = Invoke-Py $probeArgs
+            $parts = "$($probe.Out)".Split('|')
+            if ($probe.Code -eq 0 -and $parts[0] -eq 'up') {
+                Ok "pld-service at $($parts[1]) ($($parts[2]), $($parts[3]), control: $($parts[4]))"
+                if ($parts[3] -eq 'read-only') {
+                    Warn "pld-service is read-only: every operation will be refused until it is restarted with --allow-operations"
+                }
+            } elseif ($probe.Code -eq 0 -and $parts[0] -eq 'down') {
+                Warn "pld-service not answering at $($parts[1]) -- start it (twin: rea-twin + pld-service --twin); the node will keep retrying"
+            } else {
+                Warn "could not probe pld-service"
             }
         }
 
@@ -387,7 +446,11 @@ try {
     if ($WithPascal) {
         $pascalArgs = @('--host', $BrokerHost, '--user', $User, '--password', $Password, '--src', $Src)
         if ($Log) { $pascalArgs += @('--log', $Log) }
-        if ($Mi)  { $pascalArgs += @('--mi', $Mi) }
+        if ($UseLegacyMiMode) {
+            $pascalArgs += @('--use-legacy-mi-mode')
+            if ($Mi) { $pascalArgs += @('--mi', $Mi) }
+        }
+        if ($PldAddress) { $pascalArgs += @('--pld-address', $PldAddress) }
         if ($Src -eq 'sim') { $pascalArgs += @('--speed', $Speed) }
         Start-Node -Name 'pascal' -NodeArgs $pascalArgs
     }

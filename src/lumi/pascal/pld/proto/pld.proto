@@ -1,0 +1,374 @@
+// VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
+// branch decode-program, working tree of 2026-11-05 -- the excimer RPCs and the
+// `excimer` / `read_only` state fields were not yet committed there. That file is the
+// source of truth: when pld-service changes, copy it over this one (keeping this header)
+// and run scripts/gen_pld_stubs.sh.
+//
+// PLD control service: the local gRPC interface (127.0.0.1 only).
+//
+// One service owns the serial ports (or the twin) and enforces every safety rule; the GUI,
+// scripts and the Lumi-Lab message-queue adapter are all clients of this interface.
+// Operations are whole actions ("move the mask to 10 mm"), never raw relays or registers.
+// Each operation covers one Lumi-Lab MI command; script logic (loops, waits, prompts) stays
+// on the client side.
+//
+// Units: degrees, millimetres, amperes, degrees C, sccm, Torr, seconds, unless named.
+
+syntax = "proto3";
+
+package pld.v1;
+
+service Chamber {
+  // ---- state ------------------------------------------------------------------------
+  rpc GetState(Empty) returns (ChamberState);
+  // Full snapshots at up to `rate_hz`. A slow reader gets the latest snapshot, never a
+  // backlog; every reading is also in the service log.
+  rpc WatchState(WatchRequest) returns (stream ChamberState);
+  // Discrete events in order, never dropped while the stream is open.
+  rpc WatchEvents(Empty) returns (stream Event);
+
+  // ---- control ownership ----------------------------------------------------------
+  // Only the holder of control may run operations; everyone else can watch.
+  rpc AcquireControl(ControlRequest) returns (ControlReply);
+  rpc ReleaseControl(ControlRequest) returns (ControlReply);
+
+  // ---- vacuum -----------------------------------------------------------------------
+  rpc SetValve(ValveRequest) returns (OperationReply);
+
+  // ---- motion (one pass straight to the goal) ------------------------------------
+  rpc SelectTarget(TargetRequest) returns (OperationReply);
+  rpc SetMaskPosition(PositionRequest) returns (OperationReply);
+  rpc SetSamplePosition(PositionRequest) returns (OperationReply);
+  rpc SetRheedGunX(PositionRequest) returns (OperationReply);
+  rpc HomeAxis(AxisRequest) returns (OperationReply);
+  rpc SetTargetSpin(SwitchRequest) returns (OperationReply);
+  rpc SetTargetTwist(SwitchRequest) returns (OperationReply);
+  rpc SetMotorFree(SwitchRequest) returns (OperationReply);
+  // Auto mode: the chosen motions go on with each FireLaser and off when the train ends
+  // (only those the fire switched on; one already running is left alone). Default: spin on, twist off.
+  rpc SetTargetAutoMotion(AutoMotionRequest) returns (OperationReply);
+
+  // ---- substrate heater (LD) --------------------------------------------------------
+  // MI names: Heating Laser Lock ACTIVE/LOCKED = key, Heating Laser ON/OFF = start,
+  // Heating Laser Threshold ON/OFF = threshold (idle current, 6 A).
+  rpc SetHeaterKey(SwitchRequest) returns (OperationReply);
+  rpc SetHeaterStart(SwitchRequest) returns (OperationReply);
+  rpc SetHeaterThreshold(SwitchRequest) returns (OperationReply);
+  // Manual current; switches the PID off.
+  rpc SetHeatingCurrent(CurrentRequest) returns (OperationReply);
+  // Limits on the PID output (MI Set Minimum/Maximum Current).
+  rpc SetHeaterCurrentLimits(CurrentLimitsRequest) returns (OperationReply);
+  // PID towards `celsius`; with `wait`, returns once within `tolerance`.
+  rpc SetTemperature(TemperatureRequest) returns (OperationReply);
+  // on = PID holding the present temperature (or the last setpoint), off = manual at the present current.
+  rpc SetTemperatureControl(SwitchRequest) returns (OperationReply);
+  rpc SetSampleShutter(ShutterRequest) returns (OperationReply);
+
+  // ---- deposition laser -------------------------------------------------------------
+  rpc FireLaser(LaserRequest) returns (OperationReply);
+
+  // ---- gas ----------------------------------------------------------------------------
+  rpc SetMfcFlow(FlowRequest) returns (OperationReply);
+  // PC-side pressure control with MFC1: setpoint, gauge, on/off. The setpoint picks the regime:
+  // low (<= 2e-4 Torr: MV10 and MV11 open, IG1, flow from the recorded table, small trims) or
+  // high (3e-3..1 Torr: MV10 closed, MV11 open, IG1 off, CDG10/CDG11, PID). Between them: refused.
+  // When the valves or IG1 are not in the regime's state, control on (or a new setpoint in the other
+  // regime while on) first switches them, one step per poll cycle: to high, flow 0, IG1 off, 10 s, MV10 closed;
+  // to low, flow 0, wait for CDG10 < 3e-3, MV10 open, 10 s, IG1 on. Control starts at the end.
+  rpc SetPressure(PressureRequest) returns (OperationReply);
+  rpc SetPressureControl(SwitchRequest) returns (OperationReply);
+  // Flow limits for every pressure-control write (both regimes).
+  rpc SetPressureFlowLimits(FlowLimitsRequest) returns (OperationReply);
+  // Relay auto-tune of the high-regime PID (on: start, switching control on if needed; off: cancel).
+  // The tuned gains apply until the service restarts; copy them into [pressure] kp/ki/kd to keep them.
+  rpc TunePressure(SwitchRequest) returns (OperationReply);
+
+  // ---- ion gauges ---------------------------------------------------------------------
+  rpc SetIonGauge(IonGaugeRequest) returns (OperationReply);
+
+  // ---- excimer laser (Coherent COMPexPro 110F, on its COM2 terminal port) -----------------
+  // Its own link and thread: the chamber polls never wait for it. TRIGGER=EXT: the laser emits
+  // only on the PLC triggers that FireLaser starts (FireLaser does not check the laser).
+  // The laser takes settings only from the port named by CM. TakeLaserControl (CM=2) and
+  // ReleaseLaser (CM=1, back to the second PC) are the only calls that move it; without it,
+  // every laser operation (Off included) is refused. Nothing changes CM when the service stops.
+  // On: preflight (no interlock, running mode HV PGR or EGY PGR, active set point inside the
+  // caps), then OPMODE=ON; the laser spends about 8 s in OFF,WAIT. `wait` returns once it is ON.
+  rpc LaserOn(LaserOnRequest) returns (OperationReply);
+  rpc LaserStandby(Empty) returns (OperationReply);
+  rpc LaserOff(Empty) returns (OperationReply);
+  // HV PGR or EGY PGR only; the new mode's set point must already be inside the caps.
+  rpc SetLaserMode(LaserModeRequest) returns (OperationReply);
+  // HV set point, 18.5..25.5 kV, in HV mode only (the laser refuses it otherwise).
+  rpc SetLaserHv(LaserHvRequest) returns (OperationReply);
+  // Energy set point, 100..400 mJ (used in energy mode; settable in either).
+  rpc SetLaserEnergy(LaserEnergyRequest) returns (OperationReply);
+  rpc ReleaseLaser(Empty) returns (OperationReply);
+  rpc TakeLaserControl(Empty) returns (OperationReply);
+}
+
+message Empty {}
+
+message WatchRequest {
+  double rate_hz = 1;  // 0 = every poll cycle
+}
+
+// ---------------------------------------------------------------------------- state
+
+message ChamberState {
+  double time = 1;  // seconds since the Unix epoch when the poll cycle finished
+  Backend backend = 2;
+  bool connected = 3;  // every port answered in the last cycle
+  string controller = 4;  // client holding control, "" = nobody
+
+  map<string, bool> valves = 10;  // name -> open
+  Pressures pressures = 11;
+  Heater heater = 12;
+  Motion motion = 13;
+  Laser laser = 14;
+  Gas gas = 15;
+  bool sample_shutter_away = 16;
+  repeated string interlocks = 17;  // active interlocks, e.g. "LD valve interlock"
+  map<uint32, uint32> raw_words = 18;  // every polled PLC word, DM address -> value
+  Excimer excimer = 19;  // the excimer's own state (Laser above is the PLC's fire)
+  bool read_only = 20;  // hardware without --allow-operations: every operation is refused
+}
+
+enum Backend {
+  BACKEND_UNSPECIFIED = 0;
+  TWIN = 1;
+  HARDWARE = 2;
+}
+
+message Pressures {
+  double ig1 = 1;  // main chamber, 0 when the filament is off; NaN while warming up
+  double ig3 = 2;  // load lock
+  double cdg10 = 3;
+  double cdg11 = 4;
+  repeated double tcg = 5;  // TCG1/2/3 positions of the #000F reply (order not confirmed)
+  double tcg31 = 6;
+  bool ig1_on = 7;
+  bool ig3_on = 8;
+}
+
+message Heater {
+  double temperature = 1;  // pyrometer, NaN when out of range (below ~140 C)
+  double emissivity = 2;
+  double current_set = 3;  // last value written to the LD
+  double current_monitor = 4;
+  bool power_on = 5;
+  bool ready = 6;  // valve interlock satisfied
+  bool started = 7;
+  double temperature_setpoint = 8;  // the ramped setpoint the PID follows now; NaN when not in PID mode
+  bool pid_on = 9;
+  bool key_on = 10;  // what the service holds (the PLC reports no key bit)
+  bool start_on = 11;  // requested; `started` is the PLC's answer
+  bool threshold_on = 12;
+  double current_min = 13;  // PID output limits
+  double current_max = 14;
+  double temperature_goal = 15;  // final PID setpoint; NaN when not in PID mode
+  double ramp_c_per_min = 16;  // 0 = jump
+}
+
+message Motion {
+  double target_angle = 1;
+  string target = 2;  // A..F, Clear, or "" between slots
+  double sample_angle = 3;  // 0..360
+  double mask_position = 4;
+  double rheed_gun_x = 5;
+  map<string, AxisStatus> axes = 6;
+  bool target_spinning = 7;
+  bool target_twisting = 8;
+  bool motor_free = 9;
+  bool auto_spin = 10;  // auto mode (SetTargetAutoMotion)
+  bool auto_twist = 11;
+}
+
+enum AxisStatus {
+  AXIS_STATUS_UNSPECIFIED = 0;
+  IDLE = 1;
+  MOVING = 2;
+  HOMING = 3;
+  SETTLING = 4;
+}
+
+message Laser {
+  string status = 1;  // idle, firing, finished
+  uint64 pulses_fired = 2;
+  uint64 missed_shots = 3;
+}
+
+// The COMPexPro as its polls report it: OPMODE every 0.2 s, the rest every 2 s.
+message Excimer {
+  bool present = 1;  // the service has a laser link (false with --no-laser or when the port did not open)
+  bool connected = 2;  // answered its last poll
+  string opmode = 3;  // OFF, ON, STANDBY, ... (OPMODE?)
+  bool waiting = 4;  // OFF,WAIT: switching on (about 8 s)
+  string status = 5;  // OPMODE? in words, e.g. "OFF,WAIT" or "OFF (16 remote interlock switch open)"
+  repeated LaserCode codes = 6;  // status codes other than 0
+  string mode = 7;  // running mode, e.g. HV PGR, EGY PGR
+  double hv = 8;  // HV set point, kV
+  double energy_set = 9;  // EGYSET, mJ
+  double energy = 10;  // EGY?: the measured average while running, mJ
+  bool control = 11;  // CM names our port; false = the other port (second PC) has control
+  string trigger = 12;  // EXT: the PLC triggers it
+  double reprate = 13;  // the laser's internal rate, Hz (not used with EXT)
+  uint64 counter = 14;
+  double tube_temperature = 15;  // C
+  double tube_pressure = 16;  // mbar
+  string version = 17;
+  double hv_min = 18;  // the service's caps
+  double hv_max = 19;
+  double energy_min = 20;
+  double energy_max = 21;
+}
+
+message LaserCode {
+  uint32 code = 1;
+  string kind = 2;  // interlock-hw, interlock-sw, warning
+  string meaning = 3;
+}
+
+message Gas {
+  double mfc1_setpoint = 1;
+  double mfc1_flow = 2;
+  string pumping = 3;  // full, throttled, closed (from MV10 / MV11)
+  bool pressure_control = 4;
+  double pressure_setpoint = 5;  // Torr; NaN when not set
+  string pressure_gauge = 6;  // IG1, CDG10 or CDG11
+  // "low (table)", "high (PID)", "auto-tune", "switching to low|high"; empty without a setpoint
+  string pressure_mode = 7;
+  double flow_min = 8;  // pressure-control flow limits, sccm
+  double flow_max = 9;
+  double pressure_kp = 10;  // high-regime PID gains in use (log10 units)
+  double pressure_ki = 11;
+  double pressure_kd = 12;
+  repeated FlowPoint pressure_table = 13;  // low regime: recorded flow -> IG1 pressure, both valves open
+  string pressure_switch_step = 14;  // while switching regimes: the step running now
+}
+
+message FlowPoint {
+  double sccm = 1;
+  double torr = 2;
+}
+
+message Event {
+  double time = 1;
+  string kind = 2;  // e.g. valve_changed, move_done, interlock, laser_done, error, control
+  string message = 3;
+  map<string, string> detail = 4;
+}
+
+// ---------------------------------------------------------------------------- control
+
+message ControlRequest {
+  string client = 1;  // e.g. "gui", "lumi-lab"
+  bool force = 2;  // take control from another client (explicit, logged)
+}
+
+message ControlReply {
+  bool granted = 1;
+  string controller = 2;
+  string message = 3;
+}
+
+// --------------------------------------------------------------------------- operations
+
+message OperationReply {
+  bool ok = 1;
+  string message = 2;  // what happened, or why it was refused
+}
+
+message ValveRequest {
+  string valve = 1;  // reference name, e.g. "CV301", "MV10"
+  bool open = 2;
+  bool wait = 3;  // return only after the status bit confirms (default behaviour if true)
+}
+
+message TargetRequest {
+  string target = 1;  // A..F or Clear
+  bool wait = 2;
+}
+
+message PositionRequest {
+  double position = 1;
+  bool wait = 2;
+}
+
+message AxisRequest {
+  string axis = 1;  // TG, Mask1, RHEED gun X
+  bool wait = 2;
+}
+
+message SwitchRequest {
+  bool on = 1;
+}
+
+message CurrentRequest {
+  double amps = 1;
+}
+
+message FlowLimitsRequest {
+  double min_sccm = 1;
+  double max_sccm = 2;
+}
+
+message CurrentLimitsRequest {
+  double min_amps = 1;
+  double max_amps = 2;
+}
+
+message TemperatureRequest {
+  double celsius = 1;
+  double ramp_c_per_min = 2;  // 0 = jump
+  bool wait = 3;  // return when within tolerance
+  double tolerance = 4;  // default 5 C
+}
+
+message ShutterRequest {
+  bool in_front = 1;  // true = in front of the sample holder
+}
+
+message AutoMotionRequest {
+  bool spin = 1;
+  bool twist = 2;
+}
+
+message LaserRequest {
+  uint32 pulses = 1;
+  double rate_hz = 2;
+  bool wait = 3;
+}
+
+message LaserOnRequest {
+  bool wait = 1;  // return once OPMODE is ON (up to 20 s)
+}
+
+message LaserModeRequest {
+  string mode = 1;  // "hv" (HV PGR) or "energy" (EGY PGR)
+}
+
+message LaserHvRequest {
+  double kv = 1;
+}
+
+message LaserEnergyRequest {
+  double mj = 1;
+}
+
+message FlowRequest {
+  uint32 mfc = 1;  // 1 (MFC2 is not used in this chamber)
+  double sccm = 2;
+}
+
+message PressureRequest {
+  double torr = 1;
+  string gauge = 2;  // IG1, CDG10 or CDG11; "" keeps the present choice (default CDG10)
+  bool wait = 3;  // return once within `tolerance` (fraction, default 0.1)
+  double tolerance = 4;
+}
+
+message IonGaugeRequest {
+  string gauge = 1;  // IG1 or IG3
+  bool on = 2;
+}

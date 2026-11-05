@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 19cdd099e66db588
+# contract_hash: 974180567a72826c
 
 """Generated clients for the chamber node."""
 
@@ -16,11 +16,12 @@ import numpy as np
 from aio_pika.abc import AbstractChannel, AbstractExchange
 
 from lumi.base.mq import CapabilityClient
-from lumi.contracts.chamber import CAMERA, CONFIG, FIDUCIAL, LOG, MI_MODE
+from lumi.contracts.chamber import CAMERA, CONFIG, FIDUCIAL, LOG, MI_MODE, PLD
 from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta, JpegMeta
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
+from lumi.contracts.payloads.pld import PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldReply, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
 
 
 class ChamberLogClient(CapabilityClient):
@@ -107,8 +108,197 @@ class ChamberConfigClient(CapabilityClient):
         return await super().get_state()  # type: ignore[return-value]
 
 
+class ChamberPldClient(CapabilityClient):
+    """The chamber driver: pld-service, the REA control service on the PLD PC, which owns the serial ports (PLC, gauges, pyrometer, excimer) and enforces every safety rule itself. One op per service operation. Every op answers {ok, message}; ok=false is a refusal (an interlock, a limit, read-only hardware, another client holding control) with the reason in message. Operations need control, which this node takes as client 'lumi-pascal' on first use. When the node runs --use-legacy-mi-mode every op here is refused and mi_mode drives the chamber instead."""
+
+    def __init__(
+        self,
+        channel: AbstractChannel,
+        exchange: AbstractExchange,
+        *,
+        timeout: float = 10.0,
+        name: str | None = None,
+        actor: str | None = None,
+    ) -> None:
+        super().__init__(
+            PLD, 'chamber',
+            channel=channel, exchange=exchange, timeout=timeout, name=name,
+            actor=actor,
+        )
+
+    async def chamber_state(self) -> PldChamberState:
+        """The latest poll of the chamber: valves, pressures, heater, motion, the laser trigger train, gas and pressure control, interlocks, the excimer. `read_only` true means the service was started on hardware without --allow-operations: every operation will be refused."""
+        return await self.call("chamber_state")  # type: ignore[return-value]
+
+    async def recent_events(self, req: PldEventQuery) -> PldEventList:
+        """The service's latest discrete events (valve_changed, move_done, interlock, laser_done, error, control), oldest first."""
+        return await self.call("recent_events", req)  # type: ignore[return-value]
+
+    async def acquire_control(self, req: PldControlRequest) -> PldControlReply:
+        """Take control of the chamber as 'lumi-pascal'. Operations do this themselves; call it to see who holds control, or with force=true to take it from another client (logged by the service; never the default)."""
+        return await self.call("acquire_control", req)  # type: ignore[return-value]
+
+    async def release_control(self) -> PldControlReply:
+        """Hand control back, e.g. so the REA GUI can drive. Release it when a run ends."""
+        return await self.call("release_control")  # type: ignore[return-value]
+
+    async def set_valve(self, req: PldValveRequest) -> PldReply:
+        """Open or close a valve by its reference name."""
+        return await self.call("set_valve", req)  # type: ignore[return-value]
+
+    async def select_target(self, req: PldTargetRequest) -> PldReply:
+        """Revolve the carousel to target A..F or Clear."""
+        return await self.call("select_target", req)  # type: ignore[return-value]
+
+    async def set_mask_position(self, req: PldPositionRequest) -> PldReply:
+        """Mask1 to an absolute position, mm."""
+        return await self.call("set_mask_position", req)  # type: ignore[return-value]
+
+    async def set_sample_position(self, req: PldPositionRequest) -> PldReply:
+        """Sample rotation to an absolute angle, 0..360 degrees."""
+        return await self.call("set_sample_position", req)  # type: ignore[return-value]
+
+    async def set_rheed_gun_x(self, req: PldPositionRequest) -> PldReply:
+        """RHEED gun X to an absolute position, mm."""
+        return await self.call("set_rheed_gun_x", req)  # type: ignore[return-value]
+
+    async def home_axis(self, req: PldAxisRequest) -> PldReply:
+        """Home TG, Mask1 or RHEED gun X."""
+        return await self.call("home_axis", req)  # type: ignore[return-value]
+
+    async def set_target_spin(self, req: PldSwitchRequest) -> PldReply:
+        """Target spin on or off."""
+        return await self.call("set_target_spin", req)  # type: ignore[return-value]
+
+    async def set_target_twist(self, req: PldSwitchRequest) -> PldReply:
+        """Target twist on or off."""
+        return await self.call("set_target_twist", req)  # type: ignore[return-value]
+
+    async def set_motor_free(self, req: PldSwitchRequest) -> PldReply:
+        """Release (on) or engage (off) the motor holding lock."""
+        return await self.call("set_motor_free", req)  # type: ignore[return-value]
+
+    async def set_target_auto_motion(self, req: PldAutoMotionRequest) -> PldReply:
+        """Auto mode: the chosen motions go on with each fire_laser and off when the train ends. Service default: spin on, twist off."""
+        return await self.call("set_target_auto_motion", req)  # type: ignore[return-value]
+
+    async def set_heater_key(self, req: PldSwitchRequest) -> PldReply:
+        """Heater LD key (MI: Heating Laser Lock ACTIVE/LOCKED)."""
+        return await self.call("set_heater_key", req)  # type: ignore[return-value]
+
+    async def set_heater_start(self, req: PldSwitchRequest) -> PldReply:
+        """Heater LD start (MI: Heating Laser ON/OFF)."""
+        return await self.call("set_heater_start", req)  # type: ignore[return-value]
+
+    async def set_heater_threshold(self, req: PldSwitchRequest) -> PldReply:
+        """Heater LD idle threshold current (MI: Heating Laser Threshold)."""
+        return await self.call("set_heater_threshold", req)  # type: ignore[return-value]
+
+    async def set_heating_current(self, req: PldCurrentRequest) -> PldReply:
+        """Manual LD current, A. Switches the temperature PID off."""
+        return await self.call("set_heating_current", req)  # type: ignore[return-value]
+
+    async def set_heater_current_limits(self, req: PldCurrentLimitsRequest) -> PldReply:
+        """Limits on the PID output current, A."""
+        return await self.call("set_heater_current_limits", req)  # type: ignore[return-value]
+
+    async def set_temperature(self, req: PldTemperatureRequest) -> PldReply:
+        """PID towards `celsius` at `ramp_c_per_min` (0 = jump); with wait, returns once within `tolerance`."""
+        return await self.call("set_temperature", req)  # type: ignore[return-value]
+
+    async def set_temperature_control(self, req: PldSwitchRequest) -> PldReply:
+        """on = PID holding the present temperature (or the last setpoint); off = manual at the present current."""
+        return await self.call("set_temperature_control", req)  # type: ignore[return-value]
+
+    async def set_sample_shutter(self, req: PldShutterRequest) -> PldReply:
+        """Sample shutter in front of the holder, or away."""
+        return await self.call("set_sample_shutter", req)  # type: ignore[return-value]
+
+    async def fire_laser(self, req: PldFireRequest) -> PldReply:
+        """A PLC trigger train of `pulses` at `rate_hz`. The excimer makes light only when it is ON; this does not check it."""
+        return await self.call("fire_laser", req)  # type: ignore[return-value]
+
+    async def set_mfc_flow(self, req: PldFlowRequest) -> PldReply:
+        """MFC setpoint, sccm (MFC1 only in this chamber)."""
+        return await self.call("set_mfc_flow", req)  # type: ignore[return-value]
+
+    async def set_pressure(self, req: PldPressureRequest) -> PldReply:
+        """Pressure-control setpoint, Torr. The setpoint picks the regime: low (<= 2e-4, IG1, flow table) or high (3e-3..1, CDG, PID); between them is refused. Switching regimes moves valves and the ion gauge first."""
+        return await self.call("set_pressure", req)  # type: ignore[return-value]
+
+    async def set_pressure_control(self, req: PldSwitchRequest) -> PldReply:
+        """Pressure control on or off."""
+        return await self.call("set_pressure_control", req)  # type: ignore[return-value]
+
+    async def set_pressure_flow_limits(self, req: PldFlowLimitsRequest) -> PldReply:
+        """Flow limits for pressure control, sccm."""
+        return await self.call("set_pressure_flow_limits", req)  # type: ignore[return-value]
+
+    async def tune_pressure(self, req: PldSwitchRequest) -> PldReply:
+        """Relay auto-tune of the high-regime PID (off cancels)."""
+        return await self.call("tune_pressure", req)  # type: ignore[return-value]
+
+    async def set_ion_gauge(self, req: PldIonGaugeRequest) -> PldReply:
+        """IG1 or IG3 filament on or off."""
+        return await self.call("set_ion_gauge", req)  # type: ignore[return-value]
+
+    async def take_laser_control(self) -> PldReply:
+        """Take the excimer's settings port from the second PC (CM=2). Every other laser op is refused without it."""
+        return await self.call("take_laser_control")  # type: ignore[return-value]
+
+    async def laser_on(self, req: PldLaserOnRequest) -> PldReply:
+        """Excimer preflight, then OPMODE=ON (about 8 s in OFF,WAIT)."""
+        return await self.call("laser_on", req)  # type: ignore[return-value]
+
+    async def laser_standby(self) -> PldReply:
+        """Excimer to STANDBY."""
+        return await self.call("laser_standby")  # type: ignore[return-value]
+
+    async def laser_off(self) -> PldReply:
+        """Excimer OFF."""
+        return await self.call("laser_off")  # type: ignore[return-value]
+
+    async def set_laser_mode(self, req: PldLaserModeRequest) -> PldReply:
+        """Excimer running mode: hv (HV PGR) or energy (EGY PGR)."""
+        return await self.call("set_laser_mode", req)  # type: ignore[return-value]
+
+    async def set_laser_hv(self, req: PldLaserHvRequest) -> PldReply:
+        """Excimer HV set point, 18.5..25.5 kV (hv mode only)."""
+        return await self.call("set_laser_hv", req)  # type: ignore[return-value]
+
+    async def set_laser_energy(self, req: PldLaserEnergyRequest) -> PldReply:
+        """Excimer energy set point, 100..400 mJ."""
+        return await self.call("set_laser_energy", req)  # type: ignore[return-value]
+
+    async def release_laser(self) -> PldReply:
+        """Hand the excimer's settings port back to the second PC (CM=1)."""
+        return await self.call("release_laser")  # type: ignore[return-value]
+
+    async def start_logging(self, req: PldLoggingRequest) -> PldReply:
+        """Start a new growth-log CSV in the chamber's log folder, one row every interval_s, written by this node from the service's state (PLD Controller's columns). `message` is the file's path."""
+        return await self.call("start_logging", req)  # type: ignore[return-value]
+
+    async def stop_logging(self) -> PldReply:
+        """Close the growth-log CSV. Nothing is logged until start_logging."""
+        return await self.call("stop_logging")  # type: ignore[return-value]
+
+    async def on_state(
+        self, callback: Callable[[PldChamberState, None], Awaitable[None]]
+    ) -> None:
+        """Subscribe to the state stream.
+
+        Subscribing does not start the stream: call start_streaming() for that. Each
+        subscriber gets its own queue, so every subscriber sees every message.
+        """
+        await self.subscribe_stream(callback)  # type: ignore[arg-type]
+
+    async def get_state(self) -> PldState:  # type: ignore[override]
+        """The server's current state, typed."""
+        return await super().get_state()  # type: ignore[return-value]
+
+
 class ChamberMiModeClient(CapabilityClient):
-    """Machine-instruction mode: submit a command script, get an immediate acknowledgement, and receive the execution result later on the update channel, correlated by commands_uuid. The one genuinely pub/sub capability."""
+    """Machine-instruction mode: submit a command script, get an immediate acknowledgement, and receive the execution result later on the update channel, correlated by commands_uuid. The one genuinely pub/sub capability. The legacy driver, through PLD Controller: live only when the chamber node runs --use-legacy-mi-mode, and refused otherwise (pld drives the chamber)."""
 
     def __init__(
         self,
@@ -266,6 +456,7 @@ class ChamberClient:
                  *, timeout: float = 10.0, actor: str | None = None) -> None:
         self.log = ChamberLogClient(channel, exchange, timeout=timeout, actor=actor)
         self.config = ChamberConfigClient(channel, exchange, timeout=timeout, actor=actor)
+        self.pld = ChamberPldClient(channel, exchange, timeout=timeout, actor=actor)
         self.mi_mode = ChamberMiModeClient(channel, exchange, timeout=timeout, actor=actor)
         self.camera = ChamberCameraClient(channel, exchange, timeout=timeout, actor=actor)
         self.fiducial = ChamberFiducialClient(channel, exchange, timeout=timeout, actor=actor)
@@ -275,6 +466,7 @@ class ChamberClient:
         return {
             'log': self.log,
             'config': self.config,
+            'pld': self.pld,
             'mi_mode': self.mi_mode,
             'camera': self.camera,
             'fiducial': self.fiducial,

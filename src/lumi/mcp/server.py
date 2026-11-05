@@ -10,8 +10,10 @@ already enforces for the Python/TS clients. This mirrors `lumi.api.bridge.BusPro
 Three jobs, and the tools for each:
 
   drive a growth    every `experiment` op, plus the live RHEED camera and its
-                    integration boxes, the chamber log and webcam, and who is on
-                    the bus (system.registry)
+                    integration boxes, the chamber log and webcam, the chamber
+                    driver's own operations (chamber.pld: pld-service, which
+                    enforces the chamber's safety rules itself -- the excimer is
+                    only reachable here), and who is on the bus (system.registry)
   read the history  growth.db through the experiment node's list_*/get_* ops, and
                     the recordings themselves through `storage.archive` -- frames,
                     RHEED oscillation traces, the chamber log each file carries
@@ -23,6 +25,11 @@ EXPOSED, so adding an op to, say, chamber.mi_mode does NOT silently hand the age
 raw script execution, and system.supervisor's spawn/kill are never reachable. An LLM
 agent operating real lab equipment is a more dangerous surface than a browser
 viewer behind a role check.
+
+The chamber driver: pld-service by default. `--use-legacy-mi-mode` (for a lab whose
+chamber and experiment nodes run the same flag) leaves chamber.pld out, since every op
+on it is refused then; the experiment ops drive MI mode instead. Raw MI scripts are not
+exposed either way.
 
 Note `chamber.camera` and `rheed.camera` are not read-only -- they include
 `update_camera_config`. Every tool carries a read-only hint from
@@ -82,7 +89,23 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
     # deposition is watched by. Read-only: registering and removing boxes is the
     # operator's layout, and an agent rearranging it mid-growth helps nobody.
     (RHEED, {"camera": None, "integrator": frozenset({"bboxes", "cache"})}),
-    (CHAMBER, {"log": None, "camera": None}),
+    # The driver's operations are whole actions the service vets itself (interlocks,
+    # limits, read-only hardware), unlike an MI script. Not control ownership -- an
+    # agent taking control by force would lock the operator's GUI out -- not
+    # set_motor_free (releasing the holding lock leaves every axis back-driveable),
+    # and not the growth log, which experiment.start_mi_logging already drives.
+    (CHAMBER, {"log": None, "camera": None, "pld": frozenset({
+        "chamber_state", "recent_events", "set_valve", "select_target",
+        "set_mask_position", "set_sample_position", "set_rheed_gun_x", "home_axis",
+        "set_target_spin", "set_target_twist", "set_target_auto_motion",
+        "set_heater_key", "set_heater_start", "set_heater_threshold",
+        "set_heating_current", "set_heater_current_limits", "set_temperature",
+        "set_temperature_control", "set_sample_shutter", "fire_laser", "set_mfc_flow",
+        "set_pressure", "set_pressure_control", "set_pressure_flow_limits",
+        "tune_pressure", "set_ion_gauge", "take_laser_control", "laser_on",
+        "laser_standby", "laser_off", "set_laser_mode", "set_laser_hv", "set_laser_energy",
+        "release_laser",
+    })}),
     # Which nodes are up, so "the call timed out" can become "the storage node is
     # not running". Not wait_for: it blocks for its own timeout, longer than a call's.
     (SYSTEM, {"registry": frozenset({"list_nodes", "get_node"})}),
@@ -107,11 +130,17 @@ _BODY_FIELDS = {
 }
 
 
-def exposed_ops() -> Iterator[tuple[EquipmentContract, Capability, Op]]:
+#: Capabilities left out under --use-legacy-mi-mode: the chamber node refuses every op.
+LEGACY_MI_MODE_HIDDEN = frozenset({"chamber.pld"})
+
+
+def exposed_ops(*, use_legacy_mi_mode: bool = False) -> Iterator[tuple[EquipmentContract, Capability, Op]]:
     """Every op in EXPOSED that a tool can carry."""
     for contract, caps in EXPOSED:
         for cap in contract.capabilities:
             if caps is not None and cap.name not in caps:
+                continue
+            if use_legacy_mi_mode and f"{contract.name}.{cap.name}" in LEGACY_MI_MODE_HIDDEN:
                 continue
             ops = None if caps is None else caps[cap.name]
             for op in cap.ops:
@@ -204,8 +233,10 @@ class LumiMCPServer:
     must run before `server` can answer anything -- tools are only known once the
     capability clients exist."""
 
-    def __init__(self, *, host: str | None = None, user: str = "guest", password: str = "guest") -> None:
+    def __init__(self, *, host: str | None = None, user: str = "guest", password: str = "guest",
+                 use_legacy_mi_mode: bool = False) -> None:
         self.host = host or settings.rabbitmq.host
+        self.use_legacy_mi_mode = use_legacy_mi_mode
         self.user = user
         self.password = password
 
@@ -231,7 +262,7 @@ class LumiMCPServer:
         self._channel = await self._connection.channel()
 
         exchanges: dict[str, Any] = {}
-        for contract, cap, op in exposed_ops():
+        for contract, cap, op in exposed_ops(use_legacy_mi_mode=self.use_legacy_mi_mode):
             key = f"{contract.name}.{cap.name}"
             client = self._clients.get(key)
             if client is None:
@@ -407,7 +438,14 @@ per-pixel visual check) return with pending_confirmation set; resolve it with th
 confirm_*/resolve_* tool (or the generic `confirm` for a plain proceed-gate) before
 continuing. rheed.camera.image and chamber.camera.image show the live pictures;
 rheed.integrator.cache is the live intensity of each box the operator drew (the growth
-oscillations); chamber.log.log the latest chamber readings. system.registry.list_nodes
+oscillations); chamber.log.log the latest chamber readings. chamber.pld.* is the chamber
+driver itself (pld-service): chamber_state for everything it reads (read_only=true means
+the service was started on hardware without operations allowed, and every operation will
+be refused), and one tool per operation -- valves, motion, heater, gas, the excimer laser
+(take_laser_control first). Prefer the experiment.driver ops where one exists: they add
+the growth bookkeeping and Lumi's own checks. A pld operation answers {ok, message};
+ok=false is the service refusing, with the reason -- report it, do not retry around it.
+system.registry.list_nodes
 says which nodes are up -- a call that times out usually means its node is not.
 
 Reading the history -- the growth database through experiment.driver: list_projects,
