@@ -480,7 +480,7 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
     def _laser(self, context, change) -> pb.OperationReply:
         self._require_control(context)
         if not self.excimer["control"]:
-            return self._no("the laser takes settings from the second PC (TakeLaserControl first)")
+            return self._no("the laser's other port has control (CM=1): take laser control first")
         problem = change()
         return self._no(problem) if problem else self._ok()
 

@@ -443,7 +443,7 @@ driver itself (pld-service): chamber_state for everything it reads (read_only=tr
 the service was started on hardware without operations allowed, and every operation will
 be refused), and one tool per operation -- valves, motion, heater, gas, the excimer laser.
 The excimer takes settings only from the port its CM names: chamber_state's
-excimer.control true means this PC has it, false means the second PC does and every laser
+excimer.control (polled every 2 s) true means this PC has it, false means the second PC does and every laser
 op (laser_off included) is refused. take_laser_control and release_laser are the only
 calls that move it -- ask the person before either, since the second PC may be using the
 laser. fire_laser does not check the excimer (it is still run by hand). Prefer the experiment.driver ops where one exists: they add

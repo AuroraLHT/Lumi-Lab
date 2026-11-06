@@ -12,7 +12,9 @@ chamber arrives), so each runs in a worker thread and the node's event loop stay
 The excimer takes settings only from the port its CM names. This handler never moves CM
 on its own: take_laser_control and release_laser are the only ops that do, nothing is
 sent to the laser when the node stops, and a laser op refused for want of CM comes back
-as that refusal, naming `excimer.control`. With the service read-only (hardware without
+as the service's refusal ("the laser's other port has control (CM=1)"); the readout's
+`laser_control` is `excimer.control`. That reading is polled every 2 s, so it can lag a
+take_laser_control by that much -- the refusal, not the reading, is what decides. With the service read-only (hardware without
 --allow-operations) every operation is refused here and nothing is sent.
 """
 
@@ -38,11 +40,6 @@ from lumi.pascal.pld.monitor import GrowthLog, PldEventMonitor, PldStateMonitor
 from lumi.pascal.pld.proto import pld_pb2 as pb
 
 log = logging.getLogger(__name__)
-
-# The excimer ops that need CM=2 (this PC); TakeLaserControl is how it is got.
-LASER_RPCS = frozenset({
-    "LaserOn", "LaserStandby", "LaserOff", "SetLaserMode", "SetLaserHv", "SetLaserEnergy", "ReleaseLaser",
-})
 
 
 def _op(rpc: str, build):
@@ -107,10 +104,6 @@ class PldHandler:
         ok, message = await asyncio.to_thread(self.client.call, rpc, request)
         if not ok:
             log.warning("pld-service refused %s: %s", rpc, message)
-            latest = self.state_monitor.latest
-            if rpc in LASER_RPCS and latest is not None and not latest.excimer.control:
-                message += ("; excimer.control is false -- the second PC holds the laser's settings "
-                            "port (CM=1). take_laser_control moves it to this PC (CM=2).")
         return PldReply(ok=ok, message=message)
 
     set_valve = _op("SetValve", lambda r: pb.ValveRequest(valve=r.valve, open=r.open, wait=r.wait))

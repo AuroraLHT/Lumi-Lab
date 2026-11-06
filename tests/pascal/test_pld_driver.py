@@ -96,7 +96,7 @@ async def test_refusals_come_back_as_answers(driver):
     assert not reply.ok and "regime" in reply.message
     # The excimer takes no settings until its port is taken.
     reply = await handler.set_laser_hv(PldLaserHvRequest(kv=20.0))
-    assert not reply.ok and "TakeLaserControl" in reply.message
+    assert not reply.ok and "CM=1" in reply.message
     assert (await handler.take_laser_control(Empty())).ok
     assert (await handler.set_laser_hv(PldLaserHvRequest(kv=20.0))).ok
 
@@ -248,7 +248,7 @@ async def test_without_cm_every_laser_op_is_refused_and_names_the_switch(driver)
         await handler.set_laser_energy(PldLaserEnergyRequest(mj=200)),
     ):
         assert not reply.ok
-        assert "excimer.control is false" in reply.message and "take_laser_control" in reply.message
+        assert "CM=1" in reply.message and "take laser control" in reply.message
     assert service.servicer.excimer["control"] is False  # never taken on its own
     assert service.servicer.excimer["opmode"] == "OFF"
 
@@ -280,7 +280,8 @@ async def test_laser_on_waits_through_off_wait(driver):
 async def test_laser_modes_and_caps(driver):
     handler, _, _ = driver
     await handler.take_laser_control(Empty())
-    assert not (await handler.set_laser_hv(PldLaserHvRequest(kv=26.0))).ok
+    reply = await handler.set_laser_hv(PldLaserHvRequest(kv=26.0))
+    assert not reply.ok and "18.5" in reply.message
     assert not (await handler.set_laser_energy(PldLaserEnergyRequest(mj=450))).ok
     assert (await handler.set_laser_mode(PldLaserModeRequest(mode="energy"))).ok
     reply = await handler.set_laser_hv(PldLaserHvRequest(kv=20.0))
