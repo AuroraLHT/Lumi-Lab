@@ -62,6 +62,14 @@ class PldRefused(RuntimeError):
     """pld-service refused an operation; the message is its reason."""
 
 
+class PldStopped(PldRefused):
+    """A fire was stopped by StopFire -- a person (the REA GUI, or any client) ended the
+    deposition. An abort: the task fails and the run goes no further. Never re-fired."""
+
+    #: How pld-service starts a FireLaser reply cut short by StopFire.
+    PREFIX = "stopped by request"
+
+
 class PldCommandRunner:
     """`MiCommandRunner`'s `execute()`, over `chamber.pld`. See the module docstring."""
 
@@ -113,6 +121,8 @@ class PldCommandRunner:
                 ) from None
             raise
         if not reply.ok:
+            if reply.message.startswith(PldStopped.PREFIX):
+                raise PldStopped(f"{op} {reply.message}; the run is aborted, not retried")
             raise PldRefused(f"pld-service refused {op}: {reply.message}")
         if reply.message and reply.message not in ("done", "ok"):
             log.info("pld %s: %s", op, reply.message)

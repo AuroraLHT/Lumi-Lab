@@ -11,7 +11,7 @@ import pytest
 
 from lumi.base.mq.client import RemoteError
 from lumi.contracts.payloads.pld import PldChamberState, PldHeater, PldMotion, PldReply
-from lumi.experiment.pld import PldCommandRunner, PldRefused
+from lumi.experiment.pld import PldCommandRunner, PldRefused, PldStopped
 from lumi.pascal import command as pcmd
 
 pytestmark = pytest.mark.asyncio
@@ -170,6 +170,16 @@ async def test_a_refusal_raises_with_the_services_reason():
     client.refuse["select_target"] = "motor holding lock is released"
     with pytest.raises(PldRefused, match="holding lock"):
         await PldCommandRunner(client).execute(pcmd.SelectTarget("A", nowait=False))
+
+
+async def test_a_stopped_fire_is_an_abort():
+    # StopFire from the REA GUI cuts a wait=true FireLaser short with this reply.
+    client = FakePldClient()
+    client.refuse["fire_laser"] = "stopped by request: fired 412 of 1000 pulses"
+    with pytest.raises(PldStopped, match="fired 412 of 1000.*aborted, not retried"):
+        await PldCommandRunner(client).execute(
+            pcmd.TriggerLaser(num_pulse=1000, frequency=10, sync=False, nowait=False))
+    assert ops(client) == ["fire_laser"]  # once
 
 
 async def test_a_command_with_no_equivalent_names_the_fallback():
