@@ -13,8 +13,8 @@ The excimer takes settings only from the port its CM names. This handler never m
 on its own: take_laser_control and release_laser are the only ops that do, nothing is
 sent to the laser when the node stops, and a laser op refused for want of CM comes back
 as the service's refusal ("the laser's other port has control (CM=1)"); the readout's
-`laser_control` is `excimer.control`. That reading is polled every 2 s, so it can lag a
-take_laser_control by that much -- the refusal, not the reading, is what decides. With the service read-only (hardware without
+`laser_control` is `excimer.control` (current from pld-service 50c5f4f on; before that it
+could lag a take_laser_control by a poll, 2 s). With the service read-only (hardware without
 --allow-operations) every operation is refused here and nothing is sent.
 """
 

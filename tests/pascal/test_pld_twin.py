@@ -21,6 +21,7 @@ import pytest_asyncio
 
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
+    PldFireRequest,
     PldLaserEnergyRequest,
     PldLaserHvRequest,
     PldLaserModeRequest,
@@ -77,12 +78,14 @@ async def handler(tmp_path):
 async def test_excimer_cm_rules_and_switching_on(handler):
     h = handler
     await h.release_laser(Empty())  # a known start: CM=1 (refused, harmlessly, if already so)
-    await asyncio.sleep(2.5)  # CM is in the 2 s poll
     reply = await h.laser_off(Empty())
     assert not reply.ok and "CM=1" in reply.message
-    assert h.readout().laser_control is False
+    assert (await h.chamber_state(Empty())).excimer.control is False
+
+    # Every snapshot carries the laser's latest state, so a CM change shows at once.
 
     assert (await h.take_laser_control(Empty())).ok
+    assert (await h.chamber_state(Empty())).excimer.control is True
     assert (await h.set_laser_mode(PldLaserModeRequest(mode="hv"))).ok
     assert not (await h.set_laser_hv(PldLaserHvRequest(kv=26))).ok
     assert (await h.set_laser_hv(PldLaserHvRequest(kv=20))).ok
@@ -99,8 +102,8 @@ async def test_excimer_cm_rules_and_switching_on(handler):
     assert excimer.opmode == "ON" and excimer.hv == pytest.approx(20.0)
     assert (await h.laser_standby(Empty())).ok
     assert (await h.laser_off(Empty())).ok
-    await asyncio.sleep(2.5)
-    assert h.readout().laser_control is True
+    assert (await h.release_laser(Empty())).ok
+    assert (await h.chamber_state(Empty())).excimer.control is False
 
 
 async def test_mi_commands_drive_the_chamber(handler):
@@ -133,3 +136,12 @@ async def test_mi_commands_drive_the_chamber(handler):
     with path.open(newline="") as f:
         row = process_row(list(csv.DictReader(f))[-1])
     assert row["TG No."] == "2" and row["Mask1"] == "10.00"
+
+
+async def test_a_fire_reports_its_own_missed_shots(handler):
+    h = handler
+    total = (await h.chamber_state(Empty())).laser.missed_shots  # the PLC's running total
+    reply = await h.fire_laser(PldFireRequest(pulses=10, rate_hz=10, wait=True))
+    assert reply.ok, reply.message
+    assert "fired 10 of 10 pulses, 0 missed" in reply.message
+    assert (await h.chamber_state(Empty())).laser.missed_shots == total
