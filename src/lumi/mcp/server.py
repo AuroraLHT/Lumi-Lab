@@ -100,7 +100,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
         "set_target_spin", "set_target_twist", "set_target_auto_motion",
         "set_heater_key", "set_heater_start", "set_heater_threshold",
         "set_heating_current", "set_heater_current_limits", "set_temperature",
-        "set_temperature_control", "set_sample_shutter", "fire_laser", "set_mfc_flow",
+        "set_temperature_control", "set_sample_shutter", "fire_laser", "stop_fire", "set_mfc_flow",
         "set_pressure", "set_pressure_control", "set_pressure_flow_limits",
         "tune_pressure", "set_ion_gauge", "take_laser_control", "laser_on",
         "laser_standby", "laser_off", "set_laser_mode", "set_laser_hv", "set_laser_energy",
@@ -446,7 +446,10 @@ The excimer takes settings only from the port its CM names: chamber_state's
 excimer.control true means this PC has it, false means the second PC does and every laser
 op (laser_off included) is refused. take_laser_control and release_laser are the only
 calls that move it -- ask the person before either, since the second PC may be using the
-laser. fire_laser does not check the excimer (it is still run by hand). Prefer the experiment.driver ops where one exists: they add
+laser. fire_laser does not check the excimer (it is still run by hand). To stop a deposition
+when something goes wrong, chamber.pld.stop_fire ends the pulse train at once (no
+control needed); a fire or deposition it cuts short fails with "stopped by request" --
+that is a person's or your own abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add
 the growth bookkeeping and Lumi's own checks. A pld operation answers {ok, message};
 ok=false is the service refusing, with the reason -- report it, do not retry around it.
 system.registry.list_nodes

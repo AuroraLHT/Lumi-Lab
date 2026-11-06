@@ -327,3 +327,20 @@ async def test_read_only_sends_nothing(driver):
     assert service.servicer.controller == ""  # not even AcquireControl went out
     assert service.servicer.excimer["control"] is False
     assert handler.readout().read_only is True
+
+
+async def test_stop_fire_cuts_a_waited_train_short_from_another_client(driver):
+    handler, model, service = driver
+    assert (await handler.stop_fire(Empty())).message == "the laser is not firing: nothing sent"
+    fire = asyncio.create_task(handler.fire_laser(PldFireRequest(pulses=100_000, rate_hz=10, wait=True)))
+    await asyncio.sleep(0.5)
+    gui = PldClient(service.address, client="pld-gui")  # holds no control
+    try:
+        ok, message = await asyncio.to_thread(gui.call, "StopFire", pb.Empty())
+    finally:
+        gui.close()
+    assert ok, message
+    reply = await asyncio.wait_for(fire, 10)
+    assert not reply.ok and reply.message.startswith("stopped by request: fired ")
+    assert 0 < model.laser_pulses < 100_000
+    assert service.servicer.controller == "lumi-pascal"  # the stop took nothing

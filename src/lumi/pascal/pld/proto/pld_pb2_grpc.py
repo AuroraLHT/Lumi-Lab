@@ -154,6 +154,11 @@ class ChamberStub:
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.LaserRequest.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
+        self.StopFire = channel.unary_unary(
+                '/pld.v1.Chamber/StopFire',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
         self.SetMfcFlow = channel.unary_unary(
                 '/pld.v1.Chamber/SetMfcFlow',
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.FlowRequest.SerializeToString,
@@ -391,6 +396,17 @@ class ChamberServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StopFire(self, request, context):
+        """Stop the present pulse train (ST 02003, as PLD Controller's stop, captured 2026-11-03): the
+        fire ends early, pulses fired are kept, and the motions the fire started go off. Any client
+        may stop, with or without control, and it is handled at the next poll even while a waited
+        FireLaser runs (that FireLaser then replies ok=false, "stopped by request"). Not firing:
+        ok=true, nothing sent. This is the PLC trigger only; LaserOff is the excimer itself.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SetMfcFlow(self, request, context):
         """---- gas ----------------------------------------------------------------------------
         """
@@ -618,6 +634,11 @@ def add_ChamberServicer_to_server(servicer, server):
             'FireLaser': grpc.unary_unary_rpc_method_handler(
                     servicer.FireLaser,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.LaserRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'StopFire': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopFire,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
             'SetMfcFlow': grpc.unary_unary_rpc_method_handler(
@@ -1338,6 +1359,33 @@ class Chamber:
             target,
             '/pld.v1.Chamber/FireLaser',
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.LaserRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopFire(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/StopFire',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
             options,
             channel_credentials,

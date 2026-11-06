@@ -150,3 +150,30 @@ async def test_a_fire_reports_its_own_missed_shots(handler):
     # twist has stopped at centre: the turret is free for the next SelectTarget.
     assert state.motion.auto_spin and state.motion.auto_twist
     assert state.motion.axes["TG"] == "IDLE"
+
+
+async def test_stop_fire_aborts_a_deposition(handler):
+    # The REA GUI (a client holding no control) stops a waited fire mid-train; the
+    # deposition step fails as an abort and is not re-fired.
+    from lumi.experiment.pld import PldStopped
+    from lumi.pascal.pld.client import PldClient
+    from lumi.pascal.pld.proto import pld_pb2 as pb
+
+    h = handler
+    assert (await h.stop_fire(Empty())).message == "the laser is not firing: nothing sent"
+    runner = PldCommandRunner(HandlerBus(h))
+    before = (await h.chamber_state(Empty())).laser.pulses_fired
+    fire = asyncio.create_task(runner.execute(
+        pcmd.TriggerLaser(num_pulse=1000, frequency=10, sync=False, nowait=False)))
+    await asyncio.sleep(3.0)
+    gui = PldClient(ADDRESS, client="pld-gui")
+    try:
+        ok, message = await asyncio.to_thread(gui.call, "StopFire", pb.Empty())
+    finally:
+        gui.close()
+    assert ok, message
+    with pytest.raises(PldStopped, match="stopped by request: fired"):
+        await asyncio.wait_for(fire, 60)
+    state = await h.chamber_state(Empty())
+    assert 0 < state.laser.pulses_fired - before < 1000
+    assert state.controller == "lumi-pascal"

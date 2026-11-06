@@ -18,6 +18,8 @@ driver depends on them --
   MV10 closed in the high regime;
 - the pyrometer reads NaN below its range, as the real one does (the legacy simulator
   floors it at Pyro_min instead, which is PLD Controller's display);
+- StopFire, from any client with or without control, ends a train; a waited FireLaser
+  then replies ok=false, "stopped by request: fired N of M pulses";
 - the excimer refuses every operation until TakeLaserControl (it starts at CM=1, the
   second PC), keeps its caps, and LaserOn runs the preflight, spends LASER_WARMUP_S in
   OFF,WAIT and with `wait` returns once ON (LASER_ON_TIMEOUT_S at most). An interlock is
@@ -90,6 +92,7 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self.excimer = {"control": False, "opmode": "OFF", "mode": "HV PGR", "hv": 22.0, "energy_set": 200.0}
         self._laser_on_at: float | None = None  # monotonic time OFF,WAIT ends
         self.laser_interlock: tuple[int, str] | None = None
+        self._fire_stopped = False
         self.read_only = False  # reported only, as hardware without --allow-operations would
         self._subscribers: list[queue.Queue] = []
 
@@ -404,12 +407,29 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self._require_control(context)
         if request.pulses <= 0 or request.rate_hz <= 0:
             return self._no("pulses and rate_hz must be positive")
+        self._fire_stopped = False
+        start = self.model.laser_pulses
         expected = self.model.trigger_laser(request.pulses, request.rate_hz)
         if request.wait:
             if not self._wait(lambda: self.model.laser_idle, (expected * 2 + 60.0) / self.time_scale):
                 return self._no("pulse train did not finish in time")
+            if self._fire_stopped:
+                fired = self.model.laser_pulses - start
+                return self._no(f"stopped by request: fired {fired} of {request.pulses} pulses")
             self._emit("laser_done", f"{request.pulses} pulses at {request.rate_hz:g} Hz")
         return self._ok()
+
+    def StopFire(self, request, context):
+        # Any client, with or without control: a person must be able to stop a run.
+        m = self.model
+        with m._lock:
+            if m.laser_idle:
+                return self._ok("the laser is not firing: nothing sent")
+            m._pulses_remaining = 0.0
+            m.gate_open = False
+            self._fire_stopped = True
+        self._emit("laser", f"fire stopped by {self._client(context) or 'a client'}")
+        return self._ok("stop sent (ST 02003)")
 
     # --- gas ----------------------------------------------------------------------
 

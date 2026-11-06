@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: e73531b1b411e803
+# contract_hash: be1999a7a554e245
 
 """Generated clients for the chamber node."""
 
@@ -217,6 +217,10 @@ class ChamberPldClient(CapabilityClient):
     async def fire_laser(self, req: PldFireRequest) -> PldReply:
         """A PLC trigger train of `pulses` at `rate_hz`. The excimer makes light only when it is ON; this does not check it."""
         return await self.call("fire_laser", req)  # type: ignore[return-value]
+
+    async def stop_fire(self) -> PldReply:
+        """Stop the present pulse train now (PLD Controller's stop): pulses fired are kept, the motions the fire started go off. Needs no control. A waited fire_laser it cuts short answers ok=false, 'stopped by request: fired N of M pulses' -- an abort, never re-fired. Not firing: ok=true, nothing sent. The excimer itself is laser_off."""
+        return await self.call("stop_fire")  # type: ignore[return-value]
 
     async def set_mfc_flow(self, req: PldFlowRequest) -> PldReply:
         """MFC setpoint, sccm (MFC1 only in this chamber)."""

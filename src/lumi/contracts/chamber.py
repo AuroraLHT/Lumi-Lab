@@ -186,6 +186,12 @@ PLD = Capability(
         _pld_op("fire_laser", PldFireRequest,
                 "A PLC trigger train of `pulses` at `rate_hz`. The excimer makes light only "
                 "when it is ON; this does not check it.", timeout_s=_LONG_S),
+        _pld_op("stop_fire", Empty,
+                "Stop the present pulse train now (PLD Controller's stop): pulses fired are kept, "
+                "the motions the fire started go off. Needs no control. A waited fire_laser it "
+                "cuts short answers ok=false, 'stopped by request: fired N of M pulses' -- an "
+                "abort, never re-fired. Not firing: ok=true, nothing sent. The excimer itself "
+                "is laser_off.", timeout_s=60),
         _pld_op("set_mfc_flow", PldFlowRequest, "MFC setpoint, sccm (MFC1 only in this chamber)."),
         _pld_op("set_pressure", PldPressureRequest,
                 "Pressure-control setpoint, Torr. The setpoint picks the regime: low "

@@ -2466,6 +2466,36 @@
             "response_codec": "json"
           },
           {
+            "name": "stop_fire",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "set_mfc_flow",
             "request": {
               "properties": {
@@ -3123,6 +3153,7 @@
             "set_temperature_control": "chamber.pld.req.set_temperature_control",
             "set_valve": "chamber.pld.req.set_valve",
             "start_logging": "chamber.pld.req.start_logging",
+            "stop_fire": "chamber.pld.req.stop_fire",
             "stop_logging": "chamber.pld.req.stop_logging",
             "take_laser_control": "chamber.pld.req.take_laser_control",
             "tune_pressure": "chamber.pld.req.tune_pressure"

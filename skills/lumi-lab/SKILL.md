@@ -66,7 +66,9 @@ being asked, wait, and pass their answer on.
 
 The excimer can be switched (`chamber.pld.laser_on` / `laser_standby` / `laser_off`, mode,
 HV, energy) only while `chamber_state.excimer.control` is true; otherwise the second PC
-holds it and every laser op is refused. Moving it (`take_laser_control`,
+holds it and every laser op is refused. To stop a deposition that is going wrong, call
+`chamber.pld.stop_fire` (no control needed); the fire it cuts short fails with "stopped by
+request", and that ends the run -- never fire again to make up the pulses. Moving it (`take_laser_control`,
 `release_laser`) is the person's call: ask first. Under `--use-legacy-mi-mode` it stays by hand.
 
 Also by hand, with no tool: RHEED gun and sample-stage adjustment,

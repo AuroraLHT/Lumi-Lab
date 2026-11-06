@@ -148,6 +148,9 @@ class PldHandler:
         self.state_monitor.laser_rate = float(req.rate_hz)
         return await self._operate("FireLaser", pb.LaserRequest(pulses=req.pulses, rate_hz=req.rate_hz, wait=req.wait))
 
+    # Needs no control, and runs alongside a waited fire_laser (each op is its own thread).
+    stop_fire = _op("StopFire", lambda r: pb.Empty())
+
     # --- the growth log -----------------------------------------------------------
 
     async def start_logging(self, req: PldLoggingRequest) -> PldReply:
