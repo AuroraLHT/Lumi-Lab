@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at a4acdd9 (the excimer control commit; identical apart from line
+// branch decode-program at 36c1eea (auto twist on by default; identical apart from line
 // endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this header)
 // and run scripts/gen_pld_stubs.sh.
 //
@@ -44,7 +44,7 @@ service Chamber {
   rpc SetTargetTwist(SwitchRequest) returns (OperationReply);
   rpc SetMotorFree(SwitchRequest) returns (OperationReply);
   // Auto mode: the chosen motions go on with each FireLaser and off when the train ends
-  // (only those the fire switched on; one already running is left alone). Default: spin on, twist off.
+  // (only those the fire switched on; one already running is left alone). Default: spin and twist on (user, 2026-11-06).
   rpc SetTargetAutoMotion(AutoMotionRequest) returns (OperationReply);
 
   // ---- substrate heater (LD) --------------------------------------------------------

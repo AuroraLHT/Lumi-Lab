@@ -133,6 +133,14 @@ async def test_target_auto_motion():
                                  ("set_target_twist", {"on": False})]
 
 
+async def test_auto_motion_keeps_the_services_other_setting():
+    # pld-service defaults to spin and twist on; setting spin alone must not turn twist off.
+    client = FakePldClient(PldChamberState(motion=PldMotion(auto_spin=True, auto_twist=True)))
+    runner = PldCommandRunner(client)
+    await runner.execute(pcmd.TargetRotationMode(mode=pcmd.TargetRotationModeType.AUTO))
+    assert client.calls == [("set_target_auto_motion", {"spin": True, "twist": True})]
+
+
 async def test_laser_gas_and_logging():
     client = FakePldClient()
     runner = PldCommandRunner(client)

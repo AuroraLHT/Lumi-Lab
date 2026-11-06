@@ -323,7 +323,7 @@ class ChamberServicer:
 
     def SetTargetAutoMotion(self, request, context):
         """Auto mode: the chosen motions go on with each FireLaser and off when the train ends
-        (only those the fire switched on; one already running is left alone). Default: spin on, twist off.
+        (only those the fire switched on; one already running is left alone). Default: spin and twist on (user, 2026-11-06).
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')

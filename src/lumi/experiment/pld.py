@@ -76,7 +76,11 @@ class PldCommandRunner:
         #: because the service's state is its last poll, which can predate the
         #: operation that just answered.
         self._pid_on: bool | None = None
-        self._auto_spin, self._auto_twist = True, False
+        #: Auto motion (with each FireLaser) as this runner last set it; None = ask the
+        #: service. Not assumed: its default is the service's (spin and twist on from
+        #: 2026-11-06), and setting one sends both.
+        self._auto_spin: bool | None = None
+        self._auto_twist: bool | None = None
         self._log_interval_s = 1.0
 
     async def start(self) -> None:
@@ -154,6 +158,9 @@ class PldCommandRunner:
 
     async def _spin_or_twist(self, which: str, mode: str) -> PldReply:
         auto = mode == "AUTO"
+        if self._auto_spin is None or self._auto_twist is None:
+            motion = (await self.client.chamber_state(Empty())).motion
+            self._auto_spin, self._auto_twist = motion.auto_spin, motion.auto_twist
         if which == "spin":
             self._auto_spin = auto
         else:

@@ -144,4 +144,9 @@ async def test_a_fire_reports_its_own_missed_shots(handler):
     reply = await h.fire_laser(PldFireRequest(pulses=10, rate_hz=10, wait=True))
     assert reply.ok, reply.message
     assert "fired 10 of 10 pulses, 0 missed" in reply.message
-    assert (await h.chamber_state(Empty())).laser.missed_shots == total
+    state = await h.chamber_state(Empty())
+    assert state.laser.missed_shots == total
+    # Auto spin and twist are on by default (36c1eea), and wait=true returns once the
+    # twist has stopped at centre: the turret is free for the next SelectTarget.
+    assert state.motion.auto_spin and state.motion.auto_twist
+    assert state.motion.axes["TG"] == "IDLE"

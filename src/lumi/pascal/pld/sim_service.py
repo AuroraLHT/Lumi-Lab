@@ -85,7 +85,7 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self.ig1_on = True
         self.ig3_on = True
         self.threshold_on = False
-        self.auto_spin, self.auto_twist = True, False
+        self.auto_spin, self.auto_twist = True, True  # pld-service's default from 2026-11-06
         self.flow_limits = (0.0, 30.0)
         self.excimer = {"control": False, "opmode": "OFF", "mode": "HV PGR", "hv": 22.0, "energy_set": 200.0}
         self._laser_on_at: float | None = None  # monotonic time OFF,WAIT ends
