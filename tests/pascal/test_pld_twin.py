@@ -26,6 +26,7 @@ from lumi.contracts.payloads.pld import (
     PldLaserHvRequest,
     PldLaserModeRequest,
     PldLaserOnRequest,
+    PldPumpRequest,
 )
 from lumi.experiment.pld import PldCommandRunner
 from lumi.pascal import command as pcmd
@@ -177,3 +178,18 @@ async def test_stop_fire_aborts_a_deposition(handler):
     state = await h.chamber_state(Empty())
     assert 0 < state.laser.pulses_fired - before < 1000
     assert state.controller == "lumi-pascal"
+
+
+async def test_pumps_load_lock_and_heater_gains_are_read(handler):
+    # 9858307: read only, plus the refusals that send nothing. Venting is left alone.
+    h = handler
+    state = await h.chamber_state(Empty())
+    assert {"TMP1", "TMP20", "TMP21", "TMP3", "DP1", "DP2", "DP3"} <= set(state.pumps)
+    assert state.load_lock.gv1 in ("closed", "open", "moving")
+    assert state.heater.kp is not None and state.heater.auto_tune is False
+    reply = await h.cancel_load_lock(Empty())
+    assert reply.ok, reply.message  # nothing running: nothing sent
+    if state.pumps["TMP3"].running:  # a dry pump backing a running TMP stays on
+        reply = await h.set_pump(PldPumpRequest(pump="DP3", on=False))
+        assert not reply.ok, reply.message
+        assert (await h.chamber_state(Empty())).pumps["DP3"].running

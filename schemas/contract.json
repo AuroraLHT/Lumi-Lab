@@ -1080,6 +1080,12 @@
                 },
                 "PldHeater": {
                   "properties": {
+                    "auto_tune": {
+                      "default": false,
+                      "description": "tune_heater is running",
+                      "title": "Auto Tune",
+                      "type": "boolean"
+                    },
                     "current_max": {
                       "anyOf": [
                         {
@@ -1142,10 +1148,47 @@
                       "default": null,
                       "title": "Emissivity"
                     },
+                    "kd": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Kd"
+                    },
                     "key_on": {
                       "default": false,
                       "title": "Key On",
                       "type": "boolean"
+                    },
+                    "ki": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Ki"
+                    },
+                    "kp": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "PID gains in use: A/C, A/(C s), A s/C",
+                      "title": "Kp"
                     },
                     "pid_on": {
                       "default": false,
@@ -1272,6 +1315,69 @@
                     "code"
                   ],
                   "title": "PldLaserCode",
+                  "type": "object"
+                },
+                "PldLoadLock": {
+                  "properties": {
+                    "below_sp1": {
+                      "default": false,
+                      "description": "TCG31 below ~4e-2 Torr",
+                      "title": "Below Sp1",
+                      "type": "boolean"
+                    },
+                    "below_sp2": {
+                      "default": false,
+                      "description": "TCG31 below SP2 (~400 Torr rising, ~55 falling)",
+                      "title": "Below Sp2",
+                      "type": "boolean"
+                    },
+                    "by_service": {
+                      "default": false,
+                      "description": "The sequence is the service's (cancel_load_lock stops it)",
+                      "title": "By Service",
+                      "type": "boolean"
+                    },
+                    "gv1": {
+                      "default": "",
+                      "description": "Manual gate valve to the main chamber: closed, open, moving",
+                      "title": "Gv1",
+                      "type": "string"
+                    },
+                    "hatch_closed": {
+                      "default": false,
+                      "title": "Hatch Closed",
+                      "type": "boolean"
+                    },
+                    "ig3_disabled": {
+                      "default": false,
+                      "title": "Ig3 Disabled",
+                      "type": "boolean"
+                    },
+                    "pump_down_complete": {
+                      "default": false,
+                      "title": "Pump Down Complete",
+                      "type": "boolean"
+                    },
+                    "ready": {
+                      "default": false,
+                      "description": "The PLC's vent condition: a sequence may start",
+                      "title": "Ready",
+                      "type": "boolean"
+                    },
+                    "sequence": {
+                      "default": "",
+                      "description": "\"\", \"auto vent\" or \"auto vac\" (the service's or the PLC's own)",
+                      "title": "Sequence",
+                      "type": "string"
+                    },
+                    "step": {
+                      "default": "",
+                      "description": "What the sequence is doing now",
+                      "title": "Step",
+                      "type": "string"
+                    }
+                  },
+                  "title": "PldLoadLock",
                   "type": "object"
                 },
                 "PldMotion": {
@@ -1460,6 +1566,30 @@
                   },
                   "title": "PldPressures",
                   "type": "object"
+                },
+                "PldPump": {
+                  "properties": {
+                    "at_speed": {
+                      "default": false,
+                      "description": "TMPs: NOR bit; dry pumps: running past the ~12 s acceleration",
+                      "title": "At Speed",
+                      "type": "boolean"
+                    },
+                    "running": {
+                      "default": false,
+                      "description": "The PLC run bit (TMP1 keeps it ~4.5 min while it spins down)",
+                      "title": "Running",
+                      "type": "boolean"
+                    },
+                    "state": {
+                      "default": "",
+                      "description": "off, starting, at speed, stopping",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "title": "PldPump",
+                  "type": "object"
                 }
               },
               "description": "One poll cycle of pld-service: everything it reads off the chamber.",
@@ -1502,11 +1632,22 @@
                 "laser": {
                   "$ref": "#/$defs/PldLaser"
                 },
+                "load_lock": {
+                  "$ref": "#/$defs/PldLoadLock"
+                },
                 "motion": {
                   "$ref": "#/$defs/PldMotion"
                 },
                 "pressures": {
                   "$ref": "#/$defs/PldPressures"
+                },
+                "pumps": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/PldPump"
+                  },
+                  "description": "TMP1, TMP20, TMP21, TMP3, DP1-DP3",
+                  "title": "Pumps",
+                  "type": "object"
                 },
                 "read_only": {
                   "default": false,
@@ -2761,6 +2902,184 @@
             "response_codec": "json"
           },
           {
+            "name": "tune_heater",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "auto_vent",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "auto_vac",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "cancel_load_lock",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pump",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                },
+                "pump": {
+                  "enum": [
+                    "TMP1",
+                    "TMP20",
+                    "TMP21",
+                    "TMP3",
+                    "DP1",
+                    "DP2",
+                    "DP3"
+                  ],
+                  "title": "Pump",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pump",
+                "on"
+              ],
+              "title": "PldPumpRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "take_laser_control",
             "request": {
               "description": "No payload. Used for ops that take or return nothing.",
@@ -3118,6 +3437,9 @@
           "request_pattern": "chamber.pld.req.*",
           "requests": {
             "acquire_control": "chamber.pld.req.acquire_control",
+            "auto_vac": "chamber.pld.req.auto_vac",
+            "auto_vent": "chamber.pld.req.auto_vent",
+            "cancel_load_lock": "chamber.pld.req.cancel_load_lock",
             "chamber_state": "chamber.pld.req.chamber_state",
             "fire_laser": "chamber.pld.req.fire_laser",
             "home_axis": "chamber.pld.req.home_axis",
@@ -3143,6 +3465,7 @@
             "set_pressure": "chamber.pld.req.set_pressure",
             "set_pressure_control": "chamber.pld.req.set_pressure_control",
             "set_pressure_flow_limits": "chamber.pld.req.set_pressure_flow_limits",
+            "set_pump": "chamber.pld.req.set_pump",
             "set_rheed_gun_x": "chamber.pld.req.set_rheed_gun_x",
             "set_sample_position": "chamber.pld.req.set_sample_position",
             "set_sample_shutter": "chamber.pld.req.set_sample_shutter",
@@ -3156,6 +3479,7 @@
             "stop_fire": "chamber.pld.req.stop_fire",
             "stop_logging": "chamber.pld.req.stop_logging",
             "take_laser_control": "chamber.pld.req.take_laser_control",
+            "tune_heater": "chamber.pld.req.tune_heater",
             "tune_pressure": "chamber.pld.req.tune_pressure"
           },
           "state": "chamber.pld.state",
@@ -3612,6 +3936,12 @@
               },
               "PldHeater": {
                 "properties": {
+                  "auto_tune": {
+                    "default": false,
+                    "description": "tune_heater is running",
+                    "title": "Auto Tune",
+                    "type": "boolean"
+                  },
                   "current_max": {
                     "anyOf": [
                       {
@@ -3674,10 +4004,47 @@
                     "default": null,
                     "title": "Emissivity"
                   },
+                  "kd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Kd"
+                  },
                   "key_on": {
                     "default": false,
                     "title": "Key On",
                     "type": "boolean"
+                  },
+                  "ki": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Ki"
+                  },
+                  "kp": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "PID gains in use: A/C, A/(C s), A s/C",
+                    "title": "Kp"
                   },
                   "pid_on": {
                     "default": false,
@@ -3804,6 +4171,69 @@
                   "code"
                 ],
                 "title": "PldLaserCode",
+                "type": "object"
+              },
+              "PldLoadLock": {
+                "properties": {
+                  "below_sp1": {
+                    "default": false,
+                    "description": "TCG31 below ~4e-2 Torr",
+                    "title": "Below Sp1",
+                    "type": "boolean"
+                  },
+                  "below_sp2": {
+                    "default": false,
+                    "description": "TCG31 below SP2 (~400 Torr rising, ~55 falling)",
+                    "title": "Below Sp2",
+                    "type": "boolean"
+                  },
+                  "by_service": {
+                    "default": false,
+                    "description": "The sequence is the service's (cancel_load_lock stops it)",
+                    "title": "By Service",
+                    "type": "boolean"
+                  },
+                  "gv1": {
+                    "default": "",
+                    "description": "Manual gate valve to the main chamber: closed, open, moving",
+                    "title": "Gv1",
+                    "type": "string"
+                  },
+                  "hatch_closed": {
+                    "default": false,
+                    "title": "Hatch Closed",
+                    "type": "boolean"
+                  },
+                  "ig3_disabled": {
+                    "default": false,
+                    "title": "Ig3 Disabled",
+                    "type": "boolean"
+                  },
+                  "pump_down_complete": {
+                    "default": false,
+                    "title": "Pump Down Complete",
+                    "type": "boolean"
+                  },
+                  "ready": {
+                    "default": false,
+                    "description": "The PLC's vent condition: a sequence may start",
+                    "title": "Ready",
+                    "type": "boolean"
+                  },
+                  "sequence": {
+                    "default": "",
+                    "description": "\"\", \"auto vent\" or \"auto vac\" (the service's or the PLC's own)",
+                    "title": "Sequence",
+                    "type": "string"
+                  },
+                  "step": {
+                    "default": "",
+                    "description": "What the sequence is doing now",
+                    "title": "Step",
+                    "type": "string"
+                  }
+                },
+                "title": "PldLoadLock",
                 "type": "object"
               },
               "PldMotion": {
@@ -3992,6 +4422,30 @@
                 },
                 "title": "PldPressures",
                 "type": "object"
+              },
+              "PldPump": {
+                "properties": {
+                  "at_speed": {
+                    "default": false,
+                    "description": "TMPs: NOR bit; dry pumps: running past the ~12 s acceleration",
+                    "title": "At Speed",
+                    "type": "boolean"
+                  },
+                  "running": {
+                    "default": false,
+                    "description": "The PLC run bit (TMP1 keeps it ~4.5 min while it spins down)",
+                    "title": "Running",
+                    "type": "boolean"
+                  },
+                  "state": {
+                    "default": "",
+                    "description": "off, starting, at speed, stopping",
+                    "title": "State",
+                    "type": "string"
+                  }
+                },
+                "title": "PldPump",
+                "type": "object"
               }
             },
             "description": "One poll cycle of pld-service: everything it reads off the chamber.",
@@ -4034,11 +4488,22 @@
               "laser": {
                 "$ref": "#/$defs/PldLaser"
               },
+              "load_lock": {
+                "$ref": "#/$defs/PldLoadLock"
+              },
               "motion": {
                 "$ref": "#/$defs/PldMotion"
               },
               "pressures": {
                 "$ref": "#/$defs/PldPressures"
+              },
+              "pumps": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/PldPump"
+                },
+                "description": "TMP1, TMP20, TMP21, TMP3, DP1-DP3",
+                "title": "Pumps",
+                "type": "object"
               },
               "read_only": {
                 "default": false,

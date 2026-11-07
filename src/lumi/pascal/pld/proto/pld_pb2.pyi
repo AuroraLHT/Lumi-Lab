@@ -40,7 +40,7 @@ class WatchRequest(_message.Message):
     def __init__(self, rate_hz: _Optional[float] = ...) -> None: ...
 
 class ChamberState(_message.Message):
-    __slots__ = ("time", "backend", "connected", "controller", "valves", "pressures", "heater", "motion", "laser", "gas", "sample_shutter_away", "interlocks", "raw_words", "excimer", "read_only")
+    __slots__ = ("time", "backend", "connected", "controller", "valves", "pressures", "heater", "motion", "laser", "gas", "sample_shutter_away", "interlocks", "raw_words", "excimer", "read_only", "pumps", "load_lock")
     class ValvesEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -55,6 +55,13 @@ class ChamberState(_message.Message):
         key: int
         value: int
         def __init__(self, key: _Optional[int] = ..., value: _Optional[int] = ...) -> None: ...
+    class PumpsEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: Pump
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[_Union[Pump, _Mapping]] = ...) -> None: ...
     TIME_FIELD_NUMBER: _ClassVar[int]
     BACKEND_FIELD_NUMBER: _ClassVar[int]
     CONNECTED_FIELD_NUMBER: _ClassVar[int]
@@ -70,6 +77,8 @@ class ChamberState(_message.Message):
     RAW_WORDS_FIELD_NUMBER: _ClassVar[int]
     EXCIMER_FIELD_NUMBER: _ClassVar[int]
     READ_ONLY_FIELD_NUMBER: _ClassVar[int]
+    PUMPS_FIELD_NUMBER: _ClassVar[int]
+    LOAD_LOCK_FIELD_NUMBER: _ClassVar[int]
     time: float
     backend: Backend
     connected: bool
@@ -85,7 +94,33 @@ class ChamberState(_message.Message):
     raw_words: _containers.ScalarMap[int, int]
     excimer: Excimer
     read_only: bool
-    def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ...) -> None: ...
+    pumps: _containers.MessageMap[str, Pump]
+    load_lock: LoadLock
+    def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ..., pumps: _Optional[_Mapping[str, Pump]] = ..., load_lock: _Optional[_Union[LoadLock, _Mapping]] = ...) -> None: ...
+
+class LoadLock(_message.Message):
+    __slots__ = ("hatch_closed", "ready", "sequence", "step", "pump_down_complete", "below_sp1", "below_sp2", "ig3_disabled", "by_service", "gv1")
+    HATCH_CLOSED_FIELD_NUMBER: _ClassVar[int]
+    READY_FIELD_NUMBER: _ClassVar[int]
+    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    STEP_FIELD_NUMBER: _ClassVar[int]
+    PUMP_DOWN_COMPLETE_FIELD_NUMBER: _ClassVar[int]
+    BELOW_SP1_FIELD_NUMBER: _ClassVar[int]
+    BELOW_SP2_FIELD_NUMBER: _ClassVar[int]
+    IG3_DISABLED_FIELD_NUMBER: _ClassVar[int]
+    BY_SERVICE_FIELD_NUMBER: _ClassVar[int]
+    GV1_FIELD_NUMBER: _ClassVar[int]
+    hatch_closed: bool
+    ready: bool
+    sequence: str
+    step: str
+    pump_down_complete: bool
+    below_sp1: bool
+    below_sp2: bool
+    ig3_disabled: bool
+    by_service: bool
+    gv1: str
+    def __init__(self, hatch_closed: _Optional[bool] = ..., ready: _Optional[bool] = ..., sequence: _Optional[str] = ..., step: _Optional[str] = ..., pump_down_complete: _Optional[bool] = ..., below_sp1: _Optional[bool] = ..., below_sp2: _Optional[bool] = ..., ig3_disabled: _Optional[bool] = ..., by_service: _Optional[bool] = ..., gv1: _Optional[str] = ...) -> None: ...
 
 class Pressures(_message.Message):
     __slots__ = ("ig1", "ig3", "cdg10", "cdg11", "tcg", "tcg31", "ig1_on", "ig3_on")
@@ -108,7 +143,7 @@ class Pressures(_message.Message):
     def __init__(self, ig1: _Optional[float] = ..., ig3: _Optional[float] = ..., cdg10: _Optional[float] = ..., cdg11: _Optional[float] = ..., tcg: _Optional[_Iterable[float]] = ..., tcg31: _Optional[float] = ..., ig1_on: _Optional[bool] = ..., ig3_on: _Optional[bool] = ...) -> None: ...
 
 class Heater(_message.Message):
-    __slots__ = ("temperature", "emissivity", "current_set", "current_monitor", "power_on", "ready", "started", "temperature_setpoint", "pid_on", "key_on", "start_on", "threshold_on", "current_min", "current_max", "temperature_goal", "ramp_c_per_min")
+    __slots__ = ("temperature", "emissivity", "current_set", "current_monitor", "power_on", "ready", "started", "temperature_setpoint", "pid_on", "key_on", "start_on", "threshold_on", "current_min", "current_max", "temperature_goal", "ramp_c_per_min", "auto_tune", "kp", "ki", "kd")
     TEMPERATURE_FIELD_NUMBER: _ClassVar[int]
     EMISSIVITY_FIELD_NUMBER: _ClassVar[int]
     CURRENT_SET_FIELD_NUMBER: _ClassVar[int]
@@ -125,6 +160,10 @@ class Heater(_message.Message):
     CURRENT_MAX_FIELD_NUMBER: _ClassVar[int]
     TEMPERATURE_GOAL_FIELD_NUMBER: _ClassVar[int]
     RAMP_C_PER_MIN_FIELD_NUMBER: _ClassVar[int]
+    AUTO_TUNE_FIELD_NUMBER: _ClassVar[int]
+    KP_FIELD_NUMBER: _ClassVar[int]
+    KI_FIELD_NUMBER: _ClassVar[int]
+    KD_FIELD_NUMBER: _ClassVar[int]
     temperature: float
     emissivity: float
     current_set: float
@@ -141,7 +180,11 @@ class Heater(_message.Message):
     current_max: float
     temperature_goal: float
     ramp_c_per_min: float
-    def __init__(self, temperature: _Optional[float] = ..., emissivity: _Optional[float] = ..., current_set: _Optional[float] = ..., current_monitor: _Optional[float] = ..., power_on: _Optional[bool] = ..., ready: _Optional[bool] = ..., started: _Optional[bool] = ..., temperature_setpoint: _Optional[float] = ..., pid_on: _Optional[bool] = ..., key_on: _Optional[bool] = ..., start_on: _Optional[bool] = ..., threshold_on: _Optional[bool] = ..., current_min: _Optional[float] = ..., current_max: _Optional[float] = ..., temperature_goal: _Optional[float] = ..., ramp_c_per_min: _Optional[float] = ...) -> None: ...
+    auto_tune: bool
+    kp: float
+    ki: float
+    kd: float
+    def __init__(self, temperature: _Optional[float] = ..., emissivity: _Optional[float] = ..., current_set: _Optional[float] = ..., current_monitor: _Optional[float] = ..., power_on: _Optional[bool] = ..., ready: _Optional[bool] = ..., started: _Optional[bool] = ..., temperature_setpoint: _Optional[float] = ..., pid_on: _Optional[bool] = ..., key_on: _Optional[bool] = ..., start_on: _Optional[bool] = ..., threshold_on: _Optional[bool] = ..., current_min: _Optional[float] = ..., current_max: _Optional[float] = ..., temperature_goal: _Optional[float] = ..., ramp_c_per_min: _Optional[float] = ..., auto_tune: _Optional[bool] = ..., kp: _Optional[float] = ..., ki: _Optional[float] = ..., kd: _Optional[float] = ...) -> None: ...
 
 class Motion(_message.Message):
     __slots__ = ("target_angle", "target", "sample_angle", "mask_position", "rheed_gun_x", "axes", "target_spinning", "target_twisting", "motor_free", "auto_spin", "auto_twist")
@@ -175,6 +218,16 @@ class Motion(_message.Message):
     auto_spin: bool
     auto_twist: bool
     def __init__(self, target_angle: _Optional[float] = ..., target: _Optional[str] = ..., sample_angle: _Optional[float] = ..., mask_position: _Optional[float] = ..., rheed_gun_x: _Optional[float] = ..., axes: _Optional[_Mapping[str, AxisStatus]] = ..., target_spinning: _Optional[bool] = ..., target_twisting: _Optional[bool] = ..., motor_free: _Optional[bool] = ..., auto_spin: _Optional[bool] = ..., auto_twist: _Optional[bool] = ...) -> None: ...
+
+class Pump(_message.Message):
+    __slots__ = ("running", "at_speed", "state")
+    RUNNING_FIELD_NUMBER: _ClassVar[int]
+    AT_SPEED_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    running: bool
+    at_speed: bool
+    state: str
+    def __init__(self, running: _Optional[bool] = ..., at_speed: _Optional[bool] = ..., state: _Optional[str] = ...) -> None: ...
 
 class Laser(_message.Message):
     __slots__ = ("status", "pulses_fired", "missed_shots")
@@ -476,3 +529,11 @@ class IonGaugeRequest(_message.Message):
     gauge: str
     on: bool
     def __init__(self, gauge: _Optional[str] = ..., on: _Optional[bool] = ...) -> None: ...
+
+class PumpRequest(_message.Message):
+    __slots__ = ("pump", "on")
+    PUMP_FIELD_NUMBER: _ClassVar[int]
+    ON_FIELD_NUMBER: _ClassVar[int]
+    pump: str
+    on: bool
+    def __init__(self, pump: _Optional[str] = ..., on: _Optional[bool] = ...) -> None: ...

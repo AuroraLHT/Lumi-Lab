@@ -144,6 +144,11 @@ class ChamberStub:
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SwitchRequest.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
+        self.TuneHeater = channel.unary_unary(
+                '/pld.v1.Chamber/TuneHeater',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SwitchRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
         self.SetSampleShutter = channel.unary_unary(
                 '/pld.v1.Chamber/SetSampleShutter',
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.ShutterRequest.SerializeToString,
@@ -156,6 +161,21 @@ class ChamberStub:
                 _registered_method=True)
         self.StopFire = channel.unary_unary(
                 '/pld.v1.Chamber/StopFire',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.AutoVent = channel.unary_unary(
+                '/pld.v1.Chamber/AutoVent',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.AutoVac = channel.unary_unary(
+                '/pld.v1.Chamber/AutoVac',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.CancelLoadLock = channel.unary_unary(
+                '/pld.v1.Chamber/CancelLoadLock',
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
@@ -187,6 +207,11 @@ class ChamberStub:
         self.SetIonGauge = channel.unary_unary(
                 '/pld.v1.Chamber/SetIonGauge',
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.IonGaugeRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.SetPump = channel.unary_unary(
+                '/pld.v1.Chamber/SetPump',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.PumpRequest.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
         self.LaserOn = channel.unary_unary(
@@ -383,6 +408,17 @@ class ChamberServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def TuneHeater(self, request, context):
+        """Relay auto-tune of the temperature PID at its present setpoint (on: start, needs the PID on,
+        best once it holds the setpoint; off: cancel). The current swings +-[heater] tune_step_amps
+        (0.2 A; about +-1 C and 1.5 min on the twin near 450 C) around the present output for ~3
+        cycles, then the PID carries on with the new PI gains (kd 0). A new setpoint, manual current, PID off or any interlock ends it. The gains
+        apply until the service restarts; copy them into [heater] kp/ki/kd to keep them.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SetSampleShutter(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -402,6 +438,37 @@ class ChamberServicer:
         may stop, with or without control, and it is handled at the next poll even while a waited
         FireLaser runs (that FireLaser then replies ok=false, "stopped by request"). Not firing:
         ok=true, nothing sent. This is the PLC trigger only; LaserOff is the excimer itself.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AutoVent(self, request, context):
+        """---- load lock ----------------------------------------------------------------------
+        Auto Vent / Auto Vac, run by the service step by step with the valve order and timings of the
+        PLC's own sequences (captured 2026-11-06), so they can be cancelled. Vent: IG3 off, MV3 close,
+        10 s, VT1 open, VT2 open above 400 Torr, then until the hatch is opened by hand (the PLC closes
+        the vents; they never close on their own). Vac: FV3 close, 5 s, RV3 open until TCG31 < [gauges]
+        mv3_max_torr (4e-2), RV3 close, 5 s, FV3 open, 5 s, MV3 open, 7.2 s, IG3 on. Refused: a sequence
+        running, the hatch open, GV1 (manual gate valve) not reporting closed (PLD Controller warns when
+        it is open), the PLC's vent condition off (main chamber not cut off, RV3 open);
+        AutoVac also DP3 off, TMP3 not at speed, or MV3 already open. While one runs, MV3/VT1/VT2/RV3/FV3,
+        IG3, TMP3 and DP3 are refused. A failed step, or GV1 leaving closed, stops it and leaves things
+        as a cancel does.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AutoVac(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CancelLoadLock(self, request, context):
+        """Stop the running sequence: vent closes VT1 and VT2; vac closes RV3 and opens FV3 (TMP3's
+        backing). MV3 is left as it is. Not running: ok, nothing sent.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -449,6 +516,19 @@ class ChamberServicer:
 
     def SetIonGauge(self, request, context):
         """---- ion gauges ---------------------------------------------------------------------
+        IG1 (main chamber, guarded by CDG10) and IG3 (load lock, guarded by TCG31; captured
+        2026-11-03): on is refused above [gauges] ig1_max_torr / ig3_max_torr, and a filament
+        that is on is switched off when its guard gauge rises above it (e.g. a load-lock vent).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetPump(self, request, context):
+        """---- pumps ----------------------------------------------------------------------------
+        TMP1, TMP20, TMP21, TMP3 and the dry pumps DP1-DP3 (PLD Controller's RP1-RP3 buttons). The
+        relay is a toggle, sent once. Refused: a TMP start while its dry pump is off, and a dry-pump
+        stop while a TMP it backs is running (DP1: TMP1, TMP20; DP2: TMP21; DP3: TMP3).
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -626,6 +706,11 @@ def add_ChamberServicer_to_server(servicer, server):
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SwitchRequest.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
+            'TuneHeater': grpc.unary_unary_rpc_method_handler(
+                    servicer.TuneHeater,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SwitchRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
             'SetSampleShutter': grpc.unary_unary_rpc_method_handler(
                     servicer.SetSampleShutter,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.ShutterRequest.FromString,
@@ -638,6 +723,21 @@ def add_ChamberServicer_to_server(servicer, server):
             ),
             'StopFire': grpc.unary_unary_rpc_method_handler(
                     servicer.StopFire,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'AutoVent': grpc.unary_unary_rpc_method_handler(
+                    servicer.AutoVent,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'AutoVac': grpc.unary_unary_rpc_method_handler(
+                    servicer.AutoVac,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'CancelLoadLock': grpc.unary_unary_rpc_method_handler(
+                    servicer.CancelLoadLock,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
@@ -669,6 +769,11 @@ def add_ChamberServicer_to_server(servicer, server):
             'SetIonGauge': grpc.unary_unary_rpc_method_handler(
                     servicer.SetIonGauge,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.IonGaugeRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'SetPump': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetPump,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.PumpRequest.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
             'LaserOn': grpc.unary_unary_rpc_method_handler(
@@ -1317,6 +1422,33 @@ class Chamber:
             _registered_method=True)
 
     @staticmethod
+    def TuneHeater(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/TuneHeater',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SwitchRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def SetSampleShutter(request,
             target,
             options=(),
@@ -1385,6 +1517,87 @@ class Chamber:
             request,
             target,
             '/pld.v1.Chamber/StopFire',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AutoVent(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/AutoVent',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AutoVac(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/AutoVac',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CancelLoadLock(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/CancelLoadLock',
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
             options,
@@ -1548,6 +1761,33 @@ class Chamber:
             target,
             '/pld.v1.Chamber/SetIonGauge',
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.IonGaugeRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetPump(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/SetPump',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.PumpRequest.SerializeToString,
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
             options,
             channel_credentials,

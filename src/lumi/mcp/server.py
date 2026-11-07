@@ -93,7 +93,9 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
     # limits, read-only hardware), unlike an MI script. Not control ownership -- an
     # agent taking control by force would lock the operator's GUI out -- not
     # set_motor_free (releasing the holding lock leaves every axis back-driveable),
-    # and not the growth log, which experiment.start_mi_logging already drives.
+    # not the growth log, which experiment.start_mi_logging already drives, and not
+    # the load lock or the pumps (auto_vent, auto_vac, cancel_load_lock, set_pump):
+    # venting and pumping down are a person's, with the hatch and GV1 in front of them.
     (CHAMBER, {"log": None, "camera": None, "pld": frozenset({
         "chamber_state", "recent_events", "set_valve", "select_target",
         "set_mask_position", "set_sample_position", "set_rheed_gun_x", "home_axis",
@@ -102,7 +104,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
         "set_heating_current", "set_heater_current_limits", "set_temperature",
         "set_temperature_control", "set_sample_shutter", "fire_laser", "stop_fire", "set_mfc_flow",
         "set_pressure", "set_pressure_control", "set_pressure_flow_limits",
-        "tune_pressure", "set_ion_gauge", "take_laser_control", "laser_on",
+        "tune_pressure", "set_ion_gauge", "tune_heater", "take_laser_control", "laser_on",
         "laser_standby", "laser_off", "set_laser_mode", "set_laser_hv", "set_laser_energy",
         "release_laser",
     })}),

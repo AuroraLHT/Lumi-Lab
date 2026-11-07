@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: be1999a7a554e245
+# contract_hash: 5f5a502e974ceaaf
 
 """Generated clients for the chamber node."""
 
@@ -21,7 +21,7 @@ from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta,
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
-from lumi.contracts.payloads.pld import PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldReply, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
+from lumi.contracts.payloads.pld import PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
 
 
 class ChamberLogClient(CapabilityClient):
@@ -243,8 +243,28 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("tune_pressure", req)  # type: ignore[return-value]
 
     async def set_ion_gauge(self, req: PldIonGaugeRequest) -> PldReply:
-        """IG1 or IG3 filament on or off."""
+        """IG1 or IG3 filament on or off. On is refused above the guard gauge's limit (IG1: CDG10, IG3: TCG31), and a filament is switched off when it rises above."""
         return await self.call("set_ion_gauge", req)  # type: ignore[return-value]
+
+    async def tune_heater(self, req: PldSwitchRequest) -> PldReply:
+        """Relay auto-tune of the temperature PID at its present setpoint (needs PID on; off cancels). ~3 cycles of +-0.2 A, then the PID runs on the new gains until the service restarts. A new setpoint, manual current or an interlock ends it."""
+        return await self.call("tune_heater", req)  # type: ignore[return-value]
+
+    async def auto_vent(self) -> PldReply:
+        """Load-lock Auto Vent, step by step as the PLC's own sequence. Refused unless GV1 is closed, the hatch closed and the PLC's vent condition on. Progress comes as load_lock events; the vents stay open until the hatch is opened by hand."""
+        return await self.call("auto_vent")  # type: ignore[return-value]
+
+    async def auto_vac(self) -> PldReply:
+        """Load-lock Auto Vac. Refused as auto_vent, and also with DP3 off, TMP3 not at speed or MV3 already open."""
+        return await self.call("auto_vac")  # type: ignore[return-value]
+
+    async def cancel_load_lock(self) -> PldReply:
+        """Stop the running Auto Vent / Auto Vac. Not running: nothing sent."""
+        return await self.call("cancel_load_lock")  # type: ignore[return-value]
+
+    async def set_pump(self, req: PldPumpRequest) -> PldReply:
+        """Start or stop a pump. Refused: a TMP start while its dry pump is off, a dry-pump stop while a TMP it backs runs (DP1: TMP1, TMP20; DP2: TMP21; DP3: TMP3)."""
+        return await self.call("set_pump", req)  # type: ignore[return-value]
 
     async def take_laser_control(self) -> PldReply:
         """Take the excimer's settings port from the second PC (CM=2). Every other laser op is refused without it."""

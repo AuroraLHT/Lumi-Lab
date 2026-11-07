@@ -485,6 +485,25 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self._require_control(context)
         return self._ok("auto-tune is not simulated; the simulator's pressure control is ideal")
 
+    def TuneHeater(self, request, context):
+        self._require_control(context)
+        return self._ok("auto-tune is not simulated; the simulator's PID is ideal")
+
+    # The load lock and the pumps are not simulated: refused, so nothing pretends to vent.
+    def AutoVent(self, request, context):
+        self._require_control(context)
+        return self._no("the load lock is not simulated")
+
+    AutoVac = AutoVent
+
+    def CancelLoadLock(self, request, context):
+        self._require_control(context)
+        return self._ok("no load-lock sequence is running: nothing sent")
+
+    def SetPump(self, request, context):
+        self._require_control(context)
+        return self._no("the pumps are not simulated")
+
     def SetIonGauge(self, request, context):
         self._require_control(context)
         if request.gauge == "IG1":

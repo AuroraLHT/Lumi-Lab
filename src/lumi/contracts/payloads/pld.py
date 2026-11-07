@@ -55,6 +55,10 @@ class PldHeater(BaseModel):
     current_max: float | None = None
     temperature_goal: float | None = Field(None, description="Final PID setpoint, C")
     ramp_c_per_min: float = Field(0.0, description="0 = jump")
+    auto_tune: bool = Field(False, description="tune_heater is running")
+    kp: float | None = Field(None, description="PID gains in use: A/C, A/(C s), A s/C")
+    ki: float | None = None
+    kd: float | None = None
 
 
 class PldMotion(BaseModel):
@@ -133,6 +137,25 @@ class PldGas(BaseModel):
     pressure_switch_step: str = ""
 
 
+class PldPump(BaseModel):
+    running: bool = Field(False, description="The PLC run bit (TMP1 keeps it ~4.5 min while it spins down)")
+    at_speed: bool = Field(False, description="TMPs: NOR bit; dry pumps: running past the ~12 s acceleration")
+    state: str = Field("", description="off, starting, at speed, stopping")
+
+
+class PldLoadLock(BaseModel):
+    hatch_closed: bool = False
+    ready: bool = Field(False, description="The PLC's vent condition: a sequence may start")
+    sequence: str = Field("", description='"", "auto vent" or "auto vac" (the service\'s or the PLC\'s own)')
+    step: str = Field("", description="What the sequence is doing now")
+    pump_down_complete: bool = False
+    below_sp1: bool = Field(False, description="TCG31 below ~4e-2 Torr")
+    below_sp2: bool = Field(False, description="TCG31 below SP2 (~400 Torr rising, ~55 falling)")
+    ig3_disabled: bool = False
+    by_service: bool = Field(False, description="The sequence is the service's (cancel_load_lock stops it)")
+    gv1: str = Field("", description="Manual gate valve to the main chamber: closed, open, moving")
+
+
 class PldChamberState(BaseModel):
     """One poll cycle of pld-service: everything it reads off the chamber."""
 
@@ -151,6 +174,8 @@ class PldChamberState(BaseModel):
     sample_shutter_away: bool = Field(False, description="True = open for deposition")
     interlocks: list[str] = Field(default_factory=list, description="Active interlocks")
     excimer: PldExcimer = Field(default_factory=PldExcimer)
+    pumps: dict[str, PldPump] = Field(default_factory=dict, description="TMP1, TMP20, TMP21, TMP3, DP1-DP3")
+    load_lock: PldLoadLock = Field(default_factory=PldLoadLock)
 
 
 class PldEvent(BaseModel):
@@ -285,6 +310,11 @@ class PldPressureRequest(BaseModel):
     gauge: Literal["", "IG1", "CDG10", "CDG11"] = Field("", description="Empty keeps the present choice")
     wait: bool = False
     tolerance: float = Field(0.0, description="Fraction; 0 = the service default, 0.1")
+
+
+class PldPumpRequest(BaseModel):
+    pump: Literal["TMP1", "TMP20", "TMP21", "TMP3", "DP1", "DP2", "DP3"]
+    on: bool
 
 
 class PldIonGaugeRequest(BaseModel):

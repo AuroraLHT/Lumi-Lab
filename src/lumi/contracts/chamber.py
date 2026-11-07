@@ -51,6 +51,7 @@ from .payloads.pld import (
     PldFlowLimitsRequest,
     PldFlowRequest,
     PldIonGaugeRequest,
+    PldPumpRequest,
     PldLaserEnergyRequest,
     PldLaserHvRequest,
     PldLaserModeRequest,
@@ -201,7 +202,24 @@ PLD = Capability(
         _pld_op("set_pressure_control", PldSwitchRequest, "Pressure control on or off."),
         _pld_op("set_pressure_flow_limits", PldFlowLimitsRequest, "Flow limits for pressure control, sccm."),
         _pld_op("tune_pressure", PldSwitchRequest, "Relay auto-tune of the high-regime PID (off cancels)."),
-        _pld_op("set_ion_gauge", PldIonGaugeRequest, "IG1 or IG3 filament on or off."),
+        _pld_op("set_ion_gauge", PldIonGaugeRequest,
+                "IG1 or IG3 filament on or off. On is refused above the guard gauge's limit "
+                "(IG1: CDG10, IG3: TCG31), and a filament is switched off when it rises above."),
+        _pld_op("tune_heater", PldSwitchRequest,
+                "Relay auto-tune of the temperature PID at its present setpoint (needs PID on; "
+                "off cancels). ~3 cycles of +-0.2 A, then the PID runs on the new gains until "
+                "the service restarts. A new setpoint, manual current or an interlock ends it."),
+        _pld_op("auto_vent", Empty,
+                "Load-lock Auto Vent, step by step as the PLC's own sequence. Refused unless GV1 "
+                "is closed, the hatch closed and the PLC's vent condition on. Progress comes as "
+                "load_lock events; the vents stay open until the hatch is opened by hand."),
+        _pld_op("auto_vac", Empty,
+                "Load-lock Auto Vac. Refused as auto_vent, and also with DP3 off, TMP3 not at "
+                "speed or MV3 already open."),
+        _pld_op("cancel_load_lock", Empty, "Stop the running Auto Vent / Auto Vac. Not running: nothing sent."),
+        _pld_op("set_pump", PldPumpRequest,
+                "Start or stop a pump. Refused: a TMP start while its dry pump is off, a dry-pump "
+                "stop while a TMP it backs runs (DP1: TMP1, TMP20; DP2: TMP21; DP3: TMP3)."),
         _pld_op("take_laser_control", Empty,
                 "Take the excimer's settings port from the second PC (CM=2). Every other "
                 "laser op is refused without it."),
