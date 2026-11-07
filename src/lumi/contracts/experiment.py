@@ -302,9 +302,11 @@ DRIVER = Capability(
            doc="Probe whether the chamber log is still being written: read the "
                "newest row's timestamp, wait up to timeout_s, and report whether "
                "it advanced (with last_stamp, the timestamp seen). A frozen "
-               "timestamp means the log-reader thread died or PASCAL stopped "
-               "writing -- every downstream read is then stale. timeout_s must "
-               "exceed the controller's Log Interval (60s at power-up; "
+               "timestamp means the log-reader thread died or the log stopped being "
+               "written (PASCAL, or the chamber node under pld-service) -- storage's "
+               "chamber log is then stale. Under pld-service the experiment driver's "
+               "own readings come from the service's live state, not this log. "
+               "timeout_s must exceed the Log Interval (60s at PASCAL power-up; "
                "start_mi_logging(interval_s=1) drops it to 1s)."),
 
         Op("check_mi_mode", CheckMiMode, MiModeStatus,
@@ -327,28 +329,28 @@ DRIVER = Capability(
                "the motor holding lock is released (see is_motor_free).",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("start_mi_logging", StartMiLogging, LoggingStatus,
-           doc="Start PASCAL data logging at a fixed whole-second row interval "
-               "(`Log Interval` + `Data Logging File=`). The controller powers up "
-               "at 60s; pass interval_s=1 for a growth. Empty file_name lets the "
-               "driver name the file. Returns the file name and interval in use. "
-               "PASCAL will not switch files while a logger is already open -- call "
-               "stop_mi_logging first if one might be running.",
+           doc="Start the growth log at a fixed whole-second row interval: under "
+               "pld-service the chamber node's log of the service's state, under "
+               "--use-legacy-mi-mode PASCAL's data logging (`Log Interval` + `Data "
+               "Logging File=`, which powers up at 60s). Pass interval_s=1 for a growth. "
+               "Empty file_name lets the driver name the file. Returns the file name and "
+               "interval in use. PASCAL will not switch files while a logger is already "
+               "open -- call stop_mi_logging first if one might be running.",
            journal=True),
         Op("stop_mi_logging", Empty, Ack,
-           doc="Close PASCAL's currently open data-logging file (`Data Logging "
-               "OFF`). Needed before start_mi_logging can point at a new file: an "
-               "already-running logger makes start_mi_logging ack without switching.",
+           doc="Close the open growth-log file (PASCAL's `Data Logging OFF` under "
+               "--use-legacy-mi-mode). There, it is needed before start_mi_logging can "
+               "point at a new file: an already-running logger acks without switching.",
            journal=True),
         Op("move_mask_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("move_rheed_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_to", SampleAngle, Ack,
-           doc="Rotate the sample stage to an absolute angle in degrees (PASCAL "
-               "`Set Sample Position`). Blocks until the move completes. Refused "
+           doc="Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused "
                "while the motor holding lock is released (see is_motor_free).",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_by", SampleAngle, Ack,
-           doc="Rotate the sample stage by a signed delta in degrees (PASCAL "
-               "`Rotate Sample`); negative turns the other way. Blocks until the "
+           doc="Rotate the sample stage by a signed delta in degrees; negative turns "
+               "the other way. Blocks until the "
                "move completes. Refused while the motor holding lock is released.",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("to_pixel", PixelIndex, PixelMoveResult, journal=True, timeout_s=MOTION_TIMEOUT_S),
@@ -368,15 +370,18 @@ DRIVER = Capability(
            doc="Open or close the MFC master gate (PASCAL's `MFC Control`). One gate "
                "for every channel, so disabling it stops all MFCs at once, leaving "
                "their flow setpoints untouched. Not needed under pressure control, "
-               "which drives the control MFC itself.", journal=True),
+               "which drives the control MFC itself. pld-service has no gate: closing "
+               "it sets MFC1 to zero, opening it does nothing (set_mfc_flow flows at "
+               "once).", journal=True),
         Op("set_pressure", SetPressure, Ack,
-           doc="Set the chamber pressure in Torr. On the real chamber a person sets "
-               "it by hand: this raises a `pressure` pending confirmation for them, "
-               "resolved with confirm once they have; read it back with "
-               "get_current_pressure. In the simulator it sets the closed-loop "
-               "setpoint directly, which takes effect once "
-               "set_pressure_control(on=True) is on (the controller then trims the "
-               "control MFC's flow to hold it).", journal=True),
+           doc="Set the chamber pressure in Torr. Under pld-service (the default) it "
+               "sets the service's pressure-control setpoint, which picks its regime "
+               "(<= 2e-4 low, >= 3e-3 high; between is refused) and takes effect once "
+               "set_pressure_control(on=True) is on. Under --use-legacy-mi-mode on the "
+               "real chamber a person sets it by hand: this raises a `pressure` pending "
+               "confirmation for them, resolved with confirm once they have; in the "
+               "simulator it sets the setpoint directly. Read it back with "
+               "get_current_pressure.", journal=True),
         Op("set_pressure_control", SetPressureControl, Ack,
            doc="Turn closed-loop pressure control on or off. On: the controller owns "
                "the control MFC and holds set_pressure's setpoint. Off: flow reverts "
@@ -399,8 +404,9 @@ DRIVER = Capability(
            doc="Ramp to a temperature and engage PID. Requires the heating laser to "
                "be on already -- call initiate_heating_laser first, or this fails "
                "immediately rather than setting a setpoint no current can reach. "
-               "wait=true (the default): the task ends when the substrate arrives, and "
-               "PASCAL runs no other command (moves, target, shutter) until then. "
+               "wait=true (the default): the task ends when the substrate arrives; under "
+               "--use-legacy-mi-mode PASCAL runs no other command (moves, target, "
+               "shutter) until then. "
                "wait=false: the task ends once the ramp is under way and the chamber is "
                "free for other commands; read get_current_temperature until it is "
                "within tolerance before relying on it, and never follow it with "

@@ -64,6 +64,7 @@ from lumi.contracts.payloads.experiment import (
 )
 from lumi.contracts.payloads.chamber import MIExecution, MIExecutionList
 from lumi.contracts.payloads.storage import StorageStatus
+from lumi.experiment.chamber import MiChamber
 from lumi.experiment.db import GrowthDB
 from lumi.experiment.handlers import ExperimentHandler
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
@@ -1123,7 +1124,7 @@ class ProbeMi(FakeMi):
                                                 state="")]), "off-queued"),
 ])
 async def test_check_mi_mode(handler, mi, status):
-    handler.manager.chamber_mi = mi
+    handler.manager.chamber = MiChamber(mi, handler.sources["chamber_log"])
     result = await handler.check_mi_mode(CheckMiMode(timeout_s=1))
     assert result.status == status.removesuffix("-queued")
     # Busy never sends the probe: it would only queue behind the running script.
@@ -1170,7 +1171,7 @@ class SlowMi(FakeMi):
 
 
 async def test_a_second_move_is_refused_while_the_first_is_running(handler):
-    handler.manager.chamber_mi = SlowMi(0.2)
+    handler.manager.chamber = MiChamber(SlowMi(0.2), handler.sources["chamber_log"])
     first = asyncio.create_task(handler.rotate_sample_to(SampleAngle(angle=90.0)))
     await asyncio.sleep(0.05)
 
@@ -1180,16 +1181,16 @@ async def test_a_second_move_is_refused_while_the_first_is_running(handler):
     await first
 
     # Released once it finished, and after a move that failed too.
-    handler.manager.chamber_mi = FakeMi()
+    handler.manager.chamber = MiChamber(FakeMi(), handler.sources["chamber_log"])
     await handler.rotate_sample_by(SampleAngle(angle=10.0))
-    handler.manager.chamber_mi = None
+    handler.manager.chamber = MiChamber(None, handler.sources["chamber_log"])
     with pytest.raises(AttributeError):
         await handler.rotate_sample_by(SampleAngle(angle=10.0))
     assert handler._motion is None
 
 
 async def test_nothing_else_moves_while_a_deposition_runs(handler):
-    handler.manager.chamber_mi = SlowMi(0.1)
+    handler.manager.chamber = MiChamber(SlowMi(0.1), handler.sources["chamber_log"])
     await handler.perform_deposition(PerformDeposition(
         num_pulse=10, laser_repetition_rate=5.0, target_id="A", is_dryrun=True,
     ))
@@ -1202,7 +1203,7 @@ async def test_nothing_else_moves_while_a_deposition_runs(handler):
             break
         await asyncio.sleep(0.01)
     assert handler._motion is None
-    handler.manager.chamber_mi = FakeMi()
+    handler.manager.chamber = MiChamber(FakeMi(), handler.sources["chamber_log"])
     await handler.move_mask_to_position(MoveTo(position=50.0))
 
 

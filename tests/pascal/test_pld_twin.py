@@ -29,8 +29,7 @@ from lumi.contracts.payloads.pld import (
     PldLaserOnRequest,
     PldPumpRequest,
 )
-from lumi.experiment.pld import PldCommandRunner
-from lumi.pascal import command as pcmd
+from lumi.experiment.chamber import PldChamber, PldStopped
 from lumi.pascal.chamber_log import process_row
 
 ADDRESS = os.environ.get("LUMI_PLD_TWIN")
@@ -108,22 +107,23 @@ async def test_excimer_cm_rules_and_switching_on(handler):
     assert (await h.chamber_state(Empty())).excimer.control is False
 
 
-async def test_mi_commands_drive_the_chamber(handler):
+async def test_the_experiment_driver_drives_the_chamber(handler):
+    # lumi.experiment.chamber.PldChamber, the experiment node's default backend.
     h = handler
-    runner = PldCommandRunner(HandlerBus(h))
-    status, message = await runner.check()
+    chamber = PldChamber(HandlerBus(h))
+    status, message = await chamber.check()
     assert status == "on", message
     before = (await h.chamber_state(Empty())).motion.sample_angle or 0.0
-    for command in (
-        pcmd.SelectTarget("B", nowait=False),
-        pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=10.0, sync=False, nowait=False),
-        pcmd.RotateSample(15, sync=False, nowait=False),
-        pcmd.SampleShutter(pcmd.PascalState("ON")),
-        pcmd.TriggerLaser(num_pulse=20, frequency=10, sync=False, nowait=False),
-        pcmd.SetMFC1Flow(2.0),
-        pcmd.DataLogging("twin_run", pcmd.PascalState("ON")),
-    ):
-        await runner.execute(command, timeout=120)
+    await chamber.select_target("B")
+    await chamber.target_auto_motion()
+    await chamber.move_mask(10.0)
+    await chamber.rotate_sample_by(15)
+    await chamber.sample_shutter(True)
+    await chamber.fire(20, 10)
+    await chamber.set_mfc_flow(1, 2.0)
+    await chamber.start_logging("twin_run", 1)
+    readings = await chamber.readings()
+    assert readings["TG No."] == 2 and readings["Mask1"] == pytest.approx(10.0, abs=0.05)
     state = await h.chamber_state(Empty())
     assert state.motion.target == "B"
     assert state.motion.mask_position == pytest.approx(10.0, abs=0.05)
@@ -157,16 +157,14 @@ async def test_a_fire_reports_its_own_missed_shots(handler):
 async def test_stop_fire_aborts_a_deposition(handler):
     # The REA GUI (a client holding no control) stops a waited fire mid-train; the
     # deposition step fails as an abort and is not re-fired.
-    from lumi.experiment.pld import PldStopped
     from lumi.pascal.pld.client import PldClient
     from lumi.pascal.pld.proto import pld_pb2 as pb
 
     h = handler
     assert (await h.stop_fire(Empty())).message == "the laser is not firing: nothing sent"
-    runner = PldCommandRunner(HandlerBus(h))
+    chamber = PldChamber(HandlerBus(h))
     before = (await h.chamber_state(Empty())).laser.pulses_fired
-    fire = asyncio.create_task(runner.execute(
-        pcmd.TriggerLaser(num_pulse=1000, frequency=10, sync=False, nowait=False)))
+    fire = asyncio.create_task(chamber.fire(1000, 10))
     await asyncio.sleep(3.0)
     gui = PldClient(ADDRESS, client="pld-gui")
     try:
@@ -188,6 +186,9 @@ async def test_pumps_load_lock_and_heater_gains_are_read(handler):
     assert {"TMP1", "TMP20", "TMP21", "TMP3", "DP1", "DP2", "DP3"} <= set(state.pumps)
     assert state.load_lock.gv1 in ("closed", "open", "moving")
     assert state.heater.kp is not None and state.heater.auto_tune is False
+    # The experiment driver's readings name them as PLD Controller's log does.
+    readings = await PldChamber(HandlerBus(h)).readings()
+    assert all(readings[name] for name in ("DP1 (Main)", "TMP1 (Main)", "TMP2 (RHEED)", "TMP3 (L/L)", "TMP4 (2nd RHEED)"))
     reply = await h.cancel_load_lock(Empty())
     assert reply.ok, reply.message  # nothing running: nothing sent
     if state.pumps["TMP3"].running:  # a dry pump backing a running TMP stays on

@@ -161,6 +161,7 @@ from lumi.contracts.payloads.experiment import (
     UpdateSubstrate,
     ValveStatus,
 )
+from lumi.experiment.chamber import MiChamber
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
@@ -239,9 +240,10 @@ class ExperimentHandler:
         pressure_by_hand: bool = True,
     ) -> None:
         self.sources = sources
-        #: The real chamber's pressure is set by a person at the gauge: set_pressure
-        #: asks them (a `pressure` pending confirmation) instead of commanding the
-        #: controller. The simulator sets it directly. Defaults to the real chamber.
+        #: Under legacy MI mode the real chamber's pressure is set by a person at the
+        #: gauge: set_pressure asks them (a `pressure` pending confirmation) instead of
+        #: commanding the controller; the simulator sets it directly. pld-service runs
+        #: the pressure control itself, so under it this is ignored.
         self.pressure_by_hand = pressure_by_hand
         self.growth_db = growth_db
         #: Measurement attachments. Beside growth.db unless the node says otherwise,
@@ -307,8 +309,11 @@ class ExperimentHandler:
 
     def build_manager(self) -> None:
         """Called once `sources` is filled in."""
+        # nodes/experiment.py passes the driver's backend as "chamber"; a bare MI runner
+        # under "chamber_mi" (the tests' fakes) is legacy MI mode over the chamber log.
+        chamber = self.sources.get("chamber") or MiChamber(self.sources["chamber_mi"], self.sources["chamber_log"])
         self.manager = PixelExperimentManager(
-            chamber_mi=self.sources["chamber_mi"],
+            chamber=chamber,
             chamber_log=self.sources["chamber_log"],
             chamber_config=self.sources["chamber_config"],
             rheed_camera=self.sources["rheed_camera"],
@@ -786,7 +791,7 @@ class ExperimentHandler:
         return Ack()
 
     async def set_pressure(self, req: SetPressure) -> Ack:
-        if self.pressure_by_hand:
+        if self.pressure_by_hand and self.manager.chamber.driver == "legacy-mi":
             await self._set_pending(
                 "pressure",
                 f"Set the chamber pressure to {req.pressure:.3g} Torr by hand, then confirm",

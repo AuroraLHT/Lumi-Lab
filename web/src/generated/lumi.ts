@@ -3351,7 +3351,7 @@ export class ExperimentDriverClient {
     return this.t.call<MaskPosition>(ExperimentDriverClient.target, "get_current_mask_position", {});
   }
 
-  /** Probe whether the chamber log is still being written: read the newest row's timestamp, wait up to timeout_s, and report whether it advanced (with last_stamp, the timestamp seen). A frozen timestamp means the log-reader thread died or PASCAL stopped writing -- every downstream read is then stale. timeout_s must exceed the controller's Log Interval (60s at power-up; start_mi_logging(interval_s=1) drops it to 1s). */
+  /** Probe whether the chamber log is still being written: read the newest row's timestamp, wait up to timeout_s, and report whether it advanced (with last_stamp, the timestamp seen). A frozen timestamp means the log-reader thread died or the log stopped being written (PASCAL, or the chamber node under pld-service) -- storage's chamber log is then stale. Under pld-service the experiment driver's own readings come from the service's live state, not this log. timeout_s must exceed the Log Interval (60s at PASCAL power-up; start_mi_logging(interval_s=1) drops it to 1s). */
   async check_logging_alive(req: CheckLogging): Promise<LoggingAlive> {
     return this.t.call<LoggingAlive>(ExperimentDriverClient.target, "check_logging_alive", req);
   }
@@ -3366,12 +3366,12 @@ export class ExperimentDriverClient {
     return this.t.call<Ack>(ExperimentDriverClient.target, "set_target", req);
   }
 
-  /** Start PASCAL data logging at a fixed whole-second row interval (`Log Interval` + `Data Logging File=`). The controller powers up at 60s; pass interval_s=1 for a growth. Empty file_name lets the driver name the file. Returns the file name and interval in use. PASCAL will not switch files while a logger is already open -- call stop_mi_logging first if one might be running. */
+  /** Start the growth log at a fixed whole-second row interval: under pld-service the chamber node's log of the service's state, under --use-legacy-mi-mode PASCAL's data logging (`Log Interval` + `Data Logging File=`, which powers up at 60s). Pass interval_s=1 for a growth. Empty file_name lets the driver name the file. Returns the file name and interval in use. PASCAL will not switch files while a logger is already open -- call stop_mi_logging first if one might be running. */
   async start_mi_logging(req: StartMiLogging): Promise<LoggingStatus> {
     return this.t.call<LoggingStatus>(ExperimentDriverClient.target, "start_mi_logging", req);
   }
 
-  /** Close PASCAL's currently open data-logging file (`Data Logging OFF`). Needed before start_mi_logging can point at a new file: an already-running logger makes start_mi_logging ack without switching. */
+  /** Close the open growth-log file (PASCAL's `Data Logging OFF` under --use-legacy-mi-mode). There, it is needed before start_mi_logging can point at a new file: an already-running logger acks without switching. */
   async stop_mi_logging(): Promise<Ack> {
     return this.t.call<Ack>(ExperimentDriverClient.target, "stop_mi_logging", {});
   }
@@ -3386,12 +3386,12 @@ export class ExperimentDriverClient {
     return this.t.call<Ack>(ExperimentDriverClient.target, "move_rheed_to_position", req);
   }
 
-  /** Rotate the sample stage to an absolute angle in degrees (PASCAL `Set Sample Position`). Blocks until the move completes. Refused while the motor holding lock is released (see is_motor_free). */
+  /** Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused while the motor holding lock is released (see is_motor_free). */
   async rotate_sample_to(req: SampleAngle): Promise<Ack> {
     return this.t.call<Ack>(ExperimentDriverClient.target, "rotate_sample_to", req);
   }
 
-  /** Rotate the sample stage by a signed delta in degrees (PASCAL `Rotate Sample`); negative turns the other way. Blocks until the move completes. Refused while the motor holding lock is released. */
+  /** Rotate the sample stage by a signed delta in degrees; negative turns the other way. Blocks until the move completes. Refused while the motor holding lock is released. */
   async rotate_sample_by(req: SampleAngle): Promise<Ack> {
     return this.t.call<Ack>(ExperimentDriverClient.target, "rotate_sample_by", req);
   }
@@ -3411,12 +3411,12 @@ export class ExperimentDriverClient {
     return this.t.call<Ack>(ExperimentDriverClient.target, "set_mfc_flow", req);
   }
 
-  /** Open or close the MFC master gate (PASCAL's `MFC Control`). One gate for every channel, so disabling it stops all MFCs at once, leaving their flow setpoints untouched. Not needed under pressure control, which drives the control MFC itself. */
+  /** Open or close the MFC master gate (PASCAL's `MFC Control`). One gate for every channel, so disabling it stops all MFCs at once, leaving their flow setpoints untouched. Not needed under pressure control, which drives the control MFC itself. pld-service has no gate: closing it sets MFC1 to zero, opening it does nothing (set_mfc_flow flows at once). */
   async set_mfc_control(req: SetMfcControl): Promise<Ack> {
     return this.t.call<Ack>(ExperimentDriverClient.target, "set_mfc_control", req);
   }
 
-  /** Set the chamber pressure in Torr. On the real chamber a person sets it by hand: this raises a `pressure` pending confirmation for them, resolved with confirm once they have; read it back with get_current_pressure. In the simulator it sets the closed-loop setpoint directly, which takes effect once set_pressure_control(on=True) is on (the controller then trims the control MFC's flow to hold it). */
+  /** Set the chamber pressure in Torr. Under pld-service (the default) it sets the service's pressure-control setpoint, which picks its regime (<= 2e-4 low, >= 3e-3 high; between is refused) and takes effect once set_pressure_control(on=True) is on. Under --use-legacy-mi-mode on the real chamber a person sets it by hand: this raises a `pressure` pending confirmation for them, resolved with confirm once they have; in the simulator it sets the setpoint directly. Read it back with get_current_pressure. */
   async set_pressure(req: SetPressure): Promise<Ack> {
     return this.t.call<Ack>(ExperimentDriverClient.target, "set_pressure", req);
   }
@@ -3451,7 +3451,7 @@ export class ExperimentDriverClient {
     return this.t.call<ExperimentRecordId>(ExperimentDriverClient.target, "finish_experiment_record", req);
   }
 
-  /** Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach. wait=true (the default): the task ends when the substrate arrives, and PASCAL runs no other command (moves, target, shutter) until then. wait=false: the task ends once the ramp is under way and the chamber is free for other commands; read get_current_temperature until it is within tolerance before relying on it, and never follow it with turn_off_heating_laser while still hot. A setpoint below the PID-engage threshold is not holdable: from a hot chamber it is commanded as a cooldown (no PID), and from an already-cold one it is a no-op, since a room-temperature growth runs with the diode off. */
+  /** Ramp to a temperature and engage PID. Requires the heating laser to be on already -- call initiate_heating_laser first, or this fails immediately rather than setting a setpoint no current can reach. wait=true (the default): the task ends when the substrate arrives; under --use-legacy-mi-mode PASCAL runs no other command (moves, target, shutter) until then. wait=false: the task ends once the ramp is under way and the chamber is free for other commands; read get_current_temperature until it is within tolerance before relying on it, and never follow it with turn_off_heating_laser while still hot. A setpoint below the PID-engage threshold is not holdable: from a hot chamber it is commanded as a cooldown (no PID), and from an already-cold one it is a no-op, since a room-temperature growth runs with the diode off. */
   async to_temperature(req: ToTemperature): Promise<TaskAck> {
     return this.t.call<TaskAck>(ExperimentDriverClient.target, "to_temperature", req);
   }

@@ -2,10 +2,13 @@
 hardware control.
 
 Ported from ~/Projects/OperationsNotebooks/src/manager.py's BaseExperimentManager /
-SingleDepoExperimentManager / PixelExperimentManager, adapted to lumi's current
-client API (MiCommandRunner wrapping ChamberMiModeClient, not the retired
-lumi.client.pascal.MIModeClient) and to run inside a node process rather than a
-notebook kernel:
+SingleDepoExperimentManager / PixelExperimentManager, adapted to run inside a node
+process rather than a notebook kernel:
+
+- The chamber is a backend (`lumi.experiment.chamber`): `PldChamber`, pld-service
+  through `chamber.pld` (the default), or `MiChamber`, PASCAL's MI mode and chamber log
+  (`--use-legacy-mi-mode`). The manager says what to do -- select a target, ramp to a
+  temperature, fire -- and reads the chamber as a decoded log row either way.
 
 - Every `ainput`/`strong_ainput` site that only collected a parameter the caller
   already has is gone -- the caller (an ExperimentHandler op) supplies it as a typed
@@ -35,14 +38,12 @@ from dataclasses import dataclass
 from math import floor
 
 from lumi.contracts.payloads.chamber import SectionQuery
-from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.experiment import MaskAlignPass, MaskAlignResult, MaskSweepPoint
 from lumi.contracts.payloads.fiducial import MASK_CENTER_ROLE
 from lumi.contracts.payloads.storage import StorageRequest
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, utc_now
 from lumi.experiment.mask_align import locate_slit
-from lumi.experiment.mi import MiCommandRunner, brief as mi_brief
-from lumi.experiment.pld import PldCommandRunner
+from lumi.experiment.chamber import ChamberBackend
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
@@ -242,7 +243,7 @@ class BaseExperimentManager:
     def __init__(
         self,
         *,
-        chamber_mi: MiCommandRunner | PldCommandRunner,
+        chamber: ChamberBackend,
         chamber_log: ChamberLogClient,
         chamber_config: ChamberConfigClient,
         rheed_camera: RheedCameraClient,
@@ -253,7 +254,8 @@ class BaseExperimentManager:
         target_mapper: dict[str, str],
         chamber_fiducial: ChamberFiducialClient | None = None,
     ) -> None:
-        self.chamber_mi = chamber_mi
+        #: The driver: `PldChamber` (pld-service, the default) or `MiChamber` (legacy MI mode).
+        self.chamber = chamber
         # Only mask-centre auto-alignment reads it; None leaves everything else working.
         self.chamber_fiducial = chamber_fiducial
         self.chamber_log = chamber_log
@@ -659,10 +661,9 @@ class BaseExperimentManager:
     # --- chamber reads ---------------------------------------------------------
 
     async def _log_values(self) -> dict:
-        batch = await self.chamber_log.log()
-        if not batch.entries:
-            raise RuntimeError("chamber log has no rows yet")
-        return batch.entries[-1].values
+        """The chamber's readings as a decoded log row: pld-service's live state, or the
+        newest row of PASCAL's chamber log under legacy MI mode."""
+        return await self.chamber.readings()
 
     async def get_current_log(self):
         batch = await self.chamber_log.log()
@@ -712,7 +713,9 @@ class BaseExperimentManager:
                 raise ValueError(f"gauge {gauge_name!r} not found in the log")
             return float(values[gauge_name]), gauge_name
 
-        if str(values["Vac Pres Main"]) == "0.00E+0":
+        # IG1 off (the high regime) reads 0: PASCAL's log prints "0.00E+0", pld-service's
+        # state gives 0.0. Either way the capacitance gauge is the reading.
+        if float(values["Vac Pres Main"]) == 0.0:
             if float(values["Prc Pres Main"]) == 1:
                 return float(values["Prc Pres Main2"]), "Prc Pres Main2"
             return float(values["Prc Pres Main"]), "Prc Pres Main"
@@ -749,24 +752,21 @@ class BaseExperimentManager:
     # --- hardware control --------------------------------------------------------
 
     async def set_mfc_flow(self, mfc_id: str, flow: float) -> None:
-        if mfc_id == "1":
-            await self.chamber_mi.execute(pcmd.SetMFC1Flow(flow))
-        elif mfc_id == "2":
-            await self.chamber_mi.execute(pcmd.SetMFC2Flow(flow))
-        else:
+        if mfc_id not in ("1", "2"):
             raise ValueError(f"invalid MFC id: {mfc_id!r}")
+        await self.chamber.set_mfc_flow(int(mfc_id), flow)
 
     async def set_mfc_control(self, enabled: bool) -> None:
         """PASCAL's `MFC Control` -- the master gate every MFC's flow passes through.
         Separate from set_mfc_flow because the command takes no channel argument: it
         is one switch for the whole gas line."""
-        await self.chamber_mi.execute(pcmd.SetMFCControl(enable=enabled))
+        await self.chamber.set_mfc_control(enabled)
 
     async def set_pressure(self, pressure: float) -> None:
-        await self.chamber_mi.execute(pcmd.SetPressure(pressure))
+        await self.chamber.set_pressure(pressure)
 
     async def set_pressure_control(self, on: bool) -> None:
-        await self.chamber_mi.execute(pcmd.PressureControl(state=pcmd.PascalState(on)))
+        await self.chamber.set_pressure_control(on)
 
     async def start_mi_logging(self, interval_s: int = 1, file_name: str | None = None) -> tuple[str, int]:
         """Start PASCAL's data logging at a fixed row interval (default every 1s).
@@ -781,8 +781,7 @@ class BaseExperimentManager:
             raise ValueError(f"log interval must be a whole number of seconds >= 1, got {interval_s}")
         if not file_name:
             file_name = f"chamber_log_{time.strftime('%Y%m%d_%H%M%S')}.csv"
-        await self.chamber_mi.execute(pcmd.SetLogInterval(interval_s))
-        await self.chamber_mi.execute(pcmd.DataLogging(file_name, pcmd.PascalState("ON")))
+        await self.chamber.start_logging(file_name, interval_s)
         return file_name, interval_s
 
     async def stop_mi_logging(self) -> None:
@@ -792,13 +791,10 @@ class BaseExperimentManager:
         `start_mi_logging` then acks over MI mode but the file never changes. Call
         this first to close the running logger, then start the one you want.
         """
-        await self.chamber_mi.execute(pcmd.DataLogging("", pcmd.PascalState("OFF")))
+        await self.chamber.stop_logging()
 
     async def initiate_heating_laser(self, timeout: float = 30.0, poll: float = 0.5) -> None:
-        await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=False, nowait=False))
-        await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("ON"), nowait=False))
-        await self.chamber_mi.execute(pcmd.HeatingLaserThreshold(state=pcmd.PascalState("ON")))
-        await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID))
+        await self.chamber.heater_on()
 
         # The MI commands complete when the controller accepts them, but
         # `is_heating_laser_on` reads `Heat Stat` bit 3 from the *chamber log*, which
@@ -824,52 +820,18 @@ class BaseExperimentManager:
                     "for it to read cold (a to_temperature with wait=false returns before "
                     "the ramp ends); force=true overrides"
                 )
-        await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL))
-        await self.chamber_mi.execute(pcmd.HeatingLaserThreshold(state=pcmd.PascalState("OFF")))
-        await self.chamber_mi.execute(pcmd.HeatingLaser(state=pcmd.PascalState("OFF"), nowait=False))
-        await self.chamber_mi.execute(pcmd.HeatingLaserLock(locked=True, nowait=False))
+        await self.chamber.heater_off()
 
     async def check_mi_mode(self, timeout: float = 10.0) -> tuple[str, str]:
-        """Whether PASCAL is taking MI commands, as (status, message).
+        """Whether the chamber driver will take commands, as (status, message):
+        `on`, `off` or `busy`.
 
-        Nothing in the chamber log says whether MI Mode is on: with it off, PASCAL
-        never picks a script up and every command just hangs until it times out. So
-        send one that does nothing (`Wait 0 sec`) and see whether it completes.
-        "busy" when another script is running -- the probe would only queue behind it.
-
-        Under the pld-service driver (the default) there is no MI Mode to be in: this
-        reports whether the service is connected, writable (not read-only) and free to
-        be operated (no other client holds control) instead.
+        Under pld-service (the default): whether the service is connected, writable (not
+        read-only) and free to be operated (no other client holds control). Under legacy
+        MI mode: whether PASCAL runs a no-op script, since nothing in the chamber log
+        says whether MI Mode is on (see `MiChamber.check`).
         """
-        check = getattr(self.chamber_mi, "check", None)
-        if check is not None:
-            return await check()
-        running = [
-            e for e in (await self.chamber_mi.client.list_execution(Empty())).executions
-            if not e.is_execution_finished
-        ]
-        probe = pcmd.Wait(0).to_text()
-        if running and running[0].commands == probe:
-            # An earlier probe that PASCAL never picked up. It holds the queue, so a new
-            # one would only sit behind it -- and it still being there is the answer.
-            return "off", (
-                "an earlier MI Mode probe is still waiting for PASCAL to pick it up: MI "
-                "Mode is still off. Ask a person to switch PASCAL to MI Mode"
-            )
-        if running:
-            return "busy", (
-                f"another MI script is running ({mi_brief(running[0].commands)}); the probe "
-                "would queue behind it, so MI Mode cannot be checked until it finishes"
-            )
-        try:
-            await self.chamber_mi.execute(probe, timeout=timeout, raise_on_abort=False)
-        except TimeoutError:
-            return "off", (
-                f"PASCAL did not run a no-op script within {timeout:.0f}s: MI Mode is "
-                "probably off. Ask a person to switch PASCAL to MI Mode. The probe stays "
-                "queued and runs harmlessly once it is on"
-            )
-        return "on", "PASCAL ran a no-op script: MI Mode is on"
+        return await self.chamber.check(timeout)
 
     async def _await_motor_ready(self, poll: float = 0.5) -> None:
         """Block until the motor holding lock is engaged, so a commanded move has
@@ -925,14 +887,14 @@ class BaseExperimentManager:
         # *free* was the bug: "Motor free" is the holding lock released, not an idle
         # flag, so an axis can only be driven while it is NOT free.
         await self._await_motor_ready()
-        await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=position, sync=False, nowait=False))
+        await self.chamber.move_mask(position)
 
     async def move_rheed_to_position(self, position: float) -> None:
         lo, hi = min(self.pld_config.rheed_limit), max(self.pld_config.rheed_limit)
         if not (lo <= position <= hi):
             raise ValueError(f"RHEED gun position must be in [{lo}, {hi}], got {position}")
         await self._await_motor_ready()
-        await self.chamber_mi.execute(pcmd.SetRHEEDGunX(position))
+        await self.chamber.move_rheed_gun(position)
 
     async def set_target(self, target_id: str) -> None:
         # SelectTarget revolves the carousel and the mode commands spin the target;
@@ -940,9 +902,8 @@ class BaseExperimentManager:
         # Rotation and twist are always AUTO, never OFF: a target that is not
         # rastering gets hit in one spot.
         await self._await_motor_ready()
-        await self.chamber_mi.execute(pcmd.SelectTarget(target_id, nowait=False))
-        await self.chamber_mi.execute(pcmd.TargetRotationMode(mode=pcmd.TargetRotationModeType.AUTO))
-        await self.chamber_mi.execute(pcmd.TargetTwistMode(mode=pcmd.TargetTwistModeType.AUTO))
+        await self.chamber.select_target(target_id)
+        await self.chamber.target_auto_motion()
 
     async def rotate_sample_to(self, angle: float) -> None:
         """Absolute sample-stage rotation (`Set Sample Position`), in degrees.
@@ -952,20 +913,20 @@ class BaseExperimentManager:
         drives nothing.
         """
         await self._await_motor_ready()
-        await self.chamber_mi.execute(pcmd.SetSamplePosition(angle, sync=False, nowait=False))
+        await self.chamber.rotate_sample_to(angle)
 
     async def rotate_sample_by(self, delta_angle: float) -> None:
         """Relative sample-stage rotation (`Rotate Sample`): a signed delta in
         degrees from the current angle. Same holding-lock gate as `rotate_sample_to`.
         """
         await self._await_motor_ready()
-        await self.chamber_mi.execute(pcmd.RotateSample(delta_angle, sync=False, nowait=False))
+        await self.chamber.rotate_sample_by(delta_angle)
 
     async def perform_preablation(
         self, target_id: str, num_pulse: int = 1000, frequency: float = 10.0,
         is_dryrun: bool = False, move_mask_to_block_position: bool = True,
     ) -> None:
-        await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("OFF")))
+        await self.chamber.sample_shutter(False)
 
         original_mask_position = None
         if move_mask_to_block_position:
@@ -976,7 +937,7 @@ class BaseExperimentManager:
 
         before = await self._log_values()
         if not is_dryrun:
-            await self.chamber_mi.execute(pcmd.TriggerLaser(num_pulse=num_pulse, frequency=frequency, sync=False, nowait=False))
+            await self.chamber.fire(num_pulse, frequency)
         after = await self._log_values()
 
         if before["MissedPuls"] != after["MissedPuls"]:
@@ -987,7 +948,7 @@ class BaseExperimentManager:
 
     async def _warm_up_to_pid_limit(self) -> bool:
         b = self.bounds
-        await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.MANUAL))
+        await self.chamber.manual_current()
 
         values = await self._log_values()
         warm_up_current = b.warm_up_current
@@ -1000,7 +961,7 @@ class BaseExperimentManager:
 
         current = starting_point + b.warm_up_step
         while current <= warm_up_current + b.warm_up_step * 0.5:
-            await self.chamber_mi.execute(pcmd.SetHeatingCurrent(current=float(current)))
+            await self.chamber.set_heating_current(float(current))
             await asyncio.sleep(b.warm_up_step / b.warm_up_current_ramp_rate)
             current += b.warm_up_step
 
@@ -1047,8 +1008,7 @@ class BaseExperimentManager:
             # down", so command it the way cool_down does rather than returning a
             # success that leaves the chamber where it was. PID stays out of it --
             # the controller cannot hold this setpoint, the substrate coasts to it.
-            await self.chamber_mi.execute(pcmd.TemperatureRamp(ramp_rate, state=pcmd.PascalState("ON")))
-            await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=not wait))
+            await self.chamber.coast_to(temperature, ramp_rate, wait)
             return temperature
 
         # With the laser off, PID has nothing to drive: the setpoint climbs, the diode
@@ -1070,24 +1030,17 @@ class BaseExperimentManager:
         # where the substrate is to where we want it. Engaging PID before the target is
         # set lets it chase whatever setpoint it still holds -- after the manual warm-up
         # that is the cold 160, and the substrate is pulled back down to it.
-        await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=True))
-        await self.chamber_mi.execute(pcmd.TemperatureRamp(ramp_rate, state=pcmd.PascalState("ON")))
-        await self.chamber_mi.execute(pcmd.TemperatureControl(mode=pcmd.TemperatureControlModeType.PID))
-        # The same target again, without (Nowait): changes nothing, but holds the
-        # command until the substrate arrives, which is what the task waits on.
-        if wait:
-            await self.chamber_mi.execute(pcmd.TemperatureSet(temperature, nowait=False))
+        await self.chamber.ramp_to(temperature, ramp_rate, wait)
         return temperature
 
     async def cool_down(self, ramp_rate: float = 20.0) -> None:
-        await self.chamber_mi.execute(pcmd.TemperatureRamp(ramp_rate, state=pcmd.PascalState("ON")))
-        await self.chamber_mi.execute(pcmd.TemperatureSet(self.bounds.temperature_min, nowait=False))
+        await self.chamber.coast_to(self.bounds.temperature_min, ramp_rate, wait=True)
 
     async def perform_deposition(self, num_pulse: int, laser_repetition_rate: float, target_id: str, is_dryrun: bool = False) -> None:
         await self.set_target(target_id)
-        await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("ON")))
+        await self.chamber.sample_shutter(True)
         if not is_dryrun:
-            await self.chamber_mi.execute(pcmd.TriggerLaser(num_pulse=num_pulse, frequency=laser_repetition_rate, sync=False, nowait=False))
+            await self.chamber.fire(num_pulse, laser_repetition_rate)
 
     async def anneal(self, steps: list[tuple[float, float, float]]) -> None:
         for temperature, ramp_rate, wait_time in steps:
@@ -1181,9 +1134,9 @@ class BaseExperimentManager:
         if not force and self._laser_power_set == laser_power:
             return True, self._laser_power_real
 
-        await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("OFF")))
+        await self.chamber.sample_shutter(False)
         await self._await_motor_ready()  # SelectTarget revolves the carousel
-        await self.chamber_mi.execute(pcmd.SelectTarget(pcmd.Targets.Clear, nowait=False))
+        await self.chamber.select_target(pcmd.Targets.Clear)
         self._pending_laser_power = laser_power
         return False, None
 
@@ -1196,8 +1149,8 @@ class BaseExperimentManager:
 
     async def begin_align_center_mask(self) -> None:
         await self._await_motor_ready()
-        await self.chamber_mi.execute(pcmd.SetRHEEDGunX(0))
-        await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=self.pld_config.center_mask_pos, sync=False, nowait=False))
+        await self.chamber.move_rheed_gun(0)
+        await self.chamber.move_mask(self.pld_config.center_mask_pos)
 
     async def confirm_center_mask(self, position: float) -> None:
         await self.set_center_mask_pos(position, source="confirm_center_mask")
@@ -1213,9 +1166,9 @@ class BaseExperimentManager:
 
     async def begin_check_mask_center(self) -> None:
         await self._await_motor_ready()
-        await self.chamber_mi.execute(pcmd.SelectTarget(pcmd.Targets.Clear, nowait=False))
-        await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("ON")))
-        await self.chamber_mi.execute(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=self.pld_config.center_mask_pos, sync=False, nowait=False))
+        await self.chamber.select_target(pcmd.Targets.Clear)
+        await self.chamber.sample_shutter(True)
+        await self.chamber.move_mask(self.pld_config.center_mask_pos)
 
     async def confirm_mask_center(self, aligned: bool, corrected_position: float | None = None) -> bool:
         """Returns True if still pending (not yet aligned)."""
@@ -1227,12 +1180,8 @@ class BaseExperimentManager:
         await self._await_motor_ready()
         # Retract-then-reapproach: a move of only a few mm can leave the mask motor
         # stuck, so back off first rather than nudging directly to the new position.
-        await self.chamber_mi.execute(pcmd.SetMaskPosition(
-            mask_id=pcmd.MaskID.M1, distance=max(self.pld_config.center_mask_pos - 5, 0), sync=False, nowait=False,
-        ))
-        await self.chamber_mi.execute(pcmd.SetMaskPosition(
-            mask_id=pcmd.MaskID.M1, distance=self.pld_config.center_mask_pos, sync=False, nowait=False,
-        ))
+        await self.chamber.move_mask(max(self.pld_config.center_mask_pos - 5, 0))
+        await self.chamber.move_mask(self.pld_config.center_mask_pos)
         return True
 
     # --- automatic: mask-center alignment from a fiducial marker --------------------
@@ -1274,8 +1223,8 @@ class BaseExperimentManager:
         self._check_mask_travel(positions)
 
         await self._await_motor_ready()
-        await self.chamber_mi.execute(pcmd.SelectTarget(pcmd.Targets.Clear, nowait=False))
-        await self.chamber_mi.execute(pcmd.SampleShutter(pcmd.PascalState("ON")))
+        await self.chamber.select_target(pcmd.Targets.Clear)
+        await self.chamber.sample_shutter(True)
 
         samples: list[MaskSweepPoint] = []
         passes: list[MaskAlignPass] = []
