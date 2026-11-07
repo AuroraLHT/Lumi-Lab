@@ -6,11 +6,11 @@ for running inside a node:
 - **Refusals are answers.** An operation returns the service's `OperationReply` as
   `(ok, message)` rather than raising: the bus op hands it back as `PldReply`, and the
   caller decides. The service enforces every safety rule; nothing here second-guesses it.
-- **Control is taken on demand.** pld-service only lets the holder of control operate,
-  and answers anyone else with FAILED_PRECONDITION. The first operation that gets that
-  takes control (never with `force`) and retries once, so a node restart, or the GUI
-  having released, needs no extra step. If another client holds control, the refusal
-  says so.
+- **Control is taken on demand.** pld-service only lets the holder of control operate.
+  With nobody holding it, it answers FAILED_PRECONDITION: the operation then takes
+  control (never with `force`) and retries once, so a node restart, or the GUI having
+  released, needs no extra step. With another client holding it, it answers
+  PERMISSION_DENIED, which comes back as a refusal naming the holder -- never a retry.
 
 The stubs are generated from the vendored proto (`proto/pld.proto`,
 scripts/gen_pld_stubs.sh). The service listens on loopback only, by design -- the
@@ -122,8 +122,10 @@ class PldClient:
         return bool(reply.ok), reply.message
 
     def _failed(self, rpc: str, e: grpc.RpcError) -> tuple[bool, str]:
-        # The service's own "no": a precondition or a bad argument, with a reason.
-        if e.code() in (grpc.StatusCode.FAILED_PRECONDITION, grpc.StatusCode.INVALID_ARGUMENT):
+        # The service's own "no", with a reason: nobody holds control (FAILED_PRECONDITION),
+        # another client does (PERMISSION_DENIED), or a bad argument.
+        if e.code() in (grpc.StatusCode.FAILED_PRECONDITION, grpc.StatusCode.PERMISSION_DENIED,
+                        grpc.StatusCode.INVALID_ARGUMENT):
             return False, f"{rpc}: {e.details()}"
         raise PldUnavailable(f"{rpc}: {_describe(e)}") from None
 

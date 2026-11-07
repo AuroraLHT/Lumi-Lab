@@ -11,7 +11,8 @@ It is the Lumi simulator speaking the REA protocol, not the REA twin: the physic
 `lumi.pascal.sim.model`'s, and the service's own rules are reproduced only where the
 driver depends on them --
 
-- control ownership: operations need control (FAILED_PRECONDITION otherwise), and
+- control ownership: operations need control -- FAILED_PRECONDITION with nobody holding
+  it, PERMISSION_DENIED with another client holding it, as pld-service -- and
   AcquireControl is refused while another client holds it, unless forced;
 - `wait` blocks until the model gets there;
 - pressure: the low/high regimes and the refused gap between them, with IG1 off and
@@ -102,10 +103,13 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         return dict(context.invocation_metadata()).get("x-client", "")
 
     def _require_control(self, context) -> None:
+        # As pld-service's `authorize`: FAILED_PRECONDITION when nobody holds control (the
+        # client then takes it), PERMISSION_DENIED when another client does (a refusal).
         client = self._client(context)
-        if not client or client != self.controller:
-            holder = f"control is held by {self.controller!r}" if self.controller else "nobody holds control"
-            context.abort(grpc.StatusCode.FAILED_PRECONDITION, f"{client or 'this client'} does not hold control ({holder})")
+        if not self.controller:
+            context.abort(grpc.StatusCode.FAILED_PRECONDITION, "nobody holds control: call AcquireControl first")
+        if client != self.controller:
+            context.abort(grpc.StatusCode.PERMISSION_DENIED, f"control is held by {self.controller!r}")
 
     def _emit(self, kind: str, message: str, **detail: str) -> None:
         event = pb.Event(time=time.time(), kind=kind, message=message, detail=detail)

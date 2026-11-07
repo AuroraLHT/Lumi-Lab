@@ -22,6 +22,7 @@ import pytest_asyncio
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
     PldFireRequest,
+    PldPositionRequest,
     PldLaserEnergyRequest,
     PldLaserHvRequest,
     PldLaserModeRequest,
@@ -193,3 +194,27 @@ async def test_pumps_load_lock_and_heater_gains_are_read(handler):
         reply = await h.set_pump(PldPumpRequest(pump="DP3", on=False))
         assert not reply.ok, reply.message
         assert (await h.chamber_state(Empty())).pumps["DP3"].running
+
+
+async def test_another_client_holding_control_is_a_refusal(handler):
+    # pld-service answers PERMISSION_DENIED; that is a refusal naming the holder, not an
+    # unreachable service, and nothing is taken from the holder.
+    from lumi.pascal.pld.client import PldClient
+
+    h = handler
+    h.release_on_shutdown()
+    gui = PldClient(ADDRESS, client="pld-gui")
+    try:
+        assert (await asyncio.to_thread(gui.acquire, False)).granted
+        reply = await h.set_mask_position(PldPositionRequest(position=12.0, wait=True))
+        assert not reply.ok and "pld-gui" in reply.message
+        # Still the GUI's: lumi-pascal cannot take it without force. (ChamberState's
+        # `controller` is not read here: pld-service copies it in on its next poll.)
+        lumi = PldClient(ADDRESS, client="lumi-pascal")
+        try:
+            assert not (await asyncio.to_thread(lumi.acquire, False)).granted
+        finally:
+            lumi.close()
+    finally:
+        await asyncio.to_thread(gui.release)
+        gui.close()
