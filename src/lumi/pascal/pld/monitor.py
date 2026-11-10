@@ -22,10 +22,11 @@ what the legacy adapter writes. Its caveats, from the REA session (2026-11-05):
 - `Mask2` carries the RHEED gun X position.
 - NaN readings (pyrometer below ~140 C, IG1 warming up) are written as 0, as PLD
   Controller shows them.
-- `LaserHz` is not a service reading: it is the rate of the train this node started,
-  while that train is firing, and 0 otherwise (the recorded PLD Controller logs idle it
-  at 0 too). `Laser set` is that train's pulse count, and `Laser moni` the service's
-  count of pulses fired in it, as the simulator writes them.
+- `LaserHz` is the train's rate (`laser.rate_hz`) while it is firing, and 0 otherwise
+  (the recorded PLD Controller logs idle it at 0 too). `Laser set` is the train's
+  requested pulses and `Laser moni` the pulses fired in it, as the simulator writes
+  them. A train started by another program than pld-service (PLD Controller) shows its
+  pulses but neither of the first two.
 """
 
 from __future__ import annotations
@@ -82,14 +83,13 @@ class GrowthLog:
     def active(self) -> bool:
         return self._file is not None
 
-    def write(self, state, when: datetime.datetime | None = None, laser_rate: float = 0.0,
-              laser_set: int = 0) -> None:
+    def write(self, state, when: datetime.datetime | None = None) -> None:
         with self._lock:
             if self._file is None:
                 return
             if when is None:
                 when = datetime.datetime.fromtimestamp(state.time) if state.time else datetime.datetime.now()
-            self._write(render_row(values_from_state(state, laser_rate, laser_set), when))
+            self._write(render_row(values_from_state(state), when))
 
     def _write(self, fields: list[str]) -> None:
         buffer = io.StringIO()
@@ -115,10 +115,6 @@ class PldStateMonitor(threading.Thread):
         self.growth_log = growth_log
         self.interval_s = float(interval_s)
         self.rate_hz = rate_hz
-        #: The rate and pulse count of the train this node last started; see LaserHz in
-        #: the module doc.
-        self.laser_rate = 0.0
-        self.laser_set = 0
         self.latest = None
         self.latest_at = 0.0
         self.last_error: str | None = None
@@ -168,7 +164,7 @@ class PldStateMonitor(threading.Thread):
         now = time.monotonic()
         if now >= self._next_row:
             try:
-                self.growth_log.write(state, laser_rate=self.laser_rate, laser_set=self.laser_set)
+                self.growth_log.write(state)
             except Exception:
                 log.exception("could not write the growth log row")
             self._next_row = max(now, self._next_row + self.interval_s)

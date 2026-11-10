@@ -78,7 +78,7 @@ class FakePldClient:
             return PldReply(ok=False, message=self.refuse[op])
         return PldReply(ok=True, message="done")
 
-    async def chamber_state(self, req=None):
+    async def chamber_state(self):
         return self.state
 
 
@@ -371,7 +371,7 @@ class HandlerBus:
     async def call(self, op, req=None):
         return await getattr(self.pld, op)(req if req is not None else Empty())
 
-    async def chamber_state(self, req=None):
+    async def chamber_state(self):
         return await self.pld.chamber_state(Empty())
 
 
@@ -445,3 +445,5 @@ async def test_stop_deposition_on_the_sim(sim):
     fired = model.laser_pulses
     await asyncio.sleep(0.5)
     assert model.laser_idle and 0 < fired == model.laser_pulses < 100_000
+    laser = (await handler.manager.chamber.state()).laser
+    assert laser.stop_requested and laser.pulses_requested == 100_000

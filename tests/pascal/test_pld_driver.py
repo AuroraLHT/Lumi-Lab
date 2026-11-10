@@ -187,12 +187,14 @@ async def test_nan_readings_become_none_and_zero_in_the_log():
     assert values["TG No."] == 7
 
 
-async def test_the_log_carries_the_train_this_node_started():
-    # LaserHz and Laser set are what fire_laser asked for; Laser moni is the count so
-    # far, as the simulator writes them (the monitor's pulse chart reads all three).
-    state = pb.ChamberState(laser=pb.Laser(status="firing", pulses_fired=120))
-    values = values_from_state(state, laser_rate=10.0, laser_set=500)
-    assert (values["LaserHz"], values["Laser set"], values["Laser moni"], values["LaserPuls"]) == (10.0, 500, 120, 120)
+async def test_the_log_carries_the_train():
+    # From the state since REA 6d8df20, as the simulator writes them (the monitor's pulse
+    # chart reads all three). LaserHz idles at 0, as PLD Controller's does.
+    laser = pb.Laser(status="firing", pulses_fired=120, rate_hz=30.3, pulses_requested=500)
+    values = values_from_state(pb.ChamberState(laser=laser))
+    assert (values["LaserHz"], values["Laser set"], values["Laser moni"], values["LaserPuls"]) == (30.3, 500, 120, 120)
+    laser.status = "finished"
+    assert values_from_state(pb.ChamberState(laser=laser))["LaserHz"] == 0.0
 
 
 async def test_every_named_valve_has_its_confirmed_bit():

@@ -194,6 +194,7 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
                 laser=pb.Laser(
                     status="firing" if firing else ("finished" if m.laser_pulses else "idle"),
                     pulses_fired=m.laser_pulses, missed_shots=m.missed_pulses,
+                    rate_hz=m.laser_hz, pulses_requested=m.laser_set, stop_requested=self._fire_stopped,
                 ),
                 gas=pb.Gas(
                     mfc1_setpoint=m.mfc_set[1], mfc1_flow=m.mfc_moni[1],
@@ -207,6 +208,10 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
                 sample_shutter_away=m.shutter_open,
                 interlocks=[f"laser {code} {meaning}" for code, meaning in filter(None, [self.laser_interlock])],
                 excimer=self._excimer(), read_only=self.read_only,
+                session=pb.Session(plc_session=True, watchdog=not self.read_only),
+                # The twin's config (REA 05f8b85); the simulator itself enforces none of them.
+                limits=pb.Limits(ig1_max_torr=1e-2, ig3_max_torr=1e-2, mv3_max_torr=4e-2,
+                                 heater_max_celsius=1000.0, heater_max_amps=m.config.current_max),
             )
 
     def _excimer_opmode(self) -> tuple[str, bool]:

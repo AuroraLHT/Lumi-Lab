@@ -41,10 +41,9 @@ def _word(flags: dict[int, bool]) -> int:
     return sum(1 << bit for bit, on in flags.items() if on)
 
 
-def values_from_state(s, laser_rate: float = 0.0, laser_set: int = 0) -> dict:
+def values_from_state(s) -> dict:
     """A `pld.v1.ChamberState` -- or its `PldChamberState` payload, which mirrors its
-    field names -- as one log row's values, keyed by LOG_COLUMNS. `laser_rate` and
-    `laser_set` are the rate and pulse count of the train this node last started."""
+    field names -- as one log row's values, keyed by LOG_COLUMNS."""
     h, p, m, laser, g = s.heater, s.pressures, s.motion, s.laser, s.gas
     temperature = _num(h.temperature)
     temp_set = _num(h.temperature_setpoint) if h.pid_on else 0.0
@@ -55,11 +54,11 @@ def values_from_state(s, laser_rate: float = 0.0, laser_set: int = 0) -> dict:
         "Mask1": _num(m.mask_position),
         "Mask2": _num(m.rheed_gun_x),
         "Substrate": _num(m.sample_angle),
-        "LaserHz": laser_rate if laser.status == "firing" else 0.0,
+        "LaserHz": laser.rate_hz if laser.status == "firing" else 0.0,
         "LaserPuls": laser.pulses_fired,
         # As the simulator writes them: the train's count so far, and what it was asked for.
         "Laser moni": laser.pulses_fired,
-        "Laser set": laser_set,
+        "Laser set": laser.pulses_requested,
         "MissedPuls": laser.missed_shots,
         "HT set": _num(h.current_set),
         "HT moni": _num(h.current_monitor),

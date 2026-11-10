@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at 9858307 (load lock, pumps, heater tune; identical apart from line
+// branch decode-program at 05f8b85 (session, limits, stop and heater status; identical apart from line
 // endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this header)
 // and run scripts/gen_pld_stubs.sh.
 //
@@ -171,6 +171,23 @@ message ChamberState {
   bool read_only = 20;  // hardware without --allow-operations: every operation is refused
   map<string, Pump> pumps = 21;  // name -> state (TMP1 .. DP3)
   LoadLock load_lock = 22;
+  Session session = 23;
+  Limits limits = 24;
+}
+
+// The service's PLC host-link session (as PLD Controller opens it: CR, SP 4, 115200).
+message Session {
+  bool plc_session = 1;  // the session is open (CR / SP 4 answered)
+  bool watchdog = 2;  // this service started the PLC watchdog (ST 02500; operations allowed only)
+}
+
+// The safety limits the service enforces (from --config), so a client can check before a refusal.
+message Limits {
+  double ig1_max_torr = 1;  // IG1 on refused, and switched off, above this on CDG10
+  double ig3_max_torr = 2;  // IG3 likewise on TCG31
+  double mv3_max_torr = 3;  // MV3 open refused above this on TCG31
+  double heater_max_celsius = 4;  // above this the heater trips off
+  double heater_max_amps = 5;  // LD current ceiling (Heater.current_max is the PID output limit within it)
 }
 
 message LoadLock {
@@ -224,6 +241,9 @@ message Heater {
   double kp = 18;  // the PID gains in use (A/C, A/(C s), A s/C)
   double ki = 19;
   double kd = 20;
+  bool writes_failing = 21;  // the per-cycle LD writes are failing (reported once as an error event)
+  uint32 tune_cycles_done = 22;  // TuneHeater: relay cycles done of tune_cycles (0 when not tuning)
+  uint32 tune_cycles = 23;
 }
 
 message Motion {
@@ -258,6 +278,12 @@ message Laser {
   string status = 1;  // idle, firing, finished
   uint64 pulses_fired = 2;
   uint64 missed_shots = 3;
+  // The current or last train this service started (FireLaser, from any client); 0 before the
+  // first. The PLC words they are written to are not polled, so a train started by another
+  // program does not show here. rate_hz is what the PLC runs: 1000 / the whole-ms period sent.
+  double rate_hz = 4;
+  uint64 pulses_requested = 5;
+  bool stop_requested = 6;  // StopFire was sent during the present train (until the next fire)
 }
 
 // The COMPexPro as its polls report it: OPMODE every 0.2 s, the rest every 2 s.

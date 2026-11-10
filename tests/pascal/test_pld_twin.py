@@ -48,7 +48,7 @@ class HandlerBus:
     async def call(self, op, req=None):
         return await getattr(self.handler, op)(req if req is not None else Empty())
 
-    async def chamber_state(self, req=None):
+    async def chamber_state(self):
         return await self.handler.chamber_state(Empty())
 
 
@@ -148,6 +148,8 @@ async def test_a_fire_reports_its_own_missed_shots(handler):
     assert "fired 10 of 10 pulses, 0 missed" in reply.message
     state = await h.chamber_state(Empty())
     assert state.laser.missed_shots == total
+    # The train's settings stay in the state after it ends (REA 6d8df20).
+    assert (state.laser.rate_hz, state.laser.pulses_requested) == (10.0, 10)
     # Auto spin and twist are on by default (36c1eea), and wait=true returns once the
     # twist has stopped at centre: the turret is free for the next SelectTarget.
     assert state.motion.auto_spin and state.motion.auto_twist
@@ -176,6 +178,7 @@ async def test_stop_fire_aborts_a_deposition(handler):
         await asyncio.wait_for(fire, 60)
     state = await h.chamber_state(Empty())
     assert 0 < state.laser.pulses_fired - before < 1000
+    assert state.laser.stop_requested  # until the next fire (REA 05f8b85)
     assert state.controller == "lumi-pascal"
 
 
@@ -221,6 +224,8 @@ async def test_pumps_load_lock_and_heater_gains_are_read(handler):
     assert {"TMP1", "TMP20", "TMP21", "TMP3", "DP1", "DP2", "DP3"} <= set(state.pumps)
     assert state.load_lock.gv1 in ("closed", "open", "moving")
     assert state.heater.kp is not None and state.heater.auto_tune is False
+    assert (state.heater.tune_cycles_done, state.heater.tune_cycles, state.heater.writes_failing) == (0, 0, False)
+    assert state.session.plc_session and state.limits.ig1_max_torr > 0 and state.limits.heater_max_amps > 0
     # The experiment driver's readings name them as PLD Controller's log does.
     readings = await PldChamber(HandlerBus(h)).readings()
     assert all(readings[name] for name in ("DP1 (Main)", "TMP1 (Main)", "TMP2 (RHEED)", "TMP3 (L/L)", "TMP4 (2nd RHEED)"))
