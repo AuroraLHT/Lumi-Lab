@@ -642,6 +642,22 @@ class PerformDeposition(BaseModel):
     is_dryrun: bool = False
 
 
+class StopDeposition(BaseModel):
+    #: Why, in a word or a sentence: it goes into the aborted task's result.
+    reason: str = ""
+
+
+class StopDepositionResult(BaseModel):
+    """What stop_deposition did. `laser` is pld-service's StopFire answer ("stop
+    sent ...", or "the laser is not firing: nothing sent"). `task_id`/`task_kind` name
+    the perform_deposition or perform_preablation it ended, None when none was running;
+    by the time this returns that task has ended, aborted."""
+
+    laser: str
+    task_id: str | None = None
+    task_kind: str | None = None
+
+
 class AnnealStep(BaseModel):
     temperature: float
     ramp_rate: float = 20.0

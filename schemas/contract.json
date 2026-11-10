@@ -15480,6 +15480,60 @@
             "response_codec": "json"
           },
           {
+            "name": "stop_deposition",
+            "request": {
+              "properties": {
+                "reason": {
+                  "default": "",
+                  "title": "Reason",
+                  "type": "string"
+                }
+              },
+              "title": "StopDeposition",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "What stop_deposition did. `laser` is pld-service's StopFire answer (\"stop\nsent ...\", or \"the laser is not firing: nothing sent\"). `task_id`/`task_kind` name\nthe perform_deposition or perform_preablation it ended, None when none was running;\nby the time this returns that task has ended, aborted.",
+              "properties": {
+                "laser": {
+                  "title": "Laser",
+                  "type": "string"
+                },
+                "task_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Task Id"
+                },
+                "task_kind": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Task Kind"
+                }
+              },
+              "required": [
+                "laser"
+              ],
+              "title": "StopDepositionResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "begin_set_laser_power",
             "request": {
               "properties": {
@@ -17717,6 +17771,7 @@
             "snapshot_jpeg": "experiment.driver.req.snapshot_jpeg",
             "start_mi_logging": "experiment.driver.req.start_mi_logging",
             "start_storage": "experiment.driver.req.start_storage",
+            "stop_deposition": "experiment.driver.req.stop_deposition",
             "stop_mi_logging": "experiment.driver.req.stop_mi_logging",
             "take_snapshot": "experiment.driver.req.take_snapshot",
             "to_current_pixel": "experiment.driver.req.to_current_pixel",

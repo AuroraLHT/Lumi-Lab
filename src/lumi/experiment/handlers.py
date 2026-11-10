@@ -140,6 +140,8 @@ from lumi.contracts.payloads.experiment import (
     StartStorage,
     StepInfo,
     StepList,
+    StopDeposition,
+    StopDepositionResult,
     StorageResult,
     SubstrateId,
     SubstrateInfo,
@@ -161,7 +163,7 @@ from lumi.contracts.payloads.experiment import (
     UpdateSubstrate,
     ValveStatus,
 )
-from lumi.experiment.chamber import MiChamber
+from lumi.experiment.chamber import MiChamber, PldStopped
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
@@ -273,6 +275,10 @@ class ExperimentHandler:
         self._deps: dict[str, bool] = {name: False for name in DEPENDENCY_EQUIPMENT}
         self._pending: PendingConfirmation | None = None
         self._current_task: CurrentTask | None = None
+        # The asyncio task running `_current_task`, so stop_deposition can end it, and
+        # why it was stopped once it has been.
+        self._task_handle: asyncio.Task | None = None
+        self._stop_reason: str | None = None
         self._updates: asyncio.Queue[TaskEvent] = asyncio.Queue()
         # The op currently moving a motor, if any. Requests are not serialised (the
         # server dispatches each as it arrives), so without this a caller that retried
@@ -450,22 +456,65 @@ class ExperimentHandler:
             )
 
         async def runner() -> None:
+            cancelled = None
             try:
                 result = await coro
                 task_result = {"ok": True, **_jsonable(result)}
+            except asyncio.CancelledError as exc:
+                # stop_deposition's, an abort like any other; anything else (the node
+                # shutting down) is recorded and then let through.
+                if self._stop_reason is None:
+                    cancelled = exc
+                reason = self._stop_reason or "the experiment node is shutting down"
+                task_result = {"ok": False, "aborted": True, "error": f"stopped by request: {reason}"}
             except Exception as exc:
                 log.exception("experiment task %s (%s) failed", kind, task_id)
                 task_result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                if isinstance(exc, PldStopped):  # StopFire from the REA GUI or any client
+                    task_result["aborted"] = True
             self._current_task = None
+            self._task_handle = None
+            self._stop_reason = None
             if self.journal is not None:
                 await self.journal.end(
                     step_id, ok=bool(task_result.get("ok")),
                     result=task_result, error=task_result.get("error"),
                 )
             await self._push(task_result=task_result, finished_task=task)
+            if cancelled is not None:
+                raise cancelled
 
-        asyncio.create_task(runner(), name=f"experiment-task-{kind}")
+        self._task_handle = asyncio.create_task(runner(), name=f"experiment-task-{kind}")
         return TaskAck(task_id=task_id)
+
+    #: The tasks that fire the laser, which stop_deposition ends.
+    _ABLATING = frozenset({"perform_deposition", "perform_preablation"})
+
+    async def stop_deposition(self, req: StopDeposition) -> StopDepositionResult:
+        """End a running deposition or preablation, then stop the laser.
+
+        The task is cancelled first and StopFire sent after, so nothing it had yet to
+        do -- the fire itself, if it was still turning the carousel -- can start in
+        between. Cancelling only stops this node waiting; the pulse train, if one was
+        running, goes on in pld-service until the StopFire that follows. Nothing else
+        is undone: the shutter, mask and target spin stay as they are, and logging and
+        any recording keep running, so the record shows the abort.
+        """
+        chamber = self.manager.chamber
+        if chamber.driver == "legacy-mi":
+            raise RuntimeError(
+                "legacy MI mode cannot stop a pulse train: press STOP on PASCAL. The "
+                "deposition task ends when PASCAL reports the train over")
+        task, handle = self._current_task, self._task_handle
+        ending = task is not None and task.kind in self._ABLATING and handle is not None
+        if ending:
+            self._stop_reason = req.reason or "stop_deposition"
+            handle.cancel()
+            await asyncio.wait({handle})
+        laser = await chamber.stop_fire()
+        if ending:
+            return StopDepositionResult(laser=laser, task_id=task.id, task_kind=task.kind)
+        return StopDepositionResult(laser=laser)
 
     async def _require_heating_laser(self, target_temperature: float | None = None) -> None:
         """The same refusal `manager.to_temperature` makes, hoisted ahead of

@@ -27,6 +27,7 @@ from lumi.contracts.payloads.experiment import (
     SetPressure,
     SetTarget,
     StartMiLogging,
+    StopDeposition,
     ToTemperature,
 )
 from lumi.contracts.payloads.pld import (
@@ -37,12 +38,12 @@ from lumi.contracts.payloads.pld import (
     PldPump,
     PldReply,
 )
-from lumi.experiment.chamber import PldChamber, PldRefused, readings_from_state
+from lumi.experiment.chamber import MiChamber, PldChamber, PldRefused, readings_from_state
 from lumi.experiment.db import GrowthDB
 from lumi.experiment.handlers import ExperimentHandler
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 
-from test_handlers import LOG_VALUES, FakeChamberConfig, FakeChamberLog, FakeRheedCamera, FakeStorage
+from test_handlers import LOG_VALUES, FakeChamberConfig, FakeChamberLog, FakeMi, FakeRheedCamera, FakeStorage
 
 
 def hot_state(**heater) -> PldChamberState:
@@ -63,11 +64,16 @@ class FakePldClient:
         self.calls: list[tuple[str, dict]] = []
         self.refuse: dict[str, str] = {}
         self.raise_remote: str | None = None
+        #: Ops that block, as a real fire or carousel move does, until `release` is set.
+        self.blocking: set[str] = set()
+        self.release = asyncio.Event()
 
     async def call(self, op, req=None):
         if self.raise_remote:
             raise RemoteError("chamber.pld", op, "RuntimeError", self.raise_remote)
         self.calls.append((op, req.model_dump() if req is not None and not isinstance(req, Empty) else {}))
+        if op in self.blocking:
+            await self.release.wait()
         if op in self.refuse:
             return PldReply(ok=False, message=self.refuse[op])
         return PldReply(ok=True, message="done")
@@ -209,7 +215,69 @@ async def test_a_stopped_deposition_fails_as_an_abort_and_is_not_refired(fake):
     result = await wait_task(handler)
     assert result["ok"] is False
     assert result["error"].startswith("PldStopped:") and "fired 412 of 1000" in result["error"]
+    assert result["aborted"] is True
     assert ops(client).count("fire_laser") == 1
+
+
+async def until(predicate, timeout=5.0):
+    for _ in range(int(timeout / 0.01)):
+        if predicate():
+            return
+        await asyncio.sleep(0.01)
+    pytest.fail("condition never held")
+
+
+async def test_stop_deposition_ends_the_task_then_stops_the_laser(fake):
+    handler, client = fake
+    client.blocking.add("fire_laser")
+    ack = await handler.perform_deposition(PerformDeposition(
+        num_pulse=1000, laser_repetition_rate=10.0, target_id="A", is_dryrun=False))
+    await until(lambda: "fire_laser" in ops(client))
+    reply = await handler.stop_deposition(StopDeposition(reason="plume looked wrong"))
+    assert (reply.task_id, reply.task_kind, reply.laser) == (ack.task_id, "perform_deposition", "done")
+    assert ops(client)[-2:] == ["fire_laser", "stop_fire"]
+    assert handler.readout().current_task is None
+    result = await wait_task(handler)
+    assert result == {"ok": False, "aborted": True, "error": "stopped by request: plume looked wrong"}
+    # The motion claim went with the task: the chamber can be moved again.
+    await handler.set_target(SetTarget(target_id="B"))
+    assert ops(client).count("fire_laser") == 1
+
+
+async def test_stop_deposition_while_the_carousel_turns_never_fires(fake):
+    # Cancelled before StopFire is sent, so the fire it had yet to issue never starts.
+    handler, client = fake
+    client.blocking.add("select_target")
+    await handler.perform_deposition(PerformDeposition(
+        num_pulse=1000, laser_repetition_rate=10.0, target_id="A", is_dryrun=False))
+    await until(lambda: "select_target" in ops(client))
+    reply = await handler.stop_deposition(StopDeposition())
+    assert reply.task_kind == "perform_deposition"
+    client.release.set()
+    await asyncio.sleep(0.05)
+    assert "fire_laser" not in ops(client) and ops(client)[-1] == "stop_fire"
+    assert (await wait_task(handler))["error"] == "stopped by request: stop_deposition"
+
+
+async def test_stop_deposition_with_nothing_running_still_stops_the_laser(fake):
+    # A fire_laser of someone's own has no task behind it; another task is not touched.
+    handler, client = fake
+    reply = await handler.stop_deposition(StopDeposition())
+    assert (reply.task_id, ops(client)) == (None, ["stop_fire"])
+    client.blocking.add("set_temperature")
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=10))
+    await until(lambda: "set_temperature" in ops(client))
+    assert (await handler.stop_deposition(StopDeposition())).task_id is None
+    assert handler.readout().current_task.kind == "to_temperature"
+    client.release.set()
+    assert (await wait_task(handler))["ok"] is True
+
+
+async def test_stop_deposition_is_refused_under_legacy_mi(fake):
+    handler, client = fake
+    handler.manager.chamber = MiChamber(FakeMi(), handler.sources["chamber_log"])
+    with pytest.raises(RuntimeError, match="press STOP on PASCAL"):
+        await handler.stop_deposition(StopDeposition())
 
 
 async def test_pressure_goes_to_the_service_even_when_set_by_hand_under_mi(fake):
@@ -361,4 +429,19 @@ async def test_stop_fire_from_another_client_aborts_the_deposition(sim):
     assert ok, message
     result = await wait_task(handler)
     assert result["ok"] is False and result["error"].startswith("PldStopped:")
+    assert result["aborted"] is True
     assert 0 < model.laser_pulses < 100_000
+
+
+async def test_stop_deposition_on_the_sim(sim):
+    handler, model, service = sim
+    await handler.perform_deposition(PerformDeposition(
+        num_pulse=100_000, laser_repetition_rate=10.0, target_id="A", is_dryrun=False))
+    await asyncio.sleep(1.0)
+    reply = await handler.stop_deposition(StopDeposition(reason="test"))
+    assert reply.task_kind == "perform_deposition" and reply.laser.startswith("stop sent"), reply
+    result = await wait_task(handler)
+    assert result["aborted"] is True and result["error"] == "stopped by request: test"
+    fired = model.laser_pulses
+    await asyncio.sleep(0.5)
+    assert model.laser_idle and 0 < fired == model.laser_pulses < 100_000

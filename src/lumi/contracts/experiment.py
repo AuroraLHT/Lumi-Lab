@@ -113,6 +113,8 @@ from .payloads.experiment import (
     StartMiLogging,
     StartStorage,
     StepList,
+    StopDeposition,
+    StopDepositionResult,
     StorageResult,
     SubstrateId,
     SubstrateInfo,
@@ -419,6 +421,16 @@ DRIVER = Capability(
         Op("perform_preablation", PerformPreablation, TaskAck, journal=True),
         Op("perform_deposition", PerformDeposition, TaskAck, journal=True),
         Op("anneal", Anneal, TaskAck, journal=True),
+        Op("stop_deposition", StopDeposition, StopDepositionResult,
+           doc="Abort the deposition or preablation now: ends the running "
+               "perform_deposition/perform_preablation task (its task_result is ok=false, "
+               "aborted=true) and stops the laser (chamber.pld.stop_fire). Also stops a "
+               "pulse train with no task behind it, and is harmless when nothing is "
+               "firing. The shutter, mask, target spin and logging are left as they are; "
+               "a preablation stopped this way leaves the mask at its block position. "
+               "The run is over: do not fire again to make up the pulses. "
+               "Refused under --use-legacy-mi-mode, which cannot stop a pulse train "
+               "(use PASCAL's own STOP).", journal=True, timeout_s=60.0),
 
         # --- gated: laser power (unread physical meter)
         Op("begin_set_laser_power", BeginSetLaserPower, Ack,

@@ -449,9 +449,11 @@ excimer.control true means this PC has it, false means the second PC does and ev
 op (laser_off included) is refused. take_laser_control and release_laser are the only
 calls that move it -- ask the person before either, since the second PC may be using the
 laser. fire_laser does not check the excimer (it is still run by hand). To stop a deposition
-when something goes wrong, chamber.pld.stop_fire ends the pulse train at once (no
-control needed); a fire or deposition it cuts short fails with "stopped by request" --
-that is a person's or your own abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add
+when something goes wrong, call experiment.driver.stop_deposition: it ends the
+perform_deposition/perform_preablation task as aborted and stops the laser.
+chamber.pld.stop_fire stops only the pulse train, for a fire_laser of your own. A fire or
+deposition cut short fails with "stopped by request" -- that is a person's or your own
+abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add
 the growth bookkeeping and Lumi's own checks. A pld operation answers {ok, message};
 ok=false is the service refusing, with the reason -- report it, do not retry around it.
 system.registry.list_nodes

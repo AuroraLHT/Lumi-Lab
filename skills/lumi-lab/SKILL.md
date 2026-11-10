@@ -70,9 +70,12 @@ holds it and every laser op is refused. Moving that control (`take_laser_control
 `release_laser`) is the person's call: ask first. Under `--use-legacy-mi-mode` the excimer
 stays by hand.
 
-To stop a deposition that is going wrong, call `chamber.pld.stop_fire` (no control
-needed); the fire it cuts short fails with "stopped by request", and that ends the run --
-never fire again to make up the pulses.
+To stop a deposition or preablation that is going wrong, call
+`experiment.driver.stop_deposition`: it ends the task (its result says `aborted`) and
+stops the laser. `chamber.pld.stop_fire` stops only a pulse train, for a `fire_laser` of
+your own. A fire cut short fails with "stopped by request", and that ends the run --
+never fire again to make up the pulses. Under `--use-legacy-mi-mode` neither works: ask
+the person to press STOP on PASCAL.
 
 Also by hand, with no tool: RHEED gun and sample-stage adjustment,
 and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.

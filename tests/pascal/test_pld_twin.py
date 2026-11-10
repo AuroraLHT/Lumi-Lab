@@ -179,6 +179,41 @@ async def test_stop_fire_aborts_a_deposition(handler):
     assert state.controller == "lumi-pascal"
 
 
+async def test_stop_deposition_ends_the_drivers_task(handler, tmp_path):
+    # experiment.driver.stop_deposition over the twin: the deposition task ends aborted
+    # and the train stops part-way.
+    import sys
+    from pathlib import Path
+
+    from lumi.contracts.payloads.experiment import PerformDeposition, StopDeposition
+
+    sys.path.insert(0, str(Path(__file__).parents[1] / "experiment"))
+    from test_pld_chamber import make_handler, wait_task
+
+    h = handler
+    driver, db = await make_handler(tmp_path, PldChamber(HandlerBus(h)))
+    try:
+        before = (await h.chamber_state(Empty())).laser.pulses_fired
+        await driver.perform_deposition(PerformDeposition(
+            num_pulse=1000, laser_repetition_rate=10.0, target_id="A", is_dryrun=False))
+        for _ in range(300):  # past the carousel move, into the train
+            if (await h.chamber_state(Empty())).laser.pulses_fired > before:
+                break
+            await asyncio.sleep(0.1)
+        reply = await driver.stop_deposition(StopDeposition(reason="twin test"))
+        assert reply.task_kind == "perform_deposition", reply
+        assert reply.laser != "the laser is not firing: nothing sent", reply
+        result = await wait_task(driver)
+        assert result == {"ok": False, "aborted": True, "error": "stopped by request: twin test"}
+        await asyncio.sleep(2.0)
+        state = await h.chamber_state(Empty())
+        fired = state.laser.pulses_fired - before
+        await asyncio.sleep(1.0)
+        assert 0 < fired == (await h.chamber_state(Empty())).laser.pulses_fired - before < 1000
+    finally:
+        await db.close()
+
+
 async def test_pumps_load_lock_and_heater_gains_are_read(handler):
     # 9858307: read only, plus the refusals that send nothing. Venting is left alone.
     h = handler
@@ -207,10 +242,11 @@ async def test_another_client_holding_control_is_a_refusal(handler):
     gui = PldClient(ADDRESS, client="pld-gui")
     try:
         assert (await asyncio.to_thread(gui.acquire, False)).granted
+        # GetState names the holder as soon as AcquireControl returns (REA d0f5cd5).
+        assert (await asyncio.to_thread(gui.state)).controller == "pld-gui"
         reply = await h.set_mask_position(PldPositionRequest(position=12.0, wait=True))
         assert not reply.ok and "pld-gui" in reply.message
-        # Still the GUI's: lumi-pascal cannot take it without force. (ChamberState's
-        # `controller` is not read here: pld-service copies it in on its next poll.)
+        # Still the GUI's: lumi-pascal cannot take it without force.
         lumi = PldClient(ADDRESS, client="lumi-pascal")
         try:
             assert not (await asyncio.to_thread(lumi.acquire, False)).granted
