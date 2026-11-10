@@ -239,7 +239,8 @@ PLD = Capability(
            doc="Close the growth-log CSV. Nothing is logged until start_logging."),
     ),
     stream=StreamSpec("state", PldChamberState,
-                      doc="Every poll of the chamber, as chamber_state returns it, at about 1 Hz."),
+                      doc="Every poll of the chamber, as chamber_state returns it: 2 Hz by "
+                          "default (`[pascal.pld] state_rate_hz`)."),
 )
 
 CAMERA = Capability(

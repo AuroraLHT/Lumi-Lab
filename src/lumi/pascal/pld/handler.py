@@ -149,8 +149,10 @@ class PldHandler:
     release_laser = _op("ReleaseLaser", lambda r: pb.Empty())
 
     async def fire_laser(self, req) -> PldReply:
-        # The service has no rate reading; the log's LaserHz is the rate asked for here.
+        # The service has no rate reading; the log's LaserHz and Laser set are what was
+        # asked for here.
         self.state_monitor.laser_rate = float(req.rate_hz)
+        self.state_monitor.laser_set = int(req.pulses)
         return await self._operate("FireLaser", pb.LaserRequest(pulses=req.pulses, rate_hz=req.rate_hz, wait=req.wait))
 
     # Needs no control, and runs alongside a waited fire_laser (each op is its own thread).

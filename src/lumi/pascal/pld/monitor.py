@@ -11,17 +11,21 @@ The column mapping is the REA side's (`src/rea/lumi_adapter/growth_log.py`), whi
 what the legacy adapter writes. Its caveats, from the REA session (2026-11-05):
 
 - Columns the chamber has no reading for are 0: FocusLns, MirrorPs, ATN, BTFvalve,
-  PwrMeter, Laser moni/set, MFC2-5, TG Spin Speed, TG-Z.
+  PwrMeter, MFC2-5, TG Spin Speed, TG-Z. REA (2026-11-10): no port carries a power
+  meter, MFC2 is unused and MFC3-5 do not exist, spin is on/off only, and TG-Z is
+  never polled (whether the stage exists is unconfirmed).
 - Status words carry only the bits the service knows; every other bit is 0, and so are
-  DepoLaserStat, Pump Stat, Valve Stat2, Other Stat and the A*/W* words. (So
-  `get_pump_status` reads every pump as off under this driver.)
-- `Back Pres Main` is TCG[0]; the TCG order in the gauge reply is not confirmed yet.
+  DepoLaserStat, Other Stat and the A*/W* words (Valve Stat2 carries only CV301).
+- `Back Pres Main` is TCG[0], TCG1 in the gauge reply's order: DP1's foreline (its SP1
+  follows the RP1/DP1 button). Confirmed by order only -- every capture had it at the
+  1.00E-04 floor.
 - `Mask2` carries the RHEED gun X position.
 - NaN readings (pyrometer below ~140 C, IG1 warming up) are written as 0, as PLD
   Controller shows them.
 - `LaserHz` is not a service reading: it is the rate of the train this node started,
   while that train is firing, and 0 otherwise (the recorded PLD Controller logs idle it
-  at 0 too).
+  at 0 too). `Laser set` is that train's pulse count, and `Laser moni` the service's
+  count of pulses fired in it, as the simulator writes them.
 """
 
 from __future__ import annotations
@@ -78,13 +82,14 @@ class GrowthLog:
     def active(self) -> bool:
         return self._file is not None
 
-    def write(self, state, when: datetime.datetime | None = None, laser_rate: float = 0.0) -> None:
+    def write(self, state, when: datetime.datetime | None = None, laser_rate: float = 0.0,
+              laser_set: int = 0) -> None:
         with self._lock:
             if self._file is None:
                 return
             if when is None:
                 when = datetime.datetime.fromtimestamp(state.time) if state.time else datetime.datetime.now()
-            self._write(render_row(values_from_state(state, laser_rate), when))
+            self._write(render_row(values_from_state(state, laser_rate, laser_set), when))
 
     def _write(self, fields: list[str]) -> None:
         buffer = io.StringIO()
@@ -110,8 +115,10 @@ class PldStateMonitor(threading.Thread):
         self.growth_log = growth_log
         self.interval_s = float(interval_s)
         self.rate_hz = rate_hz
-        #: The rate of the train this node last started; see LaserHz in the module doc.
+        #: The rate and pulse count of the train this node last started; see LaserHz in
+        #: the module doc.
         self.laser_rate = 0.0
+        self.laser_set = 0
         self.latest = None
         self.latest_at = 0.0
         self.last_error: str | None = None
@@ -161,7 +168,7 @@ class PldStateMonitor(threading.Thread):
         now = time.monotonic()
         if now >= self._next_row:
             try:
-                self.growth_log.write(state, laser_rate=self.laser_rate)
+                self.growth_log.write(state, laser_rate=self.laser_rate, laser_set=self.laser_set)
             except Exception:
                 log.exception("could not write the growth log row")
             self._next_row = max(now, self._next_row + self.interval_s)

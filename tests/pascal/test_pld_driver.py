@@ -187,6 +187,23 @@ async def test_nan_readings_become_none_and_zero_in_the_log():
     assert values["TG No."] == 7
 
 
+async def test_the_log_carries_the_train_this_node_started():
+    # LaserHz and Laser set are what fire_laser asked for; Laser moni is the count so
+    # far, as the simulator writes them (the monitor's pulse chart reads all three).
+    state = pb.ChamberState(laser=pb.Laser(status="firing", pulses_fired=120))
+    values = values_from_state(state, laser_rate=10.0, laser_set=500)
+    assert (values["LaserHz"], values["Laser set"], values["Laser moni"], values["LaserPuls"]) == (10.0, 500, 120, 120)
+
+
+async def test_every_named_valve_has_its_confirmed_bit():
+    # REA's map off PLD Controller's own log (2026-11-10); 0x077F is the chamber idle.
+    idle = {name: True for name in ("MV10", "MV11", "FV1", "MV20", "FV20", "MV3", "FV3", "MV21", "FV21", "CV1")}
+    values = values_from_state(pb.ChamberState(valves=idle | {"RV3": False, "VT1": False, "VT2": False}))
+    assert (values["Valve Stat1"], values["Valve Stat2"]) == (0x077F, 0)
+    values = values_from_state(pb.ChamberState(valves={"VT2": True, "CV301": True}))
+    assert (values["Valve Stat1"], values["Valve Stat2"]) == (1 << 12, 1 << 2)
+
+
 async def test_the_unused_driver_refuses_every_op():
     pld_off = DisabledCapability(PLD, "use --use-legacy-mi-mode", PldReadout(driver="legacy-mi"))
     with pytest.raises(RuntimeError, match="legacy"):

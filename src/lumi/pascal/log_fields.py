@@ -40,9 +40,18 @@ PARSE_DICT["Valve Stat1"] = {
     5: "MV3 (L/L)",
     6: "FV3 (L/L)",
     7: "RV3 (L/L)",
+    8: "MV21 (2nd RHEED)",
+    9: "FV21 (2nd RHEED)",
+    10: "CV1",
+    11: "VT1 (L/L N2 vent)",
+    12: "VT2 (L/L air vent)",
 }
 
-# Valve Stat2 is not used in the current version
+# Bits 3, 4 and 8-12 of Valve Stat1, and CV301 here, were confirmed by REA (2026-11-10)
+# against PLD Controller's own log: each named PLC capture flips exactly one bit. Every
+# other Valve Stat2 bit is unknown. CV301 opens and closes with gas use, and the PLC
+# closes it itself on the heater's valve interlock; either state is normal.
+PARSE_DICT["Valve Stat2"] = {2: "CV301"}
 
 PARSE_DICT["Shut Stat"] = {0: "Sample Shutter"}
 

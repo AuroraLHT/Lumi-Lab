@@ -734,6 +734,8 @@ class BaseExperimentManager:
         fields = [
             "MV10 (Main)", "MV11 (Main bypass)", "FV1 (Main)", "MV2 (RHEED)",
             "FV2 (RHEED)", "MV3 (L/L)", "FV3 (L/L)", "RV3 (L/L)",
+            "MV21 (2nd RHEED)", "FV21 (2nd RHEED)", "CV1", "VT1 (L/L N2 vent)",
+            "VT2 (L/L air vent)", "CV301",
         ]
         return {f: _truthy(values[f]) for f in fields}
 
