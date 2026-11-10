@@ -17,7 +17,7 @@
 #   scripts/start_server_host.sh [--host HOST] [--user U] [--password P]
 #                                [--root DIR] [--workers N]
 #                                [--no-detection] [--no-monitor]
-#                                [--with-experiment|--no-experiment]
+#                                [--with-experiment|--no-experiment] [--use-legacy-mi-mode]
 #                                [--with-rheed-sim|--no-rheed-sim]
 #                                [--allow-insecure-auth] [--allow-plain-http] [--check]
 #
@@ -29,6 +29,11 @@
 #   --with-experiment / --no-experiment
 #                 start (default) or skip the experiment node -- the PLD growth
 #                 driver the notebooks and the MCP server talk to
+#   --use-legacy-mi-mode
+#                 the experiment node drives the chamber through PLD Controller's MI
+#                 mode instead of pld-service. The instrument host's pascal node must
+#                 run with the same flag (start_instrument_host.sh --use-legacy-mi-mode),
+#                 and so should the MCP server (start_mcp_server.sh)
 #   --with-rheed-sim / --no-rheed-sim
 #                 start (default) or skip the simulation node -- RHEED patterns
 #                 computed from a crystal structure. Needs `uv sync --extra rheedsim`
@@ -66,6 +71,7 @@ WITH_DETECTION=1
 WITH_MONITOR=1
 WITH_EXPERIMENT=1
 WITH_RHEED_SIM=1
+LEGACY_MI=0
 ALLOW_INSECURE_AUTH=0
 ALLOW_PLAIN_HTTP=0
 CHECK_ONLY=0
@@ -83,10 +89,11 @@ while [[ $# -gt 0 ]]; do
         --no-experiment) WITH_EXPERIMENT=0; shift ;;
         --with-rheed-sim) WITH_RHEED_SIM=1; shift ;;
         --no-rheed-sim) WITH_RHEED_SIM=0; shift ;;
+        --use-legacy-mi-mode) LEGACY_MI=1; shift ;;
         --allow-insecure-auth) ALLOW_INSECURE_AUTH=1; shift ;;
         --allow-plain-http) ALLOW_PLAIN_HTTP=1; shift ;;
         --check) CHECK_ONLY=1; shift ;;
-        -h|--help) sed -n '3,43p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '3,48p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -433,7 +440,9 @@ fi
 # chamber/rheed/storage, like storage is of rheed/chamber -- it needs them already
 # up, which they are by here.
 if [[ $WITH_EXPERIMENT -eq 1 ]]; then
-    start_node experiment --host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS"
+    EXPERIMENT_ARGS=(--host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS")
+    [[ $LEGACY_MI -eq 1 ]] && EXPERIMENT_ARGS+=(--use-legacy-mi-mode)
+    start_node experiment "${EXPERIMENT_ARGS[@]}"
 fi
 
 # RHEED pattern simulation: no hardware and no other node to wait for.
@@ -460,7 +469,11 @@ echo "logs in $LOG_DIR"
 echo
 echo "now start the instrument host (pascal + rheed) against this broker:"
 echo "  scripts/start_instrument_host.sh --host <this machine's IP> --user <node user> --password <pw> \\"
-echo "      --log <chamber log folder> --mi <MI mode folder>"
+if [[ $LEGACY_MI -eq 1 ]]; then
+    echo "      --use-legacy-mi-mode --log <chamber log folder> --mi <MI mode folder>"
+else
+    echo "      --log <growth log folder>     # pld-service must be running there"
+fi
 
 # Exit as soon as any node dies, rather than sitting on a half-dead stack.
 while true; do

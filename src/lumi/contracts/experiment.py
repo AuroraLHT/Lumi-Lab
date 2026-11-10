@@ -308,12 +308,15 @@ DRIVER = Capability(
                "start_mi_logging(interval_s=1) drops it to 1s)."),
 
         Op("check_mi_mode", CheckMiMode, MiModeStatus,
-           doc="Check that PASCAL is in MI Mode, i.e. taking commands from this "
-               "software. Nothing in the chamber log says so: with MI Mode off every "
-               "command hangs until it times out. This sends a no-op script (`Wait 0 "
-               "sec`) and reports `on` if it ran within timeout_s, `off` if not (ask a "
-               "person to switch PASCAL to MI Mode), or `busy` if another script is "
-               "running and the probe cannot tell. Run it before a growth.",
+           doc="Check that the chamber is taking commands from this software. Run it "
+               "before a growth. With the pld-service driver (the default): `on` when "
+               "the service is connected and operable, `off` when it is not answering "
+               "or is read-only on hardware (a person must restart it with "
+               "--allow-operations), `busy` when another client (the REA GUI) holds "
+               "control. With --use-legacy-mi-mode: sends a no-op MI script (`Wait 0 "
+               "sec`) and reports `on` if PASCAL ran it within timeout_s, `off` if not "
+               "(ask a person to switch PASCAL to MI Mode), or `busy` if another script "
+               "is running and the probe cannot tell.",
            timeout_s=MOTION_TIMEOUT_S),
 
         # --- fast hardware control

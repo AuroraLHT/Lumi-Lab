@@ -717,6 +717,3828 @@
         "update": null
       },
       {
+        "kind": "duplex",
+        "name": "pld",
+        "ops": [
+          {
+            "name": "chamber_state",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PldExcimer": {
+                  "description": "The COMPexPro as its own polls report it.",
+                  "properties": {
+                    "codes": {
+                      "items": {
+                        "$ref": "#/$defs/PldLaserCode"
+                      },
+                      "title": "Codes",
+                      "type": "array"
+                    },
+                    "connected": {
+                      "default": false,
+                      "title": "Connected",
+                      "type": "boolean"
+                    },
+                    "control": {
+                      "default": false,
+                      "description": "The laser takes settings from our port; false = the second PC has it",
+                      "title": "Control",
+                      "type": "boolean"
+                    },
+                    "counter": {
+                      "default": 0,
+                      "title": "Counter",
+                      "type": "integer"
+                    },
+                    "energy": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Measured average while running, mJ",
+                      "title": "Energy"
+                    },
+                    "energy_max": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Energy Max"
+                    },
+                    "energy_min": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Energy Min"
+                    },
+                    "energy_set": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Energy set point, mJ",
+                      "title": "Energy Set"
+                    },
+                    "hv": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "HV set point, kV",
+                      "title": "Hv"
+                    },
+                    "hv_max": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Hv Max"
+                    },
+                    "hv_min": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Hv Min"
+                    },
+                    "mode": {
+                      "default": "",
+                      "description": "Running mode, e.g. HV PGR, EGY PGR",
+                      "title": "Mode",
+                      "type": "string"
+                    },
+                    "opmode": {
+                      "default": "",
+                      "title": "Opmode",
+                      "type": "string"
+                    },
+                    "present": {
+                      "default": false,
+                      "description": "The service has a laser link",
+                      "title": "Present",
+                      "type": "boolean"
+                    },
+                    "reprate": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Reprate"
+                    },
+                    "status": {
+                      "default": "",
+                      "title": "Status",
+                      "type": "string"
+                    },
+                    "trigger": {
+                      "default": "",
+                      "title": "Trigger",
+                      "type": "string"
+                    },
+                    "tube_pressure": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Tube Pressure"
+                    },
+                    "tube_temperature": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Tube Temperature"
+                    },
+                    "version": {
+                      "default": "",
+                      "title": "Version",
+                      "type": "string"
+                    },
+                    "waiting": {
+                      "default": false,
+                      "description": "OFF,WAIT: switching on, about 8 s",
+                      "title": "Waiting",
+                      "type": "boolean"
+                    }
+                  },
+                  "title": "PldExcimer",
+                  "type": "object"
+                },
+                "PldFlowPoint": {
+                  "properties": {
+                    "sccm": {
+                      "title": "Sccm",
+                      "type": "number"
+                    },
+                    "torr": {
+                      "title": "Torr",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "sccm",
+                    "torr"
+                  ],
+                  "title": "PldFlowPoint",
+                  "type": "object"
+                },
+                "PldGas": {
+                  "properties": {
+                    "flow_max": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Flow Max"
+                    },
+                    "flow_min": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Flow Min"
+                    },
+                    "mfc1_flow": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mfc1 Flow"
+                    },
+                    "mfc1_setpoint": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mfc1 Setpoint"
+                    },
+                    "pressure_control": {
+                      "default": false,
+                      "title": "Pressure Control",
+                      "type": "boolean"
+                    },
+                    "pressure_gauge": {
+                      "default": "",
+                      "description": "IG1, CDG10 or CDG11",
+                      "title": "Pressure Gauge",
+                      "type": "string"
+                    },
+                    "pressure_kd": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pressure Kd"
+                    },
+                    "pressure_ki": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pressure Ki"
+                    },
+                    "pressure_kp": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pressure Kp"
+                    },
+                    "pressure_mode": {
+                      "default": "",
+                      "description": "low (table), high (PID), auto-tune, switching to low|high",
+                      "title": "Pressure Mode",
+                      "type": "string"
+                    },
+                    "pressure_setpoint": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Torr; None when not set",
+                      "title": "Pressure Setpoint"
+                    },
+                    "pressure_switch_step": {
+                      "default": "",
+                      "title": "Pressure Switch Step",
+                      "type": "string"
+                    },
+                    "pressure_table": {
+                      "items": {
+                        "$ref": "#/$defs/PldFlowPoint"
+                      },
+                      "title": "Pressure Table",
+                      "type": "array"
+                    },
+                    "pumping": {
+                      "default": "",
+                      "description": "full, throttled, closed (from MV10 / MV11)",
+                      "title": "Pumping",
+                      "type": "string"
+                    }
+                  },
+                  "title": "PldGas",
+                  "type": "object"
+                },
+                "PldHeater": {
+                  "properties": {
+                    "auto_tune": {
+                      "default": false,
+                      "description": "tune_heater is running",
+                      "title": "Auto Tune",
+                      "type": "boolean"
+                    },
+                    "current_max": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Current Max"
+                    },
+                    "current_min": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "PID output limits, A",
+                      "title": "Current Min"
+                    },
+                    "current_monitor": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Current Monitor"
+                    },
+                    "current_set": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Last current written to the LD, A",
+                      "title": "Current Set"
+                    },
+                    "emissivity": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Emissivity"
+                    },
+                    "kd": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Kd"
+                    },
+                    "key_on": {
+                      "default": false,
+                      "title": "Key On",
+                      "type": "boolean"
+                    },
+                    "ki": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Ki"
+                    },
+                    "kp": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "PID gains in use: A/C, A/(C s), A s/C",
+                      "title": "Kp"
+                    },
+                    "pid_on": {
+                      "default": false,
+                      "title": "Pid On",
+                      "type": "boolean"
+                    },
+                    "power_on": {
+                      "default": false,
+                      "title": "Power On",
+                      "type": "boolean"
+                    },
+                    "ramp_c_per_min": {
+                      "default": 0.0,
+                      "description": "0 = jump",
+                      "title": "Ramp C Per Min",
+                      "type": "number"
+                    },
+                    "ready": {
+                      "default": false,
+                      "description": "Valve interlock satisfied",
+                      "title": "Ready",
+                      "type": "boolean"
+                    },
+                    "start_on": {
+                      "default": false,
+                      "title": "Start On",
+                      "type": "boolean"
+                    },
+                    "started": {
+                      "default": false,
+                      "title": "Started",
+                      "type": "boolean"
+                    },
+                    "temperature": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Pyrometer, C; None below ~140 C",
+                      "title": "Temperature"
+                    },
+                    "temperature_goal": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Final PID setpoint, C",
+                      "title": "Temperature Goal"
+                    },
+                    "temperature_setpoint": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The ramped setpoint the PID follows now",
+                      "title": "Temperature Setpoint"
+                    },
+                    "threshold_on": {
+                      "default": false,
+                      "title": "Threshold On",
+                      "type": "boolean"
+                    }
+                  },
+                  "title": "PldHeater",
+                  "type": "object"
+                },
+                "PldLaser": {
+                  "description": "The PLC's trigger train (FireLaser), not the excimer itself.",
+                  "properties": {
+                    "missed_shots": {
+                      "default": 0,
+                      "title": "Missed Shots",
+                      "type": "integer"
+                    },
+                    "pulses_fired": {
+                      "default": 0,
+                      "title": "Pulses Fired",
+                      "type": "integer"
+                    },
+                    "status": {
+                      "default": "",
+                      "description": "idle, firing, finished",
+                      "title": "Status",
+                      "type": "string"
+                    }
+                  },
+                  "title": "PldLaser",
+                  "type": "object"
+                },
+                "PldLaserCode": {
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "default": "",
+                      "description": "interlock-hw, interlock-sw, warning",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "meaning": {
+                      "default": "",
+                      "title": "Meaning",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code"
+                  ],
+                  "title": "PldLaserCode",
+                  "type": "object"
+                },
+                "PldLoadLock": {
+                  "properties": {
+                    "below_sp1": {
+                      "default": false,
+                      "description": "TCG31 below ~4e-2 Torr",
+                      "title": "Below Sp1",
+                      "type": "boolean"
+                    },
+                    "below_sp2": {
+                      "default": false,
+                      "description": "TCG31 below SP2 (~400 Torr rising, ~55 falling)",
+                      "title": "Below Sp2",
+                      "type": "boolean"
+                    },
+                    "by_service": {
+                      "default": false,
+                      "description": "The sequence is the service's (cancel_load_lock stops it)",
+                      "title": "By Service",
+                      "type": "boolean"
+                    },
+                    "gv1": {
+                      "default": "",
+                      "description": "Manual gate valve to the main chamber: closed, open, moving",
+                      "title": "Gv1",
+                      "type": "string"
+                    },
+                    "hatch_closed": {
+                      "default": false,
+                      "title": "Hatch Closed",
+                      "type": "boolean"
+                    },
+                    "ig3_disabled": {
+                      "default": false,
+                      "title": "Ig3 Disabled",
+                      "type": "boolean"
+                    },
+                    "pump_down_complete": {
+                      "default": false,
+                      "title": "Pump Down Complete",
+                      "type": "boolean"
+                    },
+                    "ready": {
+                      "default": false,
+                      "description": "The PLC's vent condition: a sequence may start",
+                      "title": "Ready",
+                      "type": "boolean"
+                    },
+                    "sequence": {
+                      "default": "",
+                      "description": "\"\", \"auto vent\" or \"auto vac\" (the service's or the PLC's own)",
+                      "title": "Sequence",
+                      "type": "string"
+                    },
+                    "step": {
+                      "default": "",
+                      "description": "What the sequence is doing now",
+                      "title": "Step",
+                      "type": "string"
+                    }
+                  },
+                  "title": "PldLoadLock",
+                  "type": "object"
+                },
+                "PldMotion": {
+                  "properties": {
+                    "auto_spin": {
+                      "default": false,
+                      "title": "Auto Spin",
+                      "type": "boolean"
+                    },
+                    "auto_twist": {
+                      "default": false,
+                      "title": "Auto Twist",
+                      "type": "boolean"
+                    },
+                    "axes": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "description": "axis -> IDLE/MOVING/HOMING/SETTLING",
+                      "title": "Axes",
+                      "type": "object"
+                    },
+                    "mask_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Mask Position"
+                    },
+                    "motor_free": {
+                      "default": false,
+                      "description": "Holding lock released: axes back-driveable, not under servo",
+                      "title": "Motor Free",
+                      "type": "boolean"
+                    },
+                    "rheed_gun_x": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rheed Gun X"
+                    },
+                    "sample_angle": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Sample Angle"
+                    },
+                    "target": {
+                      "default": "",
+                      "description": "A..F, Clear, or empty between slots",
+                      "title": "Target",
+                      "type": "string"
+                    },
+                    "target_angle": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Target Angle"
+                    },
+                    "target_spinning": {
+                      "default": false,
+                      "title": "Target Spinning",
+                      "type": "boolean"
+                    },
+                    "target_twisting": {
+                      "default": false,
+                      "title": "Target Twisting",
+                      "type": "boolean"
+                    }
+                  },
+                  "title": "PldMotion",
+                  "type": "object"
+                },
+                "PldPressures": {
+                  "properties": {
+                    "cdg10": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Cdg10"
+                    },
+                    "cdg11": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Cdg11"
+                    },
+                    "ig1": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Main chamber ion gauge, Torr; 0 with the filament off",
+                      "title": "Ig1"
+                    },
+                    "ig1_on": {
+                      "default": false,
+                      "title": "Ig1 On",
+                      "type": "boolean"
+                    },
+                    "ig3": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Load-lock ion gauge, Torr",
+                      "title": "Ig3"
+                    },
+                    "ig3_on": {
+                      "default": false,
+                      "title": "Ig3 On",
+                      "type": "boolean"
+                    },
+                    "tcg": {
+                      "description": "TCG1/2/3 (order not yet confirmed)",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "title": "Tcg",
+                      "type": "array"
+                    },
+                    "tcg31": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Tcg31"
+                    }
+                  },
+                  "title": "PldPressures",
+                  "type": "object"
+                },
+                "PldPump": {
+                  "properties": {
+                    "at_speed": {
+                      "default": false,
+                      "description": "TMPs: NOR bit; dry pumps: running past the ~12 s acceleration",
+                      "title": "At Speed",
+                      "type": "boolean"
+                    },
+                    "running": {
+                      "default": false,
+                      "description": "The PLC run bit (TMP1 keeps it ~4.5 min while it spins down)",
+                      "title": "Running",
+                      "type": "boolean"
+                    },
+                    "state": {
+                      "default": "",
+                      "description": "off, starting, at speed, stopping",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "title": "PldPump",
+                  "type": "object"
+                }
+              },
+              "description": "One poll cycle of pld-service: everything it reads off the chamber.",
+              "properties": {
+                "backend": {
+                  "default": "",
+                  "description": "TWIN or HARDWARE",
+                  "title": "Backend",
+                  "type": "string"
+                },
+                "connected": {
+                  "default": false,
+                  "description": "Every port answered in the last cycle",
+                  "title": "Connected",
+                  "type": "boolean"
+                },
+                "controller": {
+                  "default": "",
+                  "description": "Client holding control; empty = nobody",
+                  "title": "Controller",
+                  "type": "string"
+                },
+                "excimer": {
+                  "$ref": "#/$defs/PldExcimer"
+                },
+                "gas": {
+                  "$ref": "#/$defs/PldGas"
+                },
+                "heater": {
+                  "$ref": "#/$defs/PldHeater"
+                },
+                "interlocks": {
+                  "description": "Active interlocks",
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Interlocks",
+                  "type": "array"
+                },
+                "laser": {
+                  "$ref": "#/$defs/PldLaser"
+                },
+                "load_lock": {
+                  "$ref": "#/$defs/PldLoadLock"
+                },
+                "motion": {
+                  "$ref": "#/$defs/PldMotion"
+                },
+                "pressures": {
+                  "$ref": "#/$defs/PldPressures"
+                },
+                "pumps": {
+                  "additionalProperties": {
+                    "$ref": "#/$defs/PldPump"
+                  },
+                  "description": "TMP1, TMP20, TMP21, TMP3, DP1-DP3",
+                  "title": "Pumps",
+                  "type": "object"
+                },
+                "read_only": {
+                  "default": false,
+                  "description": "Hardware started without --allow-operations: every operation is refused",
+                  "title": "Read Only",
+                  "type": "boolean"
+                },
+                "sample_shutter_away": {
+                  "default": false,
+                  "description": "True = open for deposition",
+                  "title": "Sample Shutter Away",
+                  "type": "boolean"
+                },
+                "time": {
+                  "default": 0.0,
+                  "description": "Unix seconds when the poll cycle finished",
+                  "title": "Time",
+                  "type": "number"
+                },
+                "valves": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "description": "name -> open",
+                  "title": "Valves",
+                  "type": "object"
+                }
+              },
+              "title": "PldChamberState",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "recent_events",
+            "request": {
+              "properties": {
+                "limit": {
+                  "default": 50,
+                  "description": "At most this many, newest last",
+                  "maximum": 1000,
+                  "minimum": 1,
+                  "title": "Limit",
+                  "type": "integer"
+                }
+              },
+              "title": "PldEventQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PldEvent": {
+                  "properties": {
+                    "detail": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "title": "Detail",
+                      "type": "object"
+                    },
+                    "kind": {
+                      "default": "",
+                      "description": "valve_changed, move_done, interlock, laser_done, error, control, ...",
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "message": {
+                      "default": "",
+                      "title": "Message",
+                      "type": "string"
+                    },
+                    "time": {
+                      "default": 0.0,
+                      "title": "Time",
+                      "type": "number"
+                    }
+                  },
+                  "title": "PldEvent",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "events": {
+                  "items": {
+                    "$ref": "#/$defs/PldEvent"
+                  },
+                  "title": "Events",
+                  "type": "array"
+                }
+              },
+              "title": "PldEventList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "acquire_control",
+            "request": {
+              "properties": {
+                "force": {
+                  "default": false,
+                  "description": "Take control from another client. Explicit and logged by the service; never needed unless someone else holds it",
+                  "title": "Force",
+                  "type": "boolean"
+                }
+              },
+              "title": "PldControlRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "controller": {
+                  "default": "",
+                  "title": "Controller",
+                  "type": "string"
+                },
+                "granted": {
+                  "title": "Granted",
+                  "type": "boolean"
+                },
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "granted"
+              ],
+              "title": "PldControlReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "release_control",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "controller": {
+                  "default": "",
+                  "title": "Controller",
+                  "type": "string"
+                },
+                "granted": {
+                  "title": "Granted",
+                  "type": "boolean"
+                },
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "granted"
+              ],
+              "title": "PldControlReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_valve",
+            "request": {
+              "properties": {
+                "open": {
+                  "title": "Open",
+                  "type": "boolean"
+                },
+                "valve": {
+                  "description": "Reference name, e.g. MV10, CV301",
+                  "title": "Valve",
+                  "type": "string"
+                },
+                "wait": {
+                  "default": true,
+                  "description": "Return once the status bit confirms",
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "valve",
+                "open"
+              ],
+              "title": "PldValveRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "select_target",
+            "request": {
+              "properties": {
+                "target": {
+                  "description": "A..F or Clear",
+                  "title": "Target",
+                  "type": "string"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "target"
+              ],
+              "title": "PldTargetRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_mask_position",
+            "request": {
+              "properties": {
+                "position": {
+                  "description": "mm for the mask and RHEED gun, degrees 0..360 for the sample",
+                  "title": "Position",
+                  "type": "number"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "title": "PldPositionRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_sample_position",
+            "request": {
+              "properties": {
+                "position": {
+                  "description": "mm for the mask and RHEED gun, degrees 0..360 for the sample",
+                  "title": "Position",
+                  "type": "number"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "title": "PldPositionRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_rheed_gun_x",
+            "request": {
+              "properties": {
+                "position": {
+                  "description": "mm for the mask and RHEED gun, degrees 0..360 for the sample",
+                  "title": "Position",
+                  "type": "number"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "position"
+              ],
+              "title": "PldPositionRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "home_axis",
+            "request": {
+              "properties": {
+                "axis": {
+                  "enum": [
+                    "TG",
+                    "Mask1",
+                    "RHEED gun X"
+                  ],
+                  "title": "Axis",
+                  "type": "string"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "axis"
+              ],
+              "title": "PldAxisRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_target_spin",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_target_twist",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_motor_free",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_target_auto_motion",
+            "request": {
+              "properties": {
+                "spin": {
+                  "default": true,
+                  "title": "Spin",
+                  "type": "boolean"
+                },
+                "twist": {
+                  "default": false,
+                  "title": "Twist",
+                  "type": "boolean"
+                }
+              },
+              "title": "PldAutoMotionRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_heater_key",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_heater_start",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_heater_threshold",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_heating_current",
+            "request": {
+              "properties": {
+                "amps": {
+                  "title": "Amps",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "amps"
+              ],
+              "title": "PldCurrentRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_heater_current_limits",
+            "request": {
+              "properties": {
+                "max_amps": {
+                  "title": "Max Amps",
+                  "type": "number"
+                },
+                "min_amps": {
+                  "title": "Min Amps",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "min_amps",
+                "max_amps"
+              ],
+              "title": "PldCurrentLimitsRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_temperature",
+            "request": {
+              "properties": {
+                "celsius": {
+                  "title": "Celsius",
+                  "type": "number"
+                },
+                "ramp_c_per_min": {
+                  "default": 0.0,
+                  "description": "0 = jump",
+                  "title": "Ramp C Per Min",
+                  "type": "number"
+                },
+                "tolerance": {
+                  "default": 0.0,
+                  "description": "C; 0 = the service default, 5 C",
+                  "title": "Tolerance",
+                  "type": "number"
+                },
+                "wait": {
+                  "default": false,
+                  "description": "Return once within `tolerance`",
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "celsius"
+              ],
+              "title": "PldTemperatureRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_temperature_control",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_sample_shutter",
+            "request": {
+              "properties": {
+                "in_front": {
+                  "description": "True = in front of the sample holder (closed)",
+                  "title": "In Front",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "in_front"
+              ],
+              "title": "PldShutterRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "fire_laser",
+            "request": {
+              "properties": {
+                "pulses": {
+                  "minimum": 1,
+                  "title": "Pulses",
+                  "type": "integer"
+                },
+                "rate_hz": {
+                  "exclusiveMinimum": 0,
+                  "title": "Rate Hz",
+                  "type": "number"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "pulses",
+                "rate_hz"
+              ],
+              "title": "PldFireRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "stop_fire",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_mfc_flow",
+            "request": {
+              "properties": {
+                "mfc": {
+                  "default": 1,
+                  "description": "1 (MFC2 is not used in this chamber)",
+                  "title": "Mfc",
+                  "type": "integer"
+                },
+                "sccm": {
+                  "title": "Sccm",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "sccm"
+              ],
+              "title": "PldFlowRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pressure",
+            "request": {
+              "properties": {
+                "gauge": {
+                  "default": "",
+                  "description": "Empty keeps the present choice",
+                  "enum": [
+                    "",
+                    "IG1",
+                    "CDG10",
+                    "CDG11"
+                  ],
+                  "title": "Gauge",
+                  "type": "string"
+                },
+                "tolerance": {
+                  "default": 0.0,
+                  "description": "Fraction; 0 = the service default, 0.1",
+                  "title": "Tolerance",
+                  "type": "number"
+                },
+                "torr": {
+                  "title": "Torr",
+                  "type": "number"
+                },
+                "wait": {
+                  "default": false,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "torr"
+              ],
+              "title": "PldPressureRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pressure_control",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pressure_flow_limits",
+            "request": {
+              "properties": {
+                "max_sccm": {
+                  "title": "Max Sccm",
+                  "type": "number"
+                },
+                "min_sccm": {
+                  "title": "Min Sccm",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "min_sccm",
+                "max_sccm"
+              ],
+              "title": "PldFlowLimitsRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "tune_pressure",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_ion_gauge",
+            "request": {
+              "properties": {
+                "gauge": {
+                  "enum": [
+                    "IG1",
+                    "IG3"
+                  ],
+                  "title": "Gauge",
+                  "type": "string"
+                },
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "gauge",
+                "on"
+              ],
+              "title": "PldIonGaugeRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "tune_heater",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "on"
+              ],
+              "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "auto_vent",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "auto_vac",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "cancel_load_lock",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pump",
+            "request": {
+              "properties": {
+                "on": {
+                  "title": "On",
+                  "type": "boolean"
+                },
+                "pump": {
+                  "enum": [
+                    "TMP1",
+                    "TMP20",
+                    "TMP21",
+                    "TMP3",
+                    "DP1",
+                    "DP2",
+                    "DP3"
+                  ],
+                  "title": "Pump",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "pump",
+                "on"
+              ],
+              "title": "PldPumpRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "take_laser_control",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "laser_on",
+            "request": {
+              "properties": {
+                "wait": {
+                  "default": true,
+                  "description": "Return once OPMODE is ON (up to 20 s)",
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "title": "PldLaserOnRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "laser_standby",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "laser_off",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_laser_mode",
+            "request": {
+              "properties": {
+                "mode": {
+                  "enum": [
+                    "hv",
+                    "energy"
+                  ],
+                  "title": "Mode",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "title": "PldLaserModeRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_laser_hv",
+            "request": {
+              "properties": {
+                "kv": {
+                  "title": "Kv",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kv"
+              ],
+              "title": "PldLaserHvRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_laser_energy",
+            "request": {
+              "properties": {
+                "mj": {
+                  "title": "Mj",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "mj"
+              ],
+              "title": "PldLaserEnergyRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "release_laser",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "start_logging",
+            "request": {
+              "properties": {
+                "file_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "CSV name in the log folder; default chamber_log_<time>.csv",
+                  "title": "File Name"
+                },
+                "interval_s": {
+                  "default": 1.0,
+                  "description": "Seconds between rows",
+                  "exclusiveMinimum": 0,
+                  "title": "Interval S",
+                  "type": "number"
+                }
+              },
+              "title": "PldLoggingRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "stop_logging",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          }
+        ],
+        "routing_keys": {
+          "control_pattern": "chamber.pld.ctrl.*",
+          "publish": "chamber.pld.pub",
+          "request_pattern": "chamber.pld.req.*",
+          "requests": {
+            "acquire_control": "chamber.pld.req.acquire_control",
+            "auto_vac": "chamber.pld.req.auto_vac",
+            "auto_vent": "chamber.pld.req.auto_vent",
+            "cancel_load_lock": "chamber.pld.req.cancel_load_lock",
+            "chamber_state": "chamber.pld.req.chamber_state",
+            "fire_laser": "chamber.pld.req.fire_laser",
+            "home_axis": "chamber.pld.req.home_axis",
+            "laser_off": "chamber.pld.req.laser_off",
+            "laser_on": "chamber.pld.req.laser_on",
+            "laser_standby": "chamber.pld.req.laser_standby",
+            "recent_events": "chamber.pld.req.recent_events",
+            "release_control": "chamber.pld.req.release_control",
+            "release_laser": "chamber.pld.req.release_laser",
+            "select_target": "chamber.pld.req.select_target",
+            "set_heater_current_limits": "chamber.pld.req.set_heater_current_limits",
+            "set_heater_key": "chamber.pld.req.set_heater_key",
+            "set_heater_start": "chamber.pld.req.set_heater_start",
+            "set_heater_threshold": "chamber.pld.req.set_heater_threshold",
+            "set_heating_current": "chamber.pld.req.set_heating_current",
+            "set_ion_gauge": "chamber.pld.req.set_ion_gauge",
+            "set_laser_energy": "chamber.pld.req.set_laser_energy",
+            "set_laser_hv": "chamber.pld.req.set_laser_hv",
+            "set_laser_mode": "chamber.pld.req.set_laser_mode",
+            "set_mask_position": "chamber.pld.req.set_mask_position",
+            "set_mfc_flow": "chamber.pld.req.set_mfc_flow",
+            "set_motor_free": "chamber.pld.req.set_motor_free",
+            "set_pressure": "chamber.pld.req.set_pressure",
+            "set_pressure_control": "chamber.pld.req.set_pressure_control",
+            "set_pressure_flow_limits": "chamber.pld.req.set_pressure_flow_limits",
+            "set_pump": "chamber.pld.req.set_pump",
+            "set_rheed_gun_x": "chamber.pld.req.set_rheed_gun_x",
+            "set_sample_position": "chamber.pld.req.set_sample_position",
+            "set_sample_shutter": "chamber.pld.req.set_sample_shutter",
+            "set_target_auto_motion": "chamber.pld.req.set_target_auto_motion",
+            "set_target_spin": "chamber.pld.req.set_target_spin",
+            "set_target_twist": "chamber.pld.req.set_target_twist",
+            "set_temperature": "chamber.pld.req.set_temperature",
+            "set_temperature_control": "chamber.pld.req.set_temperature_control",
+            "set_valve": "chamber.pld.req.set_valve",
+            "start_logging": "chamber.pld.req.start_logging",
+            "stop_fire": "chamber.pld.req.stop_fire",
+            "stop_logging": "chamber.pld.req.stop_logging",
+            "take_laser_control": "chamber.pld.req.take_laser_control",
+            "tune_heater": "chamber.pld.req.tune_heater",
+            "tune_pressure": "chamber.pld.req.tune_pressure"
+          },
+          "state": "chamber.pld.state",
+          "update": "chamber.pld.update",
+          "work_queue": "q.chamber.pld.req"
+        },
+        "state": {
+          "properties": {
+            "address": {
+              "default": "",
+              "title": "Address",
+              "type": "string"
+            },
+            "backend": {
+              "default": "",
+              "title": "Backend",
+              "type": "string"
+            },
+            "connected": {
+              "default": false,
+              "title": "Connected",
+              "type": "boolean"
+            },
+            "controller": {
+              "default": "",
+              "title": "Controller",
+              "type": "string"
+            },
+            "driver": {
+              "default": "pld",
+              "description": "Which driver this chamber node runs. 'legacy-mi' = --use-legacy-mi-mode, and every pld op is refused",
+              "enum": [
+                "pld",
+                "legacy-mi"
+              ],
+              "title": "Driver",
+              "type": "string"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "Last error, if the capability is degraded",
+              "title": "Error"
+            },
+            "holds_control": {
+              "default": false,
+              "description": "This node (client 'lumi-pascal') holds control",
+              "title": "Holds Control",
+              "type": "boolean"
+            },
+            "is_running": {
+              "default": false,
+              "title": "Is Running",
+              "type": "boolean"
+            },
+            "is_streaming": {
+              "default": false,
+              "title": "Is Streaming",
+              "type": "boolean"
+            },
+            "laser_control": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "excimer.control: the laser takes settings from the PLD PC (CM=2). False = the second PC has them and every laser op is refused; None = no laser link",
+              "title": "Laser Control"
+            },
+            "log_file": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "description": "The growth-log CSV this node is writing",
+              "title": "Log File"
+            },
+            "read_only": {
+              "default": false,
+              "title": "Read Only",
+              "type": "boolean"
+            }
+          },
+          "title": "PldState",
+          "type": "object"
+        },
+        "stream": {
+          "codec": "json",
+          "name": "state",
+          "payload": {
+            "$defs": {
+              "PldExcimer": {
+                "description": "The COMPexPro as its own polls report it.",
+                "properties": {
+                  "codes": {
+                    "items": {
+                      "$ref": "#/$defs/PldLaserCode"
+                    },
+                    "title": "Codes",
+                    "type": "array"
+                  },
+                  "connected": {
+                    "default": false,
+                    "title": "Connected",
+                    "type": "boolean"
+                  },
+                  "control": {
+                    "default": false,
+                    "description": "The laser takes settings from our port; false = the second PC has it",
+                    "title": "Control",
+                    "type": "boolean"
+                  },
+                  "counter": {
+                    "default": 0,
+                    "title": "Counter",
+                    "type": "integer"
+                  },
+                  "energy": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Measured average while running, mJ",
+                    "title": "Energy"
+                  },
+                  "energy_max": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Energy Max"
+                  },
+                  "energy_min": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Energy Min"
+                  },
+                  "energy_set": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Energy set point, mJ",
+                    "title": "Energy Set"
+                  },
+                  "hv": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "HV set point, kV",
+                    "title": "Hv"
+                  },
+                  "hv_max": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Hv Max"
+                  },
+                  "hv_min": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Hv Min"
+                  },
+                  "mode": {
+                    "default": "",
+                    "description": "Running mode, e.g. HV PGR, EGY PGR",
+                    "title": "Mode",
+                    "type": "string"
+                  },
+                  "opmode": {
+                    "default": "",
+                    "title": "Opmode",
+                    "type": "string"
+                  },
+                  "present": {
+                    "default": false,
+                    "description": "The service has a laser link",
+                    "title": "Present",
+                    "type": "boolean"
+                  },
+                  "reprate": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Reprate"
+                  },
+                  "status": {
+                    "default": "",
+                    "title": "Status",
+                    "type": "string"
+                  },
+                  "trigger": {
+                    "default": "",
+                    "title": "Trigger",
+                    "type": "string"
+                  },
+                  "tube_pressure": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Tube Pressure"
+                  },
+                  "tube_temperature": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Tube Temperature"
+                  },
+                  "version": {
+                    "default": "",
+                    "title": "Version",
+                    "type": "string"
+                  },
+                  "waiting": {
+                    "default": false,
+                    "description": "OFF,WAIT: switching on, about 8 s",
+                    "title": "Waiting",
+                    "type": "boolean"
+                  }
+                },
+                "title": "PldExcimer",
+                "type": "object"
+              },
+              "PldFlowPoint": {
+                "properties": {
+                  "sccm": {
+                    "title": "Sccm",
+                    "type": "number"
+                  },
+                  "torr": {
+                    "title": "Torr",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "sccm",
+                  "torr"
+                ],
+                "title": "PldFlowPoint",
+                "type": "object"
+              },
+              "PldGas": {
+                "properties": {
+                  "flow_max": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Flow Max"
+                  },
+                  "flow_min": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Flow Min"
+                  },
+                  "mfc1_flow": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Mfc1 Flow"
+                  },
+                  "mfc1_setpoint": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Mfc1 Setpoint"
+                  },
+                  "pressure_control": {
+                    "default": false,
+                    "title": "Pressure Control",
+                    "type": "boolean"
+                  },
+                  "pressure_gauge": {
+                    "default": "",
+                    "description": "IG1, CDG10 or CDG11",
+                    "title": "Pressure Gauge",
+                    "type": "string"
+                  },
+                  "pressure_kd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Pressure Kd"
+                  },
+                  "pressure_ki": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Pressure Ki"
+                  },
+                  "pressure_kp": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Pressure Kp"
+                  },
+                  "pressure_mode": {
+                    "default": "",
+                    "description": "low (table), high (PID), auto-tune, switching to low|high",
+                    "title": "Pressure Mode",
+                    "type": "string"
+                  },
+                  "pressure_setpoint": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Torr; None when not set",
+                    "title": "Pressure Setpoint"
+                  },
+                  "pressure_switch_step": {
+                    "default": "",
+                    "title": "Pressure Switch Step",
+                    "type": "string"
+                  },
+                  "pressure_table": {
+                    "items": {
+                      "$ref": "#/$defs/PldFlowPoint"
+                    },
+                    "title": "Pressure Table",
+                    "type": "array"
+                  },
+                  "pumping": {
+                    "default": "",
+                    "description": "full, throttled, closed (from MV10 / MV11)",
+                    "title": "Pumping",
+                    "type": "string"
+                  }
+                },
+                "title": "PldGas",
+                "type": "object"
+              },
+              "PldHeater": {
+                "properties": {
+                  "auto_tune": {
+                    "default": false,
+                    "description": "tune_heater is running",
+                    "title": "Auto Tune",
+                    "type": "boolean"
+                  },
+                  "current_max": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Current Max"
+                  },
+                  "current_min": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "PID output limits, A",
+                    "title": "Current Min"
+                  },
+                  "current_monitor": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Current Monitor"
+                  },
+                  "current_set": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Last current written to the LD, A",
+                    "title": "Current Set"
+                  },
+                  "emissivity": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Emissivity"
+                  },
+                  "kd": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Kd"
+                  },
+                  "key_on": {
+                    "default": false,
+                    "title": "Key On",
+                    "type": "boolean"
+                  },
+                  "ki": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Ki"
+                  },
+                  "kp": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "PID gains in use: A/C, A/(C s), A s/C",
+                    "title": "Kp"
+                  },
+                  "pid_on": {
+                    "default": false,
+                    "title": "Pid On",
+                    "type": "boolean"
+                  },
+                  "power_on": {
+                    "default": false,
+                    "title": "Power On",
+                    "type": "boolean"
+                  },
+                  "ramp_c_per_min": {
+                    "default": 0.0,
+                    "description": "0 = jump",
+                    "title": "Ramp C Per Min",
+                    "type": "number"
+                  },
+                  "ready": {
+                    "default": false,
+                    "description": "Valve interlock satisfied",
+                    "title": "Ready",
+                    "type": "boolean"
+                  },
+                  "start_on": {
+                    "default": false,
+                    "title": "Start On",
+                    "type": "boolean"
+                  },
+                  "started": {
+                    "default": false,
+                    "title": "Started",
+                    "type": "boolean"
+                  },
+                  "temperature": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Pyrometer, C; None below ~140 C",
+                    "title": "Temperature"
+                  },
+                  "temperature_goal": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Final PID setpoint, C",
+                    "title": "Temperature Goal"
+                  },
+                  "temperature_setpoint": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The ramped setpoint the PID follows now",
+                    "title": "Temperature Setpoint"
+                  },
+                  "threshold_on": {
+                    "default": false,
+                    "title": "Threshold On",
+                    "type": "boolean"
+                  }
+                },
+                "title": "PldHeater",
+                "type": "object"
+              },
+              "PldLaser": {
+                "description": "The PLC's trigger train (FireLaser), not the excimer itself.",
+                "properties": {
+                  "missed_shots": {
+                    "default": 0,
+                    "title": "Missed Shots",
+                    "type": "integer"
+                  },
+                  "pulses_fired": {
+                    "default": 0,
+                    "title": "Pulses Fired",
+                    "type": "integer"
+                  },
+                  "status": {
+                    "default": "",
+                    "description": "idle, firing, finished",
+                    "title": "Status",
+                    "type": "string"
+                  }
+                },
+                "title": "PldLaser",
+                "type": "object"
+              },
+              "PldLaserCode": {
+                "properties": {
+                  "code": {
+                    "title": "Code",
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "default": "",
+                    "description": "interlock-hw, interlock-sw, warning",
+                    "title": "Kind",
+                    "type": "string"
+                  },
+                  "meaning": {
+                    "default": "",
+                    "title": "Meaning",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "title": "PldLaserCode",
+                "type": "object"
+              },
+              "PldLoadLock": {
+                "properties": {
+                  "below_sp1": {
+                    "default": false,
+                    "description": "TCG31 below ~4e-2 Torr",
+                    "title": "Below Sp1",
+                    "type": "boolean"
+                  },
+                  "below_sp2": {
+                    "default": false,
+                    "description": "TCG31 below SP2 (~400 Torr rising, ~55 falling)",
+                    "title": "Below Sp2",
+                    "type": "boolean"
+                  },
+                  "by_service": {
+                    "default": false,
+                    "description": "The sequence is the service's (cancel_load_lock stops it)",
+                    "title": "By Service",
+                    "type": "boolean"
+                  },
+                  "gv1": {
+                    "default": "",
+                    "description": "Manual gate valve to the main chamber: closed, open, moving",
+                    "title": "Gv1",
+                    "type": "string"
+                  },
+                  "hatch_closed": {
+                    "default": false,
+                    "title": "Hatch Closed",
+                    "type": "boolean"
+                  },
+                  "ig3_disabled": {
+                    "default": false,
+                    "title": "Ig3 Disabled",
+                    "type": "boolean"
+                  },
+                  "pump_down_complete": {
+                    "default": false,
+                    "title": "Pump Down Complete",
+                    "type": "boolean"
+                  },
+                  "ready": {
+                    "default": false,
+                    "description": "The PLC's vent condition: a sequence may start",
+                    "title": "Ready",
+                    "type": "boolean"
+                  },
+                  "sequence": {
+                    "default": "",
+                    "description": "\"\", \"auto vent\" or \"auto vac\" (the service's or the PLC's own)",
+                    "title": "Sequence",
+                    "type": "string"
+                  },
+                  "step": {
+                    "default": "",
+                    "description": "What the sequence is doing now",
+                    "title": "Step",
+                    "type": "string"
+                  }
+                },
+                "title": "PldLoadLock",
+                "type": "object"
+              },
+              "PldMotion": {
+                "properties": {
+                  "auto_spin": {
+                    "default": false,
+                    "title": "Auto Spin",
+                    "type": "boolean"
+                  },
+                  "auto_twist": {
+                    "default": false,
+                    "title": "Auto Twist",
+                    "type": "boolean"
+                  },
+                  "axes": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "axis -> IDLE/MOVING/HOMING/SETTLING",
+                    "title": "Axes",
+                    "type": "object"
+                  },
+                  "mask_position": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Mask Position"
+                  },
+                  "motor_free": {
+                    "default": false,
+                    "description": "Holding lock released: axes back-driveable, not under servo",
+                    "title": "Motor Free",
+                    "type": "boolean"
+                  },
+                  "rheed_gun_x": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Rheed Gun X"
+                  },
+                  "sample_angle": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Sample Angle"
+                  },
+                  "target": {
+                    "default": "",
+                    "description": "A..F, Clear, or empty between slots",
+                    "title": "Target",
+                    "type": "string"
+                  },
+                  "target_angle": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Target Angle"
+                  },
+                  "target_spinning": {
+                    "default": false,
+                    "title": "Target Spinning",
+                    "type": "boolean"
+                  },
+                  "target_twisting": {
+                    "default": false,
+                    "title": "Target Twisting",
+                    "type": "boolean"
+                  }
+                },
+                "title": "PldMotion",
+                "type": "object"
+              },
+              "PldPressures": {
+                "properties": {
+                  "cdg10": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Cdg10"
+                  },
+                  "cdg11": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Cdg11"
+                  },
+                  "ig1": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Main chamber ion gauge, Torr; 0 with the filament off",
+                    "title": "Ig1"
+                  },
+                  "ig1_on": {
+                    "default": false,
+                    "title": "Ig1 On",
+                    "type": "boolean"
+                  },
+                  "ig3": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Load-lock ion gauge, Torr",
+                    "title": "Ig3"
+                  },
+                  "ig3_on": {
+                    "default": false,
+                    "title": "Ig3 On",
+                    "type": "boolean"
+                  },
+                  "tcg": {
+                    "description": "TCG1/2/3 (order not yet confirmed)",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "title": "Tcg",
+                    "type": "array"
+                  },
+                  "tcg31": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Tcg31"
+                  }
+                },
+                "title": "PldPressures",
+                "type": "object"
+              },
+              "PldPump": {
+                "properties": {
+                  "at_speed": {
+                    "default": false,
+                    "description": "TMPs: NOR bit; dry pumps: running past the ~12 s acceleration",
+                    "title": "At Speed",
+                    "type": "boolean"
+                  },
+                  "running": {
+                    "default": false,
+                    "description": "The PLC run bit (TMP1 keeps it ~4.5 min while it spins down)",
+                    "title": "Running",
+                    "type": "boolean"
+                  },
+                  "state": {
+                    "default": "",
+                    "description": "off, starting, at speed, stopping",
+                    "title": "State",
+                    "type": "string"
+                  }
+                },
+                "title": "PldPump",
+                "type": "object"
+              }
+            },
+            "description": "One poll cycle of pld-service: everything it reads off the chamber.",
+            "properties": {
+              "backend": {
+                "default": "",
+                "description": "TWIN or HARDWARE",
+                "title": "Backend",
+                "type": "string"
+              },
+              "connected": {
+                "default": false,
+                "description": "Every port answered in the last cycle",
+                "title": "Connected",
+                "type": "boolean"
+              },
+              "controller": {
+                "default": "",
+                "description": "Client holding control; empty = nobody",
+                "title": "Controller",
+                "type": "string"
+              },
+              "excimer": {
+                "$ref": "#/$defs/PldExcimer"
+              },
+              "gas": {
+                "$ref": "#/$defs/PldGas"
+              },
+              "heater": {
+                "$ref": "#/$defs/PldHeater"
+              },
+              "interlocks": {
+                "description": "Active interlocks",
+                "items": {
+                  "type": "string"
+                },
+                "title": "Interlocks",
+                "type": "array"
+              },
+              "laser": {
+                "$ref": "#/$defs/PldLaser"
+              },
+              "load_lock": {
+                "$ref": "#/$defs/PldLoadLock"
+              },
+              "motion": {
+                "$ref": "#/$defs/PldMotion"
+              },
+              "pressures": {
+                "$ref": "#/$defs/PldPressures"
+              },
+              "pumps": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/PldPump"
+                },
+                "description": "TMP1, TMP20, TMP21, TMP3, DP1-DP3",
+                "title": "Pumps",
+                "type": "object"
+              },
+              "read_only": {
+                "default": false,
+                "description": "Hardware started without --allow-operations: every operation is refused",
+                "title": "Read Only",
+                "type": "boolean"
+              },
+              "sample_shutter_away": {
+                "default": false,
+                "description": "True = open for deposition",
+                "title": "Sample Shutter Away",
+                "type": "boolean"
+              },
+              "time": {
+                "default": 0.0,
+                "description": "Unix seconds when the poll cycle finished",
+                "title": "Time",
+                "type": "number"
+              },
+              "valves": {
+                "additionalProperties": {
+                  "type": "boolean"
+                },
+                "description": "name -> open",
+                "title": "Valves",
+                "type": "object"
+              }
+            },
+            "title": "PldChamberState",
+            "type": "object"
+          }
+        },
+        "update": null
+      },
+      {
         "kind": "pubsub",
         "name": "mi_mode",
         "ops": [

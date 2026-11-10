@@ -6,7 +6,8 @@
 #
 # Usage:
 #   scripts/start_mcp_server.sh [--bind-host ADDR] [--port N] [--public-url URL]
-#                               [--host HOST] [--user U] [--password P] [--check]
+#                               [--host HOST] [--user U] [--password P]
+#                               [--use-legacy-mi-mode] [--check]
 #
 #   --bind-host   address to listen on (default 0.0.0.0 -- every interface)
 #   --port        port (default 8100)
@@ -17,6 +18,9 @@
 #                 loopback -- the MCP SDK rejects a plain-HTTP issuer anywhere else
 #   --host        broker host (default localhost -- the broker runs on the server host)
 #   --user/-p     broker credentials (default guest/guest)
+#   --use-legacy-mi-mode
+#                 the lab runs the legacy MI-mode driver: leave out the chamber.pld
+#                 tools (pld-service), which would all be refused. Default: pld-service
 #   --check       run the preflight checks and exit without starting anything
 #
 # Clients sign in through the browser with an existing operator or admin account:
@@ -49,6 +53,7 @@ RABBITMQ_HOST="localhost"
 BROKER_USER="guest"
 BROKER_PASS="guest"
 CHECK_ONLY=0
+LEGACY_MI_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -58,8 +63,9 @@ while [[ $# -gt 0 ]]; do
         --host) RABBITMQ_HOST="$2"; shift 2 ;;
         --user) BROKER_USER="$2"; shift 2 ;;
         --password|-p) BROKER_PASS="$2"; shift 2 ;;
+        --use-legacy-mi-mode) LEGACY_MI_ARGS=(--use-legacy-mi-mode); shift ;;
         --check) CHECK_ONLY=1; shift ;;
-        -h|--help) sed -n '3,32p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '3,37p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 1 ;;
     esac
 done
@@ -200,4 +206,4 @@ echo "  claude mcp add --transport http lumi $PUBLIC_URL/mcp"
 echo
 exec "$PYTHON" -m lumi.mcp --transport http \
     --bind-host "$BIND_HOST" --port "$PORT" --public-url "$PUBLIC_URL" \
-    --host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS"
+    --host "$RABBITMQ_HOST" --user "$BROKER_USER" --password "$BROKER_PASS" "${LEGACY_MI_ARGS[@]}"

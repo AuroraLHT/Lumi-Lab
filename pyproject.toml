@@ -111,6 +111,13 @@ rheedsim = [
 notebooks = [
     "matplotlib>=3.8",
 ]
+# The PLD chamber driver: the Pascal node talks gRPC to pld-service on the PLD PC
+# (lumi.pascal.pld). The stubs are checked in, so only the runtime is needed here;
+# grpcio-tools (dev) regenerates them -- scripts/gen_pld_stubs.sh.
+pld = [
+    "grpcio>=1.85.1",
+    "protobuf>=6.31",
+]
 
 [project.scripts]
 lumi-codegen = "lumi.codegen.__main__:main"
@@ -122,6 +129,7 @@ dev = [
     "testcontainers[rabbitmq]>=4.5",
     "httpx>=0.27",       # required by fastapi.testclient for the bridge tests
     "websockets>=12",    # ASGI websocket driver for TestClient
+    "grpcio-tools>=1.85.1",
 ]
 
 [build-system]

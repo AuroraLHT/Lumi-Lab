@@ -210,3 +210,22 @@ async def test_a_snapshot_comes_back_as_a_picture():
     assert result.content[0].type == "image"
     assert tools()["experiment.driver.snapshot_jpeg"].annotations.read_only_hint is True
     assert tools()["experiment.driver.take_snapshot"].annotations.read_only_hint is False
+
+
+def test_the_chamber_driver_is_exposed_by_default_and_hidden_under_legacy_mi_mode():
+    default = {f"{c.name}.{cap.name}.{op.name}" for c, cap, op in exposed_ops()}
+    legacy = {f"{c.name}.{cap.name}.{op.name}" for c, cap, op in exposed_ops(use_legacy_mi_mode=True)}
+    assert {"chamber.pld.chamber_state", "chamber.pld.select_target", "chamber.pld.laser_on"} <= default
+    assert not {t for t in legacy if t.startswith("chamber.pld.")}
+    assert default - legacy == {t for t in default if t.startswith("chamber.pld.")}
+    # Never control ownership (an agent forcing it would lock the GUI out), the motor
+    # lock, or raw MI scripts.
+    for hidden in ("acquire_control", "release_control", "set_motor_free", "start_logging"):
+        assert f"chamber.pld.{hidden}" not in default
+    assert not {t for t in default | legacy if t.startswith("chamber.mi_mode.")}
+
+
+def test_chamber_state_is_read_only_and_operations_are_not():
+    available = tools()
+    assert available["chamber.pld.chamber_state"].annotations.read_only_hint is True
+    assert available["chamber.pld.fire_laser"].annotations.read_only_hint is False
