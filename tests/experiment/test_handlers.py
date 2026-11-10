@@ -1098,7 +1098,7 @@ class _MiClient:
     def __init__(self, executions: list[MIExecution]) -> None:
         self.executions = executions
 
-    async def list_execution(self, req) -> MIExecutionList:
+    async def list_execution(self) -> MIExecutionList:
         return MIExecutionList(executions=self.executions)
 
 

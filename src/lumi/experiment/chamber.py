@@ -143,7 +143,7 @@ class PldChamber:
         return reply
 
     async def state(self) -> PldChamberState:
-        return await self.client.chamber_state(Empty())
+        return await self.client.chamber_state()
 
     async def readings(self) -> dict:
         return readings_from_state(await self.state())
@@ -291,7 +291,7 @@ class MiChamber:
         another script is running -- the probe would only queue behind it.
         """
         running = [
-            e for e in (await self.runner.client.list_execution(Empty())).executions
+            e for e in (await self.runner.client.list_execution()).executions
             if not e.is_execution_finished
         ]
         probe = pcmd.Wait(0).to_text()
