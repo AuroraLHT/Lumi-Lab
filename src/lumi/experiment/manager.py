@@ -1147,6 +1147,21 @@ class BaseExperimentManager:
         self._laser_power_real = measured_power
         return measured_power
 
+    async def set_laser_energy(self, mj: float):
+        return await self._set_excimer(self.chamber.set_laser_energy(mj))
+
+    async def set_laser_hv(self, kv: float):
+        return await self._set_excimer(self.chamber.set_laser_hv(kv))
+
+    async def _set_excimer(self, change):
+        try:
+            return await change
+        finally:
+            # Even a refused change may have switched the mode: the confirmed power
+            # no longer describes the beam, so the next check measures it again.
+            self._laser_power_set = None
+            self._laser_power_real = None
+
     # --- gated: mask-center calibration --------------------------------------------
 
     async def begin_align_center_mask(self) -> None:

@@ -658,6 +658,24 @@ class StopDepositionResult(BaseModel):
     task_kind: str | None = None
 
 
+class CancelTask(BaseModel):
+    #: Why: it goes into the cancelled task's result.
+    reason: str = ""
+    #: Cancel only this task; another one running by then is left alone. None: whatever runs.
+    task_id: str | None = None
+
+
+class CancelTaskResult(BaseModel):
+    """What cancel_task did. `task_id`/`task_kind` name the task it ended, None when
+    none was running; by the time this returns that task has ended, aborted.
+    `chamber` is what was done to the chamber: the laser stopped, the temperature
+    held, or nothing."""
+
+    task_id: str | None = None
+    task_kind: str | None = None
+    chamber: str = ""
+
+
 class AnnealStep(BaseModel):
     temperature: float
     ramp_rate: float = 20.0
@@ -682,6 +700,29 @@ class ConfirmLaserPower(BaseModel):
 
 class LaserPowerResult(BaseModel):
     measured_power: float
+
+
+# --- excimer settings ------------------------------------------------------------
+
+
+class SetLaserEnergy(BaseModel):
+    #: The COMPexPro's energy set point. pld-service refuses one outside the laser's
+    #: own range (100..400 mJ on ours).
+    mj: float
+
+
+class SetLaserHv(BaseModel):
+    #: The COMPexPro's HV set point. pld-service refuses one outside the laser's own
+    #: range (18.5..25.5 kV on ours).
+    kv: float
+
+
+class LaserSettings(BaseModel):
+    """The excimer as it reads back after the change."""
+
+    mode: str = Field(description="Running mode, e.g. EGY PGR, HV PGR")
+    hv_kv: float | None = None
+    energy_mj: float | None = None
 
 
 # --- gated ops: mask-center calibration / check ------------------------------

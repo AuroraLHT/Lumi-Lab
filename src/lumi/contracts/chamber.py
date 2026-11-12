@@ -121,6 +121,9 @@ MI_MODE = Capability(
 #: train or a pressure regime switch is not, hence the longer one.
 _MOVE_S = 600.0
 _LONG_S = 4 * 3600.0
+#: A waited set_temperature lasts as long as the ramp: 25 to 800 C at 2 C/min is 6.5 h.
+#: A stuck one is ended sooner by pld-service's own stall answer, or by cancel_task.
+_RAMP_S = 24 * 3600.0
 
 
 def _pld_op(name: str, request, doc: str, *, timeout_s: float | None = None) -> Op:
@@ -178,7 +181,7 @@ PLD = Capability(
         _pld_op("set_heater_current_limits", PldCurrentLimitsRequest, "Limits on the PID output current, A."),
         _pld_op("set_temperature", PldTemperatureRequest,
                 "PID towards `celsius` at `ramp_c_per_min` (0 = jump); with wait, returns "
-                "once within `tolerance`.", timeout_s=_LONG_S),
+                "once within `tolerance`.", timeout_s=_RAMP_S),
         _pld_op("set_temperature_control", PldSwitchRequest,
                 "on = PID holding the present temperature (or the last setpoint); off = "
                 "manual at the present current."),

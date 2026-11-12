@@ -451,6 +451,8 @@ calls that move it -- ask the person before either, since the second PC may be u
 laser. fire_laser does not check the excimer (it is still run by hand). To stop a deposition
 when something goes wrong, call experiment.driver.stop_deposition: it ends the
 perform_deposition/perform_preablation task as aborted and stops the laser.
+experiment.driver.cancel_task ends any running task the same way; a ramp or anneal it ends
+leaves the heater holding the present temperature.
 chamber.pld.stop_fire stops only the pulse train, for a fire_laser of your own. A fire or
 deposition cut short fails with "stopped by request" -- that is a person's or your own
 abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add

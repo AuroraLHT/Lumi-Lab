@@ -46,6 +46,7 @@ from .payloads.experiment import (
     FinishCurrentPixel,
     FinishExperimentRecord,
     LaserPowerResult,
+    LaserSettings,
     ListExperiments,
     ListMeasurements,
     ListQuery,
@@ -101,6 +102,8 @@ from .payloads.experiment import (
     SampleId,
     SampleInfo,
     SampleList,
+    SetLaserEnergy,
+    SetLaserHv,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
@@ -113,6 +116,8 @@ from .payloads.experiment import (
     StartMiLogging,
     StartStorage,
     StepList,
+    CancelTask,
+    CancelTaskResult,
     StopDeposition,
     StopDepositionResult,
     StorageResult,
@@ -431,6 +436,16 @@ DRIVER = Capability(
                "The run is over: do not fire again to make up the pulses. "
                "Refused under --use-legacy-mi-mode, which cannot stop a pulse train "
                "(use PASCAL's own STOP).", journal=True, timeout_s=60.0),
+        Op("cancel_task", CancelTask, CancelTaskResult,
+           doc="End the running long task, whatever it is (state.current_task); its "
+               "task_result is ok=false, aborted=true. A deposition or preablation is "
+               "stopped as stop_deposition stops it, laser first. A to_temperature, "
+               "cool_down or anneal leaves the heater holding the present temperature: "
+               "the PID setpoint is set to it with no ramp. Below the PID-engage "
+               "threshold, or with the heater on manual current, the heater is left as "
+               "it is. task_id, if given, cancels only that task. Nothing running: "
+               "nothing done. Refused under --use-legacy-mi-mode, which cannot "
+               "interrupt a PASCAL command.", journal=True, timeout_s=60.0),
 
         # --- gated: laser power (unread physical meter)
         Op("begin_set_laser_power", BeginSetLaserPower, Ack,
@@ -443,6 +458,20 @@ DRIVER = Capability(
                "confirmation, when this power was already confirmed (force=true redoes it).",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult, journal=True),
+        # --- the excimer's own settings (pld-service only)
+        Op("set_laser_energy", SetLaserEnergy, LaserSettings,
+           doc="Run the excimer at constant energy: switches it to energy mode (EGY PGR) "
+               "and sets the energy set point, mJ. Changes the beam, so a laser power "
+               "confirmed with begin_set_laser_power is forgotten and the next check "
+               "measures again. Refused while the laser fires or a task holds the motors "
+               "(a deposition), and under --use-legacy-mi-mode, which cannot reach the "
+               "excimer: set it on the laser's own PC there. If the second PC has the "
+               "excimer's settings port, it is taken for the change and handed back.",
+           journal=True, timeout_s=60.0),
+        Op("set_laser_hv", SetLaserHv, LaserSettings,
+           doc="Run the excimer at constant HV: switches it to HV mode (HV PGR) and sets "
+               "the HV set point, kV. Otherwise as set_laser_energy.",
+           journal=True, timeout_s=60.0),
 
         # --- gated: mask-center calibration / check (visual judgement)
         Op("begin_align_center_mask", Empty, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),

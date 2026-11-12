@@ -40,7 +40,7 @@ class WatchRequest(_message.Message):
     def __init__(self, rate_hz: _Optional[float] = ...) -> None: ...
 
 class ChamberState(_message.Message):
-    __slots__ = ("time", "backend", "connected", "controller", "valves", "pressures", "heater", "motion", "laser", "gas", "sample_shutter_away", "interlocks", "raw_words", "excimer", "read_only", "pumps", "load_lock", "session", "limits")
+    __slots__ = ("time", "backend", "connected", "controller", "valves", "pressures", "heater", "motion", "laser", "gas", "sample_shutter_away", "interlocks", "raw_words", "excimer", "read_only", "pumps", "load_lock", "session", "limits", "rheed")
     class ValvesEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -81,6 +81,7 @@ class ChamberState(_message.Message):
     LOAD_LOCK_FIELD_NUMBER: _ClassVar[int]
     SESSION_FIELD_NUMBER: _ClassVar[int]
     LIMITS_FIELD_NUMBER: _ClassVar[int]
+    RHEED_FIELD_NUMBER: _ClassVar[int]
     time: float
     backend: Backend
     connected: bool
@@ -100,15 +101,92 @@ class ChamberState(_message.Message):
     load_lock: LoadLock
     session: Session
     limits: Limits
-    def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ..., pumps: _Optional[_Mapping[str, Pump]] = ..., load_lock: _Optional[_Union[LoadLock, _Mapping]] = ..., session: _Optional[_Union[Session, _Mapping]] = ..., limits: _Optional[_Union[Limits, _Mapping]] = ...) -> None: ...
+    rheed: Rheed
+    def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ..., pumps: _Optional[_Mapping[str, Pump]] = ..., load_lock: _Optional[_Union[LoadLock, _Mapping]] = ..., session: _Optional[_Union[Session, _Mapping]] = ..., limits: _Optional[_Union[Limits, _Mapping]] = ..., rheed: _Optional[_Union[Rheed, _Mapping]] = ...) -> None: ...
+
+class Rheed(_message.Message):
+    __slots__ = ("present", "read_only", "link_ok", "interlock", "filament_open", "filament_on", "filament_set_ma", "filament_target_ma", "filament_readback_ma", "filament_last_ma", "hv_on", "hv_set_kv", "hv_target_kv", "hv_readback_kv", "hv_last_kv", "emission_ua", "focus_on", "focus_set_ma", "focus_readback_ma", "x_on", "x_set_ma", "x_readback_ma", "y_on", "y_set_ma", "y_readback_ma", "last_alert", "hv_max_kv", "filament_min_ma", "filament_max_ma", "focus_min_ma", "focus_max_ma", "x_min_ma", "x_max_ma", "y_min_ma", "y_max_ma")
+    PRESENT_FIELD_NUMBER: _ClassVar[int]
+    READ_ONLY_FIELD_NUMBER: _ClassVar[int]
+    LINK_OK_FIELD_NUMBER: _ClassVar[int]
+    INTERLOCK_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_OPEN_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_ON_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_SET_MA_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_TARGET_MA_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_READBACK_MA_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_LAST_MA_FIELD_NUMBER: _ClassVar[int]
+    HV_ON_FIELD_NUMBER: _ClassVar[int]
+    HV_SET_KV_FIELD_NUMBER: _ClassVar[int]
+    HV_TARGET_KV_FIELD_NUMBER: _ClassVar[int]
+    HV_READBACK_KV_FIELD_NUMBER: _ClassVar[int]
+    HV_LAST_KV_FIELD_NUMBER: _ClassVar[int]
+    EMISSION_UA_FIELD_NUMBER: _ClassVar[int]
+    FOCUS_ON_FIELD_NUMBER: _ClassVar[int]
+    FOCUS_SET_MA_FIELD_NUMBER: _ClassVar[int]
+    FOCUS_READBACK_MA_FIELD_NUMBER: _ClassVar[int]
+    X_ON_FIELD_NUMBER: _ClassVar[int]
+    X_SET_MA_FIELD_NUMBER: _ClassVar[int]
+    X_READBACK_MA_FIELD_NUMBER: _ClassVar[int]
+    Y_ON_FIELD_NUMBER: _ClassVar[int]
+    Y_SET_MA_FIELD_NUMBER: _ClassVar[int]
+    Y_READBACK_MA_FIELD_NUMBER: _ClassVar[int]
+    LAST_ALERT_FIELD_NUMBER: _ClassVar[int]
+    HV_MAX_KV_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_MIN_MA_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_MAX_MA_FIELD_NUMBER: _ClassVar[int]
+    FOCUS_MIN_MA_FIELD_NUMBER: _ClassVar[int]
+    FOCUS_MAX_MA_FIELD_NUMBER: _ClassVar[int]
+    X_MIN_MA_FIELD_NUMBER: _ClassVar[int]
+    X_MAX_MA_FIELD_NUMBER: _ClassVar[int]
+    Y_MIN_MA_FIELD_NUMBER: _ClassVar[int]
+    Y_MAX_MA_FIELD_NUMBER: _ClassVar[int]
+    present: bool
+    read_only: bool
+    link_ok: bool
+    interlock: bool
+    filament_open: bool
+    filament_on: bool
+    filament_set_ma: float
+    filament_target_ma: float
+    filament_readback_ma: float
+    filament_last_ma: float
+    hv_on: bool
+    hv_set_kv: float
+    hv_target_kv: float
+    hv_readback_kv: float
+    hv_last_kv: float
+    emission_ua: float
+    focus_on: bool
+    focus_set_ma: float
+    focus_readback_ma: float
+    x_on: bool
+    x_set_ma: float
+    x_readback_ma: float
+    y_on: bool
+    y_set_ma: float
+    y_readback_ma: float
+    last_alert: str
+    hv_max_kv: float
+    filament_min_ma: float
+    filament_max_ma: float
+    focus_min_ma: float
+    focus_max_ma: float
+    x_min_ma: float
+    x_max_ma: float
+    y_min_ma: float
+    y_max_ma: float
+    def __init__(self, present: _Optional[bool] = ..., read_only: _Optional[bool] = ..., link_ok: _Optional[bool] = ..., interlock: _Optional[bool] = ..., filament_open: _Optional[bool] = ..., filament_on: _Optional[bool] = ..., filament_set_ma: _Optional[float] = ..., filament_target_ma: _Optional[float] = ..., filament_readback_ma: _Optional[float] = ..., filament_last_ma: _Optional[float] = ..., hv_on: _Optional[bool] = ..., hv_set_kv: _Optional[float] = ..., hv_target_kv: _Optional[float] = ..., hv_readback_kv: _Optional[float] = ..., hv_last_kv: _Optional[float] = ..., emission_ua: _Optional[float] = ..., focus_on: _Optional[bool] = ..., focus_set_ma: _Optional[float] = ..., focus_readback_ma: _Optional[float] = ..., x_on: _Optional[bool] = ..., x_set_ma: _Optional[float] = ..., x_readback_ma: _Optional[float] = ..., y_on: _Optional[bool] = ..., y_set_ma: _Optional[float] = ..., y_readback_ma: _Optional[float] = ..., last_alert: _Optional[str] = ..., hv_max_kv: _Optional[float] = ..., filament_min_ma: _Optional[float] = ..., filament_max_ma: _Optional[float] = ..., focus_min_ma: _Optional[float] = ..., focus_max_ma: _Optional[float] = ..., x_min_ma: _Optional[float] = ..., x_max_ma: _Optional[float] = ..., y_min_ma: _Optional[float] = ..., y_max_ma: _Optional[float] = ...) -> None: ...
 
 class Session(_message.Message):
-    __slots__ = ("plc_session", "watchdog")
+    __slots__ = ("plc_session", "watchdog", "link_error")
     PLC_SESSION_FIELD_NUMBER: _ClassVar[int]
     WATCHDOG_FIELD_NUMBER: _ClassVar[int]
+    LINK_ERROR_FIELD_NUMBER: _ClassVar[int]
     plc_session: bool
     watchdog: bool
-    def __init__(self, plc_session: _Optional[bool] = ..., watchdog: _Optional[bool] = ...) -> None: ...
+    link_error: str
+    def __init__(self, plc_session: _Optional[bool] = ..., watchdog: _Optional[bool] = ..., link_error: _Optional[str] = ...) -> None: ...
 
 class Limits(_message.Message):
     __slots__ = ("ig1_max_torr", "ig3_max_torr", "mv3_max_torr", "heater_max_celsius", "heater_max_amps")
@@ -169,7 +247,7 @@ class Pressures(_message.Message):
     def __init__(self, ig1: _Optional[float] = ..., ig3: _Optional[float] = ..., cdg10: _Optional[float] = ..., cdg11: _Optional[float] = ..., tcg: _Optional[_Iterable[float]] = ..., tcg31: _Optional[float] = ..., ig1_on: _Optional[bool] = ..., ig3_on: _Optional[bool] = ...) -> None: ...
 
 class Heater(_message.Message):
-    __slots__ = ("temperature", "emissivity", "current_set", "current_monitor", "power_on", "ready", "started", "temperature_setpoint", "pid_on", "key_on", "start_on", "threshold_on", "current_min", "current_max", "temperature_goal", "ramp_c_per_min", "auto_tune", "kp", "ki", "kd", "writes_failing", "tune_cycles_done", "tune_cycles")
+    __slots__ = ("temperature", "emissivity", "current_set", "current_monitor", "power_on", "ready", "started", "temperature_setpoint", "pid_on", "key_on", "start_on", "threshold_on", "current_min", "current_max", "temperature_goal", "ramp_c_per_min", "auto_tune", "kp", "ki", "kd", "writes_failing", "tune_cycles_done", "tune_cycles", "warming_up")
     TEMPERATURE_FIELD_NUMBER: _ClassVar[int]
     EMISSIVITY_FIELD_NUMBER: _ClassVar[int]
     CURRENT_SET_FIELD_NUMBER: _ClassVar[int]
@@ -193,6 +271,7 @@ class Heater(_message.Message):
     WRITES_FAILING_FIELD_NUMBER: _ClassVar[int]
     TUNE_CYCLES_DONE_FIELD_NUMBER: _ClassVar[int]
     TUNE_CYCLES_FIELD_NUMBER: _ClassVar[int]
+    WARMING_UP_FIELD_NUMBER: _ClassVar[int]
     temperature: float
     emissivity: float
     current_set: float
@@ -216,7 +295,8 @@ class Heater(_message.Message):
     writes_failing: bool
     tune_cycles_done: int
     tune_cycles: int
-    def __init__(self, temperature: _Optional[float] = ..., emissivity: _Optional[float] = ..., current_set: _Optional[float] = ..., current_monitor: _Optional[float] = ..., power_on: _Optional[bool] = ..., ready: _Optional[bool] = ..., started: _Optional[bool] = ..., temperature_setpoint: _Optional[float] = ..., pid_on: _Optional[bool] = ..., key_on: _Optional[bool] = ..., start_on: _Optional[bool] = ..., threshold_on: _Optional[bool] = ..., current_min: _Optional[float] = ..., current_max: _Optional[float] = ..., temperature_goal: _Optional[float] = ..., ramp_c_per_min: _Optional[float] = ..., auto_tune: _Optional[bool] = ..., kp: _Optional[float] = ..., ki: _Optional[float] = ..., kd: _Optional[float] = ..., writes_failing: _Optional[bool] = ..., tune_cycles_done: _Optional[int] = ..., tune_cycles: _Optional[int] = ...) -> None: ...
+    warming_up: bool
+    def __init__(self, temperature: _Optional[float] = ..., emissivity: _Optional[float] = ..., current_set: _Optional[float] = ..., current_monitor: _Optional[float] = ..., power_on: _Optional[bool] = ..., ready: _Optional[bool] = ..., started: _Optional[bool] = ..., temperature_setpoint: _Optional[float] = ..., pid_on: _Optional[bool] = ..., key_on: _Optional[bool] = ..., start_on: _Optional[bool] = ..., threshold_on: _Optional[bool] = ..., current_min: _Optional[float] = ..., current_max: _Optional[float] = ..., temperature_goal: _Optional[float] = ..., ramp_c_per_min: _Optional[float] = ..., auto_tune: _Optional[bool] = ..., kp: _Optional[float] = ..., ki: _Optional[float] = ..., kd: _Optional[float] = ..., writes_failing: _Optional[bool] = ..., tune_cycles_done: _Optional[int] = ..., tune_cycles: _Optional[int] = ..., warming_up: _Optional[bool] = ...) -> None: ...
 
 class Motion(_message.Message):
     __slots__ = ("target_angle", "target", "sample_angle", "mask_position", "rheed_gun_x", "axes", "target_spinning", "target_twisting", "motor_free", "auto_spin", "auto_twist")
@@ -539,6 +619,44 @@ class LaserEnergyRequest(_message.Message):
     MJ_FIELD_NUMBER: _ClassVar[int]
     mj: float
     def __init__(self, mj: _Optional[float] = ...) -> None: ...
+
+class RheedFilamentOnRequest(_message.Message):
+    __slots__ = ("ma",)
+    MA_FIELD_NUMBER: _ClassVar[int]
+    ma: float
+    def __init__(self, ma: _Optional[float] = ...) -> None: ...
+
+class RheedHvOnRequest(_message.Message):
+    __slots__ = ("kv",)
+    KV_FIELD_NUMBER: _ClassVar[int]
+    kv: float
+    def __init__(self, kv: _Optional[float] = ...) -> None: ...
+
+class RheedFilamentRequest(_message.Message):
+    __slots__ = ("ma",)
+    MA_FIELD_NUMBER: _ClassVar[int]
+    ma: float
+    def __init__(self, ma: _Optional[float] = ...) -> None: ...
+
+class RheedHvRequest(_message.Message):
+    __slots__ = ("kv",)
+    KV_FIELD_NUMBER: _ClassVar[int]
+    kv: float
+    def __init__(self, kv: _Optional[float] = ...) -> None: ...
+
+class RheedFocusRequest(_message.Message):
+    __slots__ = ("ma",)
+    MA_FIELD_NUMBER: _ClassVar[int]
+    ma: float
+    def __init__(self, ma: _Optional[float] = ...) -> None: ...
+
+class RheedDeflectionRequest(_message.Message):
+    __slots__ = ("x_ma", "y_ma")
+    X_MA_FIELD_NUMBER: _ClassVar[int]
+    Y_MA_FIELD_NUMBER: _ClassVar[int]
+    x_ma: float
+    y_ma: float
+    def __init__(self, x_ma: _Optional[float] = ..., y_ma: _Optional[float] = ...) -> None: ...
 
 class FlowRequest(_message.Message):
     __slots__ = ("mfc", "sccm")

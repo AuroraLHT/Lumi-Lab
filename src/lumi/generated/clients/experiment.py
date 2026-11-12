@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: d16c03210d17c24a
+# contract_hash: bc4288812aa3a01f
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StopDeposition, StopDepositionResult, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CancelTask, CancelTaskResult, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, LaserSettings, ListExperiments, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetLaserEnergy, SetLaserHv, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StopDeposition, StopDepositionResult, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -339,6 +339,10 @@ class ExperimentDriverClient(CapabilityClient):
         """Abort the deposition or preablation now: ends the running perform_deposition/perform_preablation task (its task_result is ok=false, aborted=true) and stops the laser (chamber.pld.stop_fire). Also stops a pulse train with no task behind it, and is harmless when nothing is firing. The shutter, mask, target spin and logging are left as they are; a preablation stopped this way leaves the mask at its block position. The run is over: do not fire again to make up the pulses. Refused under --use-legacy-mi-mode, which cannot stop a pulse train (use PASCAL's own STOP)."""
         return await self.call("stop_deposition", req)  # type: ignore[return-value]
 
+    async def cancel_task(self, req: CancelTask) -> CancelTaskResult:
+        """End the running long task, whatever it is (state.current_task); its task_result is ok=false, aborted=true. A deposition or preablation is stopped as stop_deposition stops it, laser first. A to_temperature, cool_down or anneal leaves the heater holding the present temperature: the PID setpoint is set to it with no ramp. Below the PID-engage threshold, or with the heater on manual current, the heater is left as it is. task_id, if given, cancels only that task. Nothing running: nothing done. Refused under --use-legacy-mi-mode, which cannot interrupt a PASCAL command."""
+        return await self.call("cancel_task", req)  # type: ignore[return-value]
+
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:
         """Start a laser energy check: closes the sample shutter and turns the carousel to Clear, so the beam reaches the meter at the exit port, then raises a `laser_power` pending confirmation for the person reading the meter. Call nothing else until confirm_laser_power: any op that selects a target (set_target, perform_preablation, perform_deposition) moves the carousel off Clear and spoils the reading. Skipped, with no confirmation, when this power was already confirmed (force=true redoes it)."""
         return await self.call("begin_set_laser_power", req)  # type: ignore[return-value]
@@ -346,6 +350,14 @@ class ExperimentDriverClient(CapabilityClient):
     async def confirm_laser_power(self, req: ConfirmLaserPower) -> LaserPowerResult:
         """Call driver.confirm_laser_power."""
         return await self.call("confirm_laser_power", req)  # type: ignore[return-value]
+
+    async def set_laser_energy(self, req: SetLaserEnergy) -> LaserSettings:
+        """Run the excimer at constant energy: switches it to energy mode (EGY PGR) and sets the energy set point, mJ. Changes the beam, so a laser power confirmed with begin_set_laser_power is forgotten and the next check measures again. Refused while the laser fires or a task holds the motors (a deposition), and under --use-legacy-mi-mode, which cannot reach the excimer: set it on the laser's own PC there. If the second PC has the excimer's settings port, it is taken for the change and handed back."""
+        return await self.call("set_laser_energy", req)  # type: ignore[return-value]
+
+    async def set_laser_hv(self, req: SetLaserHv) -> LaserSettings:
+        """Run the excimer at constant HV: switches it to HV mode (HV PGR) and sets the HV set point, kV. Otherwise as set_laser_energy."""
+        return await self.call("set_laser_hv", req)  # type: ignore[return-value]
 
     async def begin_align_center_mask(self) -> Ack:
         """Call driver.begin_align_center_mask."""

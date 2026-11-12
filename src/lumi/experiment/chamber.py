@@ -31,7 +31,11 @@ from lumi.contracts.payloads.pld import (
     PldChamberState,
     PldCurrentRequest,
     PldFireRequest,
+    PldExcimer,
     PldFlowRequest,
+    PldLaserEnergyRequest,
+    PldLaserHvRequest,
+    PldLaserModeRequest,
     PldLoggingRequest,
     PldPositionRequest,
     PldPressureRequest,
@@ -83,6 +87,8 @@ class ChamberBackend(Protocol):
     async def sample_shutter(self, open_: bool) -> None: ...
     async def fire(self, pulses: int, rate_hz: float) -> None: ...
     async def stop_fire(self) -> str: ...
+    async def set_laser_energy(self, mj: float) -> PldExcimer: ...
+    async def set_laser_hv(self, kv: float) -> PldExcimer: ...
 
     async def heater_on(self) -> None: ...
     async def heater_off(self) -> None: ...
@@ -90,6 +96,7 @@ class ChamberBackend(Protocol):
     async def set_heating_current(self, amps: float) -> None: ...
     async def ramp_to(self, celsius: float, ramp_c_per_min: float, wait: bool) -> None: ...
     async def coast_to(self, celsius: float, ramp_c_per_min: float, wait: bool) -> None: ...
+    async def hold_temperature(self, floor_celsius: float) -> str: ...
 
     async def set_mfc_flow(self, mfc: int, sccm: float) -> None: ...
     async def set_mfc_control(self, enabled: bool) -> None: ...
@@ -202,6 +209,29 @@ class PldChamber:
     async def stop_fire(self) -> str:
         return (await self._call("stop_fire")).message
 
+    async def set_laser_energy(self, mj: float) -> PldExcimer:
+        return await self._set_excimer("energy", "set_laser_energy", PldLaserEnergyRequest(mj=float(mj)))
+
+    async def set_laser_hv(self, kv: float) -> PldExcimer:
+        return await self._set_excimer("hv", "set_laser_hv", PldLaserHvRequest(kv=float(kv)))
+
+    async def _set_excimer(self, mode: str, op: str, req) -> PldExcimer:
+        state = await self.state()
+        if state.laser.status == "firing":
+            raise RuntimeError("the laser is firing: stop the train before changing the excimer")
+        # Every excimer setting needs its settings port (CM=2). Take it only for the
+        # change: the second PC gets it back, as it was.
+        took = not state.excimer.control
+        if took:
+            await self._call("take_laser_control")
+        try:
+            await self._call("set_laser_mode", PldLaserModeRequest(mode=mode))
+            await self._call(op, req)
+        finally:
+            if took:
+                await self._call("release_laser")
+        return (await self.state()).excimer
+
     # --- heater -------------------------------------------------------------------
 
     async def heater_on(self) -> None:
@@ -231,6 +261,19 @@ class PldChamber:
         # refuses, and that refusal is the answer.
         await self._call("set_temperature", PldTemperatureRequest(
             celsius=float(celsius), ramp_c_per_min=float(ramp_c_per_min), wait=wait))
+
+    async def hold_temperature(self, floor_celsius: float) -> str:
+        # The new goal also ends a waited SetTemperature still running for the old one.
+        heater = (await self.state()).heater
+        t = heater.temperature
+        if not heater.pid_on:
+            return f"heater on manual current ({heater.current_set} A): left as it is"
+        if t is None or t < floor_celsius:
+            # Below it the PID cannot hold, and pld-service would warm up instead.
+            at = "below the pyrometer's range" if t is None else f"{t:.1f} C"
+            return f"at {at}, under the {floor_celsius:g} C PID floor: left as it is"
+        await self._call("set_temperature", PldTemperatureRequest(celsius=round(t, 1), ramp_c_per_min=0.0))
+        return f"holding {t:.1f} C"
 
     # --- gas ----------------------------------------------------------------------
 
@@ -349,6 +392,16 @@ class MiChamber:
             "MI mode has no stop for a running train; use PASCAL's own STOP. pld-service "
             "(the default driver) has stop_fire")
 
+    async def set_laser_energy(self, mj: float) -> PldExcimer:
+        raise NotImplementedError(self._NO_EXCIMER)
+
+    async def set_laser_hv(self, kv: float) -> PldExcimer:
+        raise NotImplementedError(self._NO_EXCIMER)
+
+    _NO_EXCIMER = (
+        "MI mode cannot reach the excimer: set its energy or HV on the laser's own PC. "
+        "pld-service (the default driver) has set_laser_energy and set_laser_hv")
+
     # --- heater -------------------------------------------------------------------
 
     async def heater_on(self) -> None:
@@ -392,6 +445,10 @@ class MiChamber:
             pcmd.TemperatureRamp(ramp_c_per_min, state=pcmd.PascalState("ON")),
             pcmd.TemperatureSet(celsius, nowait=not wait),
         )
+
+    async def hold_temperature(self, floor_celsius: float) -> str:
+        raise NotImplementedError(
+            "MI mode cannot interrupt a PASCAL command; pld-service (the default driver) can")
 
     # --- gas ----------------------------------------------------------------------
 

@@ -1108,7 +1108,7 @@
                         }
                       ],
                       "default": null,
-                      "description": "PID output limits, A",
+                      "description": "PID output limits, A (min: the 6 A threshold current)",
                       "title": "Current Min"
                     },
                     "current_monitor": {
@@ -1277,6 +1277,12 @@
                       "description": "tune_heater: relay cycles done (0 when not tuning)",
                       "title": "Tune Cycles Done",
                       "type": "integer"
+                    },
+                    "warming_up": {
+                      "default": false,
+                      "description": "set_temperature from below 200 C: LDmin (7.6 A) held until then, PID after",
+                      "title": "Warming Up",
+                      "type": "boolean"
                     },
                     "writes_failing": {
                       "default": false,
@@ -1664,9 +1670,373 @@
                   "title": "PldPump",
                   "type": "object"
                 },
+                "PldRheed": {
+                  "description": "The RHEED gun's controller, on pld-service's own link. Read-outs are None when\nunknown; ramps run at 30 mA/s and 500 V/s, done when set == target.",
+                  "properties": {
+                    "emission_ua": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Emission Ua"
+                    },
+                    "filament_last_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Remembered set point; None = none",
+                      "title": "Filament Last Ma"
+                    },
+                    "filament_max_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Filament Max Ma"
+                    },
+                    "filament_min_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Filament Min Ma"
+                    },
+                    "filament_on": {
+                      "default": false,
+                      "title": "Filament On",
+                      "type": "boolean"
+                    },
+                    "filament_open": {
+                      "default": false,
+                      "description": "Burnt or broken filament suspected (handset E002); filament and HV switched off",
+                      "title": "Filament Open",
+                      "type": "boolean"
+                    },
+                    "filament_readback_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Filament Readback Ma"
+                    },
+                    "filament_set_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Sent now, ramping toward the target",
+                      "title": "Filament Set Ma"
+                    },
+                    "filament_target_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Filament Target Ma"
+                    },
+                    "focus_max_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Focus Max Ma"
+                    },
+                    "focus_min_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Focus Min Ma"
+                    },
+                    "focus_on": {
+                      "default": false,
+                      "title": "Focus On",
+                      "type": "boolean"
+                    },
+                    "focus_readback_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Focus Readback Ma"
+                    },
+                    "focus_set_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Focus Set Ma"
+                    },
+                    "hv_last_kv": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Hv Last Kv"
+                    },
+                    "hv_max_kv": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Hv Max Kv"
+                    },
+                    "hv_on": {
+                      "default": false,
+                      "title": "Hv On",
+                      "type": "boolean"
+                    },
+                    "hv_readback_kv": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Hv Readback Kv"
+                    },
+                    "hv_set_kv": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Hv Set Kv"
+                    },
+                    "hv_target_kv": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Hv Target Kv"
+                    },
+                    "interlock": {
+                      "default": false,
+                      "description": "The controller's interlock switched filament and HV off",
+                      "title": "Interlock",
+                      "type": "boolean"
+                    },
+                    "last_alert": {
+                      "default": "",
+                      "description": "The last link-level alert, kept until the next",
+                      "title": "Last Alert",
+                      "type": "string"
+                    },
+                    "link_ok": {
+                      "default": false,
+                      "description": "The controller answered the last cycle",
+                      "title": "Link Ok",
+                      "type": "boolean"
+                    },
+                    "present": {
+                      "default": false,
+                      "description": "The service has a RHEED link",
+                      "title": "Present",
+                      "type": "boolean"
+                    },
+                    "read_only": {
+                      "default": false,
+                      "description": "Hardware without --allow-operations: the port is not opened",
+                      "title": "Read Only",
+                      "type": "boolean"
+                    },
+                    "x_max_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "X Max Ma"
+                    },
+                    "x_min_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "X Min Ma"
+                    },
+                    "x_on": {
+                      "default": false,
+                      "title": "X On",
+                      "type": "boolean"
+                    },
+                    "x_readback_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "X Readback Ma"
+                    },
+                    "x_set_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "X Set Ma"
+                    },
+                    "y_max_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Y Max Ma"
+                    },
+                    "y_min_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Y Min Ma"
+                    },
+                    "y_on": {
+                      "default": false,
+                      "title": "Y On",
+                      "type": "boolean"
+                    },
+                    "y_readback_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Y Readback Ma"
+                    },
+                    "y_set_ma": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Y Set Ma"
+                    }
+                  },
+                  "title": "PldRheed",
+                  "type": "object"
+                },
                 "PldSession": {
                   "description": "pld-service's PLC host-link session.",
                   "properties": {
+                    "link_error": {
+                      "default": "",
+                      "description": "Why the PLC/gauge/pyrometer polls are failing (the service reconnects); empty while they work",
+                      "title": "Link Error",
+                      "type": "string"
+                    },
                     "plc_session": {
                       "default": false,
                       "description": "The session is open",
@@ -1749,6 +2119,9 @@
                   "description": "Hardware started without --allow-operations: every operation is refused",
                   "title": "Read Only",
                   "type": "boolean"
+                },
+                "rheed": {
+                  "$ref": "#/$defs/PldRheed"
                 },
                 "sample_shutter_away": {
                   "default": false,
@@ -4062,7 +4435,7 @@
                       }
                     ],
                     "default": null,
-                    "description": "PID output limits, A",
+                    "description": "PID output limits, A (min: the 6 A threshold current)",
                     "title": "Current Min"
                   },
                   "current_monitor": {
@@ -4231,6 +4604,12 @@
                     "description": "tune_heater: relay cycles done (0 when not tuning)",
                     "title": "Tune Cycles Done",
                     "type": "integer"
+                  },
+                  "warming_up": {
+                    "default": false,
+                    "description": "set_temperature from below 200 C: LDmin (7.6 A) held until then, PID after",
+                    "title": "Warming Up",
+                    "type": "boolean"
                   },
                   "writes_failing": {
                     "default": false,
@@ -4618,9 +4997,373 @@
                 "title": "PldPump",
                 "type": "object"
               },
+              "PldRheed": {
+                "description": "The RHEED gun's controller, on pld-service's own link. Read-outs are None when\nunknown; ramps run at 30 mA/s and 500 V/s, done when set == target.",
+                "properties": {
+                  "emission_ua": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Emission Ua"
+                  },
+                  "filament_last_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Remembered set point; None = none",
+                    "title": "Filament Last Ma"
+                  },
+                  "filament_max_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Filament Max Ma"
+                  },
+                  "filament_min_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Filament Min Ma"
+                  },
+                  "filament_on": {
+                    "default": false,
+                    "title": "Filament On",
+                    "type": "boolean"
+                  },
+                  "filament_open": {
+                    "default": false,
+                    "description": "Burnt or broken filament suspected (handset E002); filament and HV switched off",
+                    "title": "Filament Open",
+                    "type": "boolean"
+                  },
+                  "filament_readback_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Filament Readback Ma"
+                  },
+                  "filament_set_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Sent now, ramping toward the target",
+                    "title": "Filament Set Ma"
+                  },
+                  "filament_target_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Filament Target Ma"
+                  },
+                  "focus_max_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Focus Max Ma"
+                  },
+                  "focus_min_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Focus Min Ma"
+                  },
+                  "focus_on": {
+                    "default": false,
+                    "title": "Focus On",
+                    "type": "boolean"
+                  },
+                  "focus_readback_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Focus Readback Ma"
+                  },
+                  "focus_set_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Focus Set Ma"
+                  },
+                  "hv_last_kv": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Hv Last Kv"
+                  },
+                  "hv_max_kv": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Hv Max Kv"
+                  },
+                  "hv_on": {
+                    "default": false,
+                    "title": "Hv On",
+                    "type": "boolean"
+                  },
+                  "hv_readback_kv": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Hv Readback Kv"
+                  },
+                  "hv_set_kv": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Hv Set Kv"
+                  },
+                  "hv_target_kv": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Hv Target Kv"
+                  },
+                  "interlock": {
+                    "default": false,
+                    "description": "The controller's interlock switched filament and HV off",
+                    "title": "Interlock",
+                    "type": "boolean"
+                  },
+                  "last_alert": {
+                    "default": "",
+                    "description": "The last link-level alert, kept until the next",
+                    "title": "Last Alert",
+                    "type": "string"
+                  },
+                  "link_ok": {
+                    "default": false,
+                    "description": "The controller answered the last cycle",
+                    "title": "Link Ok",
+                    "type": "boolean"
+                  },
+                  "present": {
+                    "default": false,
+                    "description": "The service has a RHEED link",
+                    "title": "Present",
+                    "type": "boolean"
+                  },
+                  "read_only": {
+                    "default": false,
+                    "description": "Hardware without --allow-operations: the port is not opened",
+                    "title": "Read Only",
+                    "type": "boolean"
+                  },
+                  "x_max_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "X Max Ma"
+                  },
+                  "x_min_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "X Min Ma"
+                  },
+                  "x_on": {
+                    "default": false,
+                    "title": "X On",
+                    "type": "boolean"
+                  },
+                  "x_readback_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "X Readback Ma"
+                  },
+                  "x_set_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "X Set Ma"
+                  },
+                  "y_max_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Y Max Ma"
+                  },
+                  "y_min_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Y Min Ma"
+                  },
+                  "y_on": {
+                    "default": false,
+                    "title": "Y On",
+                    "type": "boolean"
+                  },
+                  "y_readback_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Y Readback Ma"
+                  },
+                  "y_set_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Y Set Ma"
+                  }
+                },
+                "title": "PldRheed",
+                "type": "object"
+              },
               "PldSession": {
                 "description": "pld-service's PLC host-link session.",
                 "properties": {
+                  "link_error": {
+                    "default": "",
+                    "description": "Why the PLC/gauge/pyrometer polls are failing (the service reconnects); empty while they work",
+                    "title": "Link Error",
+                    "type": "string"
+                  },
                   "plc_session": {
                     "default": false,
                     "description": "The session is open",
@@ -4703,6 +5446,9 @@
                 "description": "Hardware started without --allow-operations: every operation is refused",
                 "title": "Read Only",
                 "type": "boolean"
+              },
+              "rheed": {
+                "$ref": "#/$defs/PldRheed"
               },
               "sample_shutter_away": {
                 "default": false,
@@ -15730,6 +16476,70 @@
             "response_codec": "json"
           },
           {
+            "name": "cancel_task",
+            "request": {
+              "properties": {
+                "reason": {
+                  "default": "",
+                  "title": "Reason",
+                  "type": "string"
+                },
+                "task_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Task Id"
+                }
+              },
+              "title": "CancelTask",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "What cancel_task did. `task_id`/`task_kind` name the task it ended, None when\nnone was running; by the time this returns that task has ended, aborted.\n`chamber` is what was done to the chamber: the laser stopped, the temperature\nheld, or nothing.",
+              "properties": {
+                "chamber": {
+                  "default": "",
+                  "title": "Chamber",
+                  "type": "string"
+                },
+                "task_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Task Id"
+                },
+                "task_kind": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Task Kind"
+                }
+              },
+              "title": "CancelTaskResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "begin_set_laser_power",
             "request": {
               "properties": {
@@ -15791,6 +16601,120 @@
                 "measured_power"
               ],
               "title": "LaserPowerResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_laser_energy",
+            "request": {
+              "properties": {
+                "mj": {
+                  "title": "Mj",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "mj"
+              ],
+              "title": "SetLaserEnergy",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "The excimer as it reads back after the change.",
+              "properties": {
+                "energy_mj": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Energy Mj"
+                },
+                "hv_kv": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Hv Kv"
+                },
+                "mode": {
+                  "description": "Running mode, e.g. EGY PGR, HV PGR",
+                  "title": "Mode",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "title": "LaserSettings",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_laser_hv",
+            "request": {
+              "properties": {
+                "kv": {
+                  "title": "Kv",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kv"
+              ],
+              "title": "SetLaserHv",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "The excimer as it reads back after the change.",
+              "properties": {
+                "energy_mj": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Energy Mj"
+                },
+                "hv_kv": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Hv Kv"
+                },
+                "mode": {
+                  "description": "Running mode, e.g. EGY PGR, HV PGR",
+                  "title": "Mode",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "title": "LaserSettings",
               "type": "object"
             },
             "response_codec": "json"
@@ -17897,6 +18821,7 @@
             "begin_check_mask_center": "experiment.driver.req.begin_check_mask_center",
             "begin_check_rheed_pixels": "experiment.driver.req.begin_check_rheed_pixels",
             "begin_set_laser_power": "experiment.driver.req.begin_set_laser_power",
+            "cancel_task": "experiment.driver.req.cancel_task",
             "check_logging_alive": "experiment.driver.req.check_logging_alive",
             "check_mi_mode": "experiment.driver.req.check_mi_mode",
             "confirm": "experiment.driver.req.confirm",
@@ -17956,6 +18881,8 @@
             "rotate_sample_to": "experiment.driver.req.rotate_sample_to",
             "sample_history": "experiment.driver.req.sample_history",
             "set_center_mask_pos": "experiment.driver.req.set_center_mask_pos",
+            "set_laser_energy": "experiment.driver.req.set_laser_energy",
+            "set_laser_hv": "experiment.driver.req.set_laser_hv",
             "set_mfc_control": "experiment.driver.req.set_mfc_control",
             "set_mfc_flow": "experiment.driver.req.set_mfc_flow",
             "set_pressure": "experiment.driver.req.set_pressure",

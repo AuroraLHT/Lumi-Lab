@@ -254,6 +254,51 @@ class ChamberStub:
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
+        self.RheedFilamentOn = channel.unary_unary(
+                '/pld.v1.Chamber/RheedFilamentOn',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFilamentOnRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.RheedFilamentOff = channel.unary_unary(
+                '/pld.v1.Chamber/RheedFilamentOff',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.RheedHvOn = channel.unary_unary(
+                '/pld.v1.Chamber/RheedHvOn',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedHvOnRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.RheedHvOff = channel.unary_unary(
+                '/pld.v1.Chamber/RheedHvOff',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.SetRheedHv = channel.unary_unary(
+                '/pld.v1.Chamber/SetRheedHv',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedHvRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.SetRheedFilament = channel.unary_unary(
+                '/pld.v1.Chamber/SetRheedFilament',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFilamentRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.SetRheedFocus = channel.unary_unary(
+                '/pld.v1.Chamber/SetRheedFocus',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFocusRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.SetRheedDeflection = channel.unary_unary(
+                '/pld.v1.Chamber/SetRheedDeflection',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedDeflectionRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.RheedAllOff = channel.unary_unary(
+                '/pld.v1.Chamber/RheedAllOff',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
 
 
 class ChamberServicer:
@@ -593,6 +638,73 @@ class ChamberServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RheedFilamentOn(self, request, context):
+        """---- RHEED controller (its handset port; the service stands in for the handset) ----------
+        Its own link and thread (rheed.rs, docs/rheed-link.md). Needs control, except RheedAllOff.
+        On hardware without --allow-operations the RHEED port stays closed (any record, even a
+        k poll, restarts the controller's outputs) and every RHEED operation is refused.
+        Filament on ramps from the 507 mA floor at filament_ramp_ma_per_s; HV on ramps from 0 at
+        hv_ramp_v_per_s and needs the filament on. Off, interlock and link loss are immediate.
+        An interlock, an open filament or an over-current held 1 s switches filament and HV off;
+        nothing comes back on by itself.
+        `ma` / `kv` unset: the remembered set point (from this or a previous run); refused if none.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RheedFilamentOff(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RheedHvOn(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RheedHvOff(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetRheedHv(self, request, context):
+        """ramped
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetRheedFilament(self, request, context):
+        """ramped
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetRheedFocus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetRheedDeflection(self, request, context):
+        """X and Y together
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RheedAllOff(self, request, context):
+        """Filament, HV, focus, X and Y off at once. Any client, no control needed (like StopFire).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ChamberServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -813,6 +925,51 @@ def add_ChamberServicer_to_server(servicer, server):
             ),
             'TakeLaserControl': grpc.unary_unary_rpc_method_handler(
                     servicer.TakeLaserControl,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'RheedFilamentOn': grpc.unary_unary_rpc_method_handler(
+                    servicer.RheedFilamentOn,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFilamentOnRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'RheedFilamentOff': grpc.unary_unary_rpc_method_handler(
+                    servicer.RheedFilamentOff,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'RheedHvOn': grpc.unary_unary_rpc_method_handler(
+                    servicer.RheedHvOn,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedHvOnRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'RheedHvOff': grpc.unary_unary_rpc_method_handler(
+                    servicer.RheedHvOff,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'SetRheedHv': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetRheedHv,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedHvRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'SetRheedFilament': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetRheedFilament,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFilamentRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'SetRheedFocus': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetRheedFocus,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFocusRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'SetRheedDeflection': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetRheedDeflection,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedDeflectionRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'RheedAllOff': grpc.unary_unary_rpc_method_handler(
+                    servicer.RheedAllOff,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
@@ -2003,6 +2160,249 @@ class Chamber:
             request,
             target,
             '/pld.v1.Chamber/TakeLaserControl',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RheedFilamentOn(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/RheedFilamentOn',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFilamentOnRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RheedFilamentOff(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/RheedFilamentOff',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RheedHvOn(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/RheedHvOn',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedHvOnRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RheedHvOff(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/RheedHvOff',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetRheedHv(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/SetRheedHv',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedHvRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetRheedFilament(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/SetRheedFilament',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFilamentRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetRheedFocus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/SetRheedFocus',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedFocusRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetRheedDeflection(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/SetRheedDeflection',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.RheedDeflectionRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RheedAllOff(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/RheedAllOff',
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
             options,

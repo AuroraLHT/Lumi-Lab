@@ -51,7 +51,7 @@ class PldHeater(BaseModel):
     key_on: bool = False
     start_on: bool = False
     threshold_on: bool = False
-    current_min: float | None = Field(None, description="PID output limits, A")
+    current_min: float | None = Field(None, description="PID output limits, A (min: the 6 A threshold current)")
     current_max: float | None = None
     temperature_goal: float | None = Field(None, description="Final PID setpoint, C")
     ramp_c_per_min: float = Field(0.0, description="0 = jump")
@@ -62,6 +62,8 @@ class PldHeater(BaseModel):
     writes_failing: bool = Field(False, description="The per-cycle LD current writes are failing")
     tune_cycles_done: int = Field(0, description="tune_heater: relay cycles done (0 when not tuning)")
     tune_cycles: int = Field(0, description="tune_heater: relay cycles in all (0 when not tuning)")
+    warming_up: bool = Field(
+        False, description="set_temperature from below 200 C: LDmin (7.6 A) held until then, PID after")
 
 
 class PldMotion(BaseModel):
@@ -171,6 +173,8 @@ class PldSession(BaseModel):
 
     plc_session: bool = Field(False, description="The session is open")
     watchdog: bool = Field(False, description="The service started the PLC watchdog (operations allowed only)")
+    link_error: str = Field(
+        "", description="Why the PLC/gauge/pyrometer polls are failing (the service reconnects); empty while they work")
 
 
 class PldLimits(BaseModel):
@@ -181,6 +185,48 @@ class PldLimits(BaseModel):
     mv3_max_torr: float = Field(0.0, description="MV3 open refused above this on TCG31")
     heater_max_celsius: float = Field(0.0, description="Above this the heater trips off")
     heater_max_amps: float = Field(0.0, description="LD current ceiling; heater.current_max is the PID's limit within it")
+
+
+class PldRheed(BaseModel):
+    """The RHEED gun's controller, on pld-service's own link. Read-outs are None when
+    unknown; ramps run at 30 mA/s and 500 V/s, done when set == target."""
+
+    present: bool = Field(False, description="The service has a RHEED link")
+    read_only: bool = Field(False, description="Hardware without --allow-operations: the port is not opened")
+    link_ok: bool = Field(False, description="The controller answered the last cycle")
+    interlock: bool = Field(False, description="The controller's interlock switched filament and HV off")
+    filament_open: bool = Field(
+        False, description="Burnt or broken filament suspected (handset E002); filament and HV switched off")
+    filament_on: bool = False
+    filament_set_ma: float | None = Field(None, description="Sent now, ramping toward the target")
+    filament_target_ma: float | None = None
+    filament_readback_ma: float | None = None
+    filament_last_ma: float | None = Field(None, description="Remembered set point; None = none")
+    hv_on: bool = False
+    hv_set_kv: float | None = None
+    hv_target_kv: float | None = None
+    hv_readback_kv: float | None = None
+    hv_last_kv: float | None = None
+    emission_ua: float | None = None
+    focus_on: bool = False
+    focus_set_ma: float | None = None
+    focus_readback_ma: float | None = None
+    x_on: bool = False
+    x_set_ma: float | None = None
+    x_readback_ma: float | None = None
+    y_on: bool = False
+    y_set_ma: float | None = None
+    y_readback_ma: float | None = None
+    last_alert: str = Field("", description="The last link-level alert, kept until the next")
+    hv_max_kv: float | None = None
+    filament_min_ma: float | None = None
+    filament_max_ma: float | None = None
+    focus_min_ma: float | None = None
+    focus_max_ma: float | None = None
+    x_min_ma: float | None = None
+    x_max_ma: float | None = None
+    y_min_ma: float | None = None
+    y_max_ma: float | None = None
 
 
 class PldChamberState(BaseModel):
@@ -205,6 +251,7 @@ class PldChamberState(BaseModel):
     load_lock: PldLoadLock = Field(default_factory=PldLoadLock)
     session: PldSession = Field(default_factory=PldSession)
     limits: PldLimits = Field(default_factory=PldLimits)
+    rheed: PldRheed = Field(default_factory=PldRheed)
 
 
 class PldEvent(BaseModel):

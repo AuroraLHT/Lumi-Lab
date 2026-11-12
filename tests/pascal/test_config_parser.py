@@ -759,3 +759,14 @@ MFC1=1.000000
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_a_missing_config_names_its_path_and_the_setting(tmp_path):
+    import pytest
+
+    missing = tmp_path / "nowhere" / "PLDconfig.ini"
+    reader = ConfigReader(ConfigReaderConfig(idle_time=0.1, config_path=str(missing)), "config", True)
+    with pytest.raises(FileNotFoundError, match=f"not found at {missing}.*CONFIG_READER__CONFIG_PATH"):
+        reader.run()
+    with pytest.raises(TimeoutError, match=f"not found at {missing}"):
+        reader.open_reader(missing, 0)

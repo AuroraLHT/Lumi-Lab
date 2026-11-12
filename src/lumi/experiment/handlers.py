@@ -70,6 +70,7 @@ from lumi.contracts.payloads.experiment import (
     FinishCurrentPixel,
     FinishExperimentRecord,
     LaserPowerResult,
+    LaserSettings,
     LayerInfo,
     ListExperiments,
     ListMeasurements,
@@ -127,6 +128,8 @@ from lumi.contracts.payloads.experiment import (
     SampleId,
     SampleInfo,
     SampleList,
+    SetLaserEnergy,
+    SetLaserHv,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
@@ -140,6 +143,8 @@ from lumi.contracts.payloads.experiment import (
     StartStorage,
     StepInfo,
     StepList,
+    CancelTask,
+    CancelTaskResult,
     StopDeposition,
     StopDepositionResult,
     StorageResult,
@@ -226,6 +231,10 @@ def _jsonable(value: Any) -> dict:
     if isinstance(value, (tuple, list)):
         return {"value": list(value)}
     return {"value": value}
+
+
+def _laser_settings(excimer) -> LaserSettings:
+    return LaserSettings(mode=excimer.mode, hv_kv=excimer.hv, energy_mj=excimer.energy_set)
 
 
 class ExperimentHandler:
@@ -472,6 +481,8 @@ class ExperimentHandler:
                 task_result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
                 if isinstance(exc, PldStopped):  # StopFire from the REA GUI or any client
                     task_result["aborted"] = True
+                    if self._stop_reason is not None:  # ours: stop_deposition's StopFire
+                        task_result["error"] = f"stopped by request: {self._stop_reason}"
             self._current_task = None
             self._task_handle = None
             self._stop_reason = None
@@ -491,14 +502,14 @@ class ExperimentHandler:
     _ABLATING = frozenset({"perform_deposition", "perform_preablation"})
 
     async def stop_deposition(self, req: StopDeposition) -> StopDepositionResult:
-        """End a running deposition or preablation, then stop the laser.
+        """Stop the laser, then end a running deposition or preablation.
 
-        The task is cancelled first and StopFire sent after, so nothing it had yet to
-        do -- the fire itself, if it was still turning the carousel -- can start in
-        between. Cancelling only stops this node waiting; the pulse train, if one was
-        running, goes on in pld-service until the StopFire that follows. Nothing else
-        is undone: the shutter, mask and target spin stay as they are, and logging and
-        any recording keep running, so the record shows the abort.
+        StopFire goes first, so the train is over before task_result says it is. A
+        waited fire it cuts short ends the task by itself; the cancel that follows ends
+        one still turning the carousel. A fire that task started in between is stopped
+        by a second StopFire. Nothing else is undone: the shutter, mask and target spin
+        stay as they are, and logging and any recording keep running, so the record
+        shows the abort.
         """
         chamber = self.manager.chamber
         if chamber.driver == "legacy-mi":
@@ -509,12 +520,44 @@ class ExperimentHandler:
         ending = task is not None and task.kind in self._ABLATING and handle is not None
         if ending:
             self._stop_reason = req.reason or "stop_deposition"
-            handle.cancel()
-            await asyncio.wait({handle})
         laser = await chamber.stop_fire()
         if ending:
+            handle.cancel()
+            await asyncio.wait({handle})
+            if "not firing" in laser:  # pld-service: "the laser is not firing: nothing sent"
+                laser = await chamber.stop_fire()
             return StopDepositionResult(laser=laser, task_id=task.id, task_kind=task.kind)
         return StopDepositionResult(laser=laser)
+
+    #: The tasks that drive the heater, after which cancel_task holds the temperature.
+    _HEATING = frozenset({"to_temperature", "cool_down", "anneal"})
+
+    async def cancel_task(self, req: CancelTask) -> CancelTaskResult:
+        """End the running task, whatever it is, and leave the chamber steady.
+
+        Cancelling stops this node waiting; what the chamber was doing for the task
+        goes on unless stopped: an ablating task is ended as stop_deposition ends it,
+        a heating one leaves the PID holding where the substrate is now.
+        """
+        chamber = self.manager.chamber
+        if chamber.driver == "legacy-mi":
+            raise RuntimeError(
+                "legacy MI mode cannot interrupt a PASCAL command: use PASCAL's own STOP")
+        task, handle = self._current_task, self._task_handle
+        if task is None or handle is None or (req.task_id and req.task_id != task.id):
+            return CancelTaskResult(chamber="no task running: nothing done" if task is None
+                                    else f"{task.kind} {task.id} is running, not {req.task_id}: nothing done")
+        reason = req.reason or "cancel_task"
+        if task.kind in self._ABLATING:
+            stopped = await self.stop_deposition(StopDeposition(reason=reason))
+            return CancelTaskResult(task_id=task.id, task_kind=task.kind, chamber=f"laser: {stopped.laser}")
+        self._stop_reason = reason
+        handle.cancel()
+        await asyncio.wait({handle})
+        done = ""
+        if task.kind in self._HEATING:
+            done = await chamber.hold_temperature(self.manager.bounds.temperature_pid_engage_threshold)
+        return CancelTaskResult(task_id=task.id, task_kind=task.kind, chamber=done)
 
     async def _require_heating_laser(self, target_temperature: float | None = None) -> None:
         """The same refusal `manager.to_temperature` makes, hoisted ahead of
@@ -1319,6 +1362,14 @@ class ExperimentHandler:
         if not already_satisfied:
             await self._set_pending("laser_power", f"Set laser power to {req.laser_power:.2f} W and read the meter")
         return Ack()
+
+    async def set_laser_energy(self, req: SetLaserEnergy) -> LaserSettings:
+        async with self._moving("set_laser_energy"):
+            return _laser_settings(await self.manager.set_laser_energy(req.mj))
+
+    async def set_laser_hv(self, req: SetLaserHv) -> LaserSettings:
+        async with self._moving("set_laser_hv"):
+            return _laser_settings(await self.manager.set_laser_hv(req.kv))
 
     async def confirm_laser_power(self, req: ConfirmLaserPower) -> LaserPowerResult:
         self._require_pending("laser_power")

@@ -260,3 +260,42 @@ async def test_another_client_holding_control_is_a_refusal(handler):
     finally:
         await asyncio.to_thread(gui.release)
         gui.close()
+
+
+async def test_cancel_task_holds_a_ramp_where_it_is(handler, tmp_path):
+    # experiment.driver.cancel_task over the twin: the to_temperature task ends aborted,
+    # the PID holds the present temperature, and the waited SetTemperature behind the
+    # task is ended by the new goal rather than left running in the chamber node.
+    import sys
+    from pathlib import Path
+
+    from lumi.contracts.payloads.experiment import CancelTask, ToTemperature
+
+    sys.path.insert(0, str(Path(__file__).parents[1] / "experiment"))
+    from test_pld_chamber import make_handler, wait_task
+
+    h = handler
+    driver, db = await make_handler(tmp_path, PldChamber(HandlerBus(h)))
+    try:
+        start = (await h.chamber_state(Empty())).heater.temperature
+        if start is None or start < 250:
+            pytest.skip(f"the twin's substrate is at {start} C; this needs it above the PID floor")
+        await driver.manager.initiate_heating_laser(timeout=30)
+        await driver.to_temperature(ToTemperature(temperature=start + 200, ramp_rate=1.0))
+        for _ in range(100):
+            if (await h.chamber_state(Empty())).heater.temperature_goal == start + 200:
+                break
+            await asyncio.sleep(0.1)
+        reply = await driver.cancel_task(CancelTask(reason="twin test"))
+        assert reply.task_kind == "to_temperature" and reply.chamber.startswith("holding"), reply
+        assert await wait_task(driver) == {"ok": False, "aborted": True, "error": "stopped by request: twin test"}
+        held = float(reply.chamber.split()[1])
+        for _ in range(50):  # the state is the service's poll, a cycle behind the reply
+            heater = (await h.chamber_state(Empty())).heater
+            if heater.temperature_goal == held:
+                break
+            await asyncio.sleep(0.1)
+        assert heater.pid_on and heater.temperature_goal == held
+        assert abs(heater.temperature - held) < 5
+    finally:
+        await db.close()

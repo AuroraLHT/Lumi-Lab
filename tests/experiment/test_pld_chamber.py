@@ -23,16 +23,21 @@ from lumi.contracts.payloads.experiment import (
     CheckMiMode,
     PerformDeposition,
     SampleAngle,
+    SetLaserEnergy,
+    SetLaserHv,
     SetMfcControl,
     SetPressure,
     SetTarget,
     StartMiLogging,
+    CancelTask,
     StopDeposition,
     ToTemperature,
 )
 from lumi.contracts.payloads.pld import (
     PldChamberState,
+    PldExcimer,
     PldHeater,
+    PldLaser,
     PldMotion,
     PldPressures,
     PldPump,
@@ -63,6 +68,8 @@ class FakePldClient:
         self.state = state
         self.calls: list[tuple[str, dict]] = []
         self.refuse: dict[str, str] = {}
+        #: An ok reply's message other than "done", by op.
+        self.answers: dict[str, str] = {}
         self.raise_remote: str | None = None
         #: Ops that block, as a real fire or carousel move does, until `release` is set.
         self.blocking: set[str] = set()
@@ -76,7 +83,7 @@ class FakePldClient:
             await self.release.wait()
         if op in self.refuse:
             return PldReply(ok=False, message=self.refuse[op])
-        return PldReply(ok=True, message="done")
+        return PldReply(ok=True, message=self.answers.get(op, "done"))
 
     async def chamber_state(self):
         return self.state
@@ -227,7 +234,7 @@ async def until(predicate, timeout=5.0):
     pytest.fail("condition never held")
 
 
-async def test_stop_deposition_ends_the_task_then_stops_the_laser(fake):
+async def test_stop_deposition_stops_the_laser_then_ends_the_task(fake):
     handler, client = fake
     client.blocking.add("fire_laser")
     ack = await handler.perform_deposition(PerformDeposition(
@@ -244,10 +251,25 @@ async def test_stop_deposition_ends_the_task_then_stops_the_laser(fake):
     assert ops(client).count("fire_laser") == 1
 
 
+async def test_stop_deposition_ends_a_fire_its_stopfire_beat_by_its_own_reason(fake):
+    # The StopFire cuts the waited fire short, which ends the task before the cancel.
+    handler, client = fake
+    client.blocking.add("fire_laser")
+    client.refuse["fire_laser"] = "stopped by request: fired 412 of 1000 pulses"
+    await handler.perform_deposition(PerformDeposition(
+        num_pulse=1000, laser_repetition_rate=10.0, target_id="A", is_dryrun=False))
+    await until(lambda: "fire_laser" in ops(client))
+    client.release.set()
+    await handler.stop_deposition(StopDeposition(reason="plume"))
+    assert await wait_task(handler) == {"ok": False, "aborted": True, "error": "stopped by request: plume"}
+
+
 async def test_stop_deposition_while_the_carousel_turns_never_fires(fake):
-    # Cancelled before StopFire is sent, so the fire it had yet to issue never starts.
+    # Nothing firing yet: the task is cancelled before the fire it had yet to issue, and
+    # StopFire is sent again behind it.
     handler, client = fake
     client.blocking.add("select_target")
+    client.answers["stop_fire"] = "the laser is not firing: nothing sent"
     await handler.perform_deposition(PerformDeposition(
         num_pulse=1000, laser_repetition_rate=10.0, target_id="A", is_dryrun=False))
     await until(lambda: "select_target" in ops(client))
@@ -255,7 +277,7 @@ async def test_stop_deposition_while_the_carousel_turns_never_fires(fake):
     assert reply.task_kind == "perform_deposition"
     client.release.set()
     await asyncio.sleep(0.05)
-    assert "fire_laser" not in ops(client) and ops(client)[-1] == "stop_fire"
+    assert "fire_laser" not in ops(client) and ops(client)[-2:] == ["stop_fire", "stop_fire"]
     assert (await wait_task(handler))["error"] == "stopped by request: stop_deposition"
 
 
@@ -278,6 +300,129 @@ async def test_stop_deposition_is_refused_under_legacy_mi(fake):
     handler.manager.chamber = MiChamber(FakeMi(), handler.sources["chamber_log"])
     with pytest.raises(RuntimeError, match="press STOP on PASCAL"):
         await handler.stop_deposition(StopDeposition())
+
+
+async def ramping(handler, client, temperature=400):
+    """A to_temperature waiting in set_temperature, with PID on at 300 C."""
+    client.state.heater.pid_on = True
+    client.blocking.add("set_temperature")
+    ack = await handler.to_temperature(ToTemperature(temperature=temperature, ramp_rate=2))
+    await until(lambda: "set_temperature" in ops(client))
+    client.blocking.discard("set_temperature")  # the hold that follows goes through
+    return ack
+
+
+async def test_cancel_task_holds_a_ramp_where_it_is(fake):
+    handler, client = fake
+    ack = await ramping(handler, client)
+    reply = await handler.cancel_task(CancelTask(reason="too slow"))
+    assert (reply.task_id, reply.task_kind, reply.chamber) == (ack.task_id, "to_temperature", "holding 300.0 C")
+    assert client.calls[-1] == ("set_temperature", {"celsius": 300.0, "ramp_c_per_min": 0.0, "wait": False, "tolerance": 0.0})
+    assert handler.readout().current_task is None
+    assert await wait_task(handler) == {"ok": False, "aborted": True, "error": "stopped by request: too slow"}
+
+
+@pytest.mark.parametrize("heater, left", [
+    (dict(pid_on=False), "heater on manual current (6.0 A): left as it is"),
+    (dict(temperature=200.0), "at 200.0 C, under the 220 C PID floor: left as it is"),
+    (dict(temperature=None), "at below the pyrometer's range, under the 220 C PID floor: left as it is"),
+])
+async def test_cancel_task_leaves_a_heater_it_cannot_hold(fake, heater, left):
+    handler, client = fake
+    await ramping(handler, client)
+    for name, value in heater.items():
+        setattr(client.state.heater, name, value)
+    assert (await handler.cancel_task(CancelTask())).chamber == left
+    assert ops(client).count("set_temperature") == 1
+    assert (await wait_task(handler))["error"] == "stopped by request: cancel_task"
+
+
+async def test_cancel_task_stops_a_deposition_as_stop_deposition_does(fake):
+    handler, client = fake
+    client.blocking.add("fire_laser")
+    await handler.perform_deposition(PerformDeposition(
+        num_pulse=1000, laser_repetition_rate=10.0, target_id="A", is_dryrun=False))
+    await until(lambda: "fire_laser" in ops(client))
+    reply = await handler.cancel_task(CancelTask(reason="wrong target"))
+    assert (reply.task_kind, reply.chamber) == ("perform_deposition", "laser: done")
+    assert ops(client)[-1] == "stop_fire"
+    assert (await wait_task(handler))["error"] == "stopped by request: wrong target"
+
+
+async def test_cancel_task_leaves_another_task_and_an_idle_chamber_alone(fake):
+    handler, client = fake
+    assert (await handler.cancel_task(CancelTask())).chamber == "no task running: nothing done"
+    ack = await ramping(handler, client)
+    reply = await handler.cancel_task(CancelTask(task_id="0123"))
+    assert reply.task_id is None and reply.chamber == f"to_temperature {ack.task_id} is running, not 0123: nothing done"
+    assert handler.readout().current_task.id == ack.task_id
+    await handler.cancel_task(CancelTask(task_id=ack.task_id))
+    assert handler.readout().current_task is None
+
+
+async def test_cancel_task_is_refused_under_legacy_mi(fake):
+    handler, client = fake
+    handler.manager.chamber = MiChamber(FakeMi(), handler.sources["chamber_log"])
+    with pytest.raises(RuntimeError, match="cannot interrupt a PASCAL command"):
+        await handler.cancel_task(CancelTask())
+
+
+async def test_set_laser_energy_borrows_the_settings_port_and_forgets_the_power(fake):
+    handler, client = fake
+    handler.manager._laser_power_set, handler.manager._laser_power_real = 2.0, 1.9
+    client.state.excimer = PldExcimer(mode="EGY PGR", hv=21.0, energy_set=250.0)
+    reply = await handler.set_laser_energy(SetLaserEnergy(mj=250))
+    assert reply.model_dump() == {"mode": "EGY PGR", "hv_kv": 21.0, "energy_mj": 250.0}
+    assert client.calls == [
+        ("take_laser_control", {}),
+        ("set_laser_mode", {"mode": "energy"}),
+        ("set_laser_energy", {"mj": 250.0}),
+        ("release_laser", {}),  # the second PC had it: it gets it back
+    ]
+    # The beam changed: the next begin_set_laser_power measures instead of skipping.
+    assert handler.manager._laser_power_set is None
+
+
+async def test_set_laser_hv_keeps_a_port_already_held_and_hands_back_on_refusal(fake):
+    handler, client = fake
+    client.state.excimer = PldExcimer(control=True)
+    await handler.set_laser_hv(SetLaserHv(kv=20))
+    assert ops(client) == ["set_laser_mode", "set_laser_hv"]  # ours already: kept
+
+    client.calls.clear()
+    client.state.excimer = PldExcimer(control=False)
+    client.refuse["set_laser_hv"] = "26 kV is outside 18.5..25.5 kV"
+    with pytest.raises(PldRefused, match="outside"):
+        await handler.set_laser_hv(SetLaserHv(kv=26))
+    assert ops(client) == ["take_laser_control", "set_laser_mode", "set_laser_hv", "release_laser"]
+
+
+async def test_the_excimer_is_left_alone_while_the_laser_fires(fake):
+    handler, client = fake
+    client.state.laser = PldLaser(status="firing")
+    with pytest.raises(RuntimeError, match="the laser is firing"):
+        await handler.set_laser_energy(SetLaserEnergy(mj=250))
+    assert client.calls == []
+
+
+async def test_the_excimer_is_left_alone_under_a_deposition(fake):
+    handler, client = fake
+    client.blocking.add("fire_laser")
+    await handler.perform_deposition(PerformDeposition(
+        num_pulse=100, laser_repetition_rate=10.0, target_id="A", is_dryrun=False))
+    await until(lambda: "fire_laser" in ops(client))
+    with pytest.raises(RuntimeError, match="perform_deposition"):
+        await handler.set_laser_hv(SetLaserHv(kv=20))
+    assert "set_laser_hv" not in ops(client)
+    client.release.set()
+    await wait_task(handler)
+
+
+async def test_the_excimer_is_refused_under_legacy_mi(fake):
+    handler, client = fake
+    handler.manager.chamber = MiChamber(FakeMi(), handler.sources["chamber_log"])
+    with pytest.raises(NotImplementedError, match="laser's own PC"):
+        await handler.set_laser_energy(SetLaserEnergy(mj=250))
 
 
 async def test_pressure_goes_to_the_service_even_when_set_by_hand_under_mi(fake):
@@ -447,3 +592,30 @@ async def test_stop_deposition_on_the_sim(sim):
     assert model.laser_idle and 0 < fired == model.laser_pulses < 100_000
     laser = (await handler.manager.chamber.state()).laser
     assert laser.stop_requested and laser.pulses_requested == 100_000
+
+
+async def test_set_laser_energy_and_hv_on_the_sim(sim):
+    handler, model, service = sim
+    energy = await handler.set_laser_energy(SetLaserEnergy(mj=300))
+    assert (energy.mode, energy.energy_mj) == ("EGY PGR", 300.0)
+    hv = await handler.set_laser_hv(SetLaserHv(kv=21))
+    assert (hv.mode, hv.hv_kv) == ("HV PGR", 21.0)
+    # The sim's excimer starts at CM=1; each change borrowed the port and gave it back.
+    assert (await handler.manager.chamber.state()).excimer.control is False
+
+
+async def test_cancel_task_holds_a_slow_ramp_on_the_sim(sim):
+    handler, model, service = sim
+    await handler.manager.initiate_heating_laser(timeout=5)
+    await handler.to_temperature(ToTemperature(temperature=900, ramp_rate=1))
+    for _ in range(200):  # past Lumi's warm-up, into the PID's ramp
+        heater = (await handler.manager.chamber.state()).heater
+        if heater.pid_on and heater.temperature_goal == 900:
+            break
+        await asyncio.sleep(0.05)
+    reply = await handler.cancel_task(CancelTask(reason="hold here"))
+    assert reply.task_kind == "to_temperature" and reply.chamber.startswith("holding"), reply
+    assert (await wait_task(handler))["aborted"] is True
+    held = float(reply.chamber.split()[1])
+    heater = (await handler.manager.chamber.state()).heater
+    assert heater.pid_on and heater.temperature_goal == held < 900
