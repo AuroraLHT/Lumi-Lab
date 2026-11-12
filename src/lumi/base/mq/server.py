@@ -31,6 +31,10 @@ from lumi.base.mq.context import current_actor, current_source
 
 log = logging.getLogger(__name__)
 
+#: An op allowed to run longer than this is acked on receipt, not on completion:
+#: comfortably under RabbitMQ's default consumer_timeout of 30 min.
+ACK_EARLY_ABOVE_S = 20 * 60.0
+
 # A handler op returns either a model (JSON) or (model, payload) for a binary codec.
 OpResult = BaseModel | tuple[BaseModel, Payload]
 
@@ -227,12 +231,26 @@ class CapabilityServer(ControlPlane):
     # --- requests ---------------------------------------------------------
 
     async def _on_request(self, message: AbstractIncomingMessage) -> None:
-        async with message.process(requeue=False):
+        async with message.process(requeue=False, ignore_processed=True):
+            if self._outlives_ack_timeout(message):
+                # RabbitMQ closes a channel that holds a message unacked past its
+                # consumer_timeout (30 min by default), and with it this request's
+                # reply: a 4 h ramp died at 30 min and its caller waited out the
+                # rest. Ack such a request on receipt. Nothing is lost by it: a
+                # redelivered half-done ramp is exactly the stale request the work
+                # queue's TTL exists to keep out.
+                await message.ack()
             self._inflight += 1
             try:
                 await self._handle_request(message)
             finally:
                 self._inflight -= 1
+
+    def _outlives_ack_timeout(self, message: AbstractIncomingMessage) -> bool:
+        op_name = self._op_from_key(message.routing_key)
+        entry = self._ops.get(op_name) if op_name else None
+        timeout_s = entry[0].timeout_s if entry is not None else None
+        return timeout_s is not None and timeout_s > ACK_EARLY_ABOVE_S
 
     @staticmethod
     def _op_from_key(routing_key: str | None) -> str | None:
