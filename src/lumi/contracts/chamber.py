@@ -265,8 +265,14 @@ PLD = Capability(
         _pld_op("set_rheed_hv", PldRheedHvRequest,
                 "RHEED HV set point, kV (up to state.rheed.hv_max_kv), ramped at 500 V/s. "
                 "Returns when the ramp starts."),
-        _pld_op("set_rheed_focus", PldRheedFocusRequest, "RHEED focus current, mA."),
-        _pld_op("set_rheed_deflection", PldRheedDeflectionRequest, "RHEED beam deflection X and Y together, mA."),
+        _pld_op("set_rheed_focus", PldRheedFocusRequest,
+                "RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 "
+                "when focus is off). Returns when it is there: up to about 22 s across the range.",
+                timeout_s=120.0),
+        _pld_op("set_rheed_deflection", PldRheedDeflectionRequest,
+                "RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in "
+                "0.2 s steps, both arriving together. Returns when they are there.",
+                timeout_s=120.0),
         _pld_op("rheed_all_off", Empty,
                 "RHEED filament, HV, focus, X and Y off at once, unramped: the emergency stop, "
                 "for a fault; rheed_filament_off is the normal way down. Set points are kept "

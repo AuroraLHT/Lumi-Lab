@@ -390,3 +390,34 @@ async def test_rheed_off_ramps_down_and_on_comes_back_where_it_was(handler):
     await until_state(h, lambda s: s.rheed.hv_target_kv == 5.0)
     assert (await h.rheed_hv_off(Empty())).ok
     assert (await h.rheed_all_off(Empty())).ok
+
+
+async def test_rheed_focus_and_deflection_ramp_in_small_steps(handler):
+    h = handler
+    assert (await h.rheed_all_off(Empty())).ok
+    assert (await h.rheed_filament_on(PldRheedFilamentOnRequest(ma=600.0))).ok
+    seen = []
+
+    async def watch():
+        while True:
+            r = (await h.chamber_state(Empty())).rheed
+            # Off, a set point is the remembered one (all-off keeps it), not the present.
+            seen.append((r.focus_set_ma if r.focus_on else None, r.x_set_ma if r.x_on else None,
+                         r.y_set_ma if r.y_on else None))
+            await asyncio.sleep(0.1)
+
+    watcher = asyncio.create_task(watch())
+    try:
+        assert (await h.set_rheed_focus(PldRheedFocusRequest(ma=200.0))).ok
+        assert (await h.set_rheed_deflection(PldRheedDeflectionRequest(x_ma=40.0, y_ma=-60.0))).ok
+    finally:
+        watcher.cancel()
+    rheed = (await until_state(h, lambda s: s.rheed.y_set_ma == -60.0)).rheed
+    assert (rheed.focus_set_ma, rheed.x_set_ma) == (200.0, 40.0)
+    focus = sorted({f for f, _, _ in seen if f is not None})
+    ys = sorted({y for _, _, y in seen if y is not None})
+    # Through the values between, never one jump: 50 mA/s and 20 mA/s in 0.2 s steps.
+    assert any(0 < f < 200 for f in focus) and max(b - a for a, b in zip(focus, focus[1:])) <= 10.0 + 1e-6
+    assert any(-60 < y < 0 for y in ys) and max(b - a for a, b in zip(ys, ys[1:])) <= 4.0 + 1e-6
+    assert (await h.rheed_filament_off(Empty())).ok
+    assert (await h.rheed_all_off(Empty())).ok

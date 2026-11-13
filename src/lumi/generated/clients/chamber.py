@@ -323,11 +323,11 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("set_rheed_hv", req)  # type: ignore[return-value]
 
     async def set_rheed_focus(self, req: PldRheedFocusRequest) -> PldReply:
-        """RHEED focus current, mA."""
+        """RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 when focus is off). Returns when it is there: up to about 22 s across the range."""
         return await self.call("set_rheed_focus", req)  # type: ignore[return-value]
 
     async def set_rheed_deflection(self, req: PldRheedDeflectionRequest) -> PldReply:
-        """RHEED beam deflection X and Y together, mA."""
+        """RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in 0.2 s steps, both arriving together. Returns when they are there."""
         return await self.call("set_rheed_deflection", req)  # type: ignore[return-value]
 
     async def rheed_all_off(self) -> PldReply:

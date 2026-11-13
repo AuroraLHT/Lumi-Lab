@@ -2990,12 +2990,12 @@ export class ChamberPldClient {
     return this.t.call<PldReply>(ChamberPldClient.target, "set_rheed_hv", req);
   }
 
-  /** RHEED focus current, mA. */
+  /** RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 when focus is off). Returns when it is there: up to about 22 s across the range. */
   async set_rheed_focus(req: PldRheedFocusRequest): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "set_rheed_focus", req);
   }
 
-  /** RHEED beam deflection X and Y together, mA. */
+  /** RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in 0.2 s steps, both arriving together. Returns when they are there. */
   async set_rheed_deflection(req: PldRheedDeflectionRequest): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "set_rheed_deflection", req);
   }

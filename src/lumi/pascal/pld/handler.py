@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
@@ -33,7 +34,9 @@ from lumi.contracts.payloads.pld import (
     PldLoggingRequest,
     PldReadout,
     PldReply,
+    PldRheedDeflectionRequest,
     PldRheedFilamentOnRequest,
+    PldRheedFocusRequest,
     PldRheedHvOnRequest,
 )
 from lumi.pascal.pld import convert
@@ -158,14 +161,19 @@ class PldHandler:
     # Needs no control, and runs alongside a waited fire_laser (each op is its own thread).
     stop_fire = _op("StopFire", lambda r: pb.Empty())
 
-    # The RHEED controller. pld-service ramps every on and set point (filament 30 mA/s,
-    # HV 500 V/s) but switches off at once, so the off-ops here ramp down first: HV to
-    # 0 kV, the filament to its floor, then off. rheed_all_off stays the immediate stop.
+    # The RHEED controller. pld-service ramps the filament (30 mA/s) and HV (500 V/s) on
+    # and to a new set point but switches them off at once, so the off-ops here ramp
+    # down first: HV to 0 kV, the filament to its floor, then off. Focus and X/Y it sets
+    # in one step, so the node ramps those in small steps itself. rheed_all_off stays
+    # the immediate stop.
     # `ma` / `kv` None on the on-ops: the set point from before the last ramped off, else
     # the service's remembered one.
 
     _HV_KV_PER_S = 0.5
     _FILAMENT_MA_PER_S = 30.0
+    _FOCUS_MA_PER_S = 50.0
+    _DEFLECTION_MA_PER_S = 20.0
+    _STEP_S = 0.2
 
     async def _rheed(self) -> "pb.Rheed":
         return (await asyncio.to_thread(self.client.state)).rheed
@@ -225,8 +233,35 @@ class PldHandler:
 
     set_rheed_filament = _op("SetRheedFilament", lambda r: pb.RheedFilamentRequest(ma=r.ma))
     set_rheed_hv = _op("SetRheedHv", lambda r: pb.RheedHvRequest(kv=r.kv))
-    set_rheed_focus = _op("SetRheedFocus", lambda r: pb.RheedFocusRequest(ma=r.ma))
-    set_rheed_deflection = _op("SetRheedDeflection", lambda r: pb.RheedDeflectionRequest(x_ma=r.x_ma, y_ma=r.y_ma))
+    async def _step_rheed(self, start: tuple[float, ...], goal: tuple[float, ...], rate: float, send) -> PldReply:
+        """Walk from `start` to `goal` together, every value at most `rate` mA/s."""
+        steps = max(1, math.ceil(max(abs(g - s) for s, g in zip(start, goal)) / (rate * self._STEP_S)))
+        reply = PldReply(ok=True, message="nothing to change")
+        for i in range(1, steps + 1):
+            reply = await send(*(s + (g - s) * i / steps for s, g in zip(start, goal)))
+            if not reply.ok:
+                return reply
+            if i < steps:
+                await asyncio.sleep(self._STEP_S)
+        return reply
+
+    async def set_rheed_focus(self, req: PldRheedFocusRequest) -> PldReply:
+        rheed = await self._rheed()
+        start = rheed.focus_set_ma if rheed.focus_on and math.isfinite(rheed.focus_set_ma) else 0.0
+        return await self._step_rheed(
+            (start,), (req.ma,), self._FOCUS_MA_PER_S,
+            lambda ma: self._operate("SetRheedFocus", pb.RheedFocusRequest(ma=ma)))
+
+    async def set_rheed_deflection(self, req: PldRheedDeflectionRequest) -> PldReply:
+        rheed = await self._rheed()
+
+        def present(on: bool, ma: float) -> float:
+            return ma if on and math.isfinite(ma) else 0.0
+
+        start = (present(rheed.x_on, rheed.x_set_ma), present(rheed.y_on, rheed.y_set_ma))
+        return await self._step_rheed(
+            start, (req.x_ma, req.y_ma), self._DEFLECTION_MA_PER_S,
+            lambda x, y: self._operate("SetRheedDeflection", pb.RheedDeflectionRequest(x_ma=x, y_ma=y)))
     # Needs no control, like StopFire.
     rheed_all_off = _op("RheedAllOff", lambda r: pb.Empty())
 
