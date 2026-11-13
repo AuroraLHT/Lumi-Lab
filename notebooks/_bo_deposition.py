@@ -93,7 +93,7 @@ AXES = {
     #       laser_repetition_rate 0.5-10 Hz, num=101 per axis
 }
 
-LASER_POWER = 1.2          # real: 88 mJ
+LASER_PULSE_ENERGY = 88.0  # mJ, read on the energy meter at the exit view port
 RAMP_RATE = 20.0
 """),
         (MD, """
@@ -171,7 +171,7 @@ for p in substrate.positions:
 ## Answering the recipe's prompts
 
 `perform_pixel_deposition` has more human gates than the single-deposition recipe: as
-well as the laser power meter it runs the mask-centre check and the RHEED gain loop,
+well as the laser energy meter it runs the mask-centre check and the RHEED gain loop,
 each of which asks a different *kind* of question. Answering everything "y" would fail
 the moment the gain loop asks for a number, so the provider below dispatches on the
 prompt.
@@ -189,7 +189,7 @@ async def auto_input(message: str) -> None:
 async def auto_value(prompt: str) -> str:
     lowered = prompt.lower()
     if "measured" in lowered:
-        answer = str(LASER_POWER)          # the power meter reading
+        answer = str(LASER_PULSE_ENERGY)          # the energy meter reading
     elif "gain" in lowered:
         answer = str(RHEED_GAIN)           # a number, not a yes/no
     else:
@@ -325,7 +325,7 @@ for iteration in range(len(substrate.positions)):
         project_name=PROJECT,
         pressure=float(conditions["pressure"]),
         temperature=float(conditions["temperature"]),
-        laser_power=LASER_POWER,
+        laser_power=LASER_PULSE_ENERGY,
         laser_repetition_rate=float(conditions["laser_repetition_rate"]),
         target_id=TARGET_SLOT,
         target_material=material,

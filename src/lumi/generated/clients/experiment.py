@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 372e874fbc285dc2
+# contract_hash: c294a5d7c09bfc20
 
 """Generated clients for the experiment node."""
 
@@ -129,7 +129,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("get_experiment", req)  # type: ignore[return-value]
 
     async def update_experiment(self, req: UpdateExperiment) -> ExperimentInfo:
-        """Correct a growth's recorded conditions -- the temperature, pressure and laser power a person read off an instrument and may have typed wrong. Identity (uuid, substrate, pixel) is not editable: that would make it a different growth."""
+        """Correct a growth's recorded conditions -- the temperature, pressure and laser pulse energy a person read off an instrument and may have typed wrong. Identity (uuid, substrate, pixel) is not editable: that would make it a different growth."""
         return await self.call("update_experiment", req)  # type: ignore[return-value]
 
     async def retire_experiment(self, req: RetireExperiment) -> ExperimentInfo:
@@ -344,15 +344,15 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("cancel_task", req)  # type: ignore[return-value]
 
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:
-        """Start a laser energy check: closes the sample shutter and turns the carousel to Clear, so the beam reaches the meter at the exit port, then raises a `laser_power` pending confirmation for the person reading the meter. Call nothing else until confirm_laser_power: any op that selects a target (set_target, perform_preablation, perform_deposition) moves the carousel off Clear and spoils the reading. Skipped, with no confirmation, when this power was already confirmed (force=true redoes it)."""
+        """Start a laser pulse energy check, `laser_power` in mJ (the name is historical): closes the sample shutter and turns the carousel to Clear, so the beam reaches the meter at the exit port, then raises a `laser_power` pending confirmation for the person reading the meter. Call nothing else until confirm_laser_power: any op that selects a target (set_target, perform_preablation, perform_deposition) moves the carousel off Clear and spoils the reading. Skipped, with no confirmation, when this energy was already confirmed (force=true redoes it)."""
         return await self.call("begin_set_laser_power", req)  # type: ignore[return-value]
 
     async def confirm_laser_power(self, req: ConfirmLaserPower) -> LaserPowerResult:
-        """Call driver.confirm_laser_power."""
+        """Answer begin_set_laser_power with the pulse energy read off the meter, mJ."""
         return await self.call("confirm_laser_power", req)  # type: ignore[return-value]
 
     async def set_laser_energy(self, req: SetLaserEnergy) -> LaserSettings:
-        """Run the excimer at constant energy: switches it to energy mode (EGY PGR) and sets the energy set point, mJ. Changes the beam, so a laser power confirmed with begin_set_laser_power is forgotten and the next check measures again. Refused while the laser fires or a task holds the motors (a deposition), and under --use-legacy-mi-mode, which cannot reach the excimer: set it on the laser's own PC there. If the second PC has the excimer's settings port, it is taken for the change and handed back."""
+        """Run the excimer at constant energy: switches it to energy mode (EGY PGR) and sets the energy set point, mJ. Changes the beam, so a pulse energy confirmed with begin_set_laser_power is forgotten and the next check measures again. Refused while the laser fires or a task holds the motors (a deposition), and under --use-legacy-mi-mode, which cannot reach the excimer: set it on the laser's own PC there. If the second PC has the excimer's settings port, it is taken for the change and handed back."""
         return await self.call("set_laser_energy", req)  # type: ignore[return-value]
 
     async def set_laser_hv(self, req: SetLaserHv) -> LaserSettings:

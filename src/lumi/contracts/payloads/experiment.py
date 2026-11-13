@@ -12,7 +12,7 @@ instead of a monolithic `perform_experiment` RPC:
   for a submitted command script -- a handler is one inline `await`, so nothing that
   can take minutes may sit inside an op and still expect its caller's RPC timeout to
   hold.
-- Ops that need a human to act or read something physical (laser power meter,
+- Ops that need a human to act or read something physical (laser energy meter,
   substrate swap, camera gain, a visual pixel-position check) are split into a
   `begin_*` that returns immediately and sets `state.pending_confirmation`, and a
   `confirm_*` (or the generic `confirm`) that resolves it once the value/decision is
@@ -236,7 +236,7 @@ class ExperimentInfo(BaseModel):
     pixel_location: int | None = None
     temperature: float | None = None
     pressure: float | None = None
-    laser_power: float | None = None
+    laser_power: float | None = Field(None, description="Laser pulse energy at the exit port, mJ (named laser_power for the database)")
     laser_pulse_rate: float | None = None
     target_material: str | None = None
     num_pulse: int | None = None
@@ -266,7 +266,7 @@ class UpdateExperiment(BaseModel):
     project_id: int | None = None
     temperature: float | None = None
     pressure: float | None = None
-    laser_power: float | None = None
+    laser_power: float | None = Field(None, description="Laser pulse energy at the exit port, mJ (named laser_power for the database)")
     laser_pulse_rate: float | None = None
     target_material: str | None = None
     num_pulse: int | None = None
@@ -590,7 +590,7 @@ class FinishExperimentRecord(BaseModel):
     experiment_uuid: str
     temperature: float
     pressure: float
-    laser_power: float
+    laser_power: float = Field(..., description="Laser pulse energy at the exit port, mJ (named laser_power for the database)")
     laser_repetition_rate: float
     target_material: str
     num_pulse: int
@@ -686,20 +686,20 @@ class Anneal(BaseModel):
     steps: list[AnnealStep]
 
 
-# --- gated ops: laser power ---------------------------------------------------
+# --- gated ops: laser pulse energy ---------------------------------------------------
 
 
 class BeginSetLaserPower(BaseModel):
-    laser_power: float
+    laser_power: float = Field(..., description="Laser pulse energy at the exit port, mJ (named laser_power for the database)")
     force: bool = False
 
 
 class ConfirmLaserPower(BaseModel):
-    measured_power: float
+    measured_power: float = Field(description="Pulse energy read off the meter, mJ")
 
 
 class LaserPowerResult(BaseModel):
-    measured_power: float
+    measured_power: float = Field(description="Pulse energy read off the meter, mJ")
 
 
 # --- excimer settings ------------------------------------------------------------
@@ -866,8 +866,8 @@ class ExperimentReadout(BaseModel):
     # to drive anything because a source is down. Surface that rather than failing
     # opaquely mid-growth -- same reasoning as StorageReadout.deps_available.
     deps_available: dict[str, bool] = {}
-    laser_power_set: float | None = None
-    laser_power_real: float | None = None
+    laser_power_set: float | None = Field(None, description="Pulse energy last checked for, mJ")
+    laser_power_real: float | None = Field(None, description="Pulse energy the meter read then, mJ")
     #: Mask1 position, mm, that centres the slit on the sample. Every change is saved
     #: to growth.db and survives a node restart; settings.experiment.pld_config is
     #: only the starting value for a database that has never had one.

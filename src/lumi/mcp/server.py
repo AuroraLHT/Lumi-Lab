@@ -440,7 +440,7 @@ perform_preablation, perform_deposition, anneal, auto_align_center_mask) return 
 with a task_id; poll experiment.driver.get_current_log (or the driver's state) until
 current_task clears before assuming the step finished, and then check it succeeded --
 read the temperature or pressure back rather than trusting that it cleared. Ops that need
-a human to act or read something physical (laser power, mask alignment, RHEED gain, a
+a human to act or read something physical (laser pulse energy, mask alignment, RHEED gain, a
 per-pixel visual check) return with pending_confirmation set; resolve it with the matching
 confirm_*/resolve_* tool (or the generic `confirm` for a plain proceed-gate) before
 continuing. rheed.camera.image and chamber.camera.image show the live pictures;

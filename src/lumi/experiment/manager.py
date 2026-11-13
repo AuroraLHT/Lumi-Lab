@@ -1124,7 +1124,7 @@ class BaseExperimentManager:
             )
         return experiment_id
 
-    # --- gated: laser power --------------------------------------------------------
+    # --- gated: laser pulse energy --------------------------------------------------------
 
     async def begin_set_laser_power(self, laser_power: float, force: bool = False) -> tuple[bool, float | None]:
         """Returns (already_satisfied, cached_measured_power). If already_satisfied,

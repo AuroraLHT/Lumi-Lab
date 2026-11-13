@@ -11393,6 +11393,7 @@
                         }
                       ],
                       "default": null,
+                      "description": "Laser pulse energy at the exit port, mJ (named laser_power for the database)",
                       "title": "Laser Power"
                     },
                     "laser_pulse_rate": {
@@ -11694,6 +11695,7 @@
                     }
                   ],
                   "default": null,
+                  "description": "Laser pulse energy at the exit port, mJ (named laser_power for the database)",
                   "title": "Laser Power"
                 },
                 "laser_pulse_rate": {
@@ -11860,6 +11862,7 @@
                     }
                   ],
                   "default": null,
+                  "description": "Laser pulse energy at the exit port, mJ (named laser_power for the database)",
                   "title": "Laser Power"
                 },
                 "laser_pulse_rate": {
@@ -12041,6 +12044,7 @@
                     }
                   ],
                   "default": null,
+                  "description": "Laser pulse energy at the exit port, mJ (named laser_power for the database)",
                   "title": "Laser Power"
                 },
                 "laser_pulse_rate": {
@@ -12297,6 +12301,7 @@
                     }
                   ],
                   "default": null,
+                  "description": "Laser pulse energy at the exit port, mJ (named laser_power for the database)",
                   "title": "Laser Power"
                 },
                 "laser_pulse_rate": {
@@ -16429,6 +16434,7 @@
                   "type": "boolean"
                 },
                 "laser_power": {
+                  "description": "Laser pulse energy at the exit port, mJ (named laser_power for the database)",
                   "title": "Laser Power",
                   "type": "number"
                 },
@@ -16911,6 +16917,7 @@
                   "type": "boolean"
                 },
                 "laser_power": {
+                  "description": "Laser pulse energy at the exit port, mJ (named laser_power for the database)",
                   "title": "Laser Power",
                   "type": "number"
                 }
@@ -16941,6 +16948,7 @@
             "request": {
               "properties": {
                 "measured_power": {
+                  "description": "Pulse energy read off the meter, mJ",
                   "title": "Measured Power",
                   "type": "number"
                 }
@@ -16955,6 +16963,7 @@
             "response": {
               "properties": {
                 "measured_power": {
+                  "description": "Pulse energy read off the meter, mJ",
                   "title": "Measured Power",
                   "type": "number"
                 }
@@ -19417,6 +19426,7 @@
                 }
               ],
               "default": null,
+              "description": "Pulse energy the meter read then, mJ",
               "title": "Laser Power Real"
             },
             "laser_power_set": {
@@ -19429,6 +19439,7 @@
                 }
               ],
               "default": null,
+              "description": "Pulse energy last checked for, mJ",
               "title": "Laser Power Set"
             },
             "mode": {

@@ -1354,13 +1354,13 @@ class ExperimentHandler:
         await self.growth_db.set_snapshot_state(req.snapshot_id, "retired" if req.retire else "active")
         return self._snapshot_info(await self._snapshot_row(req.snapshot_id))
 
-    # --- gated: laser power --------------------------------------------------------
+    # --- gated: laser pulse energy --------------------------------------------------------
 
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:
         async with self._moving("begin_set_laser_power"):
             already_satisfied, _ = await self.manager.begin_set_laser_power(req.laser_power, req.force)
         if not already_satisfied:
-            await self._set_pending("laser_power", f"Set laser power to {req.laser_power:.2f} W and read the meter")
+            await self._set_pending("laser_power", f"Set the laser pulse energy to {req.laser_power:.1f} mJ and read the energy meter at the exit port")
         return Ack()
 
     async def set_laser_energy(self, req: SetLaserEnergy) -> LaserSettings:

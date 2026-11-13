@@ -239,7 +239,7 @@ DRIVER = Capability(
         Op("get_experiment", ExperimentId, ExperimentInfo),
         Op("update_experiment", UpdateExperiment, ExperimentInfo,
            doc="Correct a growth's recorded conditions -- the temperature, pressure "
-               "and laser power a person read off an instrument and may have typed "
+               "and laser pulse energy a person read off an instrument and may have typed "
                "wrong. Identity (uuid, substrate, pixel) is not editable: that would "
                "make it a different growth.", journal=True),
         Op("retire_experiment", RetireExperiment, ExperimentInfo,
@@ -448,21 +448,24 @@ DRIVER = Capability(
                "nothing done. Refused under --use-legacy-mi-mode, which cannot "
                "interrupt a PASCAL command.", journal=True, timeout_s=60.0),
 
-        # --- gated: laser power (unread physical meter)
+        # --- gated: laser pulse energy (unread physical meter)
         Op("begin_set_laser_power", BeginSetLaserPower, Ack,
-           doc="Start a laser energy check: closes the sample shutter and turns the "
+           doc="Start a laser pulse energy check, `laser_power` in mJ (the name is "
+               "historical): closes the sample shutter and turns the "
                "carousel to Clear, so the beam reaches the meter at the exit port, then "
                "raises a `laser_power` pending confirmation for the person reading the "
                "meter. Call nothing else until confirm_laser_power: any op that selects "
                "a target (set_target, perform_preablation, perform_deposition) moves "
                "the carousel off Clear and spoils the reading. Skipped, with no "
-               "confirmation, when this power was already confirmed (force=true redoes it).",
+               "confirmation, when this energy was already confirmed (force=true redoes it).",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
-        Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult, journal=True),
+        Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult,
+           doc="Answer begin_set_laser_power with the pulse energy read off the meter, mJ.",
+           journal=True),
         # --- the excimer's own settings (pld-service only)
         Op("set_laser_energy", SetLaserEnergy, LaserSettings,
            doc="Run the excimer at constant energy: switches it to energy mode (EGY PGR) "
-               "and sets the energy set point, mJ. Changes the beam, so a laser power "
+               "and sets the energy set point, mJ. Changes the beam, so a pulse energy "
                "confirmed with begin_set_laser_power is forgotten and the next check "
                "measures again. Refused while the laser fires or a task holds the motors "
                "(a deposition), and under --use-legacy-mi-mode, which cannot reach the "
