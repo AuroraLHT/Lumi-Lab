@@ -96,7 +96,7 @@ class ChamberBackend(Protocol):
     async def set_heating_current(self, amps: float) -> None: ...
     async def ramp_to(self, celsius: float, ramp_c_per_min: float, wait: bool) -> None: ...
     async def coast_to(self, celsius: float, ramp_c_per_min: float, wait: bool) -> None: ...
-    async def hold_temperature(self, floor_celsius: float) -> str: ...
+    async def hold_current(self) -> str: ...
 
     async def set_mfc_flow(self, mfc: int, sccm: float) -> None: ...
     async def set_mfc_control(self, enabled: bool) -> None: ...
@@ -262,18 +262,14 @@ class PldChamber:
         await self._call("set_temperature", PldTemperatureRequest(
             celsius=float(celsius), ramp_c_per_min=float(ramp_c_per_min), wait=wait))
 
-    async def hold_temperature(self, floor_celsius: float) -> str:
-        # The new goal also ends a waited SetTemperature still running for the old one.
+    async def hold_current(self) -> str:
+        # PID off is manual at the present current: no new setpoint, no warm-up, the LD
+        # carries on as it is. It also ends a waited SetTemperature still running.
         heater = (await self.state()).heater
-        t = heater.temperature
         if not heater.pid_on:
             return f"heater on manual current ({heater.current_set} A): left as it is"
-        if t is None or t < floor_celsius:
-            # Below it the PID cannot hold, and pld-service would warm up instead.
-            at = "below the pyrometer's range" if t is None else f"{t:.1f} C"
-            return f"at {at}, under the {floor_celsius:g} C PID floor: left as it is"
-        await self._call("set_temperature", PldTemperatureRequest(celsius=round(t, 1), ramp_c_per_min=0.0))
-        return f"holding {t:.1f} C"
+        await self._call("set_temperature_control", PldSwitchRequest(on=False))
+        return f"PID off: LD held at {heater.current_set} A"
 
     # --- gas ----------------------------------------------------------------------
 
@@ -446,7 +442,7 @@ class MiChamber:
             pcmd.TemperatureSet(celsius, nowait=not wait),
         )
 
-    async def hold_temperature(self, floor_celsius: float) -> str:
+    async def hold_current(self) -> str:
         raise NotImplementedError(
             "MI mode cannot interrupt a PASCAL command; pld-service (the default driver) can")
 

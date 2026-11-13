@@ -340,7 +340,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("stop_deposition", req)  # type: ignore[return-value]
 
     async def cancel_task(self, req: CancelTask) -> CancelTaskResult:
-        """End the running long task, whatever it is (state.current_task); its task_result is ok=false, aborted=true. A deposition or preablation is stopped as stop_deposition stops it, laser first. A to_temperature, cool_down or anneal leaves the heater holding the present temperature: the PID setpoint is set to it with no ramp. Below the PID-engage threshold, or with the heater on manual current, the heater is left as it is. task_id, if given, cancels only that task. Nothing running: nothing done. Refused under --use-legacy-mi-mode, which cannot interrupt a PASCAL command."""
+        """End the running long task, whatever it is (state.current_task); its task_result is ok=false, aborted=true. A deposition or preablation is stopped as stop_deposition stops it, laser first. A to_temperature, cool_down or anneal switches the PID off, leaving the heating LD at the current it carries now: no new setpoint, so nothing heats or cools harder than it was. The substrate then settles where that current puts it; to_temperature takes it from there. A heater already on manual current is left as it is. task_id, if given, cancels only that task. Nothing running: nothing done. Refused under --use-legacy-mi-mode, which cannot interrupt a PASCAL command."""
         return await self.call("cancel_task", req)  # type: ignore[return-value]
 
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:

@@ -308,32 +308,28 @@ async def ramping(handler, client, temperature=400):
     client.blocking.add("set_temperature")
     ack = await handler.to_temperature(ToTemperature(temperature=temperature, ramp_rate=2))
     await until(lambda: "set_temperature" in ops(client))
-    client.blocking.discard("set_temperature")  # the hold that follows goes through
     return ack
 
 
-async def test_cancel_task_holds_a_ramp_where_it_is(fake):
+async def test_cancel_task_switches_the_pid_off_at_the_present_current(fake):
     handler, client = fake
     ack = await ramping(handler, client)
     reply = await handler.cancel_task(CancelTask(reason="too slow"))
-    assert (reply.task_id, reply.task_kind, reply.chamber) == (ack.task_id, "to_temperature", "holding 300.0 C")
-    assert client.calls[-1] == ("set_temperature", {"celsius": 300.0, "ramp_c_per_min": 0.0, "wait": False, "tolerance": 0.0})
+    assert (reply.task_id, reply.task_kind, reply.chamber) == (ack.task_id, "to_temperature", "PID off: LD held at 6.0 A")
+    # No new setpoint: only the switch, so there is no warm-up and no ramp to start.
+    assert client.calls[-1] == ("set_temperature_control", {"on": False})
+    assert ops(client).count("set_temperature") == 1
     assert handler.readout().current_task is None
     assert await wait_task(handler) == {"ok": False, "aborted": True, "error": "stopped by request: too slow"}
 
 
-@pytest.mark.parametrize("heater, left", [
-    (dict(pid_on=False), "heater on manual current (6.0 A): left as it is"),
-    (dict(temperature=200.0), "at 200.0 C, under the 220 C PID floor: left as it is"),
-    (dict(temperature=None), "at below the pyrometer's range, under the 220 C PID floor: left as it is"),
-])
-async def test_cancel_task_leaves_a_heater_it_cannot_hold(fake, heater, left):
+async def test_cancel_task_leaves_a_heater_on_manual_current_alone(fake):
     handler, client = fake
     await ramping(handler, client)
-    for name, value in heater.items():
-        setattr(client.state.heater, name, value)
-    assert (await handler.cancel_task(CancelTask())).chamber == left
-    assert ops(client).count("set_temperature") == 1
+    client.state.heater.pid_on = False
+    reply = await handler.cancel_task(CancelTask())
+    assert reply.chamber == "heater on manual current (6.0 A): left as it is"
+    assert ops(client)[-1] == "set_temperature"
     assert (await wait_task(handler))["error"] == "stopped by request: cancel_task"
 
 
@@ -604,7 +600,7 @@ async def test_set_laser_energy_and_hv_on_the_sim(sim):
     assert (await handler.manager.chamber.state()).excimer.control is False
 
 
-async def test_cancel_task_holds_a_slow_ramp_on_the_sim(sim):
+async def test_cancel_task_holds_the_ld_current_on_the_sim(sim):
     handler, model, service = sim
     await handler.manager.initiate_heating_laser(timeout=5)
     await handler.to_temperature(ToTemperature(temperature=900, ramp_rate=1))
@@ -614,8 +610,9 @@ async def test_cancel_task_holds_a_slow_ramp_on_the_sim(sim):
             break
         await asyncio.sleep(0.05)
     reply = await handler.cancel_task(CancelTask(reason="hold here"))
-    assert reply.task_kind == "to_temperature" and reply.chamber.startswith("holding"), reply
+    assert reply.task_kind == "to_temperature" and reply.chamber.startswith("PID off: LD held at"), reply
     assert (await wait_task(handler))["aborted"] is True
-    held = float(reply.chamber.split()[1])
+    held = (await handler.manager.chamber.state()).heater
+    await asyncio.sleep(0.5)
     heater = (await handler.manager.chamber.state()).heater
-    assert heater.pid_on and heater.temperature_goal == held < 900
+    assert not heater.pid_on and heater.current_set == held.current_set

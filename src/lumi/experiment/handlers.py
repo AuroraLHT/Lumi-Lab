@@ -529,7 +529,7 @@ class ExperimentHandler:
             return StopDepositionResult(laser=laser, task_id=task.id, task_kind=task.kind)
         return StopDepositionResult(laser=laser)
 
-    #: The tasks that drive the heater, after which cancel_task holds the temperature.
+    #: The tasks that drive the heater, after which cancel_task holds the LD current.
     _HEATING = frozenset({"to_temperature", "cool_down", "anneal"})
 
     async def cancel_task(self, req: CancelTask) -> CancelTaskResult:
@@ -537,7 +537,7 @@ class ExperimentHandler:
 
         Cancelling stops this node waiting; what the chamber was doing for the task
         goes on unless stopped: an ablating task is ended as stop_deposition ends it,
-        a heating one leaves the PID holding where the substrate is now.
+        a heating one switches the PID off, leaving the LD at its present current.
         """
         chamber = self.manager.chamber
         if chamber.driver == "legacy-mi":
@@ -556,7 +556,7 @@ class ExperimentHandler:
         await asyncio.wait({handle})
         done = ""
         if task.kind in self._HEATING:
-            done = await chamber.hold_temperature(self.manager.bounds.temperature_pid_engage_threshold)
+            done = await chamber.hold_current()
         return CancelTaskResult(task_id=task.id, task_kind=task.kind, chamber=done)
 
     async def _require_heating_laser(self, target_temperature: float | None = None) -> None:

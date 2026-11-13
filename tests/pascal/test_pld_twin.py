@@ -262,10 +262,10 @@ async def test_another_client_holding_control_is_a_refusal(handler):
         gui.close()
 
 
-async def test_cancel_task_holds_a_ramp_where_it_is(handler, tmp_path):
+async def test_cancel_task_holds_the_ld_current(handler, tmp_path):
     # experiment.driver.cancel_task over the twin: the to_temperature task ends aborted,
-    # the PID holds the present temperature, and the waited SetTemperature behind the
-    # task is ended by the new goal rather than left running in the chamber node.
+    # the PID goes off with the LD at the current it carried, and the waited
+    # SetTemperature behind the task ends with it rather than running on in the node.
     import sys
     from pathlib import Path
 
@@ -287,15 +287,17 @@ async def test_cancel_task_holds_a_ramp_where_it_is(handler, tmp_path):
                 break
             await asyncio.sleep(0.1)
         reply = await driver.cancel_task(CancelTask(reason="twin test"))
-        assert reply.task_kind == "to_temperature" and reply.chamber.startswith("holding"), reply
+        assert reply.task_kind == "to_temperature" and reply.chamber.startswith("PID off: LD held at"), reply
         assert await wait_task(driver) == {"ok": False, "aborted": True, "error": "stopped by request: twin test"}
-        held = float(reply.chamber.split()[1])
         for _ in range(50):  # the state is the service's poll, a cycle behind the reply
             heater = (await h.chamber_state(Empty())).heater
-            if heater.temperature_goal == held:
+            if not heater.pid_on:
                 break
             await asyncio.sleep(0.1)
-        assert heater.pid_on and heater.temperature_goal == held
-        assert abs(heater.temperature - held) < 5
+        assert not heater.pid_on
+        held = heater.current_set
+        await asyncio.sleep(3.0)
+        heater = (await h.chamber_state(Empty())).heater
+        assert not heater.pid_on and heater.current_set == held
     finally:
         await db.close()
