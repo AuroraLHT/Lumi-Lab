@@ -644,7 +644,11 @@ class ChamberServicer:
         On hardware without --allow-operations the RHEED port stays closed (any record, even a
         k poll, restarts the controller's outputs) and every RHEED operation is refused.
         Filament on ramps from the 507 mA floor at filament_ramp_ma_per_s; HV on ramps from 0 at
-        hv_ramp_v_per_s and needs the filament on. Off, interlock and link loss are immediate.
+        hv_ramp_v_per_s and needs the filament on. RheedHvOff ramps HV to 0, then switches it off;
+        RheedFilamentOff ramps HV down and off first, then the filament to filament_min_ma, then off
+        (same rates; the remembered set points are not changed). A SetRheed*/On during a ramp-down
+        cancels it and goes to the new target (HV on/set is refused during a filament ramp-down:
+        switch the filament on again first). RheedAllOff, interlock, faults and link loss are immediate.
         An interlock, an open filament or an over-current held 1 s switches filament and HV off;
         nothing comes back on by itself.
         `ma` / `kv` unset: the remembered set point (from this or a previous run); refused if none.

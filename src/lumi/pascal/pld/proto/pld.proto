@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at 5fa3e99 (RHEED controller, link reconnect, heater warm-up; identical apart from line
+// branch decode-program at 36ac0b4 (RHEED ramped switch-off, RHEED controller, link reconnect; identical apart from line
 // endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this header)
 // and run scripts/gen_pld_stubs.sh.
 //
@@ -148,7 +148,11 @@ service Chamber {
   // On hardware without --allow-operations the RHEED port stays closed (any record, even a
   // k poll, restarts the controller's outputs) and every RHEED operation is refused.
   // Filament on ramps from the 507 mA floor at filament_ramp_ma_per_s; HV on ramps from 0 at
-  // hv_ramp_v_per_s and needs the filament on. Off, interlock and link loss are immediate.
+  // hv_ramp_v_per_s and needs the filament on. RheedHvOff ramps HV to 0, then switches it off;
+  // RheedFilamentOff ramps HV down and off first, then the filament to filament_min_ma, then off
+  // (same rates; the remembered set points are not changed). A SetRheed*/On during a ramp-down
+  // cancels it and goes to the new target (HV on/set is refused during a filament ramp-down:
+  // switch the filament on again first). RheedAllOff, interlock, faults and link loss are immediate.
   // An interlock, an open filament or an over-current held 1 s switches filament and HV off;
   // nothing comes back on by itself.
   // `ma` / `kv` unset: the remembered set point (from this or a previous run); refused if none.
@@ -224,6 +228,8 @@ message Rheed {
   bool y_on = 23;
   double y_set_ma = 24;
   double y_readback_ma = 25;
+  bool hv_ramping_down = 36;  // RheedHvOff or RheedFilamentOff is ramping HV to 0 before switching it off
+  bool filament_ramping_down = 37;  // RheedFilamentOff in progress: HV down and off, then the filament to filament_min_ma, then off
   string last_alert = 26;  // the last link-level alert (no reply, malformed reply), kept until the next one; times are in YYYYMMDD_rheed.jsonl. Faults (interlock, open filament, link lost) also go out as events.
   // the service's caps ([rheed] config)
   double hv_max_kv = 27;

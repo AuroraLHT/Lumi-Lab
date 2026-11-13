@@ -361,12 +361,13 @@ async def test_rheed_off_ramps_down_and_on_comes_back_where_it_was(handler):
     assert (await h.rheed_hv_on(PldRheedHvOnRequest(kv=5.0))).ok
     await until_state(h, lambda s: s.rheed.hv_set_kv == 5.0)
 
-    seen = []
+    seen, ramping = [], []
 
     async def watch():
         while True:
             r = (await h.chamber_state(Empty())).rheed
             seen.append((r.hv_on, r.hv_set_kv, r.filament_on, r.filament_set_ma))
+            ramping.append((r.hv_ramping_down, r.filament_ramping_down))
             await asyncio.sleep(0.2)
 
     watcher = asyncio.create_task(watch())
@@ -380,10 +381,13 @@ async def test_rheed_off_ramps_down_and_on_comes_back_where_it_was(handler):
     # Both came down through the values between, never a jump from the set point to off.
     assert any(0 < kv < 5.0 for kv in hv) and hv == sorted(hv, reverse=True)
     assert any(507 < ma < 800 for ma in filament) and filament == sorted(filament, reverse=True)
+    # pld-service's own ramp (REA 36ac0b4), flagged in the state while it runs.
+    assert any(hv for hv, _ in ramping) and any(fil for _, fil in ramping)
     rheed = (await h.chamber_state(Empty())).rheed
-    assert not (rheed.filament_on or rheed.hv_on)
+    assert not (rheed.filament_on or rheed.hv_on or rheed.hv_ramping_down or rheed.filament_ramping_down)
+    assert (rheed.filament_last_ma, rheed.hv_last_kv) == (800.0, 5.0)
 
-    # Back on at the set points from before the ramp down, not the ramp's 507 mA / 0 kV.
+    # Back on at the remembered set points, not the ramp's 507 mA / 0 kV.
     assert (await h.rheed_filament_on(PldRheedFilamentOnRequest())).ok
     await until_state(h, lambda s: s.rheed.filament_target_ma == 800.0)
     assert (await h.rheed_hv_on(PldRheedHvOnRequest())).ok

@@ -375,7 +375,6 @@ async def test_rheed_on_without_a_set_point_leaves_it_unset():
     class Recorder(PldHandler):
         def __init__(self):
             self.state_monitor = type("M", (), {"latest": None})()
-            self._rheed_last = {}
 
         async def _operate(self, rpc, request):
             sent.append((rpc, request))

@@ -218,6 +218,10 @@ class PldRheed(BaseModel):
     y_set_ma: float | None = None
     y_readback_ma: float | None = None
     last_alert: str = Field("", description="The last link-level alert, kept until the next")
+    hv_ramping_down: bool = Field(
+        False, description="rheed_hv_off or rheed_filament_off is ramping HV to 0 before switching it off")
+    filament_ramping_down: bool = Field(
+        False, description="rheed_filament_off in progress: HV down and off, then the filament to its floor, then off")
     hv_max_kv: float | None = None
     filament_min_ma: float | None = None
     filament_max_ma: float | None = None

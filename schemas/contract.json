@@ -1733,6 +1733,12 @@
                       "title": "Filament Open",
                       "type": "boolean"
                     },
+                    "filament_ramping_down": {
+                      "default": false,
+                      "description": "rheed_filament_off in progress: HV down and off, then the filament to its floor, then off",
+                      "title": "Filament Ramping Down",
+                      "type": "boolean"
+                    },
                     "filament_readback_ma": {
                       "anyOf": [
                         {
@@ -1850,6 +1856,12 @@
                     "hv_on": {
                       "default": false,
                       "title": "Hv On",
+                      "type": "boolean"
+                    },
+                    "hv_ramping_down": {
+                      "default": false,
+                      "description": "rheed_hv_off or rheed_filament_off is ramping HV to 0 before switching it off",
+                      "title": "Hv Ramping Down",
                       "type": "boolean"
                     },
                     "hv_readback_kv": {
@@ -5398,6 +5410,12 @@
                     "title": "Filament Open",
                     "type": "boolean"
                   },
+                  "filament_ramping_down": {
+                    "default": false,
+                    "description": "rheed_filament_off in progress: HV down and off, then the filament to its floor, then off",
+                    "title": "Filament Ramping Down",
+                    "type": "boolean"
+                  },
                   "filament_readback_ma": {
                     "anyOf": [
                       {
@@ -5515,6 +5533,12 @@
                   "hv_on": {
                     "default": false,
                     "title": "Hv On",
+                    "type": "boolean"
+                  },
+                  "hv_ramping_down": {
+                    "default": false,
+                    "description": "rheed_hv_off or rheed_filament_off is ramping HV to 0 before switching it off",
+                    "title": "Hv Ramping Down",
                     "type": "boolean"
                   },
                   "hv_readback_kv": {
