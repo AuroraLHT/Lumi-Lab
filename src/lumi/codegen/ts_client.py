@@ -21,6 +21,10 @@ from lumi.contracts import REGISTRY, Capability, Codec, EquipmentContract
 
 from .common import all_models, pascal, ts_banner
 
+#: Added to an op's timeout_s in the browser: the gateway waits timeout_s for the bus,
+#: so its "did not answer" reaches the page before the page gives up on its own.
+TIMEOUT_SLACK_S = 5.0
+
 PRELUDE = r"""
 // --- transport: one WebSocket to the backend bridge -------------------------
 // Frame: [u32 header_len][header json][payload bytes]. Binary-safe, so frames, video
@@ -277,12 +281,20 @@ def _capability_client(contract: EquipmentContract, cap: Capability) -> str:
         doc = op.doc or f"{target}.{op.name}"
         if op.result is not None:
             doc += f" On success the task_result carries a {op.result.__name__}."
+        # An op that may run long waits as long as the contract allows, like the Python
+        # client's max(default, timeout_s), plus slack so the gateway's own timeout
+        # answers first. Otherwise the transport's default; `opts` overrides either.
+        if op.timeout_s is not None:
+            opts = f"{{ timeoutMs: opts?.timeoutMs ?? {round((op.timeout_s + TIMEOUT_SLACK_S) * 1000)} }}"
+        else:
+            opts = "opts"
         if op.request_codec is not Codec.JSON:
             # An upload: the bytes go as the frame payload, not through JSON.
-            call = f'this.t.callWithPayload<{ret}>({cls}.target, "{op.name}", req, payload, opts)'
+            call = f'this.t.callWithPayload<{ret}>({cls}.target, "{op.name}", req, payload, {opts})'
             arg = f"req: {op.request.__name__}, payload: Uint8Array, opts?: CallOptions"
         else:
-            call = f'this.t.call<{ret}>({cls}.target, "{op.name}", {body})'
+            call = f'this.t.call<{ret}>({cls}.target, "{op.name}", {body}, {opts})'
+            arg = f"{arg}, opts?: CallOptions" if arg else "opts?: CallOptions"
         lines += [
             f"  /** {doc} */",
             f"  async {op.name}({arg}): Promise<{ret}> {{",
