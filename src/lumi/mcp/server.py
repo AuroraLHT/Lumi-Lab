@@ -107,6 +107,11 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
         "tune_pressure", "set_ion_gauge", "tune_heater", "take_laser_control", "laser_on",
         "laser_standby", "laser_off", "set_laser_mode", "set_laser_hv", "set_laser_energy",
         "release_laser",
+        # The RHEED gun: every on, set point and off ramps (see chamber.pld); focus and
+        # X/Y deflection for aligning the beam.
+        "rheed_filament_on", "rheed_filament_off", "rheed_hv_on", "rheed_hv_off",
+        "set_rheed_filament", "set_rheed_hv", "set_rheed_focus", "set_rheed_deflection",
+        "rheed_all_off",
     })}),
     # Which nodes are up, so "the call timed out" can become "the storage node is
     # not running". Not wait_for: it blocks for its own timeout, longer than a call's.
@@ -453,6 +458,12 @@ when something goes wrong, call experiment.driver.stop_deposition: it ends the
 perform_deposition/perform_preablation task as aborted and stops the laser.
 experiment.driver.cancel_task ends any running task the same way; a ramp or anneal it ends
 switches the PID off, leaving the heating LD at its present current.
+The RHEED gun is chamber.pld's rheed_* ops, its state chamber_state's `rheed`. Every on,
+set point and off ramps; check rheed.interlock, filament_open and link_ok before and after.
+Switch it off with rheed_filament_off, which ramps HV and filament down; rheed_all_off cuts
+everything at once and is only for a fault. To align the beam, change set_rheed_focus or
+set_rheed_deflection a few mA at a time within the rheed limits and look at the RHEED image
+between steps.
 chamber.pld.stop_fire stops only the pulse train, for a fire_laser of your own. A fire or
 deposition cut short fails with "stopped by request" -- that is a person's or your own
 abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add

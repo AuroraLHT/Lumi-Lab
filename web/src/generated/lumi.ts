@@ -2960,22 +2960,22 @@ export class ChamberPldClient {
     return this.t.call<PldReply>(ChamberPldClient.target, "release_laser", {});
   }
 
-  /** RHEED filament on, ramping from the 507 mA floor at 30 mA/s to `ma` (unset: the remembered set point; refused if there is none). Returns when the ramp starts: done when state.rheed.filament_set_ma reaches filament_target_ma. */
+  /** RHEED filament on, ramping from the 507 mA floor at 30 mA/s to `ma` (unset: the set point from before the last rheed_filament_off, else the service's remembered one; refused if there is none). Returns when the ramp starts: done when state.rheed.filament_set_ma reaches filament_target_ma. */
   async rheed_filament_on(req: PldRheedFilamentOnRequest): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "rheed_filament_on", req);
   }
 
-  /** RHEED filament off, at once; HV goes off with it. Clears filament_open. */
+  /** RHEED filament off, ramped: HV down at 500 V/s and off first (it cannot stay on without the filament), then the filament down at 30 mA/s to its floor and off. Returns when it is off, about a minute from full. Clears filament_open. */
   async rheed_filament_off(): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "rheed_filament_off", {});
   }
 
-  /** RHEED HV on, ramping from 0 at 500 V/s to `kv` (unset: the remembered set point). Needs the filament on. Returns when the ramp starts. */
+  /** RHEED HV on, ramping from 0 at 500 V/s to `kv` (unset: the set point from before the last ramped off, else the remembered one). Needs the filament on. Returns when the ramp starts. */
   async rheed_hv_on(req: PldRheedHvOnRequest): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "rheed_hv_on", req);
   }
 
-  /** RHEED HV off, at once. */
+  /** RHEED HV off, ramped: down to 0 kV at 500 V/s, then off. Returns when it is off. */
   async rheed_hv_off(): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "rheed_hv_off", {});
   }
@@ -3000,7 +3000,7 @@ export class ChamberPldClient {
     return this.t.call<PldReply>(ChamberPldClient.target, "set_rheed_deflection", req);
   }
 
-  /** RHEED filament, HV, focus, X and Y off at once; their set points are kept for the next on. Needs no control, like stop_fire: the safe stop from any client. An interlock, an open filament or an over-current held 1 s switches filament and HV off by itself; nothing comes back on by itself. */
+  /** RHEED filament, HV, focus, X and Y off at once, unramped: the emergency stop, for a fault; rheed_filament_off is the normal way down. Set points are kept for the next on. Needs no control, like stop_fire: the stop from any client. An interlock, an open filament or an over-current held 1 s switches filament and HV off by itself; nothing comes back on by itself. */
   async rheed_all_off(): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "rheed_all_off", {});
   }

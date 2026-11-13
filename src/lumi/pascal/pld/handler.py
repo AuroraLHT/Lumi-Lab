@@ -33,6 +33,8 @@ from lumi.contracts.payloads.pld import (
     PldLoggingRequest,
     PldReadout,
     PldReply,
+    PldRheedFilamentOnRequest,
+    PldRheedHvOnRequest,
 )
 from lumi.pascal.pld import convert
 from lumi.pascal.pld.client import PldClient, PldUnavailable
@@ -59,6 +61,9 @@ class PldHandler:
         self.state_monitor = state_monitor
         self.event_monitor = event_monitor
         self.growth_log = growth_log
+        #: The RHEED set points from before a ramped off: the ramp down is a set point
+        #: of its own (0 kV, 507 mA), which pld-service then remembers instead.
+        self._rheed_last: dict[str, float] = {}
 
     # --- readings -----------------------------------------------------------------
 
@@ -153,12 +158,71 @@ class PldHandler:
     # Needs no control, and runs alongside a waited fire_laser (each op is its own thread).
     stop_fire = _op("StopFire", lambda r: pb.Empty())
 
-    # The RHEED controller. `ma` / `kv` None on the on-ops: the remembered set point.
-    rheed_filament_on = _op("RheedFilamentOn", lambda r: pb.RheedFilamentOnRequest(
-        **({} if r.ma is None else {"ma": r.ma})))
-    rheed_filament_off = _op("RheedFilamentOff", lambda r: pb.Empty())
-    rheed_hv_on = _op("RheedHvOn", lambda r: pb.RheedHvOnRequest(**({} if r.kv is None else {"kv": r.kv})))
-    rheed_hv_off = _op("RheedHvOff", lambda r: pb.Empty())
+    # The RHEED controller. pld-service ramps every on and set point (filament 30 mA/s,
+    # HV 500 V/s) but switches off at once, so the off-ops here ramp down first: HV to
+    # 0 kV, the filament to its floor, then off. rheed_all_off stays the immediate stop.
+    # `ma` / `kv` None on the on-ops: the set point from before the last ramped off, else
+    # the service's remembered one.
+
+    _HV_KV_PER_S = 0.5
+    _FILAMENT_MA_PER_S = 30.0
+
+    async def _rheed(self) -> "pb.Rheed":
+        return (await asyncio.to_thread(self.client.state)).rheed
+
+    async def _ramp_rheed(self, rpc: str, request, arrived, seconds: float) -> PldReply:
+        reply = await self._operate(rpc, request)
+        if not reply.ok:
+            return reply
+        deadline = asyncio.get_running_loop().time() + seconds + 30.0
+        while not arrived(await self._rheed()):
+            if asyncio.get_running_loop().time() > deadline:
+                return PldReply(ok=False, message=f"{rpc}: the ramp did not finish in {seconds + 30:.0f}s")
+            await asyncio.sleep(0.2)
+        return reply
+
+    async def _rheed_hv_down(self) -> PldReply:
+        rheed = await self._rheed()
+        if not rheed.hv_on:
+            return PldReply(ok=True, message="HV already off")
+        if rheed.hv_set_kv > 0:
+            self._rheed_last["kv"] = rheed.hv_target_kv or rheed.hv_set_kv
+            reply = await self._ramp_rheed(
+                "SetRheedHv", pb.RheedHvRequest(kv=0.0), lambda r: not r.hv_on or r.hv_set_kv <= 0.0,
+                rheed.hv_set_kv / self._HV_KV_PER_S)
+            if not reply.ok:
+                return reply
+        return await self._operate("RheedHvOff", pb.Empty())
+
+    async def rheed_hv_off(self, req: Empty) -> PldReply:
+        return await self._rheed_hv_down()
+
+    async def rheed_filament_off(self, req: Empty) -> PldReply:
+        reply = await self._rheed_hv_down()  # the filament takes HV off with it: ramp that first
+        if not reply.ok:
+            return reply
+        rheed = await self._rheed()
+        if not rheed.filament_on:
+            return PldReply(ok=True, message="filament already off")
+        floor = rheed.filament_min_ma
+        if rheed.filament_set_ma > floor:
+            self._rheed_last["ma"] = rheed.filament_target_ma or rheed.filament_set_ma
+            reply = await self._ramp_rheed(
+                "SetRheedFilament", pb.RheedFilamentRequest(ma=floor),
+                lambda r: not r.filament_on or r.filament_set_ma <= floor,
+                (rheed.filament_set_ma - floor) / self._FILAMENT_MA_PER_S)
+            if not reply.ok:
+                return reply
+        return await self._operate("RheedFilamentOff", pb.Empty())
+
+    async def rheed_filament_on(self, req: PldRheedFilamentOnRequest) -> PldReply:
+        ma = req.ma if req.ma is not None else self._rheed_last.get("ma")
+        return await self._operate("RheedFilamentOn", pb.RheedFilamentOnRequest(**({} if ma is None else {"ma": ma})))
+
+    async def rheed_hv_on(self, req: PldRheedHvOnRequest) -> PldReply:
+        kv = req.kv if req.kv is not None else self._rheed_last.get("kv")
+        return await self._operate("RheedHvOn", pb.RheedHvOnRequest(**({} if kv is None else {"kv": kv})))
+
     set_rheed_filament = _op("SetRheedFilament", lambda r: pb.RheedFilamentRequest(ma=r.ma))
     set_rheed_hv = _op("SetRheedHv", lambda r: pb.RheedHvRequest(kv=r.kv))
     set_rheed_focus = _op("SetRheedFocus", lambda r: pb.RheedFocusRequest(ma=r.ma))
