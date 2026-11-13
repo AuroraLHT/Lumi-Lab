@@ -88,3 +88,15 @@ def test_typescript_client_talks_to_the_bridge_not_the_broker():
     ts = (PROJECT_ROOT / "web" / "src" / "generated" / "lumi.ts").read_text()
     assert "packFrame" in ts and "correlation_id" in ts
     assert "StompClient" not in ts and "passcode" not in ts
+
+
+def test_the_ts_client_waits_as_long_as_each_op_may_run():
+    # The browser used to give every op the transport's 10 s: a 13 s deflection ramp
+    # arrived and the page reported it timed out.
+    from lumi.codegen.ts_client import TIMEOUT_SLACK_S, _capability_client
+    from lumi.contracts.chamber import CHAMBER, PLD
+
+    ts = _capability_client(CHAMBER, PLD)
+    slow = next(op for op in PLD.ops if op.name == "set_rheed_deflection")
+    assert f"timeoutMs: opts?.timeoutMs ?? {round((slow.timeout_s + TIMEOUT_SLACK_S) * 1000)}" in ts
+    assert '"chamber_state", {}, opts);' in ts  # no timeout_s: the transport's default

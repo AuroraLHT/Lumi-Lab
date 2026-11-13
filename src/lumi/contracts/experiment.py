@@ -46,6 +46,7 @@ from .payloads.experiment import (
     FinishCurrentPixel,
     FinishExperimentRecord,
     LaserPowerResult,
+    LaserSettings,
     ListExperiments,
     ListMeasurements,
     ListQuery,
@@ -101,6 +102,8 @@ from .payloads.experiment import (
     SampleId,
     SampleInfo,
     SampleList,
+    SetLaserEnergy,
+    SetLaserHv,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
@@ -113,6 +116,10 @@ from .payloads.experiment import (
     StartMiLogging,
     StartStorage,
     StepList,
+    CancelTask,
+    CancelTaskResult,
+    StopDeposition,
+    StopDepositionResult,
     StorageResult,
     SubstrateId,
     SubstrateInfo,
@@ -232,7 +239,7 @@ DRIVER = Capability(
         Op("get_experiment", ExperimentId, ExperimentInfo),
         Op("update_experiment", UpdateExperiment, ExperimentInfo,
            doc="Correct a growth's recorded conditions -- the temperature, pressure "
-               "and laser power a person read off an instrument and may have typed "
+               "and laser pulse energy a person read off an instrument and may have typed "
                "wrong. Identity (uuid, substrate, pixel) is not editable: that would "
                "make it a different growth.", journal=True),
         Op("retire_experiment", RetireExperiment, ExperimentInfo,
@@ -302,9 +309,11 @@ DRIVER = Capability(
            doc="Probe whether the chamber log is still being written: read the "
                "newest row's timestamp, wait up to timeout_s, and report whether "
                "it advanced (with last_stamp, the timestamp seen). A frozen "
-               "timestamp means the log-reader thread died or PASCAL stopped "
-               "writing -- every downstream read is then stale. timeout_s must "
-               "exceed the controller's Log Interval (60s at power-up; "
+               "timestamp means the log-reader thread died or the log stopped being "
+               "written (PASCAL, or the chamber node under pld-service) -- storage's "
+               "chamber log is then stale. Under pld-service the experiment driver's "
+               "own readings come from the service's live state, not this log. "
+               "timeout_s must exceed the Log Interval (60s at PASCAL power-up; "
                "start_mi_logging(interval_s=1) drops it to 1s)."),
 
         Op("check_mi_mode", CheckMiMode, MiModeStatus,
@@ -327,28 +336,28 @@ DRIVER = Capability(
                "the motor holding lock is released (see is_motor_free).",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("start_mi_logging", StartMiLogging, LoggingStatus,
-           doc="Start PASCAL data logging at a fixed whole-second row interval "
-               "(`Log Interval` + `Data Logging File=`). The controller powers up "
-               "at 60s; pass interval_s=1 for a growth. Empty file_name lets the "
-               "driver name the file. Returns the file name and interval in use. "
-               "PASCAL will not switch files while a logger is already open -- call "
-               "stop_mi_logging first if one might be running.",
+           doc="Start the growth log at a fixed whole-second row interval: under "
+               "pld-service the chamber node's log of the service's state, under "
+               "--use-legacy-mi-mode PASCAL's data logging (`Log Interval` + `Data "
+               "Logging File=`, which powers up at 60s). Pass interval_s=1 for a growth. "
+               "Empty file_name lets the driver name the file. Returns the file name and "
+               "interval in use. PASCAL will not switch files while a logger is already "
+               "open -- call stop_mi_logging first if one might be running.",
            journal=True),
         Op("stop_mi_logging", Empty, Ack,
-           doc="Close PASCAL's currently open data-logging file (`Data Logging "
-               "OFF`). Needed before start_mi_logging can point at a new file: an "
-               "already-running logger makes start_mi_logging ack without switching.",
+           doc="Close the open growth-log file (PASCAL's `Data Logging OFF` under "
+               "--use-legacy-mi-mode). There, it is needed before start_mi_logging can "
+               "point at a new file: an already-running logger acks without switching.",
            journal=True),
         Op("move_mask_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("move_rheed_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_to", SampleAngle, Ack,
-           doc="Rotate the sample stage to an absolute angle in degrees (PASCAL "
-               "`Set Sample Position`). Blocks until the move completes. Refused "
+           doc="Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused "
                "while the motor holding lock is released (see is_motor_free).",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_by", SampleAngle, Ack,
-           doc="Rotate the sample stage by a signed delta in degrees (PASCAL "
-               "`Rotate Sample`); negative turns the other way. Blocks until the "
+           doc="Rotate the sample stage by a signed delta in degrees; negative turns "
+               "the other way. Blocks until the "
                "move completes. Refused while the motor holding lock is released.",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("to_pixel", PixelIndex, PixelMoveResult, journal=True, timeout_s=MOTION_TIMEOUT_S),
@@ -368,15 +377,18 @@ DRIVER = Capability(
            doc="Open or close the MFC master gate (PASCAL's `MFC Control`). One gate "
                "for every channel, so disabling it stops all MFCs at once, leaving "
                "their flow setpoints untouched. Not needed under pressure control, "
-               "which drives the control MFC itself.", journal=True),
+               "which drives the control MFC itself. pld-service has no gate: closing "
+               "it sets MFC1 to zero, opening it does nothing (set_mfc_flow flows at "
+               "once).", journal=True),
         Op("set_pressure", SetPressure, Ack,
-           doc="Set the chamber pressure in Torr. On the real chamber a person sets "
-               "it by hand: this raises a `pressure` pending confirmation for them, "
-               "resolved with confirm once they have; read it back with "
-               "get_current_pressure. In the simulator it sets the closed-loop "
-               "setpoint directly, which takes effect once "
-               "set_pressure_control(on=True) is on (the controller then trims the "
-               "control MFC's flow to hold it).", journal=True),
+           doc="Set the chamber pressure in Torr. Under pld-service (the default) it "
+               "sets the service's pressure-control setpoint, which picks its regime "
+               "(<= 2e-4 low, >= 3e-3 high; between is refused) and takes effect once "
+               "set_pressure_control(on=True) is on. Under --use-legacy-mi-mode on the "
+               "real chamber a person sets it by hand: this raises a `pressure` pending "
+               "confirmation for them, resolved with confirm once they have; in the "
+               "simulator it sets the setpoint directly. Read it back with "
+               "get_current_pressure.", journal=True),
         Op("set_pressure_control", SetPressureControl, Ack,
            doc="Turn closed-loop pressure control on or off. On: the controller owns "
                "the control MFC and holds set_pressure's setpoint. Off: flow reverts "
@@ -399,8 +411,9 @@ DRIVER = Capability(
            doc="Ramp to a temperature and engage PID. Requires the heating laser to "
                "be on already -- call initiate_heating_laser first, or this fails "
                "immediately rather than setting a setpoint no current can reach. "
-               "wait=true (the default): the task ends when the substrate arrives, and "
-               "PASCAL runs no other command (moves, target, shutter) until then. "
+               "wait=true (the default): the task ends when the substrate arrives; under "
+               "--use-legacy-mi-mode PASCAL runs no other command (moves, target, "
+               "shutter) until then. "
                "wait=false: the task ends once the ramp is under way and the chamber is "
                "free for other commands; read get_current_temperature until it is "
                "within tolerance before relying on it, and never follow it with "
@@ -413,18 +426,56 @@ DRIVER = Capability(
         Op("perform_preablation", PerformPreablation, TaskAck, journal=True),
         Op("perform_deposition", PerformDeposition, TaskAck, journal=True),
         Op("anneal", Anneal, TaskAck, journal=True),
+        Op("stop_deposition", StopDeposition, StopDepositionResult,
+           doc="Abort the deposition or preablation now: ends the running "
+               "perform_deposition/perform_preablation task (its task_result is ok=false, "
+               "aborted=true) and stops the laser (chamber.pld.stop_fire). Also stops a "
+               "pulse train with no task behind it, and is harmless when nothing is "
+               "firing. The shutter, mask, target spin and logging are left as they are; "
+               "a preablation stopped this way leaves the mask at its block position. "
+               "The run is over: do not fire again to make up the pulses. "
+               "Refused under --use-legacy-mi-mode, which cannot stop a pulse train "
+               "(use PASCAL's own STOP).", journal=True, timeout_s=60.0),
+        Op("cancel_task", CancelTask, CancelTaskResult,
+           doc="End the running long task, whatever it is (state.current_task); its "
+               "task_result is ok=false, aborted=true. A deposition or preablation is "
+               "stopped as stop_deposition stops it, laser first. A to_temperature, "
+               "cool_down or anneal switches the PID off, leaving the heating LD at the "
+               "current it carries now: no new setpoint, so nothing heats or cools "
+               "harder than it was. The substrate then settles where that current puts "
+               "it; to_temperature takes it from there. A heater already on manual "
+               "current is left as it is. task_id, if given, cancels only that task. Nothing running: "
+               "nothing done. Refused under --use-legacy-mi-mode, which cannot "
+               "interrupt a PASCAL command.", journal=True, timeout_s=60.0),
 
-        # --- gated: laser power (unread physical meter)
+        # --- gated: laser pulse energy (unread physical meter)
         Op("begin_set_laser_power", BeginSetLaserPower, Ack,
-           doc="Start a laser energy check: closes the sample shutter and turns the "
+           doc="Start a laser pulse energy check, `laser_power` in mJ (the name is "
+               "historical): closes the sample shutter and turns the "
                "carousel to Clear, so the beam reaches the meter at the exit port, then "
                "raises a `laser_power` pending confirmation for the person reading the "
                "meter. Call nothing else until confirm_laser_power: any op that selects "
                "a target (set_target, perform_preablation, perform_deposition) moves "
                "the carousel off Clear and spoils the reading. Skipped, with no "
-               "confirmation, when this power was already confirmed (force=true redoes it).",
+               "confirmation, when this energy was already confirmed (force=true redoes it).",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
-        Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult, journal=True),
+        Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult,
+           doc="Answer begin_set_laser_power with the pulse energy read off the meter, mJ.",
+           journal=True),
+        # --- the excimer's own settings (pld-service only)
+        Op("set_laser_energy", SetLaserEnergy, LaserSettings,
+           doc="Run the excimer at constant energy: switches it to energy mode (EGY PGR) "
+               "and sets the energy set point, mJ. Changes the beam, so a pulse energy "
+               "confirmed with begin_set_laser_power is forgotten and the next check "
+               "measures again. Refused while the laser fires or a task holds the motors "
+               "(a deposition), and under --use-legacy-mi-mode, which cannot reach the "
+               "excimer: set it on the laser's own PC there. If the second PC has the "
+               "excimer's settings port, it is taken for the change and handed back.",
+           journal=True, timeout_s=60.0),
+        Op("set_laser_hv", SetLaserHv, LaserSettings,
+           doc="Run the excimer at constant HV: switches it to HV mode (HV PGR) and sets "
+               "the HV set point, kV. Otherwise as set_laser_energy.",
+           journal=True, timeout_s=60.0),
 
         # --- gated: mask-center calibration / check (visual judgement)
         Op("begin_align_center_mask", Empty, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),

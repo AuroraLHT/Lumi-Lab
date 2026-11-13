@@ -70,6 +70,7 @@ from lumi.contracts.payloads.experiment import (
     FinishCurrentPixel,
     FinishExperimentRecord,
     LaserPowerResult,
+    LaserSettings,
     LayerInfo,
     ListExperiments,
     ListMeasurements,
@@ -127,6 +128,8 @@ from lumi.contracts.payloads.experiment import (
     SampleId,
     SampleInfo,
     SampleList,
+    SetLaserEnergy,
+    SetLaserHv,
     SetMfcControl,
     SetMfcFlow,
     SetPressure,
@@ -140,6 +143,10 @@ from lumi.contracts.payloads.experiment import (
     StartStorage,
     StepInfo,
     StepList,
+    CancelTask,
+    CancelTaskResult,
+    StopDeposition,
+    StopDepositionResult,
     StorageResult,
     SubstrateId,
     SubstrateInfo,
@@ -161,6 +168,7 @@ from lumi.contracts.payloads.experiment import (
     UpdateSubstrate,
     ValveStatus,
 )
+from lumi.experiment.chamber import MiChamber, PldStopped
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
@@ -225,6 +233,10 @@ def _jsonable(value: Any) -> dict:
     return {"value": value}
 
 
+def _laser_settings(excimer) -> LaserSettings:
+    return LaserSettings(mode=excimer.mode, hv_kv=excimer.hv, energy_mj=excimer.energy_set)
+
+
 class ExperimentHandler:
     def __init__(
         self,
@@ -239,9 +251,10 @@ class ExperimentHandler:
         pressure_by_hand: bool = True,
     ) -> None:
         self.sources = sources
-        #: The real chamber's pressure is set by a person at the gauge: set_pressure
-        #: asks them (a `pressure` pending confirmation) instead of commanding the
-        #: controller. The simulator sets it directly. Defaults to the real chamber.
+        #: Under legacy MI mode the real chamber's pressure is set by a person at the
+        #: gauge: set_pressure asks them (a `pressure` pending confirmation) instead of
+        #: commanding the controller; the simulator sets it directly. pld-service runs
+        #: the pressure control itself, so under it this is ignored.
         self.pressure_by_hand = pressure_by_hand
         self.growth_db = growth_db
         #: Measurement attachments. Beside growth.db unless the node says otherwise,
@@ -271,6 +284,10 @@ class ExperimentHandler:
         self._deps: dict[str, bool] = {name: False for name in DEPENDENCY_EQUIPMENT}
         self._pending: PendingConfirmation | None = None
         self._current_task: CurrentTask | None = None
+        # The asyncio task running `_current_task`, so stop_deposition can end it, and
+        # why it was stopped once it has been.
+        self._task_handle: asyncio.Task | None = None
+        self._stop_reason: str | None = None
         self._updates: asyncio.Queue[TaskEvent] = asyncio.Queue()
         # The op currently moving a motor, if any. Requests are not serialised (the
         # server dispatches each as it arrives), so without this a caller that retried
@@ -307,8 +324,11 @@ class ExperimentHandler:
 
     def build_manager(self) -> None:
         """Called once `sources` is filled in."""
+        # nodes/experiment.py passes the driver's backend as "chamber"; a bare MI runner
+        # under "chamber_mi" (the tests' fakes) is legacy MI mode over the chamber log.
+        chamber = self.sources.get("chamber") or MiChamber(self.sources["chamber_mi"], self.sources["chamber_log"])
         self.manager = PixelExperimentManager(
-            chamber_mi=self.sources["chamber_mi"],
+            chamber=chamber,
             chamber_log=self.sources["chamber_log"],
             chamber_config=self.sources["chamber_config"],
             rheed_camera=self.sources["rheed_camera"],
@@ -445,22 +465,99 @@ class ExperimentHandler:
             )
 
         async def runner() -> None:
+            cancelled = None
             try:
                 result = await coro
                 task_result = {"ok": True, **_jsonable(result)}
+            except asyncio.CancelledError as exc:
+                # stop_deposition's, an abort like any other; anything else (the node
+                # shutting down) is recorded and then let through.
+                if self._stop_reason is None:
+                    cancelled = exc
+                reason = self._stop_reason or "the experiment node is shutting down"
+                task_result = {"ok": False, "aborted": True, "error": f"stopped by request: {reason}"}
             except Exception as exc:
                 log.exception("experiment task %s (%s) failed", kind, task_id)
                 task_result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                if isinstance(exc, PldStopped):  # StopFire from the REA GUI or any client
+                    task_result["aborted"] = True
+                    if self._stop_reason is not None:  # ours: stop_deposition's StopFire
+                        task_result["error"] = f"stopped by request: {self._stop_reason}"
             self._current_task = None
+            self._task_handle = None
+            self._stop_reason = None
             if self.journal is not None:
                 await self.journal.end(
                     step_id, ok=bool(task_result.get("ok")),
                     result=task_result, error=task_result.get("error"),
                 )
             await self._push(task_result=task_result, finished_task=task)
+            if cancelled is not None:
+                raise cancelled
 
-        asyncio.create_task(runner(), name=f"experiment-task-{kind}")
+        self._task_handle = asyncio.create_task(runner(), name=f"experiment-task-{kind}")
         return TaskAck(task_id=task_id)
+
+    #: The tasks that fire the laser, which stop_deposition ends.
+    _ABLATING = frozenset({"perform_deposition", "perform_preablation"})
+
+    async def stop_deposition(self, req: StopDeposition) -> StopDepositionResult:
+        """Stop the laser, then end a running deposition or preablation.
+
+        StopFire goes first, so the train is over before task_result says it is. A
+        waited fire it cuts short ends the task by itself; the cancel that follows ends
+        one still turning the carousel. A fire that task started in between is stopped
+        by a second StopFire. Nothing else is undone: the shutter, mask and target spin
+        stay as they are, and logging and any recording keep running, so the record
+        shows the abort.
+        """
+        chamber = self.manager.chamber
+        if chamber.driver == "legacy-mi":
+            raise RuntimeError(
+                "legacy MI mode cannot stop a pulse train: press STOP on PASCAL. The "
+                "deposition task ends when PASCAL reports the train over")
+        task, handle = self._current_task, self._task_handle
+        ending = task is not None and task.kind in self._ABLATING and handle is not None
+        if ending:
+            self._stop_reason = req.reason or "stop_deposition"
+        laser = await chamber.stop_fire()
+        if ending:
+            handle.cancel()
+            await asyncio.wait({handle})
+            if "not firing" in laser:  # pld-service: "the laser is not firing: nothing sent"
+                laser = await chamber.stop_fire()
+            return StopDepositionResult(laser=laser, task_id=task.id, task_kind=task.kind)
+        return StopDepositionResult(laser=laser)
+
+    #: The tasks that drive the heater, after which cancel_task holds the LD current.
+    _HEATING = frozenset({"to_temperature", "cool_down", "anneal"})
+
+    async def cancel_task(self, req: CancelTask) -> CancelTaskResult:
+        """End the running task, whatever it is, and leave the chamber steady.
+
+        Cancelling stops this node waiting; what the chamber was doing for the task
+        goes on unless stopped: an ablating task is ended as stop_deposition ends it,
+        a heating one switches the PID off, leaving the LD at its present current.
+        """
+        chamber = self.manager.chamber
+        if chamber.driver == "legacy-mi":
+            raise RuntimeError(
+                "legacy MI mode cannot interrupt a PASCAL command: use PASCAL's own STOP")
+        task, handle = self._current_task, self._task_handle
+        if task is None or handle is None or (req.task_id and req.task_id != task.id):
+            return CancelTaskResult(chamber="no task running: nothing done" if task is None
+                                    else f"{task.kind} {task.id} is running, not {req.task_id}: nothing done")
+        reason = req.reason or "cancel_task"
+        if task.kind in self._ABLATING:
+            stopped = await self.stop_deposition(StopDeposition(reason=reason))
+            return CancelTaskResult(task_id=task.id, task_kind=task.kind, chamber=f"laser: {stopped.laser}")
+        self._stop_reason = reason
+        handle.cancel()
+        await asyncio.wait({handle})
+        done = ""
+        if task.kind in self._HEATING:
+            done = await chamber.hold_current()
+        return CancelTaskResult(task_id=task.id, task_kind=task.kind, chamber=done)
 
     async def _require_heating_laser(self, target_temperature: float | None = None) -> None:
         """The same refusal `manager.to_temperature` makes, hoisted ahead of
@@ -786,7 +883,7 @@ class ExperimentHandler:
         return Ack()
 
     async def set_pressure(self, req: SetPressure) -> Ack:
-        if self.pressure_by_hand:
+        if self.pressure_by_hand and self.manager.chamber.driver == "legacy-mi":
             await self._set_pending(
                 "pressure",
                 f"Set the chamber pressure to {req.pressure:.3g} Torr by hand, then confirm",
@@ -1257,14 +1354,22 @@ class ExperimentHandler:
         await self.growth_db.set_snapshot_state(req.snapshot_id, "retired" if req.retire else "active")
         return self._snapshot_info(await self._snapshot_row(req.snapshot_id))
 
-    # --- gated: laser power --------------------------------------------------------
+    # --- gated: laser pulse energy --------------------------------------------------------
 
     async def begin_set_laser_power(self, req: BeginSetLaserPower) -> Ack:
         async with self._moving("begin_set_laser_power"):
             already_satisfied, _ = await self.manager.begin_set_laser_power(req.laser_power, req.force)
         if not already_satisfied:
-            await self._set_pending("laser_power", f"Set laser power to {req.laser_power:.2f} W and read the meter")
+            await self._set_pending("laser_power", f"Set the laser pulse energy to {req.laser_power:.1f} mJ and read the energy meter at the exit port")
         return Ack()
+
+    async def set_laser_energy(self, req: SetLaserEnergy) -> LaserSettings:
+        async with self._moving("set_laser_energy"):
+            return _laser_settings(await self.manager.set_laser_energy(req.mj))
+
+    async def set_laser_hv(self, req: SetLaserHv) -> LaserSettings:
+        async with self._moving("set_laser_hv"):
+            return _laser_settings(await self.manager.set_laser_hv(req.kv))
 
     async def confirm_laser_power(self, req: ConfirmLaserPower) -> LaserPowerResult:
         self._require_pending("laser_power")
