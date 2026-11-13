@@ -410,6 +410,31 @@ class PldLaserHvRequest(BaseModel):
     kv: float
 
 
+class PldRheedFilamentOnRequest(BaseModel):
+    ma: float | None = Field(None, description="Filament set point, mA; None = the remembered one")
+
+
+class PldRheedHvOnRequest(BaseModel):
+    kv: float | None = Field(None, description="HV set point, kV; None = the remembered one")
+
+
+class PldRheedFilamentRequest(BaseModel):
+    ma: float
+
+
+class PldRheedHvRequest(BaseModel):
+    kv: float
+
+
+class PldRheedFocusRequest(BaseModel):
+    ma: float
+
+
+class PldRheedDeflectionRequest(BaseModel):
+    x_ma: float
+    y_ma: float
+
+
 class PldLaserEnergyRequest(BaseModel):
     mj: float
 

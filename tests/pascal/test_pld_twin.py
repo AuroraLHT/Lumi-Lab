@@ -28,6 +28,10 @@ from lumi.contracts.payloads.pld import (
     PldLaserModeRequest,
     PldLaserOnRequest,
     PldPumpRequest,
+    PldRheedDeflectionRequest,
+    PldRheedFilamentOnRequest,
+    PldRheedFocusRequest,
+    PldRheedHvOnRequest,
 )
 from lumi.experiment.chamber import PldChamber, PldStopped
 from lumi.pascal.chamber_log import process_row
@@ -301,3 +305,49 @@ async def test_cancel_task_holds_the_ld_current(handler, tmp_path):
         assert not heater.pid_on and heater.current_set == held
     finally:
         await db.close()
+
+
+async def until_state(h, predicate, timeout=30.0):
+    for _ in range(int(timeout / 0.2)):
+        state = await h.chamber_state(Empty())
+        if predicate(state):
+            return state
+        await asyncio.sleep(0.2)
+    pytest.fail("the chamber never got there")
+
+
+async def test_rheed_gun_on_ramped_and_all_off_from_any_client(handler):
+    from lumi.pascal.pld.client import PldClient
+    from lumi.pascal.pld.proto import pld_pb2 as pb
+
+    h = handler
+    assert (await h.rheed_all_off(Empty())).ok  # a known start
+    reply = await h.rheed_hv_on(PldRheedHvOnRequest(kv=2.0))
+    assert not reply.ok, reply.message  # HV needs the filament on
+
+    assert (await h.rheed_filament_on(PldRheedFilamentOnRequest(ma=600.0))).ok
+    rheed = await until_state(h, lambda s: s.rheed.filament_on and s.rheed.filament_set_ma == 600.0)
+    assert rheed.rheed.filament_target_ma == 600.0
+    assert (await h.rheed_hv_on(PldRheedHvOnRequest(kv=2.0))).ok
+    await until_state(h, lambda s: s.rheed.hv_on and s.rheed.hv_set_kv == 2.0)
+    assert (await h.set_rheed_focus(PldRheedFocusRequest(ma=300.0))).ok
+    assert (await h.set_rheed_deflection(PldRheedDeflectionRequest(x_ma=10.0, y_ma=-20.0))).ok
+    rheed = (await until_state(h, lambda s: s.rheed.focus_set_ma == 300.0 and s.rheed.y_set_ma == -20.0)).rheed
+    assert rheed.x_set_ma == 10.0
+
+    # Another client, holding no control, switches it all off; set points are remembered.
+    gui = PldClient(ADDRESS, client="pld-gui")
+    try:
+        ok, message = await asyncio.to_thread(gui.call, "RheedAllOff", pb.Empty())
+    finally:
+        gui.close()
+    assert ok, message
+    rheed = (await until_state(h, lambda s: not (s.rheed.filament_on or s.rheed.hv_on or s.rheed.focus_on))).rheed
+    assert (rheed.filament_last_ma, rheed.hv_last_kv) == (600.0, 2.0)
+    assert (await h.chamber_state(Empty())).controller == "lumi-pascal"
+
+    # On again at the remembered set point.
+    assert (await h.rheed_filament_on(PldRheedFilamentOnRequest())).ok
+    await until_state(h, lambda s: s.rheed.filament_on and s.rheed.filament_target_ma == 600.0)
+    assert (await h.rheed_filament_off(Empty())).ok
+    await until_state(h, lambda s: not s.rheed.filament_on)

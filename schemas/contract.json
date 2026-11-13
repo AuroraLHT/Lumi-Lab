@@ -3822,6 +3822,335 @@
             "response_codec": "json"
           },
           {
+            "name": "rheed_filament_on",
+            "request": {
+              "properties": {
+                "ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Filament set point, mA; None = the remembered one",
+                  "title": "Ma"
+                }
+              },
+              "title": "PldRheedFilamentOnRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_filament_off",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_hv_on",
+            "request": {
+              "properties": {
+                "kv": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "HV set point, kV; None = the remembered one",
+                  "title": "Kv"
+                }
+              },
+              "title": "PldRheedHvOnRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_hv_off",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_rheed_filament",
+            "request": {
+              "properties": {
+                "ma": {
+                  "title": "Ma",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "ma"
+              ],
+              "title": "PldRheedFilamentRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_rheed_hv",
+            "request": {
+              "properties": {
+                "kv": {
+                  "title": "Kv",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "kv"
+              ],
+              "title": "PldRheedHvRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_rheed_focus",
+            "request": {
+              "properties": {
+                "ma": {
+                  "title": "Ma",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "ma"
+              ],
+              "title": "PldRheedFocusRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_rheed_deflection",
+            "request": {
+              "properties": {
+                "x_ma": {
+                  "title": "X Ma",
+                  "type": "number"
+                },
+                "y_ma": {
+                  "title": "Y Ma",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "x_ma",
+                "y_ma"
+              ],
+              "title": "PldRheedDeflectionRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_all_off",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "start_logging",
             "request": {
               "properties": {
@@ -3920,6 +4249,11 @@
             "recent_events": "chamber.pld.req.recent_events",
             "release_control": "chamber.pld.req.release_control",
             "release_laser": "chamber.pld.req.release_laser",
+            "rheed_all_off": "chamber.pld.req.rheed_all_off",
+            "rheed_filament_off": "chamber.pld.req.rheed_filament_off",
+            "rheed_filament_on": "chamber.pld.req.rheed_filament_on",
+            "rheed_hv_off": "chamber.pld.req.rheed_hv_off",
+            "rheed_hv_on": "chamber.pld.req.rheed_hv_on",
             "select_target": "chamber.pld.req.select_target",
             "set_heater_current_limits": "chamber.pld.req.set_heater_current_limits",
             "set_heater_key": "chamber.pld.req.set_heater_key",
@@ -3937,7 +4271,11 @@
             "set_pressure_control": "chamber.pld.req.set_pressure_control",
             "set_pressure_flow_limits": "chamber.pld.req.set_pressure_flow_limits",
             "set_pump": "chamber.pld.req.set_pump",
+            "set_rheed_deflection": "chamber.pld.req.set_rheed_deflection",
+            "set_rheed_filament": "chamber.pld.req.set_rheed_filament",
+            "set_rheed_focus": "chamber.pld.req.set_rheed_focus",
             "set_rheed_gun_x": "chamber.pld.req.set_rheed_gun_x",
+            "set_rheed_hv": "chamber.pld.req.set_rheed_hv",
             "set_sample_position": "chamber.pld.req.set_sample_position",
             "set_sample_shutter": "chamber.pld.req.set_sample_shutter",
             "set_target_auto_motion": "chamber.pld.req.set_target_auto_motion",

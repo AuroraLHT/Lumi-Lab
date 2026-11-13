@@ -363,3 +363,24 @@ async def test_stop_fire_cuts_a_waited_train_short_from_another_client(driver):
     assert not reply.ok and reply.message.startswith("stopped by request: fired ")
     assert 0 < model.laser_pulses < 100_000
     assert service.servicer.controller == "lumi-pascal"  # the stop took nothing
+
+
+async def test_rheed_on_without_a_set_point_leaves_it_unset():
+    # pld-service then uses the remembered set point; 0 would be a set point of its own.
+    from lumi.contracts.payloads.pld import PldRheedFilamentOnRequest, PldRheedHvOnRequest
+    from lumi.pascal.pld.handler import PldHandler
+
+    sent = []
+
+    class Recorder(PldHandler):
+        def __init__(self):
+            self.state_monitor = type("M", (), {"latest": None})()
+
+        async def _operate(self, rpc, request):
+            sent.append((rpc, request))
+
+    h = Recorder()
+    await h.rheed_filament_on(PldRheedFilamentOnRequest())
+    await h.rheed_hv_on(PldRheedHvOnRequest(kv=12.5))
+    (_, filament), (_, hv) = sent
+    assert not filament.HasField("ma") and hv.HasField("kv") and hv.kv == 12.5

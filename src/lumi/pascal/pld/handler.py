@@ -153,6 +153,19 @@ class PldHandler:
     # Needs no control, and runs alongside a waited fire_laser (each op is its own thread).
     stop_fire = _op("StopFire", lambda r: pb.Empty())
 
+    # The RHEED controller. `ma` / `kv` None on the on-ops: the remembered set point.
+    rheed_filament_on = _op("RheedFilamentOn", lambda r: pb.RheedFilamentOnRequest(
+        **({} if r.ma is None else {"ma": r.ma})))
+    rheed_filament_off = _op("RheedFilamentOff", lambda r: pb.Empty())
+    rheed_hv_on = _op("RheedHvOn", lambda r: pb.RheedHvOnRequest(**({} if r.kv is None else {"kv": r.kv})))
+    rheed_hv_off = _op("RheedHvOff", lambda r: pb.Empty())
+    set_rheed_filament = _op("SetRheedFilament", lambda r: pb.RheedFilamentRequest(ma=r.ma))
+    set_rheed_hv = _op("SetRheedHv", lambda r: pb.RheedHvRequest(kv=r.kv))
+    set_rheed_focus = _op("SetRheedFocus", lambda r: pb.RheedFocusRequest(ma=r.ma))
+    set_rheed_deflection = _op("SetRheedDeflection", lambda r: pb.RheedDeflectionRequest(x_ma=r.x_ma, y_ma=r.y_ma))
+    # Needs no control, like StopFire.
+    rheed_all_off = _op("RheedAllOff", lambda r: pb.Empty())
+
     # --- the growth log -----------------------------------------------------------
 
     async def start_logging(self, req: PldLoggingRequest) -> PldReply:
