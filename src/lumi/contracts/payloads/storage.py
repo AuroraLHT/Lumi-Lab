@@ -25,6 +25,24 @@ class StorageRequest(BaseModel):
     #: it off the gun, so it is whatever the caller says; None = the lab's usual
     #: (`rheed.energy_kev` in settings).
     rheed_energy_kev: float | None = Field(default=None, gt=0, le=200)
+    #: Free text kept with the recording ("second try, new target"), and who ran it.
+    note: str | None = Field(default=None, max_length=4000)
+    operator: str | None = Field(default=None, max_length=200)
+    #: What the caller knows that storage cannot ask anyone for: the experiment
+    #: driver puts the project, substrate, sample, pixel and task here. Stored as JSON
+    #: in /meta/experiment.
+    context: dict = {}
+
+
+class RecordingEventIn(BaseModel):
+    """Something that happened during a recording, kept in its /events."""
+
+    kind: str = Field(min_length=1, max_length=64,
+                      description="task_started, task_finished, note, ... -- a short tag")
+    message: str = Field(default="", max_length=4000)
+    detail: dict = {}
+    #: Epoch seconds; None = when storage receives it.
+    time: float | None = None
 
 
 class StorageStatus(BaseModel):
@@ -36,6 +54,8 @@ class StorageStatus(BaseModel):
 
 class StorageReadout(BaseModel):
     is_storing: bool = False
+    #: The format new recordings are written in (lumi.storage.v2).
+    format_version: int = 2
     project_name: str | None = None
     path: str | None = None
     # Storage is a consumer of the other nodes, so it can be up but unable to
@@ -97,6 +117,15 @@ class RecordingSummary(BaseModel):
     #: is false to say so.
     rheed_energy_kev: float | None = None
     rheed_energy_recorded: bool = False
+    #: 1 = the text-celled layout written before November 2026; 2 = lumi.storage.v2.
+    format_version: int | None = None
+    n_detections: int | None = None
+    #: v2 only below. `complete` is false for a recording that was interrupted (or is
+    #: still being written) -- everything flushed before that point is readable.
+    n_events: int | None = None
+    complete: bool | None = None
+    note: str | None = None
+    operator: str | None = None
 
 
 class RecordingList(BaseModel):
@@ -116,15 +145,32 @@ class IntegrationBox(BaseModel):
     height: float
 
 
+class IntegrationBoxSpan(IntegrationBox):
+    """One geometry a box had, and when: boxes can be moved or added mid-recording."""
+
+    t_from: float
+    #: None = it kept this geometry to the end.
+    t_to: float | None = None
+
+
 class RecordingInfo(RecordingSummary):
     frame_shape: list[int] | None = None
     frame_dtype: str | None = None
     #: One entry per frame, so a scrubber can map a time to a frame index.
     frame_times: list[float] = []
     log_columns: list[str] = []
+    #: Each box's first geometry; `box_history` has every change.
     boxes: list[IntegrationBox] = []
+    box_history: list[IntegrationBoxSpan] = []
     #: Every dataset in the file -> rows written, for anything not covered above.
     datasets: dict[str, int] = {}
+    #: v2: the snapshots taken at start, by source -- request, experiment, chamber,
+    #: camera, integrator, detection. Each is that node's own state, as JSON.
+    meta: dict = {}
+    #: The file's root attributes: format, provenance (lumi_commit, contract_hash,
+    #: host, h5py, hdf5), rheed_energy_kev, start/end/closed and the counts.
+    attrs: dict[str, str | int | float | bool] = {}
+    detection_classes: list[str] = []
 
 
 class RecordingFrameQuery(BaseModel):
@@ -212,6 +258,91 @@ class RecordingLogQuery(BaseModel):
 
 class RecordingLog(LogSeries):
     name: str
+
+
+class RecordingEventsQuery(BaseModel):
+    name: str
+    #: Only these kinds; None = all.
+    kinds: list[str] | None = None
+    since: float | None = None
+    until: float | None = None
+    #: The last `limit` that match.
+    limit: int = Field(default=1000, ge=1, le=100_000)
+
+
+class RecordingEvent(BaseModel):
+    time: float
+    time_iso: str | None = None
+    kind: str
+    message: str = ""
+    detail: dict = {}
+
+
+class RecordingEvents(BaseModel):
+    name: str
+    #: How many matched, before `limit`.
+    total: int = 0
+    events: list[RecordingEvent] = []
+
+
+class RecordingDetectionsQuery(BaseModel):
+    name: str
+    since: float | None = None
+    until: float | None = None
+    max_points: int = Field(default=4000, ge=2, le=200_000)
+
+
+class RecordingDetections(BaseModel):
+    """The detector's output over the recording: per detection, its time, how many
+    boxes it found and the classifier's score for each class."""
+
+    name: str
+    n_detections: int = 0
+    stride: int = 1
+    #: Detection index in the file, for recording_detection.
+    index: list[int] = []
+    time: list[float] = []
+    n_boxes: list[int] = []
+    classes: list[str] = []
+    classification: dict[str, list[float | None]] = {}
+
+
+class RecordingDetectionQuery(BaseModel):
+    name: str
+    index: int = Field(ge=0)
+
+
+class RecordedBox(BaseModel):
+    """A detected box, in pattern coordinates: add the crop's x/y for the frame."""
+
+    bbox_id: int
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    label: int
+    score: float
+    #: The tracker's id for this streak; -1 if none (and always in v1 files).
+    track: int = -1
+
+
+class RecordedCrop(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class RecordingDetection(BaseModel):
+    name: str
+    index: int
+    n_detections: int
+    time: float | None = None
+    uuid: str = ""
+    #: The part of the frame the detector saw; None in v1 files.
+    crop: RecordedCrop | None = None
+    classification: dict[str, float | None] = {}
+    boxes: list[RecordedBox] = []
 
 
 class ArchiveReadout(BaseModel):

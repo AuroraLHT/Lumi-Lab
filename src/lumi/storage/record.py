@@ -1069,14 +1069,16 @@ class RecordReader(RecordDataset):
     def _parse_detection_meta(self, detection_meta):
         detection_meta = { k : v.decode("utf-8") for k, v in zip( self.ds_detection_meta.attrs['columns'], detection_meta )}
 
-        detection_meta['time_stamp'] = np.datetime64(detection_meta['time_stamp']) if detection_meta['time_stamp'] else detection_meta['time_stamp']
-        detection_meta['time'] = float(detection_meta['time']) if detection_meta['time'] else detection_meta['time']
-        detection_meta['crop_setup_sx'] = int(detection_meta['crop_setup_sx']) if detection_meta['crop_setup_sx'] else detection_meta['crop_setup_sx']
-        detection_meta['crop_setup_ex'] = int(detection_meta['crop_setup_ex']) if detection_meta['crop_setup_ex'] else detection_meta['crop_setup_ex']
-        detection_meta['crop_setup_sy'] = int(detection_meta['crop_setup_sy']) if detection_meta['crop_setup_sy'] else detection_meta['crop_setup_sy']
-        detection_meta['crop_setup_ey'] = int(detection_meta['crop_setup_ey']) if detection_meta['crop_setup_ey'] else detection_meta['crop_setup_ey']
+        detection_meta['time_stamp'] = np.datetime64(detection_meta['time_stamp']) if detection_meta.get('time_stamp') else detection_meta.get('time_stamp')
+        detection_meta['time'] = float(detection_meta['time']) if detection_meta.get('time') else detection_meta.get('time')
+        # The recorder writes time, time_stamp and uuid only: the crop columns this used
+        # to require were never stored, so every real file raised KeyError here. Parse
+        # them when present (files from a recorder that kept them), skip them otherwise.
+        for k in ('crop_setup_sx', 'crop_setup_ex', 'crop_setup_sy', 'crop_setup_ey'):
+            if detection_meta.get(k):
+                detection_meta[k] = int(detection_meta[k])
         return detection_meta
-    
+
     def get_detection_item(self, idx):
         if idx < 0: idx = self.ds_pattern.attrs['size'] + idx
         pattern = self.ds_pattern[idx]

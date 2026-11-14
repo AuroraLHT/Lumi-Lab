@@ -14,6 +14,13 @@ from .payloads.storage import (
     ListRecordings,
     RecordingFrameMeta,
     RecordingFrameQuery,
+    RecordingDetection,
+    RecordingDetectionQuery,
+    RecordingDetections,
+    RecordingDetectionsQuery,
+    RecordingEventIn,
+    RecordingEvents,
+    RecordingEventsQuery,
     RecordingInfo,
     RecordingIntegration,
     RecordingIntegrationQuery,
@@ -32,7 +39,8 @@ from .spec import Capability, Codec, EquipmentContract, Kind, Op
 STORAGE = Capability(
     name="storage",
     kind=Kind.RPC,
-    doc="Start and stop an HDF5 recording session.",
+    doc="Start and stop an HDF5 recording session (format v2: typed columns, compressed "
+        "frames, metadata snapshots and events; see lumi.storage.v2).",
     state=StorageState,
     ops=(
         # Named `start_recording`, not `start`: an op called `start` generates a client
@@ -40,14 +48,18 @@ STORAGE = Capability(
         # silently fire a request instead. The contract now rejects such names outright.
         Op("start_recording", StorageRequest, StorageStatus),
         Op("stop_recording", Empty, StorageStatus),
+        Op("add_recording_event", RecordingEventIn, StorageStatus,
+           doc="Add an event to the recording in progress (its /events): a task starting "
+               "or ending, an operator's note. Refused when nothing is recording."),
     ),
 )
 
 ARCHIVE = Capability(
     name="archive",
     kind=Kind.RPC,
-    doc="Finished recordings, read back: what is on disk, a frame by index, the RHEED "
-        "integration traces and the chamber log each file carries. A recording is named "
+    doc="Recordings, read back: what is on disk, a frame by index, the RHEED integration "
+        "traces, the chamber log, and (v2) the metadata, events and detections each file "
+        "carries. The recording in progress can be read too (v2). A recording is named "
         "by its file stem, which is `record_name` in growth.db.",
     state=ArchiveState,
     ops=(
@@ -67,12 +79,20 @@ ARCHIVE = Capability(
                "RHEED oscillation curves."),
         Op("recording_log", RecordingLogQuery, RecordingLog,
            doc="The chamber log rows recorded alongside the frames, as columns."),
+        Op("recording_events", RecordingEventsQuery, RecordingEvents,
+           doc="What happened during the recording: tasks, chamber events, camera and "
+               "detection changes. Empty for v1 files."),
+        Op("recording_detections", RecordingDetectionsQuery, RecordingDetections,
+           doc="The detector's output over the recording: box counts and class scores "
+               "per detection, thinned to max_points."),
+        Op("recording_detection", RecordingDetectionQuery, RecordingDetection,
+           doc="One detection's boxes, crop and class scores."),
     ),
 )
 
 STORAGE_NODE = EquipmentContract(
     name="storage",
     exchange="STORAGE",
-    version="2.0",
+    version="2.1",
     capabilities=(STORAGE, ARCHIVE),
 )

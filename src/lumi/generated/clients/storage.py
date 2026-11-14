@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: c294a5d7c09bfc20
+# contract_hash: f0a0bfe4157db746
 
 """Generated clients for the storage node."""
 
@@ -18,11 +18,11 @@ from aio_pika.abc import AbstractChannel, AbstractExchange
 from lumi.base.mq import CapabilityClient
 from lumi.contracts.storage import ARCHIVE, STORAGE
 from lumi.contracts.payloads.common import Empty
-from lumi.contracts.payloads.storage import ArchiveState, ListRecordings, RecordingFrameMeta, RecordingFrameQuery, RecordingInfo, RecordingIntegration, RecordingIntegrationQuery, RecordingJpegMeta, RecordingJpegQuery, RecordingList, RecordingLog, RecordingLogQuery, RecordingName, StorageRequest, StorageState, StorageStatus
+from lumi.contracts.payloads.storage import ArchiveState, ListRecordings, RecordingDetection, RecordingDetectionQuery, RecordingDetections, RecordingDetectionsQuery, RecordingEventIn, RecordingEvents, RecordingEventsQuery, RecordingFrameMeta, RecordingFrameQuery, RecordingInfo, RecordingIntegration, RecordingIntegrationQuery, RecordingJpegMeta, RecordingJpegQuery, RecordingList, RecordingLog, RecordingLogQuery, RecordingName, StorageRequest, StorageState, StorageStatus
 
 
 class StorageStorageClient(CapabilityClient):
-    """Start and stop an HDF5 recording session."""
+    """Start and stop an HDF5 recording session (format v2: typed columns, compressed frames, metadata snapshots and events; see lumi.storage.v2)."""
 
     def __init__(
         self,
@@ -47,13 +47,17 @@ class StorageStorageClient(CapabilityClient):
         """Call storage.stop_recording."""
         return await self.call("stop_recording")  # type: ignore[return-value]
 
+    async def add_recording_event(self, req: RecordingEventIn) -> StorageStatus:
+        """Add an event to the recording in progress (its /events): a task starting or ending, an operator's note. Refused when nothing is recording."""
+        return await self.call("add_recording_event", req)  # type: ignore[return-value]
+
     async def get_state(self) -> StorageState:  # type: ignore[override]
         """The server's current state, typed."""
         return await super().get_state()  # type: ignore[return-value]
 
 
 class StorageArchiveClient(CapabilityClient):
-    """Finished recordings, read back: what is on disk, a frame by index, the RHEED integration traces and the chamber log each file carries. A recording is named by its file stem, which is `record_name` in growth.db."""
+    """Recordings, read back: what is on disk, a frame by index, the RHEED integration traces, the chamber log, and (v2) the metadata, events and detections each file carries. The recording in progress can be read too (v2). A recording is named by its file stem, which is `record_name` in growth.db."""
 
     def __init__(
         self,
@@ -95,6 +99,18 @@ class StorageArchiveClient(CapabilityClient):
     async def recording_log(self, req: RecordingLogQuery) -> RecordingLog:
         """The chamber log rows recorded alongside the frames, as columns."""
         return await self.call("recording_log", req)  # type: ignore[return-value]
+
+    async def recording_events(self, req: RecordingEventsQuery) -> RecordingEvents:
+        """What happened during the recording: tasks, chamber events, camera and detection changes. Empty for v1 files."""
+        return await self.call("recording_events", req)  # type: ignore[return-value]
+
+    async def recording_detections(self, req: RecordingDetectionsQuery) -> RecordingDetections:
+        """The detector's output over the recording: box counts and class scores per detection, thinned to max_points."""
+        return await self.call("recording_detections", req)  # type: ignore[return-value]
+
+    async def recording_detection(self, req: RecordingDetectionQuery) -> RecordingDetection:
+        """One detection's boxes, crop and class scores."""
+        return await self.call("recording_detection", req)  # type: ignore[return-value]
 
     async def get_state(self) -> ArchiveState:  # type: ignore[override]
         """The server's current state, typed."""
