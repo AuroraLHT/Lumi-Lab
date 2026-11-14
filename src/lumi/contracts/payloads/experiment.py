@@ -570,6 +570,10 @@ class StartStorage(BaseModel):
     #: The RHEED beam energy, keV, stored with the recording. None = the lab's usual
     #: (`rheed.energy_kev` in the storage node's settings).
     rheed_energy_kev: float | None = Field(default=None, gt=0, le=200)
+    #: Kept with the recording: free text, and who ran it (None = the caller's
+    #: identity, as the journal records it).
+    note: str | None = Field(default=None, max_length=4000)
+    operator: str | None = Field(default=None, max_length=200)
 
 
 class StorageResult(BaseModel):
@@ -860,6 +864,8 @@ class ExperimentReadout(BaseModel):
     current_pixel_index: int | None = None
     num_pixel_positions: int | None = None
     is_recording: bool = False
+    #: The recording this driver started (storage's file stem), while it runs.
+    recording_name: str | None = None
     pending_confirmation: PendingConfirmation | None = None
     current_task: CurrentTask | None = None
     # Experiment is a consumer of chamber/rheed/storage, so it can be up but unable

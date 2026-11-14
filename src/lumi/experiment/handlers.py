@@ -355,7 +355,8 @@ class ExperimentHandler:
             substrate_id=substrate.db_id if substrate else None,
             current_pixel_index=substrate.current_position_id if substrate else None,
             num_pixel_positions=len(substrate.positions) if substrate else None,
-            is_recording=False,
+            is_recording=bool(m and m.recording_name),
+            recording_name=m.recording_name if m else None,
             pending_confirmation=self._pending,
             current_task=self._current_task,
             deps_available=dict(self._deps),
@@ -451,6 +452,9 @@ class ExperimentHandler:
         task = CurrentTask(id=task_id, kind=kind, started_at=started_at, detail=detail or {})
         self._current_task = task
         await self._push()
+        if self.manager is not None:
+            await self.manager.add_recording_event(
+                "task_started", kind, {"task_id": task_id, "kind": kind, "detail": _jsonable(detail or {})})
 
         # The journal row is opened here and closed by the runner below, so its
         # duration is the ramp's, not the ack's. `detail` is already the typed
@@ -492,6 +496,11 @@ class ExperimentHandler:
                     result=task_result, error=task_result.get("error"),
                 )
             await self._push(task_result=task_result, finished_task=task)
+            if self.manager is not None:
+                await self.manager.add_recording_event(
+                    "task_finished", f"{kind}: {'ok' if task_result.get('ok') else task_result.get('error', 'failed')}",
+                    {"task_id": task_id, "kind": kind, "result": task_result,
+                     "duration_s": time.time() - started_at})
             if cancelled is not None:
                 raise cancelled
 
@@ -909,7 +918,8 @@ class ExperimentHandler:
             req.project_name, req.is_dryrun,
             save_frame=req.save_frame, save_ai=req.save_ai, save_log=req.save_log,
             save_integration=req.save_integration, force_rewrite=req.force_rewrite,
-            rheed_energy_kev=req.rheed_energy_kev,
+            rheed_energy_kev=req.rheed_energy_kev, note=req.note,
+            operator=req.operator or current_actor.get(),
         )
         return StorageResult(**result)
 

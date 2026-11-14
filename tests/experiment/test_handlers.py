@@ -141,10 +141,19 @@ class FakeRheedCamera:
 
 
 class FakeStorage:
+    def __init__(self) -> None:
+        self.requests: list = []
+        self.events: list = []
+
     async def start_recording(self, req) -> StorageStatus:
+        self.requests.append(req)
         return StorageStatus(ok=True, message="", project_name=req.project_name, path="/tmp/fake.hdf5")
 
     async def stop_recording(self) -> StorageStatus:
+        return StorageStatus(ok=True, message="")
+
+    async def add_recording_event(self, req) -> StorageStatus:
+        self.events.append(req)
         return StorageStatus(ok=True, message="")
 
 
@@ -605,6 +614,39 @@ async def test_start_storage_names_the_recording_after_the_sample(handler):
 
     assert result.storage_name.startswith("STO-42-p0_demo_")
     assert result.storage_name.endswith(result.record_uuid)
+
+
+async def test_a_recording_carries_the_experiment_and_hears_about_its_tasks(handler):
+    """The file explains itself without growth.db: project, sample, pixel and laser
+    check go in its /meta/experiment, and each task's start and end in its /events."""
+    from lumi.contracts.payloads.experiment import EndStorage, StartStorage
+
+    storage = handler.manager.storage
+    await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+        substrate_name="STO-43",
+    ))
+    result = await handler.start_storage(StartStorage(project_name="demo", note="n", operator="op"))
+    req = storage.requests[-1]
+    assert (req.note, req.operator) == ("n", "op")
+    assert req.context["sample_name"] == "STO-43-p0" and req.context["record_name"] == result.storage_name
+    assert req.context["pixel_index"] == 0 and "laser_pulse_energy_set_mj" in req.context
+    assert handler.readout().is_recording and handler.readout().recording_name == result.storage_name
+
+    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+    for _ in range(200):
+        if any(e.kind == "task_finished" for e in storage.events):
+            break
+        await asyncio.sleep(0.01)
+    kinds = [(e.kind, e.detail.get("kind")) for e in storage.events]
+    assert kinds == [("task_started", "to_temperature"), ("task_finished", "to_temperature")]
+    assert storage.events[1].detail["result"]["ok"] is True
+
+    await handler.end_storage(EndStorage())
+    assert not handler.readout().is_recording
+    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+    await asyncio.sleep(0.05)
+    assert len(storage.events) == 2  # nothing recording: nothing sent
 
 
 async def test_start_storage_falls_back_to_project_name_with_no_sample_loaded(handler):

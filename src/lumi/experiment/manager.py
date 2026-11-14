@@ -40,7 +40,7 @@ from math import floor
 from lumi.contracts.payloads.chamber import SectionQuery
 from lumi.contracts.payloads.experiment import MaskAlignPass, MaskAlignResult, MaskSweepPoint
 from lumi.contracts.payloads.fiducial import MASK_CENTER_ROLE
-from lumi.contracts.payloads.storage import StorageRequest
+from lumi.contracts.payloads.storage import RecordingEventIn, StorageRequest
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, utc_now
 from lumi.experiment.mask_align import locate_slit
 from lumi.experiment.chamber import ChamberBackend
@@ -272,6 +272,8 @@ class BaseExperimentManager:
         self.project_name: str | None = None
         self._laser_power_set: float | None = None
         self._laser_power_real: float | None = None
+        #: The recording this driver started and has not ended, or None.
+        self.recording_name: str | None = None
         # Stashed between begin_set_laser_power() and confirm_laser_power().
         self._pending_laser_power: float | None = None
         # Stashed between begin_check_rheed_pixels() and resolve_pixel_check().
@@ -1077,6 +1079,8 @@ class BaseExperimentManager:
         save_integration: bool = True,
         force_rewrite: bool = False,
         rheed_energy_kev: float | None = None,
+        note: str | None = None,
+        operator: str | None = None,
     ) -> dict:
         record_uuid = str(uuid.uuid4())
         sample_name = await self._current_sample_name()
@@ -1093,8 +1097,11 @@ class BaseExperimentManager:
         status = await self.storage.start_recording(StorageRequest(
             project_name=storage_name, save_frame=save_frame, save_ai=save_ai, save_log=save_log,
             save_integration=save_integration, force_rewrite=force_rewrite,
-            rheed_energy_kev=rheed_energy_kev,
+            rheed_energy_kev=rheed_energy_kev, note=note, operator=operator,
+            context=self.recording_context(sample_name, storage_name, record_uuid),
         ))
+        if status.ok:
+            self.recording_name = storage_name
         return {
             "ok": status.ok, "record_uuid": record_uuid, "storage_name": storage_name,
             "path": status.path, "message": status.message,
@@ -1104,7 +1111,42 @@ class BaseExperimentManager:
         if is_dryrun:
             return {"ok": True, "message": ""}
         status = await self.storage.stop_recording()
+        if status.ok or "not recording" in (status.message or ""):
+            self.recording_name = None
         return {"ok": status.ok, "message": status.message}
+
+    def recording_context(self, sample_name: str | None, storage_name: str, record_uuid: str) -> dict:
+        """What the recording should know about the experiment it belongs to: kept in
+        the file's /meta/experiment, so the file explains itself without growth.db."""
+        substrate = self.current_substrate
+        position = None
+        if substrate is not None and substrate.positions:
+            try:
+                position = float(substrate.positions[substrate.current_position_id])
+            except (IndexError, TypeError, ValueError):
+                position = None
+        return {
+            "project_id": self.project_id, "project_name": self.project_name,
+            "substrate_id": substrate.db_id if substrate else None,
+            "sample_name": sample_name,
+            "pixel_index": substrate.current_position_id if substrate else None,
+            "num_pixel_positions": len(substrate.positions) if substrate else None,
+            "pixel_position": position,
+            "record_name": storage_name, "record_uuid": record_uuid,
+            "laser_pulse_energy_set_mj": self._laser_power_set,
+            "laser_pulse_energy_measured_mj": self._laser_power_real,
+        }
+
+    async def add_recording_event(self, kind: str, message: str = "", detail: dict | None = None) -> None:
+        """Tell the recording in progress what the driver is doing. Best effort: a
+        storage node that does not answer must never stop the experiment."""
+        if self.recording_name is None:
+            return
+        try:
+            await asyncio.wait_for(self.storage.add_recording_event(
+                RecordingEventIn(kind=kind, message=message, detail=detail or {})), 5.0)
+        except Exception as exc:
+            log.warning("could not add %r to the recording: %s", kind, exc)
 
     async def finish_experiment_record(
         self, *, substrate_id: int, project_id: int, experiment_uuid: str, temperature: float,

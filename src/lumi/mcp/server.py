@@ -478,7 +478,11 @@ through), list_records, list_measurements (measurements joined to the growth con
 A record's record_name is the name of its recording: storage.archive.recording_info
 gives its frames and log columns, recording_frame_jpeg a frame to look at,
 recording_integration the RHEED oscillation traces, recording_log the chamber log
-during it. chamber.log.list_log_files / log_window reach the chamber log outside any
+during it; for recordings in format 2, recording_info also carries `meta` (the camera,
+chamber, detector and experiment as they were at the start), recording_events what
+happened during it (tasks, chamber events, setting changes), recording_detections the
+detector's class scores over time and recording_detection one detection's boxes. The
+recording in progress can be read too. chamber.log.list_log_files / log_window reach the chamber log outside any
 recording.
 
 Simulating RHEED -- simulation.rheed_sim.*. list_structures for what is built in or saved;

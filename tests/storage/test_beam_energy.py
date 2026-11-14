@@ -60,7 +60,7 @@ async def test_start_recording_stores_what_it_is_asked_or_the_default(tmp_path, 
     handler = StorageHandler(sources={}, root_folder=str(tmp_path))
     # Nothing saved, so no source is consulted: this is only the file's own metadata.
     config = await handler._build_config(StorageRequest(project_name="x", rheed_energy_kev=asked))
-    assert config.attrs == {"rheed_energy_kev": stored}
+    assert config["attrs"] == {"rheed_energy_kev": stored}
 
 
 def test_the_experiment_node_passes_the_energy_through():
