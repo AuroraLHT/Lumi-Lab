@@ -185,11 +185,14 @@ class PldLimits(BaseModel):
     mv3_max_torr: float = Field(0.0, description="MV3 open refused above this on TCG31")
     heater_max_celsius: float = Field(0.0, description="Above this the heater trips off")
     heater_max_amps: float = Field(0.0, description="LD current ceiling; heater.current_max is the PID's limit within it")
+    ig1_off_torr: float = Field(
+        0.0, description="IG1 switches itself off when its own reading stays above this (also before MV10 is closed by hand)")
 
 
 class PldRheed(BaseModel):
     """The RHEED gun's controller, on pld-service's own link. Read-outs are None when
-    unknown; ramps run at 30 mA/s and 500 V/s, done when set == target."""
+    unknown; ramps run at filament_ramp_ma_per_s and hv_ramp_v_per_s (30 mA/s and
+    500 V/s by default), done when set == target."""
 
     present: bool = Field(False, description="The service has a RHEED link")
     read_only: bool = Field(False, description="Hardware without --allow-operations: the port is not opened")
@@ -221,7 +224,12 @@ class PldRheed(BaseModel):
     hv_ramping_down: bool = Field(
         False, description="rheed_hv_off or rheed_filament_off is ramping HV to 0 before switching it off")
     filament_ramping_down: bool = Field(
-        False, description="rheed_filament_off in progress: HV down and off, then the filament to its floor, then off")
+        False, description="rheed_filament_off (or rheed_all_off_gentle) in progress: HV down and off, then the "
+                           "filament to its floor, then off")
+    all_ramping_down: bool = Field(
+        False, description="rheed_all_off_gentle in progress: focus, X and Y go off at its end")
+    hv_ramp_v_per_s: float | None = Field(None, description="The HV ramp in use, V/s ([rheed] setting)")
+    filament_ramp_ma_per_s: float | None = Field(None, description="The filament ramp in use, mA/s ([rheed] setting)")
     hv_max_kv: float | None = None
     filament_min_ma: float | None = None
     filament_max_ma: float | None = None
@@ -415,11 +423,11 @@ class PldLaserHvRequest(BaseModel):
 
 
 class PldRheedFilamentOnRequest(BaseModel):
-    ma: float | None = Field(None, description="Filament set point, mA; None = the remembered one")
+    ma: float | None = Field(None, description="Filament set point, mA; None = on at the 507 mA floor, held there")
 
 
 class PldRheedHvOnRequest(BaseModel):
-    kv: float | None = Field(None, description="HV set point, kV; None = the remembered one")
+    kv: float | None = Field(None, description="HV set point, kV; None = on at 0 kV, held there")
 
 
 class PldRheedFilamentRequest(BaseModel):

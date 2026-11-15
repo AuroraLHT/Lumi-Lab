@@ -156,11 +156,12 @@ class PldHandler:
     # Needs no control, and runs alongside a waited fire_laser (each op is its own thread).
     stop_fire = _op("StopFire", lambda r: pb.Empty())
 
-    # The RHEED controller. pld-service ramps the filament (30 mA/s) and HV (500 V/s) on,
-    # to a new set point and down on switch-off (REA 36ac0b4), keeping the remembered set
-    # points. Its off-ops reply as the ramp starts; the ones here wait until the gun is
-    # off. Focus and X/Y it sets in one step, so the node ramps those in small steps
-    # itself. rheed_all_off stays the immediate stop.
+    # The RHEED controller. pld-service ramps the filament (30 mA/s) and HV (500 V/s) to a
+    # set point given, and down on switch-off, keeping the remembered set points; on with
+    # no value holds at the 507 mA floor / 0 kV (REA 0089410). Its off-ops reply as the
+    # ramp starts; the ones here wait until the gun is off. Focus and X/Y it sets in one
+    # step, so the node ramps those in small steps itself. rheed_all_off_gentle is the
+    # normal all-off; rheed_all_off stays the immediate stop.
 
     #: Longest ramp-down: HV from 29 kV at 500 V/s, then the filament 2200 -> 507 mA at
     #: 30 mA/s, about a minute each.
@@ -182,7 +183,7 @@ class PldHandler:
             rheed = await self._rheed()
             if off(rheed):
                 return reply
-            if rheed.hv_ramping_down or rheed.filament_ramping_down:
+            if rheed.hv_ramping_down or rheed.filament_ramping_down or rheed.all_ramping_down:
                 ramping = True
             elif ramping:
                 # The ramp ended without getting there: a new on or set point cancelled it.
@@ -197,7 +198,7 @@ class PldHandler:
     async def rheed_filament_off(self, req: Empty) -> PldReply:
         return await self._rheed_off("RheedFilamentOff", lambda r: not (r.filament_on or r.hv_on))
 
-    # `ma` / `kv` None: the service's remembered set point.
+    # `ma` / `kv` None: on at the floor / 0 kV, held there until a set point.
     rheed_filament_on = _op("RheedFilamentOn", lambda r: pb.RheedFilamentOnRequest(
         **({} if r.ma is None else {"ma": r.ma})))
     rheed_hv_on = _op("RheedHvOn", lambda r: pb.RheedHvOnRequest(**({} if r.kv is None else {"kv": r.kv})))
@@ -235,6 +236,12 @@ class PldHandler:
             lambda x, y: self._operate("SetRheedDeflection", pb.RheedDeflectionRequest(x_ma=x, y_ma=y)))
     # Needs no control, like StopFire.
     rheed_all_off = _op("RheedAllOff", lambda r: pb.Empty())
+
+    # Needs no control either. HV and filament ramp down as in rheed_filament_off, then
+    # the service switches focus, X and Y off; waits for all five.
+    async def rheed_all_off_gentle(self, req: Empty) -> PldReply:
+        return await self._rheed_off("RheedAllOffGentle", lambda r: not (
+            r.filament_on or r.hv_on or r.focus_on or r.x_on or r.y_on or r.all_ramping_down))
 
     # --- the growth log -----------------------------------------------------------
 

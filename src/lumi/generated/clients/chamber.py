@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: f0a0bfe4157db746
+# contract_hash: d894be578c1d737c
 
 """Generated clients for the chamber node."""
 
@@ -299,7 +299,7 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("release_laser")  # type: ignore[return-value]
 
     async def rheed_filament_on(self, req: PldRheedFilamentOnRequest) -> PldReply:
-        """RHEED filament on, ramping from the 507 mA floor at 30 mA/s to `ma` (unset: the remembered set point; refused if there is none). During a ramp down it cancels the ramp. Returns when the ramp starts: done when state.rheed.filament_set_ma reaches filament_target_ma."""
+        """RHEED filament on at the 507 mA floor, ramping at 30 mA/s to `ma`. Unset, it holds at the floor until set_rheed_filament. During a ramp down it cancels the ramp. Returns when the ramp starts: done when state.rheed.filament_set_ma reaches filament_target_ma."""
         return await self.call("rheed_filament_on", req)  # type: ignore[return-value]
 
     async def rheed_filament_off(self) -> PldReply:
@@ -307,7 +307,7 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("rheed_filament_off")  # type: ignore[return-value]
 
     async def rheed_hv_on(self, req: PldRheedHvOnRequest) -> PldReply:
-        """RHEED HV on, ramping from 0 at 500 V/s to `kv` (unset: the remembered set point). Needs the filament on, and is refused during a filament ramp down. Returns when the ramp starts."""
+        """RHEED HV on at 0 kV, ramping at 500 V/s to `kv`. Unset, it holds at 0 until set_rheed_hv. Needs the filament on, and is refused during a filament ramp down. Returns when the ramp starts."""
         return await self.call("rheed_hv_on", req)  # type: ignore[return-value]
 
     async def rheed_hv_off(self) -> PldReply:
@@ -330,8 +330,12 @@ class ChamberPldClient(CapabilityClient):
         """RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in 0.2 s steps, both arriving together. Returns when they are there."""
         return await self.call("set_rheed_deflection", req)  # type: ignore[return-value]
 
+    async def rheed_all_off_gentle(self) -> PldReply:
+        """RHEED all off, ramped: HV down at 500 V/s and off, the filament down at 30 mA/s to its floor and off, then focus, X and Y off (state.rheed.all_ramping_down meanwhile). The normal way to switch the gun off. Returns when all five are off, about two minutes from full; set points are kept for the next on. Needs no control, like rheed_all_off."""
+        return await self.call("rheed_all_off_gentle")  # type: ignore[return-value]
+
     async def rheed_all_off(self) -> PldReply:
-        """RHEED filament, HV, focus, X and Y off at once, unramped: the emergency stop, for a fault; rheed_filament_off is the normal way down. Set points are kept for the next on. Needs no control, like stop_fire: the stop from any client. An interlock, an open filament or an over-current held 1 s switches filament and HV off by itself; nothing comes back on by itself."""
+        """RHEED filament, HV, focus, X and Y off at once, unramped ("ALL OFF BRUTAL" in pld-gui): the emergency stop, for a fault; rheed_all_off_gentle is the normal way down. Set points are kept for the next on. Needs no control, like stop_fire: the stop from any client. An interlock, an open filament or an over-current held 1 s switches filament and HV off by itself; nothing comes back on by itself."""
         return await self.call("rheed_all_off")  # type: ignore[return-value]
 
     async def start_logging(self, req: PldLoggingRequest) -> PldReply:

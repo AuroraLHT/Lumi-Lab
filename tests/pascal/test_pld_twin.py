@@ -346,14 +346,18 @@ async def test_rheed_gun_on_ramped_and_all_off_from_any_client(handler):
     assert (rheed.filament_last_ma, rheed.hv_last_kv) == (600.0, 2.0)
     assert (await h.chamber_state(Empty())).controller == "lumi-pascal"
 
-    # On again at the remembered set point.
+    # On with no set point holds at the floor, not the remembered 600 mA (REA 0089410).
     assert (await h.rheed_filament_on(PldRheedFilamentOnRequest())).ok
-    await until_state(h, lambda s: s.rheed.filament_on and s.rheed.filament_target_ma == 600.0)
+    rheed = (await until_state(h, lambda s: s.rheed.filament_on)).rheed
+    await asyncio.sleep(1.0)  # a ramp would have moved on by now
+    rheed = (await h.chamber_state(Empty())).rheed
+    assert rheed.filament_set_ma == rheed.filament_target_ma == rheed.filament_min_ma
+    assert rheed.filament_last_ma == 600.0
     assert (await h.rheed_filament_off(Empty())).ok
     await until_state(h, lambda s: not s.rheed.filament_on)
 
 
-async def test_rheed_off_ramps_down_and_on_comes_back_where_it_was(handler):
+async def test_rheed_off_ramps_down_and_on_holds_at_the_floor(handler):
     h = handler
     assert (await h.rheed_all_off(Empty())).ok
     assert (await h.rheed_filament_on(PldRheedFilamentOnRequest(ma=800.0))).ok
@@ -387,13 +391,70 @@ async def test_rheed_off_ramps_down_and_on_comes_back_where_it_was(handler):
     assert not (rheed.filament_on or rheed.hv_on or rheed.hv_ramping_down or rheed.filament_ramping_down)
     assert (rheed.filament_last_ma, rheed.hv_last_kv) == (800.0, 5.0)
 
-    # Back on at the remembered set points, not the ramp's 507 mA / 0 kV.
+    # Back on with no set points: held at 507 mA / 0 kV until one is given.
     assert (await h.rheed_filament_on(PldRheedFilamentOnRequest())).ok
-    await until_state(h, lambda s: s.rheed.filament_target_ma == 800.0)
+    await until_state(h, lambda s: s.rheed.filament_on)
     assert (await h.rheed_hv_on(PldRheedHvOnRequest())).ok
-    await until_state(h, lambda s: s.rheed.hv_target_kv == 5.0)
+    await until_state(h, lambda s: s.rheed.hv_on)
+    rheed = (await h.chamber_state(Empty())).rheed
+    assert (rheed.filament_target_ma, rheed.hv_target_kv) == (rheed.filament_min_ma, 0.0)
+    assert (rheed.filament_last_ma, rheed.hv_last_kv) == (800.0, 5.0)
     assert (await h.rheed_hv_off(Empty())).ok
     assert (await h.rheed_all_off(Empty())).ok
+
+
+async def test_rheed_all_off_gentle_ramps_then_switches_focus_and_deflection_off(handler):
+    from lumi.pascal.pld.client import PldClient
+    from lumi.pascal.pld.proto import pld_pb2 as pb
+
+    h = handler
+    assert (await h.rheed_all_off(Empty())).ok
+    assert (await h.rheed_filament_on(PldRheedFilamentOnRequest(ma=700.0))).ok
+    await until_state(h, lambda s: s.rheed.filament_set_ma == 700.0)
+    assert (await h.rheed_hv_on(PldRheedHvOnRequest(kv=3.0))).ok
+    await until_state(h, lambda s: s.rheed.hv_set_kv == 3.0)
+    assert (await h.set_rheed_focus(PldRheedFocusRequest(ma=150.0))).ok
+    assert (await h.set_rheed_deflection(PldRheedDeflectionRequest(x_ma=10.0, y_ma=-10.0))).ok
+    rheed = (await h.chamber_state(Empty())).rheed
+    assert rheed.hv_ramp_v_per_s > 0 and rheed.filament_ramp_ma_per_s > 0
+
+    seen = []
+
+    async def watch():
+        while True:
+            r = (await h.chamber_state(Empty())).rheed
+            seen.append((r.hv_on, r.hv_set_kv, r.filament_on, r.filament_set_ma, r.focus_on, r.all_ramping_down))
+            await asyncio.sleep(0.2)
+
+    watcher = asyncio.create_task(watch())
+    try:
+        reply = await h.rheed_all_off_gentle(Empty())
+    finally:
+        watcher.cancel()
+    assert reply.ok, reply.message
+    hv = [kv for on, kv, *_ in seen if on]
+    filament = [ma for _, _, on, ma, *_ in seen if on]
+    assert any(0 < kv < 3.0 for kv in hv) and hv == sorted(hv, reverse=True)
+    assert any(507 < ma < 700 for ma in filament) and filament == sorted(filament, reverse=True)
+    assert any(r for *_, r in seen)  # flagged while it ran
+    # Focus, X and Y go off at the end, never while the filament is still on.
+    assert not any(fil and not focus for _, _, fil, _, focus, _ in seen)
+    rheed = (await h.chamber_state(Empty())).rheed
+    assert not (rheed.filament_on or rheed.hv_on or rheed.focus_on or rheed.x_on or rheed.y_on
+                or rheed.all_ramping_down)
+    assert (rheed.filament_last_ma, rheed.hv_last_kv) == (700.0, 3.0)
+
+    # Any client may start it, holding no control.
+    assert (await h.rheed_filament_on(PldRheedFilamentOnRequest(ma=600.0))).ok
+    await until_state(h, lambda s: s.rheed.filament_set_ma == 600.0)
+    gui = PldClient(ADDRESS, client="pld-gui")
+    try:
+        ok, message = await asyncio.to_thread(gui.call, "RheedAllOffGentle", pb.Empty())
+    finally:
+        gui.close()
+    assert ok, message
+    await until_state(h, lambda s: not (s.rheed.filament_on or s.rheed.all_ramping_down), timeout=90.0)
+    assert (await h.chamber_state(Empty())).controller == "lumi-pascal"
 
 
 async def test_rheed_focus_and_deflection_ramp_in_small_steps(handler):

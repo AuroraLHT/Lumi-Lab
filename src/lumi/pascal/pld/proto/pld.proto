@@ -1,7 +1,7 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at 36ac0b4 (RHEED ramped switch-off, RHEED controller, link reconnect; identical apart from line
-// endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this header)
-// and run scripts/gen_pld_stubs.sh.
+// branch decode-program at 0089410 (RHEED gentle all-off and hold-at-floor On, settings, IG1 trip limit; identical apart
+// from line endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this
+// header) and run scripts/gen_pld_stubs.sh.
 //
 // PLD control service: the local gRPC interface (127.0.0.1 only).
 //
@@ -147,15 +147,16 @@ service Chamber {
   // Its own link and thread (rheed.rs, docs/rheed-link.md). Needs control, except RheedAllOff.
   // On hardware without --allow-operations the RHEED port stays closed (any record, even a
   // k poll, restarts the controller's outputs) and every RHEED operation is refused.
-  // Filament on ramps from the 507 mA floor at filament_ramp_ma_per_s; HV on ramps from 0 at
-  // hv_ramp_v_per_s and needs the filament on. RheedHvOff ramps HV to 0, then switches it off;
+  // Filament on starts at the 507 mA floor; HV on starts at 0 and needs the filament on. Both ramp
+  // (filament_ramp_ma_per_s, hv_ramp_v_per_s) only to a value given explicitly: On with `ma` / `kv`
+  // unset holds at the floor / 0 until a SetRheed* (user, 2026-11-13). RheedHvOff ramps HV to 0, then switches it off;
   // RheedFilamentOff ramps HV down and off first, then the filament to filament_min_ma, then off
   // (same rates; the remembered set points are not changed). A SetRheed*/On during a ramp-down
   // cancels it and goes to the new target (HV on/set is refused during a filament ramp-down:
-  // switch the filament on again first). RheedAllOff, interlock, faults and link loss are immediate.
+  // switch the filament on again first). RheedAllOffGentle ramps like RheedFilamentOff, then switches
+  // focus, X and Y off. RheedAllOff ("ALL OFF BRUTAL"), interlock, faults and link loss are immediate.
   // An interlock, an open filament or an over-current held 1 s switches filament and HV off;
   // nothing comes back on by itself.
-  // `ma` / `kv` unset: the remembered set point (from this or a previous run); refused if none.
   rpc RheedFilamentOn(RheedFilamentOnRequest) returns (OperationReply);
   rpc RheedFilamentOff(Empty) returns (OperationReply);
   rpc RheedHvOn(RheedHvOnRequest) returns (OperationReply);
@@ -166,6 +167,35 @@ service Chamber {
   rpc SetRheedDeflection(RheedDeflectionRequest) returns (OperationReply);  // X and Y together
   // Filament, HV, focus, X and Y off at once. Any client, no control needed (like StopFire).
   rpc RheedAllOff(Empty) returns (OperationReply);
+  // Ramped all off: HV to 0 and off, filament to its floor and off, then focus, X and Y off. Any client.
+  rpc RheedAllOffGentle(Empty) returns (OperationReply);
+
+  // ---- settings (the --config file's keys; GUI Maintenance > Settings) ------------------------
+  // Every setting with its value, unit and help. Watching needs nothing.
+  rpc GetSettings(Empty) returns (SettingsReply);
+  // Change settings (needs control). Checked together, as the config file is; on success they are
+  // saved to the config file (the service's --config file, or pld-service.ini in the log folder).
+  // Settings with live = false (the RHEED caps) are saved but take effect at the next start.
+  rpc SetSettings(SetSettingsRequest) returns (OperationReply);
+}
+
+message Setting {
+  string section = 1;  // heater, pressure, gauges, rheed, soft_limits, targets
+  string key = 2;
+  string value = 3;  // in effect now, as the config file writes it ("-3 3" for a range)
+  string unit = 4;
+  string help = 5;
+  bool live = 6;  // takes effect at once (false: at the next service start)
+  string pending = 7;  // saved, waiting for the next start ("" = none)
+}
+
+message SettingsReply {
+  repeated Setting settings = 1;
+  string file = 2;  // where SetSettings saves ("" = not saved: --no-log and no --config)
+}
+
+message SetSettingsRequest {
+  repeated Setting changes = 1;  // section, key and value only
 }
 
 message Empty {}
@@ -229,7 +259,10 @@ message Rheed {
   double y_set_ma = 24;
   double y_readback_ma = 25;
   bool hv_ramping_down = 36;  // RheedHvOff or RheedFilamentOff is ramping HV to 0 before switching it off
-  bool filament_ramping_down = 37;  // RheedFilamentOff in progress: HV down and off, then the filament to filament_min_ma, then off
+  bool filament_ramping_down = 37;  // RheedFilamentOff (or RheedAllOffGentle) in progress: HV down and off, then the filament to filament_min_ma, then off
+  bool all_ramping_down = 38;  // RheedAllOffGentle in progress (focus, X and Y go off at its end)
+  double hv_ramp_v_per_s = 39;  // the ramps in use ([rheed] settings)
+  double filament_ramp_ma_per_s = 40;
   string last_alert = 26;  // the last link-level alert (no reply, malformed reply), kept until the next one; times are in YYYYMMDD_rheed.jsonl. Faults (interlock, open filament, link lost) also go out as events.
   // the service's caps ([rheed] config)
   double hv_max_kv = 27;
@@ -257,6 +290,7 @@ message Limits {
   double mv3_max_torr = 3;  // MV3 open refused above this on TCG31
   double heater_max_celsius = 4;  // above this the heater trips off
   double heater_max_amps = 5;  // LD current ceiling (Heater.current_max is the PID output limit within it)
+  double ig1_off_torr = 6;  // IG1 switched off when its own reading is above this (also when MV10 is closed by hand)
 }
 
 message LoadLock {
@@ -515,11 +549,11 @@ message LaserEnergyRequest {
 }
 
 message RheedFilamentOnRequest {
-  optional double ma = 1;  // unset: the remembered set point
+  optional double ma = 1;  // unset: on at the floor (filament_min_ma), held there
 }
 
 message RheedHvOnRequest {
-  optional double kv = 1;  // unset: the remembered set point
+  optional double kv = 1;  // unset: on at 0 kV, held there
 }
 
 message RheedFilamentRequest {
