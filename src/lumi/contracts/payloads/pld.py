@@ -264,6 +264,36 @@ class PldChamberState(BaseModel):
     session: PldSession = Field(default_factory=PldSession)
     limits: PldLimits = Field(default_factory=PldLimits)
     rheed: PldRheed = Field(default_factory=PldRheed)
+    activity: list["PldActivity"] = Field(
+        default_factory=list,
+        description="The newest chamber.pld operations (up to 10, oldest first), on the state stream so a "
+                    "client sees one within a poll; dedupe by seq, and recent_activity for more")
+
+
+class PldActivity(BaseModel):
+    """One chamber.pld operation this node handled: who asked, what, and how it went."""
+
+    seq: int = Field(0, description="Increasing per node, kept across restarts")
+    time: float = Field(0.0, description="Unix seconds when it was received")
+    actor: str | None = Field(
+        None, description="Who asked: a Deck user's name, 'mcp:<user>' for the agent, None if the caller said nothing")
+    source: str | None = Field(None, description="Which client instance sent it")
+    op: str = ""
+    params: dict = Field(default_factory=dict, description="The request's fields")
+    running: bool = Field(False, description="Still in progress (a ramp, a move with wait)")
+    ok: bool | None = Field(None, description="The service's answer; None while running")
+    message: str = ""
+    duration_s: float | None = None
+
+
+class PldActivityQuery(BaseModel):
+    limit: int = Field(50, ge=1, le=500, description="At most this many, newest last")
+    since_seq: int = Field(0, ge=0, description="Only entries with a larger seq")
+
+
+class PldActivityList(BaseModel):
+    entries: list[PldActivity] = Field(default_factory=list)
+    latest_seq: int = Field(0, description="The newest seq this node has given out")
 
 
 class PldEvent(BaseModel):
@@ -454,3 +484,6 @@ class PldLaserEnergyRequest(BaseModel):
 class PldLoggingRequest(BaseModel):
     file_name: str | None = Field(None, description="CSV name in the log folder; default chamber_log_<time>.csv")
     interval_s: float = Field(1.0, gt=0, description="Seconds between rows")
+
+
+PldChamberState.model_rebuild()

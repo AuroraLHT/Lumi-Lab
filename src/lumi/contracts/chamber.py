@@ -45,6 +45,8 @@ from .payloads.pld import (
     PldControlRequest,
     PldCurrentLimitsRequest,
     PldCurrentRequest,
+    PldActivityList,
+    PldActivityQuery,
     PldEventList,
     PldEventQuery,
     PldFireRequest,
@@ -157,6 +159,13 @@ PLD = Capability(
         Op("recent_events", PldEventQuery, PldEventList,
            doc="The service's latest discrete events (valve_changed, move_done, "
                "interlock, laser_done, error, control), oldest first."),
+        Op("recent_activity", PldActivityQuery, PldActivityList,
+           doc="The chamber.pld operations this node handled, oldest first: who asked "
+               "(actor: a Deck user's name, 'mcp:<user>' for the agent), the request, and "
+               "the service's answer; running while a ramp or a waited move is under way. "
+               "`since_seq` for only the newer ones. The newest 10 also ride on every "
+               "state-stream message as `activity`. pld-gui and other gRPC clients do not "
+               "go through this node, so they are not here: see recent_events' control events."),
         Op("acquire_control", PldControlRequest, PldControlReply, journal=True,
            doc="Take control of the chamber as 'lumi-pascal'. Operations do this "
                "themselves; call it to see who holds control, or with force=true to take "

@@ -731,6 +731,98 @@
             "request_codec": "json",
             "response": {
               "$defs": {
+                "PldActivity": {
+                  "description": "One chamber.pld operation this node handled: who asked, what, and how it went.",
+                  "properties": {
+                    "actor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Who asked: a Deck user's name, 'mcp:<user>' for the agent, None if the caller said nothing",
+                      "title": "Actor"
+                    },
+                    "duration_s": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Duration S"
+                    },
+                    "message": {
+                      "default": "",
+                      "title": "Message",
+                      "type": "string"
+                    },
+                    "ok": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The service's answer; None while running",
+                      "title": "Ok"
+                    },
+                    "op": {
+                      "default": "",
+                      "title": "Op",
+                      "type": "string"
+                    },
+                    "params": {
+                      "additionalProperties": true,
+                      "description": "The request's fields",
+                      "title": "Params",
+                      "type": "object"
+                    },
+                    "running": {
+                      "default": false,
+                      "description": "Still in progress (a ramp, a move with wait)",
+                      "title": "Running",
+                      "type": "boolean"
+                    },
+                    "seq": {
+                      "default": 0,
+                      "description": "Increasing per node, kept across restarts",
+                      "title": "Seq",
+                      "type": "integer"
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Which client instance sent it",
+                      "title": "Source"
+                    },
+                    "time": {
+                      "default": 0.0,
+                      "description": "Unix seconds when it was received",
+                      "title": "Time",
+                      "type": "number"
+                    }
+                  },
+                  "title": "PldActivity",
+                  "type": "object"
+                },
                 "PldExcimer": {
                   "description": "The COMPexPro as its own polls report it.",
                   "properties": {
@@ -2106,6 +2198,14 @@
               },
               "description": "One poll cycle of pld-service: everything it reads off the chamber.",
               "properties": {
+                "activity": {
+                  "description": "The newest chamber.pld operations (up to 10, oldest first), on the state stream so a client sees one within a poll; dedupe by seq, and recent_activity for more",
+                  "items": {
+                    "$ref": "#/$defs/PldActivity"
+                  },
+                  "title": "Activity",
+                  "type": "array"
+                },
                 "backend": {
                   "default": "",
                   "description": "TWIN or HARDWARE",
@@ -2261,6 +2361,145 @@
                 }
               },
               "title": "PldEventList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "recent_activity",
+            "request": {
+              "properties": {
+                "limit": {
+                  "default": 50,
+                  "description": "At most this many, newest last",
+                  "maximum": 500,
+                  "minimum": 1,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "since_seq": {
+                  "default": 0,
+                  "description": "Only entries with a larger seq",
+                  "minimum": 0,
+                  "title": "Since Seq",
+                  "type": "integer"
+                }
+              },
+              "title": "PldActivityQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PldActivity": {
+                  "description": "One chamber.pld operation this node handled: who asked, what, and how it went.",
+                  "properties": {
+                    "actor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Who asked: a Deck user's name, 'mcp:<user>' for the agent, None if the caller said nothing",
+                      "title": "Actor"
+                    },
+                    "duration_s": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Duration S"
+                    },
+                    "message": {
+                      "default": "",
+                      "title": "Message",
+                      "type": "string"
+                    },
+                    "ok": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The service's answer; None while running",
+                      "title": "Ok"
+                    },
+                    "op": {
+                      "default": "",
+                      "title": "Op",
+                      "type": "string"
+                    },
+                    "params": {
+                      "additionalProperties": true,
+                      "description": "The request's fields",
+                      "title": "Params",
+                      "type": "object"
+                    },
+                    "running": {
+                      "default": false,
+                      "description": "Still in progress (a ramp, a move with wait)",
+                      "title": "Running",
+                      "type": "boolean"
+                    },
+                    "seq": {
+                      "default": 0,
+                      "description": "Increasing per node, kept across restarts",
+                      "title": "Seq",
+                      "type": "integer"
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Which client instance sent it",
+                      "title": "Source"
+                    },
+                    "time": {
+                      "default": 0.0,
+                      "description": "Unix seconds when it was received",
+                      "title": "Time",
+                      "type": "number"
+                    }
+                  },
+                  "title": "PldActivity",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "entries": {
+                  "items": {
+                    "$ref": "#/$defs/PldActivity"
+                  },
+                  "title": "Entries",
+                  "type": "array"
+                },
+                "latest_seq": {
+                  "default": 0,
+                  "description": "The newest seq this node has given out",
+                  "title": "Latest Seq",
+                  "type": "integer"
+                }
+              },
+              "title": "PldActivityList",
               "type": "object"
             },
             "response_codec": "json"
@@ -4326,6 +4565,7 @@
             "laser_off": "chamber.pld.req.laser_off",
             "laser_on": "chamber.pld.req.laser_on",
             "laser_standby": "chamber.pld.req.laser_standby",
+            "recent_activity": "chamber.pld.req.recent_activity",
             "recent_events": "chamber.pld.req.recent_events",
             "release_control": "chamber.pld.req.release_control",
             "release_laser": "chamber.pld.req.release_laser",
@@ -4477,6 +4717,98 @@
           "name": "state",
           "payload": {
             "$defs": {
+              "PldActivity": {
+                "description": "One chamber.pld operation this node handled: who asked, what, and how it went.",
+                "properties": {
+                  "actor": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Who asked: a Deck user's name, 'mcp:<user>' for the agent, None if the caller said nothing",
+                    "title": "Actor"
+                  },
+                  "duration_s": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Duration S"
+                  },
+                  "message": {
+                    "default": "",
+                    "title": "Message",
+                    "type": "string"
+                  },
+                  "ok": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The service's answer; None while running",
+                    "title": "Ok"
+                  },
+                  "op": {
+                    "default": "",
+                    "title": "Op",
+                    "type": "string"
+                  },
+                  "params": {
+                    "additionalProperties": true,
+                    "description": "The request's fields",
+                    "title": "Params",
+                    "type": "object"
+                  },
+                  "running": {
+                    "default": false,
+                    "description": "Still in progress (a ramp, a move with wait)",
+                    "title": "Running",
+                    "type": "boolean"
+                  },
+                  "seq": {
+                    "default": 0,
+                    "description": "Increasing per node, kept across restarts",
+                    "title": "Seq",
+                    "type": "integer"
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Which client instance sent it",
+                    "title": "Source"
+                  },
+                  "time": {
+                    "default": 0.0,
+                    "description": "Unix seconds when it was received",
+                    "title": "Time",
+                    "type": "number"
+                  }
+                },
+                "title": "PldActivity",
+                "type": "object"
+              },
               "PldExcimer": {
                 "description": "The COMPexPro as its own polls report it.",
                 "properties": {
@@ -5852,6 +6184,14 @@
             },
             "description": "One poll cycle of pld-service: everything it reads off the chamber.",
             "properties": {
+              "activity": {
+                "description": "The newest chamber.pld operations (up to 10, oldest first), on the state stream so a client sees one within a poll; dedupe by seq, and recent_activity for more",
+                "items": {
+                  "$ref": "#/$defs/PldActivity"
+                },
+                "title": "Activity",
+                "type": "array"
+              },
               "backend": {
                 "default": "",
                 "description": "TWIN or HARDWARE",

@@ -31,8 +31,10 @@ class FakeSocket:
 class SlowFocus:
     def __init__(self) -> None:
         self.release = asyncio.Event()
+        self.actors: list[str | None] = []
 
-    async def call(self, op, req, *rest):
+    async def call(self, op, req, *rest, actor=None):
+        self.actors.append(actor)
         if op == "set_rheed_focus":
             await self.release.wait()
             return PldReply(ok=True, message="focus 100 mA")
@@ -69,6 +71,8 @@ async def test_a_slow_op_does_not_hold_up_the_next_request():
             break
         await asyncio.sleep(0.01)
     assert ws.sent[1]["correlation_id"] == "slow" and ws.sent[1]["body"]["message"] == "focus 100 mA"
+    # Each call carries the signed-in user, so chamber.pld's activity can say who it was.
+    assert bus.actors == ["op", "op"]
     await ws.incoming.put(None)
     await runner
 

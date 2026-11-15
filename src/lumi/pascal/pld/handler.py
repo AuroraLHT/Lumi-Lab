@@ -29,6 +29,8 @@ from lumi.contracts.payloads.pld import (
     PldChamberState,
     PldControlReply,
     PldControlRequest,
+    PldActivityList,
+    PldActivityQuery,
     PldEventList,
     PldEventQuery,
     PldLoggingRequest,
@@ -38,6 +40,7 @@ from lumi.contracts.payloads.pld import (
     PldRheedFocusRequest,
 )
 from lumi.pascal.pld import convert
+from lumi.pascal.pld.activity import ON_STATE, ActivityLog
 from lumi.pascal.pld.client import PldClient, PldUnavailable
 from lumi.pascal.pld.monitor import GrowthLog, PldEventMonitor, PldStateMonitor
 from lumi.pascal.pld.proto import pld_pb2 as pb
@@ -57,11 +60,15 @@ def _op(rpc: str, build):
 
 class PldHandler:
     def __init__(self, client: PldClient, state_monitor: PldStateMonitor,
-                 event_monitor: PldEventMonitor, growth_log: GrowthLog) -> None:
+                 event_monitor: PldEventMonitor, growth_log: GrowthLog,
+                 activity: ActivityLog | None = None) -> None:
         self.client = client
         self.state_monitor = state_monitor
         self.event_monitor = event_monitor
         self.growth_log = growth_log
+        # MqServer journals every op the contract marks journal=True into this, with
+        # the request's actor and source: who did what to the chamber.
+        self.journal = activity if activity is not None else ActivityLog()
 
     # --- readings -----------------------------------------------------------------
 
@@ -77,7 +84,15 @@ class PldHandler:
                 f"pld-service at {self.client.address} is not answering; the last state "
                 "it sent is stale and is not returned"
             ) from None
-        return convert.chamber_state(state)
+        return self._with_activity(convert.chamber_state(state))
+
+    def _with_activity(self, state: PldChamberState) -> PldChamberState:
+        state.activity = self.journal.recent(ON_STATE)
+        return state
+
+    async def recent_activity(self, req: PldActivityQuery) -> PldActivityList:
+        return PldActivityList(entries=self.journal.recent(req.limit, req.since_seq),
+                               latest_seq=self.journal.latest_seq)
 
     async def recent_events(self, req: PldEventQuery) -> PldEventList:
         events = list(self.event_monitor.events)[-req.limit:]
@@ -85,7 +100,7 @@ class PldHandler:
 
     async def next(self) -> PldChamberState | None:
         state = self.state_monitor.take_new()
-        return convert.chamber_state(state) if state is not None else None
+        return self._with_activity(convert.chamber_state(state)) if state is not None else None
 
     # --- control ------------------------------------------------------------------
 

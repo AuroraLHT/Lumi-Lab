@@ -306,6 +306,9 @@ state_rate_hz = 2.0
 # How long to wait for the service at startup before carrying on without it (the node
 # keeps retrying, and chamber.pld reports connected=false meanwhile).
 connect_timeout = 5.0
+# Every chamber.pld operation with who asked for it (chamber.pld.recent_activity), as
+# JSONL. Default: lumi_pld_activity.jsonl in the growth-log folder.
+# activity_log = "run/pld_activity.jsonl"
 
 # The legacy driver (`--use-legacy-mi-mode`): MI script files PLD Controller picks up.
 [pascal.mi_mode_server]

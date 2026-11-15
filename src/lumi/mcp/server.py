@@ -97,7 +97,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
     # the load lock or the pumps (auto_vent, auto_vac, cancel_load_lock, set_pump):
     # venting and pumping down are a person's, with the hatch and GV1 in front of them.
     (CHAMBER, {"log": None, "camera": None, "pld": frozenset({
-        "chamber_state", "recent_events", "set_valve", "select_target",
+        "chamber_state", "recent_events", "recent_activity", "set_valve", "select_target",
         "set_mask_position", "set_sample_position", "set_rheed_gun_x", "home_axis",
         "set_target_spin", "set_target_twist", "set_target_auto_motion",
         "set_heater_key", "set_heater_start", "set_heater_threshold",
@@ -466,6 +466,10 @@ rheed_all_off_gentle, which ramps HV and filament down and then switches focus a
 rheed_all_off cuts everything at once and is only for a fault. To align the beam, change set_rheed_focus or
 set_rheed_deflection a few mA at a time within the rheed limits and look at the RHEED image
 between steps.
+chamber.pld.recent_activity lists the chamber operations made through Lumi and who made
+each one (your own calls show as mcp:<user>, the person's in the Deck under their name):
+look there before assuming who changed something. Your chamber operations are shown to the
+operator as you make them.
 chamber.pld.stop_fire stops only the pulse train, for a fire_laser of your own. A fire or
 deposition cut short fails with "stopped by request" -- that is a person's or your own
 abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add

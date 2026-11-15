@@ -18,8 +18,9 @@ class FakeClient:
     def __init__(self):
         self.calls = []
 
-    async def call(self, op_name, req=None, payload=None):
+    async def call(self, op_name, req=None, payload=None, actor=None):
         self.calls.append((op_name, req, payload))
+        self.actor = actor
         return MeasurementFileInfo(file_id=1, measurement_id=req.measurement_id, file_name=req.file_name,
                                    media_type="application/octet-stream", size_bytes=len(payload),
                                    sha256="0" * 64)

@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: d894be578c1d737c
+# contract_hash: f011d1d700c7f97f
 
 """Generated clients for the chamber node."""
 
@@ -21,7 +21,7 @@ from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta,
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
-from lumi.contracts.payloads.pld import PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
+from lumi.contracts.payloads.pld import PldActivityList, PldActivityQuery, PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
 
 
 class ChamberLogClient(CapabilityClient):
@@ -133,6 +133,10 @@ class ChamberPldClient(CapabilityClient):
     async def recent_events(self, req: PldEventQuery) -> PldEventList:
         """The service's latest discrete events (valve_changed, move_done, interlock, laser_done, error, control), oldest first."""
         return await self.call("recent_events", req)  # type: ignore[return-value]
+
+    async def recent_activity(self, req: PldActivityQuery) -> PldActivityList:
+        """The chamber.pld operations this node handled, oldest first: who asked (actor: a Deck user's name, 'mcp:<user>' for the agent), the request, and the service's answer; running while a ramp or a waited move is under way. `since_seq` for only the newer ones. The newest 10 also ride on every state-stream message as `activity`. pld-gui and other gRPC clients do not go through this node, so they are not here: see recent_events' control events."""
+        return await self.call("recent_activity", req)  # type: ignore[return-value]
 
     async def acquire_control(self, req: PldControlRequest) -> PldControlReply:
         """Take control of the chamber as 'lumi-pascal'. Operations do this themselves; call it to see who holds control, or with force=true to take it from another client (logged by the service; never the default)."""
