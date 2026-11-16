@@ -252,11 +252,11 @@ class PldHandler:
     # Needs no control, like StopFire.
     rheed_all_off = _op("RheedAllOff", lambda r: pb.Empty())
 
-    # Needs no control either. HV and filament ramp down as in rheed_filament_off, then
-    # the service switches focus, X and Y off; waits for all five.
+    # Needs no control either. HV and filament ramp down and off as in rheed_filament_off;
+    # focus, X and Y stay on (pld-service 6c26a5a), so it waits for those two only.
     async def rheed_all_off_gentle(self, req: Empty) -> PldReply:
         return await self._rheed_off("RheedAllOffGentle", lambda r: not (
-            r.filament_on or r.hv_on or r.focus_on or r.x_on or r.y_on or r.all_ramping_down))
+            r.filament_on or r.hv_on or r.all_ramping_down))
 
     # --- the growth log -----------------------------------------------------------
 

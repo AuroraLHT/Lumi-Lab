@@ -403,7 +403,7 @@ async def test_rheed_off_ramps_down_and_on_holds_at_the_floor(handler):
     assert (await h.rheed_all_off(Empty())).ok
 
 
-async def test_rheed_all_off_gentle_ramps_then_switches_focus_and_deflection_off(handler):
+async def test_rheed_all_off_gentle_ramps_down_and_leaves_focus_and_deflection_on(handler):
     from lumi.pascal.pld.client import PldClient
     from lumi.pascal.pld.proto import pld_pb2 as pb
 
@@ -437,11 +437,12 @@ async def test_rheed_all_off_gentle_ramps_then_switches_focus_and_deflection_off
     assert any(0 < kv < 3.0 for kv in hv) and hv == sorted(hv, reverse=True)
     assert any(507 < ma < 700 for ma in filament) and filament == sorted(filament, reverse=True)
     assert any(r for *_, r in seen)  # flagged while it ran
-    # Focus, X and Y go off at the end, never while the filament is still on.
-    assert not any(fil and not focus for _, _, fil, _, focus, _ in seen)
+    # Focus, X and Y stay on throughout and after: only rheed_all_off switches them off.
+    assert all(focus for *_, focus, _ in seen)
     rheed = (await h.chamber_state(Empty())).rheed
-    assert not (rheed.filament_on or rheed.hv_on or rheed.focus_on or rheed.x_on or rheed.y_on
-                or rheed.all_ramping_down)
+    assert not (rheed.filament_on or rheed.hv_on or rheed.all_ramping_down)
+    assert rheed.focus_on and rheed.x_on and rheed.y_on
+    assert "focus, X and Y left on" in reply.message
     assert (rheed.filament_last_ma, rheed.hv_last_kv) == (700.0, 3.0)
 
     # Any client may start it, holding no control.

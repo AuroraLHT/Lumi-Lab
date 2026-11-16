@@ -664,8 +664,8 @@ class ChamberServicer:
         RheedFilamentOff ramps HV down and off first, then the filament to filament_min_ma, then off
         (same rates; the remembered set points are not changed). A SetRheed*/On during a ramp-down
         cancels it and goes to the new target (HV on/set is refused during a filament ramp-down:
-        switch the filament on again first). RheedAllOffGentle ramps like RheedFilamentOff, then switches
-        focus, X and Y off. RheedAllOff ("ALL OFF BRUTAL"), interlock, faults and link loss are immediate.
+        switch the filament on again first). RheedAllOffGentle ramps like RheedFilamentOff and leaves
+        focus, X and Y on. RheedAllOff ("ALL OFF BRUTAL"), interlock, faults and link loss are immediate.
         An interlock, an open filament or an over-current held 1 s switches filament and HV off;
         nothing comes back on by itself.
         """

@@ -172,7 +172,13 @@ PLD = Capability(
                "it from another client (logged by the service; never the default)."),
         Op("release_control", Empty, PldControlReply, journal=True,
            doc="Hand control back, e.g. so the REA GUI can drive. Release it when a run ends."),
-        _pld_op("set_valve", PldValveRequest, "Open or close a valve by its reference name.",
+        _pld_op("set_valve", PldValveRequest,
+                "Open or close a valve by its reference name. The service refuses an order "
+                "that breaks a valve lock (ok=false, the reason in message, nothing moved): "
+                "open a turbo's fore valve before its main valve and close the main valve "
+                "before the fore valve (FV1 with MV10/MV11, FV20-MV20, FV21-MV21, FV3-MV3); on "
+                "the load lock, close MV3 and FV3 before opening RV3, and close RV3 before "
+                "opening FV3, then MV3. Closing a main valve or RV3 is never refused.",
                 timeout_s=_MOVE_S),
         _pld_op("select_target", PldTargetRequest, "Revolve the carousel to target A..F or Clear.",
                 timeout_s=_MOVE_S),
@@ -279,7 +285,7 @@ PLD = Capability(
                 "Returns when the ramp starts."),
         _pld_op("set_rheed_focus", PldRheedFocusRequest,
                 "RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 "
-                "when focus is off). Returns when it is there: up to about 22 s across the range.",
+                "when focus is off). Returns when it is there: up to about 14 s across the range.",
                 timeout_s=120.0),
         _pld_op("set_rheed_deflection", PldRheedDeflectionRequest,
                 "RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in "
@@ -287,10 +293,10 @@ PLD = Capability(
                 timeout_s=120.0),
         _pld_op("rheed_all_off_gentle", Empty,
                 "RHEED all off, ramped: HV down at 500 V/s and off, the filament down at 30 mA/s "
-                "to its floor and off, then focus, X and Y off (state.rheed.all_ramping_down "
-                "meanwhile). The normal way to switch the gun off. Returns when all five are "
-                "off, about two minutes from full; set points are kept for the next on. Needs no "
-                "control, like rheed_all_off.",
+                "to its floor and off (state.rheed.all_ramping_down meanwhile). Focus, X and Y "
+                "are left on: the beam optics stay powered. The normal way to switch the gun "
+                "off. Returns when HV and filament are off, about two minutes from full; set "
+                "points are kept for the next on. Needs no control, like rheed_all_off.",
                 timeout_s=300.0),
         _pld_op("rheed_all_off", Empty,
                 "RHEED filament, HV, focus, X and Y off at once, unramped (\"ALL OFF BRUTAL\" in "

@@ -2940,7 +2940,7 @@ export class ChamberPldClient {
     return this.t.call<PldControlReply>(ChamberPldClient.target, "release_control", {}, opts);
   }
 
-  /** Open or close a valve by its reference name. */
+  /** Open or close a valve by its reference name. The service refuses an order that breaks a valve lock (ok=false, the reason in message, nothing moved): open a turbo's fore valve before its main valve and close the main valve before the fore valve (FV1 with MV10/MV11, FV20-MV20, FV21-MV21, FV3-MV3); on the load lock, close MV3 and FV3 before opening RV3, and close RV3 before opening FV3, then MV3. Closing a main valve or RV3 is never refused. */
   async set_valve(req: PldValveRequest, opts?: CallOptions): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "set_valve", req, { timeoutMs: opts?.timeoutMs ?? 605000 });
   }
@@ -3165,7 +3165,7 @@ export class ChamberPldClient {
     return this.t.call<PldReply>(ChamberPldClient.target, "set_rheed_hv", req, opts);
   }
 
-  /** RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 when focus is off). Returns when it is there: up to about 22 s across the range. */
+  /** RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 when focus is off). Returns when it is there: up to about 14 s across the range. */
   async set_rheed_focus(req: PldRheedFocusRequest, opts?: CallOptions): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "set_rheed_focus", req, { timeoutMs: opts?.timeoutMs ?? 125000 });
   }
@@ -3175,7 +3175,7 @@ export class ChamberPldClient {
     return this.t.call<PldReply>(ChamberPldClient.target, "set_rheed_deflection", req, { timeoutMs: opts?.timeoutMs ?? 125000 });
   }
 
-  /** RHEED all off, ramped: HV down at 500 V/s and off, the filament down at 30 mA/s to its floor and off, then focus, X and Y off (state.rheed.all_ramping_down meanwhile). The normal way to switch the gun off. Returns when all five are off, about two minutes from full; set points are kept for the next on. Needs no control, like rheed_all_off. */
+  /** RHEED all off, ramped: HV down at 500 V/s and off, the filament down at 30 mA/s to its floor and off (state.rheed.all_ramping_down meanwhile). Focus, X and Y are left on: the beam optics stay powered. The normal way to switch the gun off. Returns when HV and filament are off, about two minutes from full; set points are kept for the next on. Needs no control, like rheed_all_off. */
   async rheed_all_off_gentle(opts?: CallOptions): Promise<PldReply> {
     return this.t.call<PldReply>(ChamberPldClient.target, "rheed_all_off_gentle", {}, { timeoutMs: opts?.timeoutMs ?? 305000 });
   }

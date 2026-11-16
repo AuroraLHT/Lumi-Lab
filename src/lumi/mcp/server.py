@@ -449,6 +449,9 @@ oscillations); chamber.log.log the latest chamber readings. chamber.pld.* is the
 driver itself (pld-service): chamber_state for everything it reads (read_only=true means
 the service was started on hardware without operations allowed, and every operation will
 be refused), and one tool per operation -- valves, motion, heater, gas, the excimer laser.
+Valves are locked in pairs: open a turbo's fore valve (FV) before its main valve (MV) and
+close the MV before the FV; on the load lock close MV3 and FV3 before opening RV3, and RV3
+before opening FV3. A refused valve says which valve to move first.
 The excimer takes settings only from the port its CM names: chamber_state's
 excimer.control true means this PC has it, false means the second PC does and every laser
 op (laser_off included) is refused. take_laser_control and release_laser are the only
@@ -462,8 +465,9 @@ The RHEED gun is chamber.pld's rheed_* ops, its state chamber_state's `rheed`. E
 set point and off ramps; check rheed.interlock, filament_open and link_ok before and after.
 rheed_filament_on and rheed_hv_on with no value switch on at the 507 mA floor / 0 kV and
 hold there: raise them with set_rheed_filament and set_rheed_hv. Switch the gun off with
-rheed_all_off_gentle, which ramps HV and filament down and then switches focus and X/Y off;
-rheed_all_off cuts everything at once and is only for a fault. To align the beam, change set_rheed_focus or
+rheed_all_off_gentle, which ramps HV and filament down and off and leaves focus and X/Y on
+(the beam optics stay powered); rheed_all_off cuts everything, focus and X/Y too, at once and
+is only for a fault. To align the beam, change set_rheed_focus or
 set_rheed_deflection a few mA at a time within the rheed limits and look at the RHEED image
 between steps.
 chamber.pld.recent_activity lists the chamber operations made through Lumi and who made
