@@ -412,6 +412,37 @@ async def test_rheed_focus_and_deflection_are_walked_in_steps():
     assert [(r.x_ma, r.y_ma) for r in sent] == [(4.0, -6.0), (8.0, -2.0)]
 
 
+async def test_a_rheed_goal_outside_the_limits_is_refused_before_any_step():
+    from lumi.contracts.payloads.pld import PldReply, PldRheedDeflectionRequest, PldRheedFocusRequest
+    from lumi.pascal.pld.handler import PldHandler
+
+    sent = []
+
+    class Recorder(PldHandler):
+        def __init__(self):
+            self.state_monitor = type("M", (), {"latest": None})()
+
+        async def _rheed(self):
+            return pb.Rheed(focus_on=True, focus_set_ma=200.0, x_on=True, x_set_ma=40.0, y_on=True, y_set_ma=-60.0,
+                            focus_min_ma=0.0, focus_max_ma=700.0, x_min_ma=-200.0, x_max_ma=200.0,
+                            y_min_ma=-200.0, y_max_ma=200.0)
+
+        async def _operate(self, rpc, request):
+            sent.append(request)
+            return PldReply(ok=True, message="done")
+
+    h = Recorder()
+    for req in (PldRheedFocusRequest(ma=701.0), PldRheedFocusRequest(ma=-1.0), PldRheedFocusRequest(ma=float("nan"))):
+        reply = await h.set_rheed_focus(req)
+        assert not reply.ok and "focus" in reply.message
+    reply = await h.set_rheed_deflection(PldRheedDeflectionRequest(x_ma=250.0, y_ma=-60.0))
+    assert not reply.ok and reply.message == "SetRheedDeflection: X 250 mA outside -200..200 mA; nothing changed"
+    reply = await h.set_rheed_deflection(PldRheedDeflectionRequest(x_ma=0.0, y_ma=-400.0))
+    assert not reply.ok and "Y -400" in reply.message
+    assert sent == []
+    assert (await h.set_rheed_focus(PldRheedFocusRequest(ma=700.0))).ok and sent
+
+
 async def test_speed_and_accel_are_for_the_mask_only(driver):
     handler, model, _ = driver
     reply = await handler.set_mask_position(PldPositionRequest(position=20.0, speed_mm_s=0.5, accel_mm_s_per_ms=0.18))
