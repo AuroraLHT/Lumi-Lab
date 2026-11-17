@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at 2639871 (mask speed and ACC/DEC per move; identical apart
+// branch decode-program at 38ca32e (sequences: uploaded step lists, pause/cancel; identical apart
 // from line endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this
 // header) and run scripts/gen_pld_stubs.sh.
 //
@@ -177,6 +177,26 @@ service Chamber {
   // saved to the config file (the service's --config file, or pld-service.ini in the log folder).
   // Settings with live = false (the RHEED caps) are saved but take effect at the next start.
   rpc SetSettings(SetSettingsRequest) returns (OperationReply);
+
+  // ---- sequences (a list of steps the service runs one by one; user, 2026-11-16) -------------
+  // Upload and start a sequence (needs control). Steps run in order; loop_start / loop_end repeat
+  // the steps between them. Each step is one operation with the same request,
+  // checks and waits as calling it directly. The reply comes at once ("started"); progress is in
+  // ChamberState.sequence and in "sequence" events. A step that fails or is refused ends the run
+  // (state "failed"); nothing is undone. Refused while another sequence runs or is paused.
+  // While it runs, every other operation is refused for every client, except StopFire, RheedAllOff,
+  // RheedAllOffGentle, PauseSequence and CancelSequence.
+  rpc RunSequence(SequenceRequest) returns (OperationReply);
+  // Master pause, any client: a wait_s step stops counting at once; a waited fire_laser step stops
+  // its train (as StopFire) and on Continue fires the pulses left as a new train (user, 2026-11-16);
+  // any other step finishes first. While paused the controlling client may operate as usual.
+  rpc PauseSequence(Empty) returns (OperationReply);
+  // Carry on from the next step (needs control). Also ends a `pause` step.
+  rpc ResumeSequence(Empty) returns (OperationReply);
+  // Master cancel, any client: the run ends at once (state "cancelled"); a fire train in progress
+  // is stopped (as StopFire). A move or temperature ramp under way is not stopped: the PLC carries
+  // the move to its goal, the PID keeps its setpoint. Nothing else is undone.
+  rpc CancelSequence(Empty) returns (OperationReply);
 }
 
 message Setting {
@@ -228,6 +248,59 @@ message ChamberState {
   Session session = 23;
   Limits limits = 24;
   Rheed rheed = 25;
+  SequenceStatus sequence = 26;
+}
+
+// ---------------------------------------------------------------------------- sequences
+
+message SequenceRequest {
+  string name = 1;  // shown in the state and the log
+  repeated SequenceStep steps = 2;  // 1..10000
+  // true: reply when the run ends: ok = finished; else ok = false with the state (failed, cancelled)
+  // and the step and reason (user, 2026-11-16: "end it and report it back to the caller").
+  bool wait = 3;
+}
+
+message SequenceStep {
+  string label = 1;  // shown while the step runs; "" = the operation's name
+  oneof op {
+    TargetRequest select_target = 10;
+    PositionRequest mask = 11;  // SetMaskPosition (speed_mm_s / accel_mm_s_per_ms optional)
+    PositionRequest sample = 12;  // SetSamplePosition
+    PositionRequest rheed_gun_x = 13;  // SetRheedGunX
+    SwitchRequest target_spin = 14;
+    SwitchRequest target_twist = 15;
+    AutoMotionRequest target_auto_motion = 16;
+    ShutterRequest sample_shutter = 17;
+    LaserRequest fire_laser = 18;
+    TemperatureRequest temperature = 19;
+    PressureRequest pressure = 20;
+    FlowRequest mfc_flow = 21;
+    double wait_s = 22;  // wait this long (a pause stops the clock)
+    string pause = 23;  // pause with this message until ResumeSequence (PLD Controller's Wait for Continue)
+    AxisRequest wait_axis_idle = 24;  // wait until the axis is idle, e.g. after a move with wait = false
+    // Repeat the steps up to the matching loop_end this many times (1..100000). Loops nest; every
+    // loop_start needs its loop_end. At most 1000000 steps run in all (loops multiplied out).
+    uint32 loop_start = 25;
+    Empty loop_end = 26;
+    LaserEnergyRequest laser_energy = 27;  // SetLaserEnergy (user, 2026-11-16); needs the laser's control (CM=2)
+  }
+}
+
+message SequenceStatus {
+  string name = 1;
+  // "" (none since the start), running, pausing (pause asked, the step in progress finishes),
+  // paused, finished, failed, cancelled
+  string state = 2;
+  uint32 step = 3;  // 1-based step in progress (or where it stopped)
+  uint32 steps = 4;
+  string label = 5;  // the step's label
+  string message = 6;  // the last step's reply, the pause message, or why it ended
+  string client = 7;  // who started it
+  double started = 8;  // Unix seconds
+  string loops = 9;  // iteration of each open loop, outermost first, e.g. "2/5 1/3"; "" outside loops
+  uint32 done = 10;  // operations finished so far (loops multiplied out; loop markers not counted)
+  uint32 total = 11;  // operations the whole run will do
 }
 
 // The RHEED controller as the service's handset cycle sees it (every 50 ms). Units, never

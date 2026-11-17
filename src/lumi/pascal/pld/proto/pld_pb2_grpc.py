@@ -314,6 +314,26 @@ class ChamberStub:
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SetSettingsRequest.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
+        self.RunSequence = channel.unary_unary(
+                '/pld.v1.Chamber/RunSequence',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SequenceRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.PauseSequence = channel.unary_unary(
+                '/pld.v1.Chamber/PauseSequence',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.ResumeSequence = channel.unary_unary(
+                '/pld.v1.Chamber/ResumeSequence',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.CancelSequence = channel.unary_unary(
+                '/pld.v1.Chamber/CancelSequence',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
 
 
 class ChamberServicer:
@@ -749,6 +769,45 @@ class ChamberServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RunSequence(self, request, context):
+        """---- sequences (a list of steps the service runs one by one; user, 2026-11-16) -------------
+        Upload and start a sequence (needs control). Steps run in order; loop_start / loop_end repeat
+        the steps between them. Each step is one operation with the same request,
+        checks and waits as calling it directly. The reply comes at once ("started"); progress is in
+        ChamberState.sequence and in "sequence" events. A step that fails or is refused ends the run
+        (state "failed"); nothing is undone. Refused while another sequence runs or is paused.
+        While it runs, every other operation is refused for every client, except StopFire, RheedAllOff,
+        RheedAllOffGentle, PauseSequence and CancelSequence.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PauseSequence(self, request, context):
+        """Master pause, any client: a wait_s step stops counting at once; a waited fire_laser step stops
+        its train (as StopFire) and on Continue fires the pulses left as a new train (user, 2026-11-16);
+        any other step finishes first. While paused the controlling client may operate as usual.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResumeSequence(self, request, context):
+        """Carry on from the next step (needs control). Also ends a `pause` step.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CancelSequence(self, request, context):
+        """Master cancel, any client: the run ends at once (state "cancelled"); a fire train in progress
+        is stopped (as StopFire). A move or temperature ramp under way is not stopped: the PLC carries
+        the move to its goal, the PID keeps its setpoint. Nothing else is undone.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ChamberServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -1030,6 +1089,26 @@ def add_ChamberServicer_to_server(servicer, server):
             'SetSettings': grpc.unary_unary_rpc_method_handler(
                     servicer.SetSettings,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SetSettingsRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'RunSequence': grpc.unary_unary_rpc_method_handler(
+                    servicer.RunSequence,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SequenceRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'PauseSequence': grpc.unary_unary_rpc_method_handler(
+                    servicer.PauseSequence,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'ResumeSequence': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResumeSequence,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'CancelSequence': grpc.unary_unary_rpc_method_handler(
+                    servicer.CancelSequence,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
     }
@@ -2544,6 +2623,114 @@ class Chamber:
             target,
             '/pld.v1.Chamber/SetSettings',
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SetSettingsRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RunSequence(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/RunSequence',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SequenceRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PauseSequence(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/PauseSequence',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResumeSequence(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/ResumeSequence',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CancelSequence(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/CancelSequence',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
             options,
             channel_credentials,
