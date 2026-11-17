@@ -1,0 +1,132 @@
+"""Step lists for pld-service's RunSequence, as Lumi stores and vets them.
+
+A step is a pld.proto `SequenceStep` in proto JSON names -- `{"mask": {"position": 20,
+"wait": false, "speed_mm_s": 0.5}}`, `{"loop_start": 3}`, `{"pause": "check the film"}`
+-- with an optional "label". pld-service checks every step again when it runs, with the
+same rules as calling the operation directly; what is checked here is what Lumi adds:
+
+- **`meter_energy`** (`{"mj": 120}`) is Lumi's own step: the pulse energy wanted at the
+  meter. At run time it becomes pld-service's `laser_energy` at mj / today's laser-test
+  ratio, as `begin_set_laser_power` sets it. A raw `laser_energy` (a source energy) is
+  refused, so a stored list never bypasses the daily test.
+- The shape: one operation per step, known fields, matching loops, at most
+  `MAX_OPERATIONS` operations with the loops multiplied out (pld-service's own limit).
+
+The canonical form (keys sorted, no spaces) is what is stored and hashed, so a version's
+hash names exactly the steps a person approved.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+
+from google.protobuf import json_format
+
+from lumi.pascal.pld.proto import pld_pb2 as pb
+
+MAX_STEPS = 10_000
+MAX_OPERATIONS = 1_000_000
+
+#: Steps that fire the laser, and Lumi's step that sets its energy.
+FIRE = "fire_laser"
+METER_ENERGY = "meter_energy"
+
+_OPS = {f.name for f in pb.SequenceStep.DESCRIPTOR.oneofs_by_name["op"].fields}
+_LUMI_OPS = {METER_ENERGY}
+
+
+def _op(step: dict) -> str:
+    ops = [k for k in step if k != "label"]
+    if len(ops) != 1:
+        raise ValueError(f"a step is one operation (and an optional label), got {sorted(step)}")
+    return ops[0]
+
+
+def check(steps: list[dict]) -> dict:
+    """Vet a step list. Returns its canonical JSON, hash, and what it does; raises
+    ValueError naming the first bad step."""
+    if not 1 <= len(steps) <= MAX_STEPS:
+        raise ValueError(f"a sequence has 1..{MAX_STEPS} steps, got {len(steps)}")
+    steps = list(steps)
+    proto_steps = []
+    for i, step in enumerate(steps, 1):
+        if not isinstance(step, dict):
+            raise ValueError(f"step {i}: a step is an object, got {step!r}")
+        try:
+            op = _op(step)
+        except ValueError as e:
+            raise ValueError(f"step {i}: {e}") from None
+        if op == "laser_energy":
+            raise ValueError(
+                f"step {i}: laser_energy sets the excimer's own energy; use "
+                "{\"meter_energy\": {\"mj\": ...}}, the energy at the meter, which Lumi sets from "
+                "today's laser test")
+        if op not in _OPS | _LUMI_OPS:
+            raise ValueError(f"step {i}: unknown operation {op!r} (one of {sorted(_OPS - {'laser_energy'} | _LUMI_OPS)})")
+        if op == METER_ENERGY:
+            mj = step[op].get("mj") if isinstance(step[op], dict) else None
+            if not isinstance(mj, (int, float)) or not mj > 0:
+                raise ValueError(f"step {i}: meter_energy needs {{\"mj\": > 0}}, got {step[op]!r}")
+            step = {**step, METER_ENERGY: {"mj": float(mj)}}
+            proto_steps.append({"label": step.get("label", ""), "laser_energy": {"mj": 1.0}})
+        else:
+            proto_steps.append(step)
+        steps[i - 1] = step
+    try:
+        request = json_format.ParseDict({"steps": proto_steps}, pb.SequenceRequest())
+    except json_format.ParseError as e:
+        raise ValueError(f"not a pld.proto step list: {e}") from None
+    total = _count(request.steps)
+    canonical = json.dumps(steps, sort_keys=True, separators=(",", ":"))
+    ops = [_op(s) for s in steps]
+    return {
+        "steps_json": canonical,
+        "content_hash": hashlib.sha256(canonical.encode()).hexdigest()[:16],
+        "num_steps": len(steps),
+        "num_operations": total,
+        "fires": FIRE in ops,
+        "sets_energy": METER_ENERGY in ops,
+    }
+
+
+def _count(steps) -> int:
+    """Operations with the loops multiplied out; checks the loops match."""
+    stack: list[tuple[int, int]] = []  # (count, operations so far before the loop)
+    total = 0
+    for i, step in enumerate(steps, 1):
+        which = step.WhichOneof("op")
+        if which is None:
+            raise ValueError(f"step {i}: no operation")
+        if which == "loop_start":
+            if not 1 <= step.loop_start <= 100_000:
+                raise ValueError(f"step {i}: loop_start is 1..100000, got {step.loop_start}")
+            stack.append((step.loop_start, total))
+            total = 0
+        elif which == "loop_end":
+            if not stack:
+                raise ValueError(f"step {i}: loop_end without a loop_start")
+            count, before = stack.pop()
+            total = before + count * total
+        else:
+            total += 1
+        if total > MAX_OPERATIONS:
+            raise ValueError(f"more than {MAX_OPERATIONS} operations with the loops multiplied out")
+    if stack:
+        raise ValueError(f"{len(stack)} loop_start without a loop_end")
+    return total
+
+
+def resolve(steps: list[dict], ratio: float | None) -> list[dict]:
+    """The steps pld-service runs: each meter_energy becomes laser_energy at mj / ratio."""
+    out = []
+    for step in steps:
+        if METER_ENERGY in step:
+            if ratio is None:
+                raise RuntimeError("no laser test today: run the daily test before a sequence that sets the energy")
+            source = round(step[METER_ENERGY]["mj"] / ratio, 2)
+            out.append({"label": step.get("label") or f"{step[METER_ENERGY]['mj']:g} mJ at the meter",
+                        "laser_energy": {"mj": source}})
+        else:
+            out.append(step)
+    return out

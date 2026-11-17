@@ -126,6 +126,10 @@ What applies to both:
   some targets, e.g. HZO, are damaged by extra pulses) and `set_target_preablation`.
   Then leave `num_pulse` out of `perform_preablation`; give it only when the person asks
   for a different amount. Never choose an amount yourself.
+- **[hard]** Sequences (`procedures/sequences.md`): a person reviews and approves each
+  version once, in the Deck; you never approve one, and you run only the version and hash
+  they approved. Wrap a sequence that fires in `start_storage` /
+  `finish_experiment_record` like any deposition.
 - **[thumb]** Anneal and cool down in O2 for oxides.
 
 ### Snapshots
@@ -181,6 +185,7 @@ Stop and ask the person when any of these happen:
 - `reference/materials.md`: the laser settings and substrates.
 - `reference/rheed.md`: reading patterns and oscillations; using the simulator.
 - `procedures/rheed-azimuth-alignment.md`: turning the sample to a crystal direction.
+- `procedures/sequences.md`: step lists pld-service runs (wedges, combinatorial runs).
 - `reference/laser.md`: the daily laser test and how the energy is set.
 - `reference/temperature.md`: what the pyrometer reads, its emissivity history,
   comparing temperatures across it. `procedures/pyrometer-calibration.md`: recalibrating

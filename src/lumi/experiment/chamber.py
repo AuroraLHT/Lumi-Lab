@@ -39,7 +39,10 @@ from lumi.contracts.payloads.pld import (
     PldLoggingRequest,
     PldPositionRequest,
     PldPressureRequest,
+    PldEvent,
+    PldEventQuery,
     PldReply,
+    PldSequenceRequest,
     PldShutterRequest,
     PldSwitchRequest,
     PldTargetRequest,
@@ -234,6 +237,42 @@ class PldChamber:
             if took:
                 await self._call("release_laser")
         return (await self.state()).excimer
+
+    # --- sequences (pld-service runs a step list) ---------------------------------
+
+    async def run_sequence(self, name: str, steps: list[dict]) -> str:
+        """Start it; pld-service answers 'started' and runs it on its own."""
+        return (await self._call("run_sequence", PldSequenceRequest(name=name, steps=steps, wait=False))).message
+
+    async def pause_sequence(self) -> str:
+        return (await self._call("pause_sequence")).message
+
+    async def resume_sequence(self) -> str:
+        return (await self._call("resume_sequence")).message
+
+    async def cancel_sequence(self) -> str:
+        return (await self._call("cancel_sequence")).message
+
+    async def recent_events(self, limit: int = 1000) -> list[PldEvent]:
+        return (await self.client.call("recent_events", PldEventQuery(limit=limit))).events
+
+    async def hold_laser_in_energy_mode(self) -> bool:
+        """Take the excimer's settings port (CM=2) and put it in energy mode, for a
+        sequence's laser_energy steps: it cannot be taken while the run holds the
+        service. True if this took it, so the caller gives it back afterwards."""
+        took = not (await self.state()).excimer.control
+        if took:
+            await self._call("take_laser_control")
+        try:
+            await self._call("set_laser_mode", PldLaserModeRequest(mode="energy"))
+        except BaseException:
+            if took:
+                await self._call("release_laser")
+            raise
+        return took
+
+    async def release_laser(self) -> None:
+        await self._call("release_laser")
 
     # --- heater -------------------------------------------------------------------
 

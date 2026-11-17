@@ -24,6 +24,8 @@ import asyncio
 import logging
 import math
 
+from google.protobuf import json_format
+
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
     PldChamberState,
@@ -36,6 +38,7 @@ from lumi.contracts.payloads.pld import (
     PldLoggingRequest,
     PldReadout,
     PldReply,
+    PldSequenceRequest,
     PldRheedDeflectionRequest,
     PldRheedFocusRequest,
 )
@@ -262,6 +265,21 @@ class PldHandler:
     async def rheed_all_off_gentle(self, req: Empty) -> PldReply:
         return await self._rheed_off("RheedAllOffGentle", lambda r: not (
             r.filament_on or r.hv_on or r.all_ramping_down))
+
+    # --- sequences (REA 38ca32e) --------------------------------------------------
+
+    async def run_sequence(self, req: PldSequenceRequest) -> PldReply:
+        try:
+            request = json_format.ParseDict(
+                {"name": req.name, "steps": req.steps, "wait": req.wait}, pb.SequenceRequest())
+        except json_format.ParseError as e:
+            return PldReply(ok=False, message=f"RunSequence not sent: {e}")
+        return await self._operate("RunSequence", request)
+
+    # Pause and cancel need no control, like StopFire; resume does.
+    pause_sequence = _op("PauseSequence", lambda r: pb.Empty())
+    resume_sequence = _op("ResumeSequence", lambda r: pb.Empty())
+    cancel_sequence = _op("CancelSequence", lambda r: pb.Empty())
 
     # --- the growth log -----------------------------------------------------------
 

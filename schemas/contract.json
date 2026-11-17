@@ -2170,6 +2170,76 @@
                   "title": "PldRheed",
                   "type": "object"
                 },
+                "PldSequenceStatus": {
+                  "description": "The sequence pld-service runs (or ran last): RunSequence's progress.",
+                  "properties": {
+                    "client": {
+                      "default": "",
+                      "description": "The gRPC client that started it",
+                      "title": "Client",
+                      "type": "string"
+                    },
+                    "done": {
+                      "default": 0,
+                      "description": "Operations done, loops multiplied out",
+                      "title": "Done",
+                      "type": "integer"
+                    },
+                    "label": {
+                      "default": "",
+                      "title": "Label",
+                      "type": "string"
+                    },
+                    "loops": {
+                      "default": "",
+                      "description": "Open loops, outermost first, e.g. '2/5 1/3'",
+                      "title": "Loops",
+                      "type": "string"
+                    },
+                    "message": {
+                      "default": "",
+                      "description": "The last step's reply, the pause message, or why it ended",
+                      "title": "Message",
+                      "type": "string"
+                    },
+                    "name": {
+                      "default": "",
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "started": {
+                      "default": 0.0,
+                      "description": "Unix s",
+                      "title": "Started",
+                      "type": "number"
+                    },
+                    "state": {
+                      "default": "",
+                      "description": "'', running, pausing, paused, finished, failed, cancelled",
+                      "title": "State",
+                      "type": "string"
+                    },
+                    "step": {
+                      "default": 0,
+                      "description": "The step running, 1-based",
+                      "title": "Step",
+                      "type": "integer"
+                    },
+                    "steps": {
+                      "default": 0,
+                      "description": "Steps in the list",
+                      "title": "Steps",
+                      "type": "integer"
+                    },
+                    "total": {
+                      "default": 0,
+                      "title": "Total",
+                      "type": "integer"
+                    }
+                  },
+                  "title": "PldSequenceStatus",
+                  "type": "object"
+                },
                 "PldSession": {
                   "description": "pld-service's PLC host-link session.",
                   "properties": {
@@ -2278,6 +2348,9 @@
                   "description": "True = open for deposition",
                   "title": "Sample Shutter Away",
                   "type": "boolean"
+                },
+                "sequence": {
+                  "$ref": "#/$defs/PldSequenceStatus"
                 },
                 "session": {
                   "$ref": "#/$defs/PldSession"
@@ -4512,6 +4585,148 @@
             "response_codec": "json"
           },
           {
+            "name": "run_sequence",
+            "request": {
+              "properties": {
+                "name": {
+                  "default": "",
+                  "title": "Name",
+                  "type": "string"
+                },
+                "steps": {
+                  "description": "pld.proto SequenceStep messages in proto JSON names, e.g. {'mask': {'position': 20, 'wait': false, 'speed_mm_s': 0.5}}, {'loop_start': 3}",
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Steps",
+                  "type": "array"
+                },
+                "wait": {
+                  "default": false,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "steps"
+              ],
+              "title": "PldSequenceRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "pause_sequence",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "resume_sequence",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "cancel_sequence",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "start_logging",
             "request": {
               "properties": {
@@ -4601,22 +4816,26 @@
             "auto_vac": "chamber.pld.req.auto_vac",
             "auto_vent": "chamber.pld.req.auto_vent",
             "cancel_load_lock": "chamber.pld.req.cancel_load_lock",
+            "cancel_sequence": "chamber.pld.req.cancel_sequence",
             "chamber_state": "chamber.pld.req.chamber_state",
             "fire_laser": "chamber.pld.req.fire_laser",
             "home_axis": "chamber.pld.req.home_axis",
             "laser_off": "chamber.pld.req.laser_off",
             "laser_on": "chamber.pld.req.laser_on",
             "laser_standby": "chamber.pld.req.laser_standby",
+            "pause_sequence": "chamber.pld.req.pause_sequence",
             "recent_activity": "chamber.pld.req.recent_activity",
             "recent_events": "chamber.pld.req.recent_events",
             "release_control": "chamber.pld.req.release_control",
             "release_laser": "chamber.pld.req.release_laser",
+            "resume_sequence": "chamber.pld.req.resume_sequence",
             "rheed_all_off": "chamber.pld.req.rheed_all_off",
             "rheed_all_off_gentle": "chamber.pld.req.rheed_all_off_gentle",
             "rheed_filament_off": "chamber.pld.req.rheed_filament_off",
             "rheed_filament_on": "chamber.pld.req.rheed_filament_on",
             "rheed_hv_off": "chamber.pld.req.rheed_hv_off",
             "rheed_hv_on": "chamber.pld.req.rheed_hv_on",
+            "run_sequence": "chamber.pld.req.run_sequence",
             "select_target": "chamber.pld.req.select_target",
             "set_heater_current_limits": "chamber.pld.req.set_heater_current_limits",
             "set_heater_key": "chamber.pld.req.set_heater_key",
@@ -6198,6 +6417,76 @@
                 "title": "PldRheed",
                 "type": "object"
               },
+              "PldSequenceStatus": {
+                "description": "The sequence pld-service runs (or ran last): RunSequence's progress.",
+                "properties": {
+                  "client": {
+                    "default": "",
+                    "description": "The gRPC client that started it",
+                    "title": "Client",
+                    "type": "string"
+                  },
+                  "done": {
+                    "default": 0,
+                    "description": "Operations done, loops multiplied out",
+                    "title": "Done",
+                    "type": "integer"
+                  },
+                  "label": {
+                    "default": "",
+                    "title": "Label",
+                    "type": "string"
+                  },
+                  "loops": {
+                    "default": "",
+                    "description": "Open loops, outermost first, e.g. '2/5 1/3'",
+                    "title": "Loops",
+                    "type": "string"
+                  },
+                  "message": {
+                    "default": "",
+                    "description": "The last step's reply, the pause message, or why it ended",
+                    "title": "Message",
+                    "type": "string"
+                  },
+                  "name": {
+                    "default": "",
+                    "title": "Name",
+                    "type": "string"
+                  },
+                  "started": {
+                    "default": 0.0,
+                    "description": "Unix s",
+                    "title": "Started",
+                    "type": "number"
+                  },
+                  "state": {
+                    "default": "",
+                    "description": "'', running, pausing, paused, finished, failed, cancelled",
+                    "title": "State",
+                    "type": "string"
+                  },
+                  "step": {
+                    "default": 0,
+                    "description": "The step running, 1-based",
+                    "title": "Step",
+                    "type": "integer"
+                  },
+                  "steps": {
+                    "default": 0,
+                    "description": "Steps in the list",
+                    "title": "Steps",
+                    "type": "integer"
+                  },
+                  "total": {
+                    "default": 0,
+                    "title": "Total",
+                    "type": "integer"
+                  }
+                },
+                "title": "PldSequenceStatus",
+                "type": "object"
+              },
               "PldSession": {
                 "description": "pld-service's PLC host-link session.",
                 "properties": {
@@ -6306,6 +6595,9 @@
                 "description": "True = open for deposition",
                 "title": "Sample Shutter Away",
                 "type": "boolean"
+              },
+              "sequence": {
+                "$ref": "#/$defs/PldSequenceStatus"
               },
               "session": {
                 "$ref": "#/$defs/PldSession"
@@ -17989,6 +18281,792 @@
             "response_codec": "json"
           },
           {
+            "name": "save_sequence",
+            "request": {
+              "properties": {
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "name": {
+                  "maxLength": 100,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9 _.()+-]*$",
+                  "title": "Name",
+                  "type": "string"
+                },
+                "steps": {
+                  "description": "pld.proto SequenceStep objects in proto JSON names, each one operation and an optional label: select_target {target, wait}, mask {position, wait, speed_mm_s?, accel_mm_s_per_ms?}, sample, rheed_gun_x, target_spin/target_twist {on}, target_auto_motion {spin, twist}, sample_shutter {in_front}, fire_laser {pulses, rate_hz, wait}, temperature, pressure, mfc_flow, wait_s (s), pause (a message; waits for resume), wait_axis_idle {axis}, loop_start (count) / loop_end {}; and Lumi's meter_energy {mj}: the energy at the meter, set from today's laser test (a raw laser_energy is refused)",
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Steps",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "name",
+                "steps"
+              ],
+              "title": "SaveSequence",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "approved_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Approved At"
+                },
+                "approved_by": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Approved By"
+                },
+                "content_hash": {
+                  "title": "Content Hash",
+                  "type": "string"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "fires": {
+                  "description": "Has a fire_laser step",
+                  "title": "Fires",
+                  "type": "boolean"
+                },
+                "latest": {
+                  "description": "The newest version of this name",
+                  "title": "Latest",
+                  "type": "boolean"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "num_operations": {
+                  "description": "With the loops multiplied out",
+                  "title": "Num Operations",
+                  "type": "integer"
+                },
+                "num_steps": {
+                  "title": "Num Steps",
+                  "type": "integer"
+                },
+                "saved_at": {
+                  "title": "Saved At",
+                  "type": "number"
+                },
+                "saved_by": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saved By"
+                },
+                "sequence_id": {
+                  "title": "Sequence Id",
+                  "type": "integer"
+                },
+                "sets_energy": {
+                  "description": "Has a meter_energy step: needs today's laser test",
+                  "title": "Sets Energy",
+                  "type": "boolean"
+                },
+                "steps": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The steps (get_sequence only)",
+                  "title": "Steps"
+                },
+                "version": {
+                  "title": "Version",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sequence_id",
+                "name",
+                "version",
+                "content_hash",
+                "num_steps",
+                "num_operations",
+                "fires",
+                "sets_energy",
+                "saved_at",
+                "latest"
+              ],
+              "title": "SequenceInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_sequences",
+            "request": {
+              "properties": {
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Every version of this name; None = every sequence",
+                  "title": "Name"
+                }
+              },
+              "title": "ListSequences",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "SequenceInfo": {
+                  "properties": {
+                    "approved_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Approved At"
+                    },
+                    "approved_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Approved By"
+                    },
+                    "content_hash": {
+                      "title": "Content Hash",
+                      "type": "string"
+                    },
+                    "description": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Description"
+                    },
+                    "fires": {
+                      "description": "Has a fire_laser step",
+                      "title": "Fires",
+                      "type": "boolean"
+                    },
+                    "latest": {
+                      "description": "The newest version of this name",
+                      "title": "Latest",
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "title": "Name",
+                      "type": "string"
+                    },
+                    "num_operations": {
+                      "description": "With the loops multiplied out",
+                      "title": "Num Operations",
+                      "type": "integer"
+                    },
+                    "num_steps": {
+                      "title": "Num Steps",
+                      "type": "integer"
+                    },
+                    "saved_at": {
+                      "title": "Saved At",
+                      "type": "number"
+                    },
+                    "saved_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Saved By"
+                    },
+                    "sequence_id": {
+                      "title": "Sequence Id",
+                      "type": "integer"
+                    },
+                    "sets_energy": {
+                      "description": "Has a meter_energy step: needs today's laser test",
+                      "title": "Sets Energy",
+                      "type": "boolean"
+                    },
+                    "steps": {
+                      "anyOf": [
+                        {
+                          "items": {
+                            "additionalProperties": true,
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The steps (get_sequence only)",
+                      "title": "Steps"
+                    },
+                    "version": {
+                      "title": "Version",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sequence_id",
+                    "name",
+                    "version",
+                    "content_hash",
+                    "num_steps",
+                    "num_operations",
+                    "fires",
+                    "sets_energy",
+                    "saved_at",
+                    "latest"
+                  ],
+                  "title": "SequenceInfo",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "sequences": {
+                  "description": "By name, newest version first",
+                  "items": {
+                    "$ref": "#/$defs/SequenceInfo"
+                  },
+                  "title": "Sequences",
+                  "type": "array"
+                }
+              },
+              "title": "SequenceList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_sequence",
+            "request": {
+              "properties": {
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "version": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "None = the latest",
+                  "title": "Version"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "GetSequence",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "approved_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Approved At"
+                },
+                "approved_by": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Approved By"
+                },
+                "content_hash": {
+                  "title": "Content Hash",
+                  "type": "string"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "fires": {
+                  "description": "Has a fire_laser step",
+                  "title": "Fires",
+                  "type": "boolean"
+                },
+                "latest": {
+                  "description": "The newest version of this name",
+                  "title": "Latest",
+                  "type": "boolean"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "num_operations": {
+                  "description": "With the loops multiplied out",
+                  "title": "Num Operations",
+                  "type": "integer"
+                },
+                "num_steps": {
+                  "title": "Num Steps",
+                  "type": "integer"
+                },
+                "saved_at": {
+                  "title": "Saved At",
+                  "type": "number"
+                },
+                "saved_by": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saved By"
+                },
+                "sequence_id": {
+                  "title": "Sequence Id",
+                  "type": "integer"
+                },
+                "sets_energy": {
+                  "description": "Has a meter_energy step: needs today's laser test",
+                  "title": "Sets Energy",
+                  "type": "boolean"
+                },
+                "steps": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The steps (get_sequence only)",
+                  "title": "Steps"
+                },
+                "version": {
+                  "title": "Version",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sequence_id",
+                "name",
+                "version",
+                "content_hash",
+                "num_steps",
+                "num_operations",
+                "fires",
+                "sets_energy",
+                "saved_at",
+                "latest"
+              ],
+              "title": "SequenceInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "approve_sequence",
+            "request": {
+              "description": "Exactly one version: what a person reviewed is what is approved or run.",
+              "properties": {
+                "content_hash": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "If given, refused unless the version's hash matches",
+                  "title": "Content Hash"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "version": {
+                  "minimum": 1,
+                  "title": "Version",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "version"
+              ],
+              "title": "SequenceRef",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "approved_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Approved At"
+                },
+                "approved_by": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Approved By"
+                },
+                "content_hash": {
+                  "title": "Content Hash",
+                  "type": "string"
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Description"
+                },
+                "fires": {
+                  "description": "Has a fire_laser step",
+                  "title": "Fires",
+                  "type": "boolean"
+                },
+                "latest": {
+                  "description": "The newest version of this name",
+                  "title": "Latest",
+                  "type": "boolean"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "num_operations": {
+                  "description": "With the loops multiplied out",
+                  "title": "Num Operations",
+                  "type": "integer"
+                },
+                "num_steps": {
+                  "title": "Num Steps",
+                  "type": "integer"
+                },
+                "saved_at": {
+                  "title": "Saved At",
+                  "type": "number"
+                },
+                "saved_by": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saved By"
+                },
+                "sequence_id": {
+                  "title": "Sequence Id",
+                  "type": "integer"
+                },
+                "sets_energy": {
+                  "description": "Has a meter_energy step: needs today's laser test",
+                  "title": "Sets Energy",
+                  "type": "boolean"
+                },
+                "steps": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The steps (get_sequence only)",
+                  "title": "Steps"
+                },
+                "version": {
+                  "title": "Version",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sequence_id",
+                "name",
+                "version",
+                "content_hash",
+                "num_steps",
+                "num_operations",
+                "fires",
+                "sets_energy",
+                "saved_at",
+                "latest"
+              ],
+              "title": "SequenceInfo",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "run_sequence",
+            "request": {
+              "description": "Exactly one version: what a person reviewed is what is approved or run.",
+              "properties": {
+                "content_hash": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "If given, refused unless the version's hash matches",
+                  "title": "Content Hash"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "version": {
+                  "minimum": 1,
+                  "title": "Version",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name",
+                "version"
+              ],
+              "title": "SequenceRef",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "task_id": {
+                  "title": "Task Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id"
+              ],
+              "title": "TaskAck",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "pause_sequence",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "resume_sequence",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "cancel_sequence",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "list_target_preablation",
             "request": {
               "description": "No payload. Used for ops that take or return nothing.",
@@ -20351,6 +21429,7 @@
           "requests": {
             "add_measurement": "experiment.driver.req.add_measurement",
             "anneal": "experiment.driver.req.anneal",
+            "approve_sequence": "experiment.driver.req.approve_sequence",
             "attach_measurement_file": "experiment.driver.req.attach_measurement_file",
             "auto_align_center_mask": "experiment.driver.req.auto_align_center_mask",
             "begin_adjust_rheed_gain": "experiment.driver.req.begin_adjust_rheed_gain",
@@ -20359,6 +21438,7 @@
             "begin_check_rheed_pixels": "experiment.driver.req.begin_check_rheed_pixels",
             "begin_laser_test": "experiment.driver.req.begin_laser_test",
             "begin_set_laser_power": "experiment.driver.req.begin_set_laser_power",
+            "cancel_sequence": "experiment.driver.req.cancel_sequence",
             "cancel_task": "experiment.driver.req.cancel_task",
             "check_logging_alive": "experiment.driver.req.check_logging_alive",
             "check_mi_mode": "experiment.driver.req.check_mi_mode",
@@ -20387,6 +21467,7 @@
             "get_pump_status": "experiment.driver.req.get_pump_status",
             "get_record": "experiment.driver.req.get_record",
             "get_sample": "experiment.driver.req.get_sample",
+            "get_sequence": "experiment.driver.req.get_sequence",
             "get_substrate": "experiment.driver.req.get_substrate",
             "get_target_id_by_name": "experiment.driver.req.get_target_id_by_name",
             "get_target_name_by_id": "experiment.driver.req.get_target_name_by_id",
@@ -20399,18 +21480,21 @@
             "list_projects": "experiment.driver.req.list_projects",
             "list_records": "experiment.driver.req.list_records",
             "list_samples": "experiment.driver.req.list_samples",
+            "list_sequences": "experiment.driver.req.list_sequences",
             "list_snapshots": "experiment.driver.req.list_snapshots",
             "list_substrates": "experiment.driver.req.list_substrates",
             "list_target_preablation": "experiment.driver.req.list_target_preablation",
             "measurement_file": "experiment.driver.req.measurement_file",
             "move_mask_to_position": "experiment.driver.req.move_mask_to_position",
             "move_rheed_to_position": "experiment.driver.req.move_rheed_to_position",
+            "pause_sequence": "experiment.driver.req.pause_sequence",
             "perform_deposition": "experiment.driver.req.perform_deposition",
             "perform_preablation": "experiment.driver.req.perform_preablation",
             "register_project": "experiment.driver.req.register_project",
             "register_substrate": "experiment.driver.req.register_substrate",
             "reopen_position": "experiment.driver.req.reopen_position",
             "resolve_pixel_check": "experiment.driver.req.resolve_pixel_check",
+            "resume_sequence": "experiment.driver.req.resume_sequence",
             "resume_substrate": "experiment.driver.req.resume_substrate",
             "retire_experiment": "experiment.driver.req.retire_experiment",
             "retire_measurement": "experiment.driver.req.retire_measurement",
@@ -20421,7 +21505,9 @@
             "retire_substrate": "experiment.driver.req.retire_substrate",
             "rotate_sample_by": "experiment.driver.req.rotate_sample_by",
             "rotate_sample_to": "experiment.driver.req.rotate_sample_to",
+            "run_sequence": "experiment.driver.req.run_sequence",
             "sample_history": "experiment.driver.req.sample_history",
+            "save_sequence": "experiment.driver.req.save_sequence",
             "set_center_mask_pos": "experiment.driver.req.set_center_mask_pos",
             "set_laser_energy": "experiment.driver.req.set_laser_energy",
             "set_laser_hv": "experiment.driver.req.set_laser_hv",
@@ -20513,6 +21599,92 @@
                 "requested_at"
               ],
               "title": "PendingConfirmation",
+              "type": "object"
+            },
+            "SequenceRun": {
+              "description": "The step list this driver started on pld-service, while it runs and after.",
+              "properties": {
+                "content_hash": {
+                  "title": "Content Hash",
+                  "type": "string"
+                },
+                "done": {
+                  "default": 0,
+                  "description": "Operations done, loops multiplied out",
+                  "title": "Done",
+                  "type": "integer"
+                },
+                "label": {
+                  "default": "",
+                  "title": "Label",
+                  "type": "string"
+                },
+                "loops": {
+                  "default": "",
+                  "description": "Open loops, outermost first, e.g. '2/5 1/3'",
+                  "title": "Loops",
+                  "type": "string"
+                },
+                "message": {
+                  "default": "",
+                  "description": "The last step's reply, the pause message, or why it ended",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "pause_note": {
+                  "default": "Pause: a wait stops counting at once; a waited fire stops its train and resume fires the pulses left as a new train; any other step finishes first ('pausing', then 'paused').",
+                  "description": "What pause_sequence does to the step running",
+                  "title": "Pause Note",
+                  "type": "string"
+                },
+                "run_id": {
+                  "title": "Run Id",
+                  "type": "string"
+                },
+                "started_at": {
+                  "default": 0.0,
+                  "description": "Unix s, this node's clock",
+                  "title": "Started At",
+                  "type": "number"
+                },
+                "state": {
+                  "default": "starting",
+                  "description": "starting, running, pausing, paused, finished, failed, cancelled",
+                  "title": "State",
+                  "type": "string"
+                },
+                "step": {
+                  "default": 0,
+                  "description": "The step running, 1-based: an index into get_sequence's steps",
+                  "title": "Step",
+                  "type": "integer"
+                },
+                "steps": {
+                  "default": 0,
+                  "title": "Steps",
+                  "type": "integer"
+                },
+                "total": {
+                  "default": 0,
+                  "title": "Total",
+                  "type": "integer"
+                },
+                "version": {
+                  "title": "Version",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "run_id",
+                "name",
+                "version",
+                "content_hash"
+              ],
+              "title": "SequenceRun",
               "type": "object"
             }
           },
@@ -20677,6 +21849,17 @@
               ],
               "default": null,
               "title": "Recording Name"
+            },
+            "sequence": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/SequenceRun"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "substrate_id": {
               "anyOf": [

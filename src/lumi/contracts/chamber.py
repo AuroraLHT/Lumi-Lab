@@ -68,6 +68,7 @@ from .payloads.pld import (
     PldPositionRequest,
     PldPressureRequest,
     PldReply,
+    PldSequenceRequest,
     PldShutterRequest,
     PldState,
     PldSwitchRequest,
@@ -305,6 +306,21 @@ PLD = Capability(
                 "for the next on. Needs no control, like stop_fire: the stop from any client. "
                 "An interlock, an open filament or an over-current held 1 s switches filament "
                 "and HV off by itself; nothing comes back on by itself."),
+        _pld_op("run_sequence", PldSequenceRequest,
+                "Upload a step list for pld-service to run one step at a time (REA 38ca32e): each "
+                "step one operation with its usual checks and waits, plus wait_s, pause, "
+                "wait_axis_idle and loop_start/loop_end. Answers 'started' at once (wait=false). "
+                "While it runs every other operation from every client is refused except "
+                "stop_fire, the RHEED all-offs and pause/cancel. Progress: state.sequence and "
+                "'sequence' events. The experiment node's run_sequence is the vetted way in."),
+        _pld_op("pause_sequence", Empty,
+                "Pause the running sequence, from any client: a wait stops counting, a waited fire "
+                "stops its train (resume fires the pulses left), any other step finishes first "
+                "('pausing', then 'paused'). While paused the controller may operate as usual."),
+        _pld_op("resume_sequence", Empty, "Carry on a paused sequence (also ends a `pause` step). Needs control."),
+        _pld_op("cancel_sequence", Empty,
+                "End the sequence now, from any client: a fire train is stopped; a move or ramp "
+                "under way carries on; nothing is undone."),
         Op("start_logging", PldLoggingRequest, PldReply, journal=True,
            doc="Start a new growth-log CSV in the chamber's log folder, one row every "
                "interval_s, written by this node from the service's state (PLD "

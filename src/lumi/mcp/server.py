@@ -453,6 +453,13 @@ Pre-ablation is set per target material: list_target_preablation. For a material
 none set, ask the person how many pulses (0 = never) and set_target_preablation before
 perform_preablation; then leave num_pulse out and the set amount is used. Give num_pulse
 only when the person asks for a different amount.
+Sequences: a step list pld-service runs by itself (a wedge, a combinatorial routine):
+save_sequence, then a person reviews that exact version once and approves it in the Deck
+(you cannot approve: show them get_sequence's steps and ask). An approved version then
+runs without anyone: run_sequence(name, version, content_hash), followed through `sequence`
+in the driver state; pause/resume/cancel_sequence; stop_deposition cancels it. Energy steps
+are meter_energy {mj} (set from today's laser test). Never edit an approved list to change
+what it does without telling the person: the edit is a new version that needs approval again.
 Temperatures are the back pyrometer's, and only comparable at the same emissivity:
 each growth records it (pyrometer_emissivity; 0.65 before experiment 23, 0.262 since, when
 the old scale read far low -- 650 then was about 794 now). Say so when comparing across it.

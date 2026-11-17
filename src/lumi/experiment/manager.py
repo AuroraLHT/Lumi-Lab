@@ -44,6 +44,7 @@ from lumi.contracts.payloads.fiducial import MASK_CENTER_ROLE
 from lumi.contracts.payloads.storage import RecordingEventIn, StorageRequest
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, utc_now
 from lumi.experiment.mask_align import locate_slit
+from lumi.experiment import sequence as seqlib
 from lumi.experiment.chamber import ChamberBackend
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
@@ -1269,6 +1270,79 @@ class BaseExperimentManager:
         return True, None
 
     # --- the daily laser test ---------------------------------------------------------
+
+    #: How often a running sequence is polled, s.
+    SEQUENCE_POLL_S = 0.5
+    _SEQUENCE_ENDED = frozenset({"finished", "failed", "cancelled"})
+
+    async def run_sequence(self, seq: dict, on_status, on_event) -> dict:
+        """Run one stored, approved version on pld-service and follow it to the end.
+
+        meter_energy steps become laser_energy from today's laser test, with the
+        excimer's settings port held in energy mode for the run (it cannot be taken
+        while the run holds the service) and given back after. `on_status` gets each
+        new SequenceStatus, `on_event` each per-step 'sequence' event. Returns the
+        final status; a failed or cancelled run raises. Cancelling this coroutine
+        cancels the run on pld-service.
+        """
+        if self.chamber.driver != "pld":
+            raise RuntimeError("sequences need pld-service: not under --use-legacy-mi-mode")
+        steps = json.loads(seq["steps_json"])
+        sets_energy = any(seqlib.METER_ENERGY in step for step in steps)
+        ratio = None
+        if sets_energy:
+            test = await self.todays_laser_test()
+            if test is None:
+                raise RuntimeError(
+                    "no laser test today: run the daily test (begin_laser_test) before a sequence "
+                    "that sets the energy")
+            ratio = test["ratio"]
+        resolved = seqlib.resolve(steps, ratio)
+        name = f"{seq['name']} v{seq['version']}"
+
+        prior = (await self.chamber.state()).sequence
+        if prior.state in ("running", "pausing", "paused"):
+            raise RuntimeError(f"pld-service is already running {prior.name!r} ({prior.state})")
+        seen = max((e.time for e in await self.chamber.recent_events()), default=0.0)
+        took = await self.chamber.hold_laser_in_energy_mode() if sets_energy else False
+        if sets_energy:
+            # The excimer's energy is now the sequence's: a deposition after it sets its own again.
+            self._laser_power_set = self._laser_source_energy = self._laser_meter_ratio = None
+        status = prior
+        try:
+            await self.chamber.run_sequence(name, resolved)
+            await self.add_recording_event("sequence", f"{name} started", {
+                "sequence": seq["name"], "version": seq["version"], "content_hash": seq["content_hash"],
+                "ratio": ratio})
+            while True:
+                await asyncio.sleep(self.SEQUENCE_POLL_S)
+                status = (await self.chamber.state()).sequence
+                for event in await self.chamber.recent_events():
+                    if event.time > seen and event.kind == "sequence":
+                        await on_event(event)
+                    seen = max(seen, event.time)
+                await on_status(status)
+                if status.started != prior.started and status.state in self._SEQUENCE_ENDED:
+                    break
+        except asyncio.CancelledError:
+            try:
+                await asyncio.shield(self.chamber.cancel_sequence())
+            except Exception as exc:
+                log.warning("could not cancel the sequence on pld-service: %s", exc)
+            raise
+        finally:
+            if took:
+                try:
+                    await self.chamber.release_laser()
+                except Exception as exc:
+                    log.warning("could not give the excimer's port back after the sequence: %s", exc)
+        await self.add_recording_event("sequence", f"{name} {status.state}: {status.message}",
+                                       {"state": status.state, "done": status.done, "total": status.total})
+        result = {"sequence": seq["name"], "version": seq["version"], "state": status.state,
+                  "done": status.done, "total": status.total, "message": status.message}
+        if status.state != "finished":
+            raise RuntimeError(f"sequence {name} {status.state}: {status.message}")
+        return result
 
     async def todays_laser_test(self) -> dict | None:
         """The latest laser test, if it was done today (this host's calendar day)."""

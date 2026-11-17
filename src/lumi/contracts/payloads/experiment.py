@@ -757,6 +757,61 @@ class LaserTestList(BaseModel):
     tests: list[LaserTest] = Field(default_factory=list, description="Newest first")
 
 
+# --- sequences: step lists pld-service runs ------------------------------------------
+
+
+class SaveSequence(BaseModel):
+    name: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.()+-]*$")
+    steps: list[dict[str, object]] = Field(description=(
+        "pld.proto SequenceStep objects in proto JSON names, each one operation and an optional "
+        "label: select_target {target, wait}, mask {position, wait, speed_mm_s?, accel_mm_s_per_ms?}, "
+        "sample, rheed_gun_x, target_spin/target_twist {on}, target_auto_motion {spin, twist}, "
+        "sample_shutter {in_front}, fire_laser {pulses, rate_hz, wait}, temperature, pressure, "
+        "mfc_flow, wait_s (s), pause (a message; waits for resume), wait_axis_idle {axis}, "
+        "loop_start (count) / loop_end {}; and Lumi's meter_energy {mj}: the energy at the meter, "
+        "set from today's laser test (a raw laser_energy is refused)"))
+    description: str | None = None
+
+
+class SequenceRef(BaseModel):
+    """Exactly one version: what a person reviewed is what is approved or run."""
+
+    name: str
+    version: int = Field(ge=1)
+    content_hash: str | None = Field(None, description="If given, refused unless the version's hash matches")
+
+
+class GetSequence(BaseModel):
+    name: str
+    version: int | None = Field(None, description="None = the latest")
+
+
+class ListSequences(BaseModel):
+    name: str | None = Field(None, description="Every version of this name; None = every sequence")
+
+
+class SequenceInfo(BaseModel):
+    sequence_id: int
+    name: str
+    version: int
+    content_hash: str
+    description: str | None = None
+    num_steps: int
+    num_operations: int = Field(description="With the loops multiplied out")
+    fires: bool = Field(description="Has a fire_laser step")
+    sets_energy: bool = Field(description="Has a meter_energy step: needs today's laser test")
+    saved_by: str | None = None
+    saved_at: float
+    approved_by: str | None = None
+    approved_at: float | None = None
+    latest: bool = Field(description="The newest version of this name")
+    steps: list[dict[str, object]] | None = Field(None, description="The steps (get_sequence only)")
+
+
+class SequenceList(BaseModel):
+    sequences: list[SequenceInfo] = Field(default_factory=list, description="By name, newest version first")
+
+
 # --- per-target pre-ablation ------------------------------------------------------
 
 
@@ -928,6 +983,28 @@ class ConfirmProceed(BaseModel):
 # --- state ---------------------------------------------------------------------
 
 
+class SequenceRun(BaseModel):
+    """The step list this driver started on pld-service, while it runs and after."""
+
+    run_id: str
+    name: str
+    version: int
+    content_hash: str
+    state: str = Field("starting", description="starting, running, pausing, paused, finished, failed, cancelled")
+    step: int = Field(0, description="The step running, 1-based: an index into get_sequence's steps")
+    steps: int = 0
+    label: str = ""
+    loops: str = Field("", description="Open loops, outermost first, e.g. '2/5 1/3'")
+    done: int = Field(0, description="Operations done, loops multiplied out")
+    total: int = 0
+    message: str = Field("", description="The last step's reply, the pause message, or why it ended")
+    started_at: float = Field(0.0, description="Unix s, this node's clock")
+    pause_note: str = Field(
+        "Pause: a wait stops counting at once; a waited fire stops its train and resume fires "
+        "the pulses left as a new train; any other step finishes first ('pausing', then 'paused').",
+        description="What pause_sequence does to the step running")
+
+
 class ExperimentReadout(BaseModel):
     mode: str = "idle"  # idle | single | pixel
     project_id: int | None = None
@@ -950,6 +1027,8 @@ class ExperimentReadout(BaseModel):
     #: to growth.db and survives a node restart; settings.experiment.pld_config is
     #: only the starting value for a database that has never had one.
     center_mask_pos: float | None = None
+    #: The last sequence this driver ran, while it runs and after (until the next).
+    sequence: SequenceRun | None = None
 
 
 class ExperimentState(ExperimentReadout, ServerStateBase):
