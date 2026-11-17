@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from lumi.contracts.payloads.pld import LASER_RATE_MAX_HZ
 
 from .chamber import LogEntry
 from .common import ServerStateBase
@@ -254,6 +255,10 @@ class ExperimentInfo(BaseModel):
         None, description="The excimer's energy set point, mJ, worked out from the day's laser test")
     laser_meter_ratio: float | None = Field(
         None, description="The day's laser test: meter energy / source energy")
+    sequence_name: str | None = Field(None, description="Grown by this sequence (run_sequence), if any")
+    sequence_version: int | None = None
+    sequence_hash: str | None = None
+    sequence_run_id: str | None = Field(None, description="The run: its layers share it")
     created_at: float | None = None
     created_at_iso: str | None = None
     state: str = "active"
@@ -658,7 +663,8 @@ class PerformPreablation(BaseModel):
 
 class PerformDeposition(BaseModel):
     num_pulse: int
-    laser_repetition_rate: float
+    laser_repetition_rate: float = Field(gt=0, le=LASER_RATE_MAX_HZ,
+                                         description=f"Hz, at most {LASER_RATE_MAX_HZ:g} (Lumi's soft cap)")
     target_id: str
     is_dryrun: bool = False
 
@@ -779,6 +785,23 @@ class SequenceRef(BaseModel):
     name: str
     version: int = Field(ge=1)
     content_hash: str | None = Field(None, description="If given, refused unless the version's hash matches")
+
+
+class SequenceRecording(BaseModel):
+    """start_storage before the first step and end_storage after the run, however it ends."""
+
+    project_name: str
+    note: str | None = None
+    save_frame: bool = True
+    save_ai: bool = True
+    save_integration: bool = True
+
+
+class RunSequence(SequenceRef):
+    record: SequenceRecording | None = Field(
+        None, description="Record the run: a recording from before step 1 to after the last")
+    no_sample: bool = Field(
+        False, description="A rehearsal with no substrate loaded: no layers, no growth records")
 
 
 class GetSequence(BaseModel):
@@ -983,6 +1006,18 @@ class ConfirmProceed(BaseModel):
 # --- state ---------------------------------------------------------------------
 
 
+class SequenceLayer(BaseModel):
+    """A layer a run grew: the material in the selected slot, for the pulses fired
+    with the shutter open (fires one after another on the same material merge)."""
+
+    target_id: str
+    target_material: str | None = None
+    num_pulse: int
+    laser_repetition_rate: float
+    meter_mj: float | None = Field(None, description="Energy at the meter, from the run's meter_energy step")
+    experiment_id: int | None = Field(None, description="Its growth record (none for a no_sample run)")
+
+
 class SequenceRun(BaseModel):
     """The step list this driver started on pld-service, while it runs and after."""
 
@@ -990,7 +1025,9 @@ class SequenceRun(BaseModel):
     name: str
     version: int
     content_hash: str
-    state: str = Field("starting", description="starting, running, pausing, paused, finished, failed, cancelled")
+    state: str = Field("starting", description=(
+        "starting, running, pausing, paused, finished, failed, cancelled; unknown = Lumi lost "
+        "track of it (pld-service stopped answering or restarted): check the chamber"))
     step: int = Field(0, description="The step running, 1-based: an index into get_sequence's steps")
     steps: int = 0
     label: str = ""
@@ -999,6 +1036,12 @@ class SequenceRun(BaseModel):
     total: int = 0
     message: str = Field("", description="The last step's reply, the pause message, or why it ended")
     started_at: float = Field(0.0, description="Unix s, this node's clock")
+    no_sample: bool = Field(False, description="A rehearsal: no substrate, no growth records")
+    substrate_id: int | None = None
+    pixel_index: int | None = None
+    sample_name: str | None = None
+    recording_name: str | None = Field(None, description="The recording run_sequence started (record)")
+    layers: list[SequenceLayer] = Field(default_factory=list, description="Grown so far, in order")
     pause_note: str = Field(
         "Pause: a wait stops counting at once; a waited fire stops its train and resume fires "
         "the pulses left as a new train; any other step finishes first ('pausing', then 'paused').",

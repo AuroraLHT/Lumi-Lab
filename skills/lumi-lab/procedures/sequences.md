@@ -21,7 +21,7 @@ A step is one operation, in pld.proto's names, with an optional `label`:
 | `{"mask": {"position": 20, "wait": false, "speed_mm_s": 0.5, "accel_mm_s_per_ms": 0.18}}` | Mask1; speed/accel optional (cap 8.33 mm/s) |
 | `{"sample": {...}}`, `{"rheed_gun_x": {...}}` | the other axes (no speed) |
 | `{"sample_shutter": {"in_front": false}}` | false = open for deposition |
-| `{"fire_laser": {"pulses": 100, "rate_hz": 5, "wait": true}}` | a pulse train |
+| `{"fire_laser": {"pulses": 100, "rate_hz": 5, "wait": true}}` | a pulse train, at most 20 Hz (Lumi's soft cap; the excimer does 100) |
 | `{"meter_energy": {"mj": 120}}` | Lumi's: energy at the meter, set from today's laser test |
 | `{"temperature": {...}}`, `{"pressure": {...}}`, `{"mfc_flow": {...}}` | as the direct operations |
 | `{"target_spin": {"on": true}}`, `{"target_twist": ...}`, `{"target_auto_motion": {"spin": true, "twist": true}}` | target motion (no twist at Clear) |
@@ -37,17 +37,35 @@ Wedge pattern: `mask` with `wait: false` and a speed, then a waited `fire_laser`
 
 ## Running one
 
-1. Before: everything a deposition needs that the list does not do itself: substrate,
-   temperature, pressure, the laser test if it has `meter_energy`, pre-ablation,
-   `start_storage`.
-2. `run_sequence` with the name, version and `content_hash` the person approved. Watch
-   `sequence` in the driver state (step i of n, loops, operations done / total, message).
+1. Before: everything a deposition needs that the list does not do itself: the project
+   and substrate loaded (and the pixel moved to, `to_pixel`: one run is one pixel),
+   temperature, pressure, the laser test if it has `meter_energy`, pre-ablation if the
+   list does not do it. A run without a substrate is refused; `no_sample: true` is for a
+   rehearsal on a dummy only, and records no layers.
+2. `run_sequence` with the name, version and `content_hash` the person approved, and
+   `record: {project_name, note}`: Lumi starts the recording before step 1 and ends it
+   after the run, however it ends. Watch `sequence` in the driver state (step i of n,
+   loops, operations done / total, layers so far, message).
 3. While it runs pld-service refuses every other operation, from every client, except
    stop_fire, the RHEED all-offs and pause/cancel. `pause_sequence`: a wait stops
    counting, a waited fire stops its train (resume fires the pulses left), any other step
    finishes first. `stop_deposition` or `cancel_sequence` ends it: a move or ramp under
-   way carries on, nothing is undone.
+   way carries on, nothing is undone. If something moves while it is paused (the Deck
+   console, pld-gui), the journal says what.
 4. A refused step fails the run; nothing is retried. Report it with the step and reason;
-   do not edit and re-run without the person.
-5. After: `end_storage`, `finish_experiment_record` (the pulses and energy the list used),
-   and say what the journal shows (`sequence_step` rows, one per operation).
+   do not edit and re-run without the person. State `unknown` means Lumi lost track of
+   the run (pld-service stopped answering for 15 s, or restarted): the layers recorded so
+   far stand, but the chamber may still be firing or moving. Look at `chamber_state` and
+   tell the person before anything else.
+5. What it records by itself:
+   - **Layers**: every fire with the shutter open grows a layer of the selected slot's
+     material, with the pulses actually fired (a fire cut short counts what it fired).
+     Fires one after another on the same material are one layer (a wedge is one; an
+     ABAB superlattice stays ABAB). A fire with the shutter in front, or at Clear, is no
+     layer (a pre-ablation).
+   - **Growth records**: one per layer, with the temperature and pressure read at its
+     first pulse, the energy at the meter, and the sequence's name, version, hash and
+     run id. Do not call `finish_experiment_record` for a run.
+   - **Journal**: `sequence_step` per operation, `sequence_layer` per layer,
+     `sequence_event` for pause, resume and moves during a pause.
+6. After: `get_sample` should show the layers; report them and what the journal shows.
