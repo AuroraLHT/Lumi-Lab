@@ -97,7 +97,7 @@ def build(args: argparse.Namespace) -> EquipmentNode:
         pld_handler, pld_workers = build_pld_driver(address, log_dir)
         sim_workers += pld_workers
         drain_hooks.insert(0, pld_handler.release_on_shutdown)
-    camera, _, _ = build_camera(args.src, model=model)
+    camera, _, _ = build_camera(args.src, model=model, kind=args.camera)
 
     # The camera's in-process fan-out: one grab feeds every consumer. The stream is
     # served from the encoder's output, not from a camera queue directly, so `frames`
@@ -171,6 +171,10 @@ def cli() -> None:
     parser.add_argument("--pld-address", default=settings.get("pascal.pld.address", "127.0.0.1:50051"),
                         help="pld-service's gRPC address, --src=path (it listens on loopback "
                              "only, so this node runs on the PLD PC)")
+    parser.add_argument("--camera", choices=("webcam", "sim"), default=None,
+                        help="the chamber camera: the webcam (default for --src=path) or "
+                             "the simulated one (default otherwise); 'sim' with --src=path "
+                             "for a pld-service twin on a PC without the webcam")
     parser.add_argument("--speed", type=float, default=1.0,
                         help="simulated-time multiplier for --src=sim; 1.0 is real time, "
                              "30 makes a 300s deposition take 10s")

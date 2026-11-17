@@ -286,14 +286,17 @@ def build_scene_renderer(model: ChamberModel) -> ChamberSceneRenderer:
     return ChamberSceneRenderer(model, holder, mask)
 
 
-def build_camera(src: str, model: ChamberModel | None = None):
+def build_camera(src: str, model: ChamberModel | None = None, kind: str | None = None):
     """The chamber's own webcam. Returns (camera, height, width).
+
+    `kind` is "webcam" or "sim"; None picks the webcam for `path` and the simulated
+    camera otherwise. "sim" with `path` is for a pld-service twin on a PC with no webcam.
 
     `model` is the live chamber model from `build_simulated_chamber` -- only ever set
     for `--src sim`, where it drives the rotation/mask overlay (see
-    `build_scene_renderer`). `path` and `test` pass None and get the plain asset.
+    `build_scene_renderer`). Without it the sim camera shows the plain asset.
     """
-    if src == "path":
+    if (kind or ("webcam" if src == "path" else "sim")) == "webcam":
         cfg = settings.pascal.webcam
         camera = WebCamera(
             config=WebCameraConfig(
