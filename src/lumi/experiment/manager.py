@@ -898,7 +898,8 @@ class BaseExperimentManager:
             "a commanded move cannot drive an unlocked axis"
         )
 
-    async def move_mask_to_position(self, position: float) -> None:
+    async def move_mask_to_position(self, position: float, speed_mm_s: float = 0.0,
+                                    accel_mm_s_per_ms: float = 0.0) -> None:
         if not (0 <= position < self.bounds.mask_travel_max):
             raise ValueError(f"mask position must be in [0, {self.bounds.mask_travel_max}), got {position}")
         # The original asserted `not is_motor_free()` here, with the message "Motor is
@@ -906,7 +907,7 @@ class BaseExperimentManager:
         # *free* was the bug: "Motor free" is the holding lock released, not an idle
         # flag, so an axis can only be driven while it is NOT free.
         await self._await_motor_ready()
-        await self.chamber.move_mask(position)
+        await self.chamber.move_mask(position, speed_mm_s, accel_mm_s_per_ms)
 
     async def move_rheed_to_position(self, position: float) -> None:
         lo, hi = min(self.pld_config.rheed_limit), max(self.pld_config.rheed_limit)

@@ -23,6 +23,7 @@ from lumi.contracts.payloads.experiment import (
     CheckMiMode,
     ConfirmLaserTest,
     ListLaserTests,
+    MoveMask,
     PerformDeposition,
     PerformPreablation,
     SetTargetPreablation,
@@ -187,6 +188,24 @@ async def test_set_target_turns_on_auto_spin_and_twist(fake):
     ]
 
 
+async def test_mask_speed_is_sent_for_that_move_only(fake):
+    handler, client = fake
+    await handler.move_mask_to_position(MoveMask(position=50.0, speed_mm_s=0.5, accel_mm_s_per_ms=0.18))
+    await handler.move_mask_to_position(MoveMask(position=60.0))
+    moves = [kw for op, kw in client.calls if op == "set_mask_position"]
+    assert moves == [
+        {"position": 50.0, "wait": True, "speed_mm_s": 0.5, "accel_mm_s_per_ms": 0.18},
+        {"position": 60.0, "wait": True, "speed_mm_s": 0.0, "accel_mm_s_per_ms": 0.0},
+    ]
+
+
+async def test_legacy_mi_refuses_a_mask_speed(fake):
+    handler, _ = fake
+    handler.manager.chamber = MiChamber(FakeMi(), FakeChamberLog(LOG_VALUES))
+    with pytest.raises(RuntimeError, match="pld driver"):
+        await handler.move_mask_to_position(MoveMask(position=50.0, speed_mm_s=0.5))
+
+
 async def test_clear_is_sent_by_name(fake):
     # pcmd.Targets.Clear str()s as "Targets.Clear"; the service wants "Clear".
     handler, client = fake
@@ -295,9 +314,9 @@ async def test_rotation_is_absolute_and_wraps(fake):
     handler, client = fake
     await handler.rotate_sample_by(SampleAngle(angle=20.0))
     await handler.rotate_sample_to(SampleAngle(angle=-90.0))
-    assert client.calls == [
-        ("set_sample_position", {"position": pytest.approx(10.0), "wait": True}),
-        ("set_sample_position", {"position": 270.0, "wait": True}),
+    assert [(op, kw["position"], kw["wait"]) for op, kw in client.calls] == [
+        ("set_sample_position", pytest.approx(10.0), True),
+        ("set_sample_position", 270.0, True),
     ]
 
 

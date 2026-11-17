@@ -371,6 +371,10 @@ class PldTargetRequest(BaseModel):
 class PldPositionRequest(BaseModel):
     position: float = Field(description="mm for the mask and RHEED gun, degrees 0..360 for the sample")
     wait: bool = True
+    # Mask1 only (SetMaskPosition), for this one move; 0 = the service's [motion] default
+    # (50000 p/s, ACC/DEC 1000). The other axes refuse a nonzero value.
+    speed_mm_s: float = Field(0.0, ge=0, description="Mask1 only: speed for this move, mm/s; 0 = the service default")
+    accel_mm_s_per_ms: float = Field(0.0, ge=0, description="Mask1 only: ACC/DEC for this move, mm/s per ms; 0 = the service default")
 
 
 class PldAxisRequest(BaseModel):

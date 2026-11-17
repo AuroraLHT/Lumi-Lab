@@ -561,12 +561,16 @@ class TargetRequest(_message.Message):
     def __init__(self, target: _Optional[str] = ..., wait: _Optional[bool] = ...) -> None: ...
 
 class PositionRequest(_message.Message):
-    __slots__ = ("position", "wait")
+    __slots__ = ("position", "wait", "speed_mm_s", "accel_mm_s_per_ms")
     POSITION_FIELD_NUMBER: _ClassVar[int]
     WAIT_FIELD_NUMBER: _ClassVar[int]
+    SPEED_MM_S_FIELD_NUMBER: _ClassVar[int]
+    ACCEL_MM_S_PER_MS_FIELD_NUMBER: _ClassVar[int]
     position: float
     wait: bool
-    def __init__(self, position: _Optional[float] = ..., wait: _Optional[bool] = ...) -> None: ...
+    speed_mm_s: float
+    accel_mm_s_per_ms: float
+    def __init__(self, position: _Optional[float] = ..., wait: _Optional[bool] = ..., speed_mm_s: _Optional[float] = ..., accel_mm_s_per_ms: _Optional[float] = ...) -> None: ...
 
 class AxisRequest(_message.Message):
     __slots__ = ("axis", "wait")

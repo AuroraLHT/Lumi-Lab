@@ -76,6 +76,7 @@ from .payloads.experiment import (
     MiModeStatus,
     MfcStatus,
     MotorFree,
+    MoveMask,
     MoveTo,
     PendingStatus,
     PerformDeposition,
@@ -356,7 +357,11 @@ DRIVER = Capability(
                "--use-legacy-mi-mode). There, it is needed before start_mi_logging can "
                "point at a new file: an already-running logger acks without switching.",
            journal=True),
-        Op("move_mask_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("move_mask_to_position", MoveMask, Ack,
+           doc="Move the mask to a position in mm. Blocks until the move completes. Optional speed_mm_s and "
+               "accel_mm_s_per_ms set the mask's speed and ACC/DEC for this move only (pld driver; 0 = "
+               "pld-service's default). Refused while the motor holding lock is released.",
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("move_rheed_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rotate_sample_to", SampleAngle, Ack,
            doc="Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused "

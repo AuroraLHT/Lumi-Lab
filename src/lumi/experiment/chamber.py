@@ -80,7 +80,7 @@ class ChamberBackend(Protocol):
 
     async def select_target(self, target: str) -> None: ...
     async def target_auto_motion(self) -> None: ...
-    async def move_mask(self, position: float) -> None: ...
+    async def move_mask(self, position: float, speed_mm_s: float = 0.0, accel_mm_s_per_ms: float = 0.0) -> None: ...
     async def move_rheed_gun(self, position: float) -> None: ...
     async def rotate_sample_to(self, angle: float) -> None: ...
     async def rotate_sample_by(self, delta: float) -> None: ...
@@ -184,8 +184,11 @@ class PldChamber:
     async def target_auto_motion(self) -> None:
         await self._call("set_target_auto_motion", PldAutoMotionRequest(spin=True, twist=True))
 
-    async def move_mask(self, position: float) -> None:
-        await self._call("set_mask_position", PldPositionRequest(position=float(position), wait=True))
+    async def move_mask(self, position: float, speed_mm_s: float = 0.0, accel_mm_s_per_ms: float = 0.0) -> None:
+        # Speed and accel are for this move only; 0 leaves the service's default.
+        await self._call("set_mask_position", PldPositionRequest(
+            position=float(position), wait=True,
+            speed_mm_s=float(speed_mm_s), accel_mm_s_per_ms=float(accel_mm_s_per_ms)))
 
     async def move_rheed_gun(self, position: float) -> None:
         await self._call("set_rheed_gun_x", PldPositionRequest(position=float(position), wait=True))
@@ -365,7 +368,10 @@ class MiChamber:
         await self._run(pcmd.TargetRotationMode(mode=pcmd.TargetRotationModeType.AUTO),
                         pcmd.TargetTwistMode(mode=pcmd.TargetTwistModeType.AUTO))
 
-    async def move_mask(self, position: float) -> None:
+    async def move_mask(self, position: float, speed_mm_s: float = 0.0, accel_mm_s_per_ms: float = 0.0) -> None:
+        if speed_mm_s or accel_mm_s_per_ms:
+            raise RuntimeError("legacy MI mode moves the mask at PASCAL's speed: speed_mm_s and "
+                               "accel_mm_s_per_ms need the pld driver")
         await self._run(pcmd.SetMaskPosition(mask_id=pcmd.MaskID.M1, distance=position, sync=False, nowait=False))
 
     async def move_rheed_gun(self, position: float) -> None:

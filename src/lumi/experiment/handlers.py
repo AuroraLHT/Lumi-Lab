@@ -99,6 +99,7 @@ from lumi.contracts.payloads.experiment import (
     MfcQuery,
     MfcStatus,
     MotorFree,
+    MoveMask,
     MoveTo,
     PageInfo,
     PendingConfirmation,
@@ -889,9 +890,9 @@ class ExperimentHandler:
         await self.manager.stop_mi_logging()
         return Ack()
 
-    async def move_mask_to_position(self, req: MoveTo) -> Ack:
+    async def move_mask_to_position(self, req: MoveMask) -> Ack:
         async with self._moving("move_mask_to_position"):
-            await self.manager.move_mask_to_position(req.position)
+            await self.manager.move_mask_to_position(req.position, req.speed_mm_s, req.accel_mm_s_per_ms)
         return Ack()
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:

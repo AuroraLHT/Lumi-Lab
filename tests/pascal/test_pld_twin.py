@@ -487,3 +487,17 @@ async def test_rheed_focus_and_deflection_ramp_in_small_steps(handler):
     assert any(-60 < y < 0 for y in ys) and max(b - a for a, b in zip(ys, ys[1:])) <= 4.0 + 1e-6
     assert (await h.rheed_filament_off(Empty())).ok
     assert (await h.rheed_all_off(Empty())).ok
+
+
+async def test_mask_speed_per_move(handler):
+    # REA 2639871: speed/accel for SetMaskPosition only, for that move; capped by [motion].
+    h = handler
+    reply = await h.set_mask_position(PldPositionRequest(position=20.0, wait=True, speed_mm_s=2.0,
+                                                         accel_mm_s_per_ms=0.18))
+    assert reply.ok, reply.message
+    reply = await h.set_mask_position(PldPositionRequest(position=10.0, wait=True))
+    assert reply.ok, reply.message
+    reply = await h.set_mask_position(PldPositionRequest(position=20.0, wait=True, speed_mm_s=50.0))
+    assert not reply.ok and "mask_speed" in reply.message, reply.message
+    reply = await h.set_sample_position(PldPositionRequest(position=10.0, wait=True, speed_mm_s=1.0))
+    assert not reply.ok and "Mask1 only" in reply.message, reply.message

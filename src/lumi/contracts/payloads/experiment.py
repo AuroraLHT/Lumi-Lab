@@ -518,6 +518,12 @@ class MoveTo(BaseModel):
     position: float
 
 
+class MoveMask(MoveTo):
+    # For this move only; 0 = pld-service's default (50000 p/s, ACC/DEC 1000).
+    speed_mm_s: float = Field(0.0, ge=0, description="Mask speed for this move, mm/s (pld-service caps it at 8.33); 0 = default")
+    accel_mm_s_per_ms: float = Field(0.0, ge=0, description="Mask ACC/DEC for this move, mm/s per ms (cap 0.833); 0 = default")
+
+
 class SampleAngle(BaseModel):
     model_config = _STRICT
     # Degrees. For rotate_sample_to this is an absolute stage angle; for

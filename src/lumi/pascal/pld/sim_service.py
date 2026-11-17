@@ -303,13 +303,19 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         return self._motion(request, context, lambda: self.model.select_target(request.target), f"target {request.target}")
 
     def SetMaskPosition(self, request, context):
+        # The model moves the mask at one speed; a requested speed/accel is accepted and
+        # not modelled, as pld-service takes it for that move only.
         return self._motion(request, context, lambda: self.model.move_mask(1, request.position), f"Mask1 {request.position:g}")
 
     def SetSamplePosition(self, request, context):
+        if request.speed_mm_s or request.accel_mm_s_per_ms:
+            return self._no("sample move refused: speed and accel can be set for Mask1 only")
         return self._motion(request, context, lambda: self.model.set_sample_angle(request.position),
                             f"sample {request.position:g}")
 
     def SetRheedGunX(self, request, context):
+        if request.speed_mm_s or request.accel_mm_s_per_ms:
+            return self._no("RHEED gun X move refused: speed and accel can be set for Mask1 only")
         return self._motion(request, context, lambda: self.model.move_rheed_gun_x(request.position),
                             f"RHEED gun X {request.position:g}")
 

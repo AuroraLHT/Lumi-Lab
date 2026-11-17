@@ -2674,9 +2674,23 @@
             "name": "set_mask_position",
             "request": {
               "properties": {
+                "accel_mm_s_per_ms": {
+                  "default": 0.0,
+                  "description": "Mask1 only: ACC/DEC for this move, mm/s per ms; 0 = the service default",
+                  "minimum": 0,
+                  "title": "Accel Mm S Per Ms",
+                  "type": "number"
+                },
                 "position": {
                   "description": "mm for the mask and RHEED gun, degrees 0..360 for the sample",
                   "title": "Position",
+                  "type": "number"
+                },
+                "speed_mm_s": {
+                  "default": 0.0,
+                  "description": "Mask1 only: speed for this move, mm/s; 0 = the service default",
+                  "minimum": 0,
+                  "title": "Speed Mm S",
                   "type": "number"
                 },
                 "wait": {
@@ -2717,9 +2731,23 @@
             "name": "set_sample_position",
             "request": {
               "properties": {
+                "accel_mm_s_per_ms": {
+                  "default": 0.0,
+                  "description": "Mask1 only: ACC/DEC for this move, mm/s per ms; 0 = the service default",
+                  "minimum": 0,
+                  "title": "Accel Mm S Per Ms",
+                  "type": "number"
+                },
                 "position": {
                   "description": "mm for the mask and RHEED gun, degrees 0..360 for the sample",
                   "title": "Position",
+                  "type": "number"
+                },
+                "speed_mm_s": {
+                  "default": 0.0,
+                  "description": "Mask1 only: speed for this move, mm/s; 0 = the service default",
+                  "minimum": 0,
+                  "title": "Speed Mm S",
                   "type": "number"
                 },
                 "wait": {
@@ -2760,9 +2788,23 @@
             "name": "set_rheed_gun_x",
             "request": {
               "properties": {
+                "accel_mm_s_per_ms": {
+                  "default": 0.0,
+                  "description": "Mask1 only: ACC/DEC for this move, mm/s per ms; 0 = the service default",
+                  "minimum": 0,
+                  "title": "Accel Mm S Per Ms",
+                  "type": "number"
+                },
                 "position": {
                   "description": "mm for the mask and RHEED gun, degrees 0..360 for the sample",
                   "title": "Position",
+                  "type": "number"
+                },
+                "speed_mm_s": {
+                  "default": 0.0,
+                  "description": "Mask1 only: speed for this move, mm/s; 0 = the service default",
+                  "minimum": 0,
+                  "title": "Speed Mm S",
                   "type": "number"
                 },
                 "wait": {
@@ -16482,15 +16524,29 @@
             "name": "move_mask_to_position",
             "request": {
               "properties": {
+                "accel_mm_s_per_ms": {
+                  "default": 0.0,
+                  "description": "Mask ACC/DEC for this move, mm/s per ms (cap 0.833); 0 = default",
+                  "minimum": 0,
+                  "title": "Accel Mm S Per Ms",
+                  "type": "number"
+                },
                 "position": {
                   "title": "Position",
+                  "type": "number"
+                },
+                "speed_mm_s": {
+                  "default": 0.0,
+                  "description": "Mask speed for this move, mm/s (pld-service caps it at 8.33); 0 = default",
+                  "minimum": 0,
+                  "title": "Speed Mm S",
                   "type": "number"
                 }
               },
               "required": [
                 "position"
               ],
-              "title": "MoveTo",
+              "title": "MoveMask",
               "type": "object"
             },
             "request_codec": "json",

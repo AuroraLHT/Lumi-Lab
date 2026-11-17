@@ -23,6 +23,7 @@ from lumi.contracts.payloads.experiment import (
     BeginSetLaserPower,
     ConfirmLaserPower,
     ConfirmProceed,
+    MoveMask,
     MoveTo,
     PerformDeposition,
     FinishCurrentPixel,
@@ -248,7 +249,7 @@ async def test_get_current_pressure_falls_back_to_process_gauge(handler):
 
 async def test_move_mask_to_position_rejects_out_of_bounds(handler):
     with pytest.raises(ValueError):
-        await handler.move_mask_to_position(MoveTo(position=200))
+        await handler.move_mask_to_position(MoveMask(position=200))
 
 
 async def test_move_mask_to_position_refuses_while_the_holding_lock_is_released(handler):
@@ -257,7 +258,7 @@ async def test_move_mask_to_position_refuses_while_the_holding_lock_is_released(
     # waits for the lock to re-engage and raises once bounds.motor_ready_timeout is up.
     handler.sources["chamber_log"].values["Motor free"] = "TRUE"
     with pytest.raises(RuntimeError, match="holding lock released"):
-        await handler.move_mask_to_position(MoveTo(position=50))
+        await handler.move_mask_to_position(MoveMask(position=50))
 
 
 async def test_set_target_refuses_while_the_holding_lock_is_released(handler):
@@ -1263,7 +1264,7 @@ async def test_nothing_else_moves_while_a_deposition_runs(handler):
         num_pulse=10, laser_repetition_rate=5.0, target_id="A", is_dryrun=True,
     ))
     with pytest.raises(RuntimeError, match="perform_deposition is still moving"):
-        await handler.move_mask_to_position(MoveTo(position=50.0))
+        await handler.move_mask_to_position(MoveMask(position=50.0))
 
     for _ in range(200):
         event = await handler.next_update()
@@ -1272,7 +1273,7 @@ async def test_nothing_else_moves_while_a_deposition_runs(handler):
         await asyncio.sleep(0.01)
     assert handler._motion is None
     handler.manager.chamber = MiChamber(FakeMi(), handler.sources["chamber_log"])
-    await handler.move_mask_to_position(MoveTo(position=50.0))
+    await handler.move_mask_to_position(MoveMask(position=50.0))
 
 
 # --- pressure: by hand on the real chamber, direct in the simulator ----------------

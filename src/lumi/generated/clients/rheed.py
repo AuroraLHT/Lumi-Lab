@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 947a6784376e2298
+# contract_hash: 75a233b7fc85762b
 
 """Generated clients for the rheed node."""
 
