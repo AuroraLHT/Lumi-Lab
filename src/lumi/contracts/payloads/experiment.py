@@ -246,6 +246,14 @@ class ExperimentInfo(BaseModel):
     before_experiment_waittime: float | None = None
     after_experiment_waittime: float | None = None
     ramp_rate: float | None = None
+    pyrometer_emissivity: float | None = Field(
+        None, description="The back pyrometer's emissivity when this was recorded: `temperature` "
+                          "is only comparable between growths at the same emissivity (0.65 before "
+                          "experiment 23, 0.262 since)")
+    laser_source_energy: float | None = Field(
+        None, description="The excimer's energy set point, mJ, worked out from the day's laser test")
+    laser_meter_ratio: float | None = Field(
+        None, description="The day's laser test: meter energy / source energy")
     created_at: float | None = None
     created_at_iso: str | None = None
     state: str = "active"
@@ -271,6 +279,7 @@ class UpdateExperiment(BaseModel):
     target_material: str | None = None
     num_pulse: int | None = None
     ramp_rate: float | None = None
+    pyrometer_emissivity: float | None = Field(None, gt=0, le=1)
 
 
 class RetireExperiment(BaseModel):
@@ -633,8 +642,10 @@ class CoolDown(BaseModel):
 
 class PerformPreablation(BaseModel):
     target_id: str
-    num_pulse: int = 1000
-    frequency: float = 10.0
+    num_pulse: int | None = Field(
+        None, ge=1, description="Leave out to use the amount set for this target's material "
+                                "(set_target_preablation); give it only when the person asked for a different amount")
+    frequency: float | None = Field(None, gt=0, description="Hz; left out, the target's set rate")
     is_dryrun: bool = False
     move_mask_to_block_position: bool = True
 
@@ -704,6 +715,61 @@ class ConfirmLaserPower(BaseModel):
 
 class LaserPowerResult(BaseModel):
     measured_power: float = Field(description="Pulse energy read off the meter, mJ")
+
+
+# --- the daily laser test -------------------------------------------------------
+
+
+class ConfirmLaserTest(BaseModel):
+    meter_mj: float = Field(gt=0, description="The energy meter's average over the test, mJ")
+    source_mj: float | None = Field(
+        None, gt=0, description="The laser's own energy reading, mJ. Leave out: Lumi takes the "
+                                "excimer's average while it fired. Give it when the person fired and "
+                                "read the laser's display")
+
+
+class LaserTest(BaseModel):
+    test_id: int
+    tested_at: float
+    hv_kv: float
+    pulses: int | None = None
+    rate_hz: float | None = None
+    fired_by: str = Field(description="lumi, or person (fired by hand)")
+    source_mj: float
+    meter_mj: float
+    ratio: float = Field(description="meter_mj / source_mj: a deposition sets the excimer to the "
+                                     "wanted meter energy divided by this")
+    actor: str | None = None
+    today: bool = Field(False, description="Done today, so begin_set_laser_power can use it")
+
+
+class ListLaserTests(BaseModel):
+    limit: int = Field(30, ge=1, le=500)
+
+
+class LaserTestList(BaseModel):
+    tests: list[LaserTest] = Field(default_factory=list, description="Newest first")
+
+
+# --- per-target pre-ablation ------------------------------------------------------
+
+
+class SetTargetPreablation(BaseModel):
+    target_material: str = Field(min_length=1, description="As get_target_name_by_id names it")
+    num_pulse: int = Field(ge=0, description="Pulses before each deposition; 0 = never pre-ablate it")
+    frequency: float = Field(10.0, gt=0, description="Hz")
+
+
+class TargetPreablation(BaseModel):
+    target_material: str
+    num_pulse: int
+    frequency: float
+    set_by: str | None = None
+    set_at: float | None = None
+
+
+class TargetPreablationList(BaseModel):
+    targets: list[TargetPreablation] = Field(default_factory=list)
 
 
 # --- excimer settings ------------------------------------------------------------

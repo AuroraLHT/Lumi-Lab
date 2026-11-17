@@ -9,8 +9,11 @@ aligned by `auto_align_center_mask` rather than by a person.
 1. Check the lab is alive (SKILL.md §3). **Snapshot: chamber `start`.**
 2. `current_substrate`: a substrate with a position left. If none, `register_substrate`,
    or `resume_substrate` if it is already in the database. Never register one twice:
-   resuming keeps track of which positions are already grown.
-3. Align the mask (below).
+   resuming keeps track of which positions are already grown. A new substrate needs a
+   name first: ask the person unless the project's convention is known, and pass it as
+   `substrate_name` (`reference/records.md`).
+3. Align the mask (below). Laser test and pre-ablation amounts as in
+   `film-deposition.md` steps 4–5, if not done today / not set.
 
 ## Each pixel
 
@@ -18,8 +21,8 @@ aligned by `auto_align_center_mask` rather than by a person.
 5. Align the mask (below), then `to_current_pixel`: mask and RHEED to the position.
 6. `set_pressure` (the person sets it on the real chamber, then `confirm`); read it back
    and wait until it is within tolerance.
-7. `begin_set_laser_power` → the person reads the meter → `confirm_laser_power`. (Skipped
-   by the driver if the laser power is already set.)
+7. `begin_set_laser_power` with the energy at the meter: set from today's laser test, no
+   meter reading (skipped by the driver if already set).
 8. Ask the person (first pixel only): heat in gas or in vacuum? `initiate_heating_laser`
    if it is off, then `to_temperature` at the substrate's ramp rate with `wait: false`
    (SKILL.md §3). Poll the temperature until it is within tolerance. **Snapshot: chamber `heated`.** If the temperature
@@ -30,13 +33,13 @@ aligned by `auto_align_center_mask` rather than by a person.
    `rheed.camera.image`: a good pattern for this position? If not, stop and say so.
    (Skipped while the RHEED is down for maintenance.)
 10. `perform_preablation` with `move_mask_to_block_position: false` (the mask is already
-    over the position). Wait.
+    over the position), `num_pulse` left out (the target's set amount). Wait.
 11. `start_storage`; it must return `ok`. With the RHEED down, `save_frame`, `save_ai`
     and `save_integration` all `false`.
 12. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
     chamber + RHEED `depo_end`.** Stop on anything in SKILL.md §4.
-13. `end_storage`, then `finish_experiment_record` with the measured pressure and laser
-    power, `is_pixel: true` and the `pixel_index` from step 4.
+13. `end_storage`, then `finish_experiment_record` with the measured pressure and the
+    laser energy set in step 7, `is_pixel: true` and the `pixel_index` from step 4.
 14. `finish_current_pixel`, only if the position was really grown on. A mistaken one is
     undone with `reopen_position`.
 

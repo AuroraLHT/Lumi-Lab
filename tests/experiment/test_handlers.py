@@ -864,6 +864,32 @@ async def test_migration_adds_state_to_a_database_without_it(tmp_path):
     await db.close()
 
 
+async def test_migration_fills_in_the_pyrometer_emissivity_of_old_growths(tmp_path):
+    """Growths from before the column get the emissivity the pyrometer ran at then:
+    0.65 before experiment 23, 0.262 from it. A later restart leaves them alone."""
+    db = GrowthDB(str(tmp_path / "old.db"))
+    await db.connect()
+    await db.conn.execute(
+        """CREATE TABLE experiment (
+            experiment_id INTEGER PRIMARY KEY, experiment_uuid VARCHAR(100), substrate_id INTEGER,
+            temperature FLOAT, experiment_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+    )
+    await db.conn.executemany(
+        "INSERT INTO experiment (experiment_id, temperature) VALUES (?, 650)", [(22,), (23,)])
+    await db.conn.commit()
+
+    await db.create_database()
+    rows = {r["experiment_id"]: r["pyrometer_emissivity"] for r in await db.list_rows("experiment")}
+    assert rows == {22: 0.65, 23: 0.262}
+
+    await db.update_row("experiment", 22, pyrometer_emissivity=0.6)  # corrected by hand
+    await db.create_database()
+    rows = {r["experiment_id"]: r["pyrometer_emissivity"] for r in await db.list_rows("experiment")}
+    assert rows == {22: 0.6, 23: 0.262}
+    await db.close()
+
+
 # --- growth.db as data: the CRUD surface a management UI reads ------------------
 
 

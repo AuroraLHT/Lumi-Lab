@@ -342,7 +342,10 @@ class StorageHandler:
             "integration": req.save_integration,
             "detection": detection,
             "meta": meta,
-            "attrs": {"rheed_energy_kev": float(req.rheed_energy_kev or default_energy_kev())},
+            "attrs": {"rheed_energy_kev": float(req.rheed_energy_kev or default_energy_kev()),
+                      # What every temperature in this file was read at (lumi.experiment.pyrometer).
+                      **({"pyrometer_emissivity": float(emissivity)}
+                         if (emissivity := (req.context or {}).get("pyrometer_emissivity")) else {})},
         }
 
     # --- writing -------------------------------------------------------------

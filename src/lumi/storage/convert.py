@@ -1,9 +1,13 @@
 """Rewrite a v1 recording as v2, and check the copy against the original.
 
     python -m lumi.storage.convert OLD.hdf5 [NEW.hdf5] [--no-verify] [--overwrite]
+                                   [--emissivity E]
 
 The original is only read, never changed or removed; NEW defaults to OLD's name with
-`.v2` before the suffix. Verification reads both files back through
+`.v2` before the suffix. v1 did not record the pyrometer's emissivity, without which its
+temperatures cannot be compared with today's: the copy gets it as the root attribute
+`pyrometer_emissivity`, from --emissivity or else from when the recording started
+(lumi.experiment.pyrometer). Verification reads both files back through
 lumi.storage.reader and compares every frame, log cell, integration row, detection
 box, mask and pattern; any difference is an error and the new file is deleted.
 """
@@ -19,6 +23,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 
+from lumi.experiment.pyrometer import emissivity_at
 from lumi.storage.reader import V1, V2
 from lumi.storage.v2 import DetectionSchema, LogSchema, RecordingWriter
 
@@ -34,7 +39,7 @@ def default_target(src: Path) -> Path:
 
 
 def convert_v1(src: str | Path, dst: str | Path | None = None, *, verify: bool = True,
-               overwrite: bool = False, progress=None) -> Path:
+               overwrite: bool = False, progress=None, emissivity: float | None = None) -> Path:
     src = Path(src)
     dst = Path(dst) if dst is not None else default_target(src)
     if src.resolve() == dst.resolve():
@@ -44,7 +49,14 @@ def convert_v1(src: str | Path, dst: str | Path | None = None, *, verify: bool =
         b = V1(f)
         if f.attrs.get("format") is not None:
             raise ValueError(f"{src} is not a v1 recording (format={f.attrs.get('format')!r})")
-        writer = RecordingWriter(dst, overwrite=overwrite, **_layout(b, src))
+        layout = _layout(b, src)
+        if "pyrometer_emissivity" not in layout["attrs"]:
+            started = _started(b)
+            if emissivity is None and started is None:
+                raise ValueError(f"{src} has no frame or log times to date it: pass the emissivity")
+            layout["attrs"]["pyrometer_emissivity"] = (
+                float(emissivity) if emissivity is not None else emissivity_at(started))
+        writer = RecordingWriter(dst, overwrite=overwrite, **layout)
         try:
             _copy(b, writer, progress)
         except BaseException:
@@ -85,6 +97,14 @@ def _layout(b: V1, src: Path) -> dict:
                                     "converted": time.time()}},
         "attrs": {k: v for k, v in attrs.items() if isinstance(v, (int, float, str, bool))},
     }
+
+
+def _started(b: V1) -> float | None:
+    """When the recording started: its first frame or log row, epoch seconds."""
+    times = np.concatenate([b.frame_times() if b.has_frames() else np.empty(0),
+                            b.log_times() if b.has_log() else np.empty(0)])
+    times = times[np.isfinite(times) & (times > 0)]
+    return float(times.min()) if times.size else None
 
 
 def _copy(b: V1, w: RecordingWriter, progress) -> None:
@@ -225,6 +245,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("dst", type=Path, nargs="?")
     parser.add_argument("--no-verify", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--emissivity", type=float, help="the back pyrometer's emissivity during the "
+                        "recording; default: from when it started (0.65 before 2026-10-22, 0.262 since)")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     last = [0.0]
@@ -236,7 +258,7 @@ def main(argv: list[str] | None = None) -> int:
 
     t0 = time.monotonic()
     out = convert_v1(args.src, args.dst, verify=not args.no_verify, overwrite=args.overwrite,
-                     progress=progress)
+                     progress=progress, emissivity=args.emissivity)
     size_a, size_b = args.src.stat().st_size, out.stat().st_size
     print(f"{out}: {size_b / 1e9:.2f} GB from {size_a / 1e9:.2f} GB "
           f"({100 * (1 - size_b / size_a):.0f}% smaller), {time.monotonic() - t0:.0f} s"

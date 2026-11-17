@@ -116,10 +116,16 @@ What applies to both:
   `get_current_target` does the conversion and names what is loaded there.
 - **[hard]** Never deposit without `start_storage` returning `ok`: the growth would leave
   no record.
-- **[hard]** `finish_experiment_record` gets the **measured** pressure and laser power,
-  not the requested ones.
-- **[thumb]** Pre-ablate before each deposition: 2000 pulses at 10 Hz, or 1000 pulses at
-  5 Hz for strongly absorbing electrode materials (LSMO, SRO, pyrochlores, ITO, ...).
+- **[hard]** `finish_experiment_record` gets the **measured** pressure, not the requested
+  one, and the laser energy `begin_set_laser_power` set at the meter.
+- **[hard]** Laser energy: once a day, before the first deposition, the laser test
+  (`begin_laser_test`, `reference/laser.md`). `begin_set_laser_power` then sets the
+  excimer from it, with no meter reading; it is refused when there was no test today.
+- **[hard]** Pre-ablation is set per target material (`list_target_preablation`). For a
+  material with none set, ask the person how many pulses and at what rate (0 = never:
+  some targets, e.g. HZO, are damaged by extra pulses) and `set_target_preablation`.
+  Then leave `num_pulse` out of `perform_preablation`; give it only when the person asks
+  for a different amount. Never choose an amount yourself.
 - **[thumb]** Anneal and cool down in O2 for oxides.
 
 ### Snapshots
@@ -174,6 +180,11 @@ Stop and ask the person when any of these happen:
 - `procedures/film-deposition.md`, `procedures/pixel-deposition.md`: the growths.
 - `reference/materials.md`: the laser settings and substrates.
 - `reference/rheed.md`: reading patterns and oscillations; using the simulator.
+- `procedures/rheed-azimuth-alignment.md`: turning the sample to a crystal direction.
+- `reference/laser.md`: the daily laser test and how the energy is set.
+- `reference/temperature.md`: what the pyrometer reads, its emissivity history,
+  comparing temperatures across it. `procedures/pyrometer-calibration.md`: recalibrating
+  it (a person does it).
 - `reference/records.md`: keeping the growth database honest.
 - `reference/history.md`: answering questions from past growths.
 - `reference/equipment.md`: known chamber quirks and how they show up.

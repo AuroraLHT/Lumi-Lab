@@ -14,6 +14,12 @@
 
 ## Which data to trust
 
+- **[hard]** Temperatures are only comparable at the same pyrometer emissivity. Each
+  growth carries `pyrometer_emissivity` (0.65 before experiment 23, 0.262 since); the
+  old setting reads far low (old 650 °C ≈ 794 °C on today's scale). Never compare or
+  reuse a temperature across the change without saying so and converting it
+  (`reference/temperature.md`).
+
 - Retired rows are hidden from listings because someone marked them wrong. Do not bring
   them back into an answer.
 - A dry-run growth is journaled as steps but deposited nothing; the step says

@@ -21,7 +21,11 @@ from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.experiment import (
     BeginSetLaserPower,
     CheckMiMode,
+    ConfirmLaserTest,
+    ListLaserTests,
     PerformDeposition,
+    PerformPreablation,
+    SetTargetPreablation,
     SampleAngle,
     SetLaserEnergy,
     SetLaserHv,
@@ -186,11 +190,105 @@ async def test_set_target_turns_on_auto_spin_and_twist(fake):
 async def test_clear_is_sent_by_name(fake):
     # pcmd.Targets.Clear str()s as "Targets.Clear"; the service wants "Clear".
     handler, client = fake
-    await handler.begin_set_laser_power(BeginSetLaserPower(laser_power=100.0))
-    assert client.calls == [
+    client.state.excimer = PldExcimer(control=True)
+    await handler.begin_laser_test(Empty())
+    assert client.calls[:2] == [
         ("set_sample_shutter", {"in_front": True}),
         ("select_target", {"target": "Clear", "wait": True}),
     ]
+
+
+# --- the daily laser test -------------------------------------------------------------
+
+
+async def test_laser_power_needs_a_laser_test_today(fake):
+    handler, client = fake
+    with pytest.raises(RuntimeError, match="no laser test today"):
+        await handler.begin_set_laser_power(BeginSetLaserPower(laser_power=100.0))
+    assert client.calls == []
+
+
+async def test_laser_test_then_energy_mode_at_the_meter_energy_over_the_ratio(fake):
+    handler, client = fake
+    client.state.excimer = PldExcimer(control=True, energy=200.0)
+    await handler.begin_laser_test(Empty())
+    assert client.calls[2:] == [("set_laser_mode", {"mode": "hv"}), ("set_laser_hv", {"kv": 21.0})]
+    assert handler._pending.kind == "laser_test"
+
+    client.calls.clear()
+    await handler.fire_laser_test(Empty())
+    result = await wait_task(handler)
+    assert result["ok"] and result["source_mj"] == 200.0
+    assert client.calls == [("fire_laser", {"pulses": 100, "rate_hz": 1.0, "wait": True})]
+
+    test = await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0))
+    assert (test.source_mj, test.meter_mj, test.ratio, test.fired_by, test.today) == (200.0, 150.0, 0.75, "lumi", True)
+    assert handler._pending is None
+
+    client.calls.clear()
+    await handler.begin_set_laser_power(BeginSetLaserPower(laser_power=120.0))
+    assert client.calls == [("set_laser_mode", {"mode": "energy"}), ("set_laser_energy", {"mj": 160.0})]
+    assert handler._pending is None  # no one reads the meter
+    client.calls.clear()
+    await handler.begin_set_laser_power(BeginSetLaserPower(laser_power=120.0))
+    assert client.calls == []  # already set from today's test
+
+    # The deposition log keeps what the beam was set from, and the pyrometer's emissivity.
+    client.state.heater.emissivity = 0.262
+    exp_id = await handler.manager.finish_experiment_record(
+        substrate_id=1, project_id=1, experiment_uuid="u", temperature=650.0, pressure=0.1,
+        laser_power=120.0, laser_repetition_rate=5.0, target_material="SRO", num_pulse=100)
+    row = await handler.manager.growth_db.list_rows("experiment")
+    info = handler._experiment_info(row[0])
+    assert info.experiment_id == exp_id
+    assert (info.laser_source_energy, info.laser_meter_ratio, info.pyrometer_emissivity) == (160.0, 0.75, 0.262)
+
+
+async def test_laser_test_fired_by_hand_takes_the_lasers_reading(fake):
+    handler, client = fake
+    client.state.excimer = PldExcimer(control=True)
+    await handler.begin_laser_test(Empty())
+    with pytest.raises(ValueError, match="pass source_mj"):  # the laser reported nothing
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0))
+    test = await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0, source_mj=300.0))
+    assert (test.ratio, test.fired_by, test.pulses) == (0.5, "person", None)
+    listed = (await handler.list_laser_tests(ListLaserTests())).tests
+    assert [(t.test_id, t.today) for t in listed] == [(test.test_id, True)]
+
+
+async def test_fire_laser_test_needs_the_test_open(fake):
+    handler, client = fake
+    with pytest.raises(Exception, match="laser_test"):
+        await handler.fire_laser_test(Empty())
+    assert client.calls == []
+
+
+# --- pre-ablation per target -------------------------------------------------------------
+
+
+async def test_preablation_uses_the_amount_set_for_the_target(fake):
+    handler, client = fake  # slot A holds SRO
+    with pytest.raises(ValueError, match="ask the person"):
+        await handler.perform_preablation(PerformPreablation(target_id="A"))
+    assert client.calls == []
+
+    await handler.set_target_preablation(SetTargetPreablation(target_material="SRO", num_pulse=500, frequency=5.0))
+    await handler.perform_preablation(PerformPreablation(target_id="A"))
+    assert (await wait_task(handler))["ok"]
+    assert ("fire_laser", {"pulses": 500, "rate_hz": 5.0, "wait": True}) in client.calls
+
+    client.calls.clear()  # the person asked for a different amount this time
+    await handler.perform_preablation(PerformPreablation(target_id="A", num_pulse=50))
+    assert (await wait_task(handler))["ok"]
+    assert ("fire_laser", {"pulses": 50, "rate_hz": 5.0, "wait": True}) in client.calls
+
+    client.calls.clear()
+    await handler.set_target_preablation(SetTargetPreablation(target_material="SRO", num_pulse=0))
+    with pytest.raises(ValueError, match="no pre-ablation"):
+        await handler.perform_preablation(PerformPreablation(target_id="A"))
+    assert client.calls == []
+    listed = (await handler.list_target_preablation(Empty())).targets
+    assert [(t.target_material, t.num_pulse) for t in listed] == [("SRO", 0)]
 
 
 async def test_rotation_is_absolute_and_wraps(fake):

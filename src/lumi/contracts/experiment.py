@@ -22,6 +22,13 @@ from __future__ import annotations
 
 from .payloads.common import Ack, Empty
 from .payloads.experiment import (
+    ConfirmLaserTest,
+    LaserTest,
+    LaserTestList,
+    ListLaserTests,
+    SetTargetPreablation,
+    TargetPreablation,
+    TargetPreablationList,
     AddMeasurement,
     Anneal,
     AttachMeasurementFile,
@@ -423,7 +430,13 @@ DRIVER = Capability(
                "cold one it is a no-op, since a room-temperature growth runs with the "
                "diode off.", journal=True),
         Op("cool_down", CoolDown, TaskAck, journal=True),
-        Op("perform_preablation", PerformPreablation, TaskAck, journal=True),
+        Op("perform_preablation", PerformPreablation, TaskAck,
+           doc="Pre-ablate a target behind the mask before depositing from it. Leave "
+               "num_pulse and frequency out: the amount set for the target's material "
+               "(set_target_preablation) is used, and it is refused when none is set yet "
+               "(ask the person, then set it) or the target is set to 0 (never "
+               "pre-ablate it). Give num_pulse only when the person asked for a "
+               "different amount this time.", journal=True),
         Op("perform_deposition", PerformDeposition, TaskAck, journal=True),
         Op("anneal", Anneal, TaskAck, journal=True),
         Op("stop_deposition", StopDeposition, StopDepositionResult,
@@ -450,17 +463,52 @@ DRIVER = Capability(
 
         # --- gated: laser pulse energy (unread physical meter)
         Op("begin_set_laser_power", BeginSetLaserPower, Ack,
-           doc="Start a laser pulse energy check, `laser_power` in mJ (the name is "
-               "historical): closes the sample shutter and turns the "
-               "carousel to Clear, so the beam reaches the meter at the exit port, then "
-               "raises a `laser_power` pending confirmation for the person reading the "
-               "meter. Call nothing else until confirm_laser_power: any op that selects "
-               "a target (set_target, perform_preablation, perform_deposition) moves "
-               "the carousel off Clear and spoils the reading. Skipped, with no "
-               "confirmation, when this energy was already confirmed (force=true redoes it).",
+           doc="Set the laser pulse energy at the meter, `laser_power` in mJ (the name is "
+               "historical). Under pld-service no one reads the meter: the excimer runs in "
+               "energy mode at laser_power divided by today's laser test ratio (meter / "
+               "source), and no confirmation is raised. Refused when there was no laser "
+               "test today: run begin_laser_test first. Skipped when this energy is "
+               "already set from today's test (force=true sets it again). "
+               "Under --use-legacy-mi-mode: closes the sample shutter, turns the carousel "
+               "to Clear and raises a `laser_power` confirmation for the person reading "
+               "the meter; call nothing else until confirm_laser_power.",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("confirm_laser_power", ConfirmLaserPower, LaserPowerResult,
-           doc="Answer begin_set_laser_power with the pulse energy read off the meter, mJ.",
+           doc="Answer begin_set_laser_power with the pulse energy read off the meter, mJ "
+               "(legacy MI mode only).",
+           journal=True),
+        # --- gated: the daily laser test (pld-service only)
+        Op("begin_laser_test", Empty, Ack,
+           doc="Start the daily laser test, once a day before the first deposition: "
+               "closes the sample shutter, turns the carousel to Clear (the energy meter "
+               "is at the exit port) and runs the excimer in HV mode at 21 kV. Raises a "
+               "`laser_test` pending confirmation: the person either says yes, and you "
+               "call fire_laser_test (100 pulses at 1 Hz), or fires the laser "
+               "themselves. Then confirm_laser_test with the meter's average. Call "
+               "nothing that moves the carousel in between.",
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("fire_laser_test", Empty, TaskAck,
+           doc="Fire the laser test's 100 pulses at 1 Hz into the meter, after the person "
+               "said yes; about 100 s. A task: its result carries source_mj, the "
+               "excimer's average energy while it fired. stop_deposition stops it.",
+           journal=True),
+        Op("confirm_laser_test", ConfirmLaserTest, LaserTest,
+           doc="Finish the laser test with the meter's average energy, mJ. The source "
+               "energy is the excimer's own average while Lumi fired; if the person "
+               "fired, it is the laser's last reading, or pass source_mj. Records the "
+               "test (meter / source ratio) in growth.db and the recording; "
+               "begin_set_laser_power uses it for the rest of the day.",
+           journal=True),
+        Op("list_laser_tests", ListLaserTests, LaserTestList,
+           doc="The laser tests, newest first; `today` marks one begin_set_laser_power can use."),
+        # --- per-target pre-ablation
+        Op("list_target_preablation", Empty, TargetPreablationList,
+           doc="The pre-ablation amount set for each target material. A material not "
+               "listed has none yet: ask the person before pre-ablating it."),
+        Op("set_target_preablation", SetTargetPreablation, TargetPreablation,
+           doc="Set how much to pre-ablate a target material before each deposition, as "
+               "the person said (num_pulse 0 = never pre-ablate it). Kept until set "
+               "again; perform_preablation uses it.",
            journal=True),
         # --- the excimer's own settings (pld-service only)
         Op("set_laser_energy", SetLaserEnergy, LaserSettings,

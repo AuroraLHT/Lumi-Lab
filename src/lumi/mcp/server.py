@@ -443,7 +443,20 @@ read the temperature or pressure back rather than trusting that it cleared. Ops 
 a human to act or read something physical (laser pulse energy, mask alignment, RHEED gain, a
 per-pixel visual check) return with pending_confirmation set; resolve it with the matching
 confirm_*/resolve_* tool (or the generic `confirm` for a plain proceed-gate) before
-continuing. rheed.camera.image and chamber.camera.image show the live pictures;
+continuing.
+Laser pulse energy: once a day, before the first deposition, run the laser test
+(begin_laser_test: the excimer at 21 kV into the meter at Clear; the person says yes and
+you fire_laser_test, or they fire it themselves; then confirm_laser_test with the meter's
+average). begin_set_laser_power then sets the excimer from that day's meter/source ratio
+with no meter reading; it is refused when there was no test today.
+Pre-ablation is set per target material: list_target_preablation. For a material with
+none set, ask the person how many pulses (0 = never) and set_target_preablation before
+perform_preablation; then leave num_pulse out and the set amount is used. Give num_pulse
+only when the person asks for a different amount.
+Temperatures are the back pyrometer's, and only comparable at the same emissivity:
+each growth records it (pyrometer_emissivity; 0.65 before experiment 23, 0.262 since, when
+the old scale read far low -- 650 then was about 794 now). Say so when comparing across it.
+rheed.camera.image and chamber.camera.image show the live pictures;
 rheed.integrator.cache is the live intensity of each box the operator drew (the growth
 oscillations); chamber.log.log the latest chamber readings. chamber.pld.* is the chamber
 driver itself (pld-service): chamber_state for everything it reads (read_only=true means

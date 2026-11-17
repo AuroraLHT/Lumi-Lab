@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from lumi.experiment.pyrometer import emissivity_for_experiment
+
 import aiosqlite
 
 #: How SQLite's CURRENT_TIMESTAMP writes a time: UTC, second resolution, and -- the
@@ -167,6 +169,9 @@ class GrowthDB:
                 ramp_rate FLOAT,
                 experiment_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 state VARCHAR(20) NOT NULL DEFAULT 'active',
+                pyrometer_emissivity FLOAT,
+                laser_source_energy FLOAT,
+                laser_meter_ratio FLOAT,
                 FOREIGN KEY (substrate_id) REFERENCES substrate(substrate_id),
                 FOREIGN KEY (project_id) REFERENCES project(project_id)
             );
@@ -319,6 +324,33 @@ class GrowthDB:
                 FOREIGN KEY (sample_id) REFERENCES sample(sample_id)
             );
 
+            -- The daily laser test: the excimer at a fixed HV into the meter at Clear.
+            -- meter_mj / source_mj is what reaches the meter per mJ the laser says it
+            -- puts out; a deposition sets the excimer's energy to the wanted meter
+            -- energy divided by it. One row per test, never edited.
+            CREATE TABLE IF NOT EXISTS laser_test (
+                test_id INTEGER PRIMARY KEY,
+                tested_at REAL NOT NULL,
+                hv_kv REAL NOT NULL,
+                pulses INTEGER,
+                rate_hz REAL,
+                fired_by VARCHAR(20),
+                source_mj REAL NOT NULL,
+                meter_mj REAL NOT NULL,
+                ratio REAL NOT NULL,
+                actor TEXT
+            );
+
+            -- How much to pre-ablate each target, by material (targets move between
+            -- slots). Set once, after asking the person; num_pulse 0 = never.
+            CREATE TABLE IF NOT EXISTS target_preablation (
+                target_material VARCHAR(100) PRIMARY KEY,
+                num_pulse INTEGER NOT NULL,
+                frequency REAL NOT NULL,
+                set_by TEXT,
+                set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
             CREATE INDEX IF NOT EXISTS idx_meas_file ON measurement_file(measurement_id);
             CREATE INDEX IF NOT EXISTS idx_snapshot_sample ON snapshot(sample_id, taken_at);
             CREATE INDEX IF NOT EXISTS idx_snapshot_session ON snapshot(session_id, taken_at);
@@ -350,7 +382,9 @@ class GrowthDB:
         "substrate": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
                       "substrate_created_at": "TIMESTAMP"},
         "project": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'"},
-        "experiment": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'"},
+        "experiment": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
+                       "pyrometer_emissivity": "FLOAT", "laser_source_energy": "FLOAT",
+                       "laser_meter_ratio": "FLOAT"},
         "record": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
                    "record_created_at": "TIMESTAMP"},
         "measurement": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
@@ -375,7 +409,21 @@ class GrowthDB:
                     continue
                 self.logger.info("migrating %s: adding column %s", table, name)
                 await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
+                if (table, name) == ("experiment", "pyrometer_emissivity"):
+                    await self._backfill_emissivity()
         await self.conn.commit()
+
+    async def _backfill_emissivity(self) -> None:
+        """Growths recorded before the column existed get the emissivity the
+        pyrometer ran at then (lumi.experiment.pyrometer): their temperatures mean
+        nothing without it. Only on the migration that adds the column, so a value
+        corrected by hand afterwards stays."""
+        async with self.conn.execute("SELECT experiment_id FROM experiment") as cursor:
+            ids = [row[0] for row in await cursor.fetchall()]
+        await self.conn.executemany(
+            "UPDATE experiment SET pyrometer_emissivity = ? WHERE experiment_id = ?",
+            [(emissivity_for_experiment(i), i) for i in ids])
+        self.logger.info("migrating experiment: filled pyrometer_emissivity for %d growths", len(ids))
 
     # --- generic CRUD ----------------------------------------------------------
     # One filtered/paged reader, one updater and one soft-remover, shared by every
@@ -418,7 +466,7 @@ class GrowthDB:
             "project_id", "temperature", "pressure", "laser_power", "laser_pulse_rate",
             "target_material", "num_pulse", "do_preablation", "preablation_pulse",
             "preablation_frequency", "before_experiment_waittime",
-            "after_experiment_waittime", "ramp_rate", "state",
+            "after_experiment_waittime", "ramp_rate", "state", "pyrometer_emissivity",
         }),
         "record": frozenset({"record_name", "experiment_id", "state"}),
         "sample": frozenset({"sample_name", "notes", "state", "position_mm"}),
@@ -705,14 +753,19 @@ class GrowthDB:
         laser_pulse_rate: float | None = None,
         target_material: str | None = None,
         num_pulse: int | None = None,
+        pyrometer_emissivity: float | None = None,
+        laser_source_energy: float | None = None,
+        laser_meter_ratio: float | None = None,
     ) -> int:
         async with self.conn.execute(
             """INSERT INTO experiment
             (substrate_id, is_pixel, pixel_location, experiment_uuid, project_id,
-             temperature, pressure, laser_power, laser_pulse_rate, target_material, num_pulse)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             temperature, pressure, laser_power, laser_pulse_rate, target_material, num_pulse,
+             pyrometer_emissivity, laser_source_energy, laser_meter_ratio)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (substrate_id, is_pixel, pixel_location, experiment_uuid, project_id,
-             temperature, pressure, laser_power, laser_pulse_rate, target_material, num_pulse),
+             temperature, pressure, laser_power, laser_pulse_rate, target_material, num_pulse,
+             pyrometer_emissivity, laser_source_energy, laser_meter_ratio),
         ) as cursor:
             await self.conn.commit()
             return cursor.lastrowid
@@ -919,6 +972,58 @@ class GrowthDB:
             (name, value, source),
         )
         await self.conn.commit()
+
+    # --- the daily laser test --------------------------------------------------
+
+    async def add_laser_test(self, *, tested_at: float, hv_kv: float, pulses: int | None,
+                             rate_hz: float | None, fired_by: str, source_mj: float,
+                             meter_mj: float, actor: str | None = None) -> dict:
+        async with self.conn.execute(
+            """INSERT INTO laser_test (tested_at, hv_kv, pulses, rate_hz, fired_by, source_mj,
+            meter_mj, ratio, actor) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (tested_at, hv_kv, pulses, rate_hz, fired_by, source_mj, meter_mj,
+             meter_mj / source_mj, actor),
+        ) as cursor:
+            test_id = cursor.lastrowid
+        await self.conn.commit()
+        return await self.get_laser_test(test_id)
+
+    async def get_laser_test(self, test_id: int) -> dict | None:
+        async with self.conn.execute("SELECT * FROM laser_test WHERE test_id = ?", (test_id,)) as cursor:
+            row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def list_laser_tests(self, limit: int = 30) -> list[dict]:
+        async with self.conn.execute(
+            "SELECT * FROM laser_test ORDER BY tested_at DESC, test_id DESC LIMIT ?", (limit,)
+        ) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+    # --- per-target pre-ablation --------------------------------------------------
+
+    async def get_target_preablation(self, target_material: str) -> dict | None:
+        async with self.conn.execute(
+            "SELECT * FROM target_preablation WHERE target_material = ?", (target_material,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def list_target_preablation(self) -> list[dict]:
+        async with self.conn.execute(
+            "SELECT * FROM target_preablation ORDER BY target_material") as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+    async def set_target_preablation(self, target_material: str, num_pulse: int, frequency: float,
+                                     set_by: str | None = None) -> dict:
+        await self.conn.execute(
+            """INSERT INTO target_preablation (target_material, num_pulse, frequency, set_by)
+            VALUES (?, ?, ?, ?) ON CONFLICT(target_material) DO UPDATE SET
+                num_pulse = excluded.num_pulse, frequency = excluded.frequency,
+                set_by = excluded.set_by, set_at = CURRENT_TIMESTAMP""",
+            (target_material, num_pulse, frequency, set_by),
+        )
+        await self.conn.commit()
+        return await self.get_target_preablation(target_material)
 
     # --- chamber session + step journal: what happened -------------------------
 

@@ -11830,6 +11830,19 @@
                       "title": "Is Pixel",
                       "type": "boolean"
                     },
+                    "laser_meter_ratio": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The day's laser test: meter energy / source energy",
+                      "title": "Laser Meter Ratio"
+                    },
                     "laser_power": {
                       "anyOf": [
                         {
@@ -11854,6 +11867,19 @@
                       ],
                       "default": null,
                       "title": "Laser Pulse Rate"
+                    },
+                    "laser_source_energy": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The excimer's energy set point, mJ, worked out from the day's laser test",
+                      "title": "Laser Source Energy"
                     },
                     "num_pulse": {
                       "anyOf": [
@@ -11926,6 +11952,19 @@
                       ],
                       "default": null,
                       "title": "Project Id"
+                    },
+                    "pyrometer_emissivity": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The back pyrometer's emissivity when this was recorded: `temperature` is only comparable between growths at the same emissivity (0.65 before experiment 23, 0.262 since)",
+                      "title": "Pyrometer Emissivity"
                     },
                     "ramp_rate": {
                       "anyOf": [
@@ -12132,6 +12171,19 @@
                   "title": "Is Pixel",
                   "type": "boolean"
                 },
+                "laser_meter_ratio": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The day's laser test: meter energy / source energy",
+                  "title": "Laser Meter Ratio"
+                },
                 "laser_power": {
                   "anyOf": [
                     {
@@ -12156,6 +12208,19 @@
                   ],
                   "default": null,
                   "title": "Laser Pulse Rate"
+                },
+                "laser_source_energy": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The excimer's energy set point, mJ, worked out from the day's laser test",
+                  "title": "Laser Source Energy"
                 },
                 "num_pulse": {
                   "anyOf": [
@@ -12228,6 +12293,19 @@
                   ],
                   "default": null,
                   "title": "Project Id"
+                },
+                "pyrometer_emissivity": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The back pyrometer's emissivity when this was recorded: `temperature` is only comparable between growths at the same emissivity (0.65 before experiment 23, 0.262 since)",
+                  "title": "Pyrometer Emissivity"
                 },
                 "ramp_rate": {
                   "anyOf": [
@@ -12360,6 +12438,20 @@
                   "default": null,
                   "title": "Project Id"
                 },
+                "pyrometer_emissivity": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 1,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pyrometer Emissivity"
+                },
                 "ramp_rate": {
                   "anyOf": [
                     {
@@ -12481,6 +12573,19 @@
                   "title": "Is Pixel",
                   "type": "boolean"
                 },
+                "laser_meter_ratio": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The day's laser test: meter energy / source energy",
+                  "title": "Laser Meter Ratio"
+                },
                 "laser_power": {
                   "anyOf": [
                     {
@@ -12505,6 +12610,19 @@
                   ],
                   "default": null,
                   "title": "Laser Pulse Rate"
+                },
+                "laser_source_energy": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The excimer's energy set point, mJ, worked out from the day's laser test",
+                  "title": "Laser Source Energy"
                 },
                 "num_pulse": {
                   "anyOf": [
@@ -12577,6 +12695,19 @@
                   ],
                   "default": null,
                   "title": "Project Id"
+                },
+                "pyrometer_emissivity": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The back pyrometer's emissivity when this was recorded: `temperature` is only comparable between growths at the same emissivity (0.65 before experiment 23, 0.262 since)",
+                  "title": "Pyrometer Emissivity"
                 },
                 "ramp_rate": {
                   "anyOf": [
@@ -12738,6 +12869,19 @@
                   "title": "Is Pixel",
                   "type": "boolean"
                 },
+                "laser_meter_ratio": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The day's laser test: meter energy / source energy",
+                  "title": "Laser Meter Ratio"
+                },
                 "laser_power": {
                   "anyOf": [
                     {
@@ -12762,6 +12906,19 @@
                   ],
                   "default": null,
                   "title": "Laser Pulse Rate"
+                },
+                "laser_source_energy": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The excimer's energy set point, mJ, worked out from the day's laser test",
+                  "title": "Laser Source Energy"
                 },
                 "num_pulse": {
                   "anyOf": [
@@ -12834,6 +12991,19 @@
                   ],
                   "default": null,
                   "title": "Project Id"
+                },
+                "pyrometer_emissivity": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The back pyrometer's emissivity when this was recorded: `temperature` is only comparable between growths at the same emissivity (0.65 before experiment 23, 0.262 since)",
+                  "title": "Pyrometer Emissivity"
                 },
                 "ramp_rate": {
                   "anyOf": [
@@ -17093,9 +17263,18 @@
             "request": {
               "properties": {
                 "frequency": {
-                  "default": 10.0,
-                  "title": "Frequency",
-                  "type": "number"
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Hz; left out, the target's set rate",
+                  "title": "Frequency"
                 },
                 "is_dryrun": {
                   "default": false,
@@ -17108,9 +17287,18 @@
                   "type": "boolean"
                 },
                 "num_pulse": {
-                  "default": 1000,
-                  "title": "Num Pulse",
-                  "type": "integer"
+                  "anyOf": [
+                    {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Leave out to use the amount set for this target's material (set_target_preablation); give it only when the person asked for a different amount",
+                  "title": "Num Pulse"
                 },
                 "target_id": {
                   "title": "Target Id",
@@ -17445,6 +17633,455 @@
                 "measured_power"
               ],
               "title": "LaserPowerResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "begin_laser_test",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "A bare success acknowledgement.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "title": "Ack",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "fire_laser_test",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "properties": {
+                "ok": {
+                  "default": true,
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "task_id": {
+                  "title": "Task Id",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "task_id"
+              ],
+              "title": "TaskAck",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "confirm_laser_test",
+            "request": {
+              "properties": {
+                "meter_mj": {
+                  "description": "The energy meter's average over the test, mJ",
+                  "exclusiveMinimum": 0,
+                  "title": "Meter Mj",
+                  "type": "number"
+                },
+                "source_mj": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The laser's own energy reading, mJ. Leave out: Lumi takes the excimer's average while it fired. Give it when the person fired and read the laser's display",
+                  "title": "Source Mj"
+                }
+              },
+              "required": [
+                "meter_mj"
+              ],
+              "title": "ConfirmLaserTest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "actor": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Actor"
+                },
+                "fired_by": {
+                  "description": "lumi, or person (fired by hand)",
+                  "title": "Fired By",
+                  "type": "string"
+                },
+                "hv_kv": {
+                  "title": "Hv Kv",
+                  "type": "number"
+                },
+                "meter_mj": {
+                  "title": "Meter Mj",
+                  "type": "number"
+                },
+                "pulses": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pulses"
+                },
+                "rate_hz": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Rate Hz"
+                },
+                "ratio": {
+                  "description": "meter_mj / source_mj: a deposition sets the excimer to the wanted meter energy divided by this",
+                  "title": "Ratio",
+                  "type": "number"
+                },
+                "source_mj": {
+                  "title": "Source Mj",
+                  "type": "number"
+                },
+                "test_id": {
+                  "title": "Test Id",
+                  "type": "integer"
+                },
+                "tested_at": {
+                  "title": "Tested At",
+                  "type": "number"
+                },
+                "today": {
+                  "default": false,
+                  "description": "Done today, so begin_set_laser_power can use it",
+                  "title": "Today",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "test_id",
+                "tested_at",
+                "hv_kv",
+                "fired_by",
+                "source_mj",
+                "meter_mj",
+                "ratio"
+              ],
+              "title": "LaserTest",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_laser_tests",
+            "request": {
+              "properties": {
+                "limit": {
+                  "default": 30,
+                  "maximum": 500,
+                  "minimum": 1,
+                  "title": "Limit",
+                  "type": "integer"
+                }
+              },
+              "title": "ListLaserTests",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "LaserTest": {
+                  "properties": {
+                    "actor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Actor"
+                    },
+                    "fired_by": {
+                      "description": "lumi, or person (fired by hand)",
+                      "title": "Fired By",
+                      "type": "string"
+                    },
+                    "hv_kv": {
+                      "title": "Hv Kv",
+                      "type": "number"
+                    },
+                    "meter_mj": {
+                      "title": "Meter Mj",
+                      "type": "number"
+                    },
+                    "pulses": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Pulses"
+                    },
+                    "rate_hz": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Rate Hz"
+                    },
+                    "ratio": {
+                      "description": "meter_mj / source_mj: a deposition sets the excimer to the wanted meter energy divided by this",
+                      "title": "Ratio",
+                      "type": "number"
+                    },
+                    "source_mj": {
+                      "title": "Source Mj",
+                      "type": "number"
+                    },
+                    "test_id": {
+                      "title": "Test Id",
+                      "type": "integer"
+                    },
+                    "tested_at": {
+                      "title": "Tested At",
+                      "type": "number"
+                    },
+                    "today": {
+                      "default": false,
+                      "description": "Done today, so begin_set_laser_power can use it",
+                      "title": "Today",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "test_id",
+                    "tested_at",
+                    "hv_kv",
+                    "fired_by",
+                    "source_mj",
+                    "meter_mj",
+                    "ratio"
+                  ],
+                  "title": "LaserTest",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "tests": {
+                  "description": "Newest first",
+                  "items": {
+                    "$ref": "#/$defs/LaserTest"
+                  },
+                  "title": "Tests",
+                  "type": "array"
+                }
+              },
+              "title": "LaserTestList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "list_target_preablation",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "TargetPreablation": {
+                  "properties": {
+                    "frequency": {
+                      "title": "Frequency",
+                      "type": "number"
+                    },
+                    "num_pulse": {
+                      "title": "Num Pulse",
+                      "type": "integer"
+                    },
+                    "set_at": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Set At"
+                    },
+                    "set_by": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Set By"
+                    },
+                    "target_material": {
+                      "title": "Target Material",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "target_material",
+                    "num_pulse",
+                    "frequency"
+                  ],
+                  "title": "TargetPreablation",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "targets": {
+                  "items": {
+                    "$ref": "#/$defs/TargetPreablation"
+                  },
+                  "title": "Targets",
+                  "type": "array"
+                }
+              },
+              "title": "TargetPreablationList",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_target_preablation",
+            "request": {
+              "properties": {
+                "frequency": {
+                  "default": 10.0,
+                  "description": "Hz",
+                  "exclusiveMinimum": 0,
+                  "title": "Frequency",
+                  "type": "number"
+                },
+                "num_pulse": {
+                  "description": "Pulses before each deposition; 0 = never pre-ablate it",
+                  "minimum": 0,
+                  "title": "Num Pulse",
+                  "type": "integer"
+                },
+                "target_material": {
+                  "description": "As get_target_name_by_id names it",
+                  "minLength": 1,
+                  "title": "Target Material",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_material",
+                "num_pulse"
+              ],
+              "title": "SetTargetPreablation",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "frequency": {
+                  "title": "Frequency",
+                  "type": "number"
+                },
+                "num_pulse": {
+                  "title": "Num Pulse",
+                  "type": "integer"
+                },
+                "set_at": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Set At"
+                },
+                "set_by": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Set By"
+                },
+                "target_material": {
+                  "title": "Target Material",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target_material",
+                "num_pulse",
+                "frequency"
+              ],
+              "title": "TargetPreablation",
               "type": "object"
             },
             "response_codec": "json"
@@ -19664,6 +20301,7 @@
             "begin_align_center_mask": "experiment.driver.req.begin_align_center_mask",
             "begin_check_mask_center": "experiment.driver.req.begin_check_mask_center",
             "begin_check_rheed_pixels": "experiment.driver.req.begin_check_rheed_pixels",
+            "begin_laser_test": "experiment.driver.req.begin_laser_test",
             "begin_set_laser_power": "experiment.driver.req.begin_set_laser_power",
             "cancel_task": "experiment.driver.req.cancel_task",
             "check_logging_alive": "experiment.driver.req.check_logging_alive",
@@ -19671,6 +20309,7 @@
             "confirm": "experiment.driver.req.confirm",
             "confirm_center_mask": "experiment.driver.req.confirm_center_mask",
             "confirm_laser_power": "experiment.driver.req.confirm_laser_power",
+            "confirm_laser_test": "experiment.driver.req.confirm_laser_test",
             "confirm_mask_center": "experiment.driver.req.confirm_mask_center",
             "confirm_rheed_gain": "experiment.driver.req.confirm_rheed_gain",
             "cool_down": "experiment.driver.req.cool_down",
@@ -19679,6 +20318,7 @@
             "finish_current_pixel": "experiment.driver.req.finish_current_pixel",
             "finish_experiment_record": "experiment.driver.req.finish_experiment_record",
             "finish_substrate": "experiment.driver.req.finish_substrate",
+            "fire_laser_test": "experiment.driver.req.fire_laser_test",
             "get_current_log": "experiment.driver.req.get_current_log",
             "get_current_mask_position": "experiment.driver.req.get_current_mask_position",
             "get_current_pressure": "experiment.driver.req.get_current_pressure",
@@ -19698,12 +20338,14 @@
             "initiate_heating_laser": "experiment.driver.req.initiate_heating_laser",
             "is_motor_free": "experiment.driver.req.is_motor_free",
             "list_experiments": "experiment.driver.req.list_experiments",
+            "list_laser_tests": "experiment.driver.req.list_laser_tests",
             "list_measurements": "experiment.driver.req.list_measurements",
             "list_projects": "experiment.driver.req.list_projects",
             "list_records": "experiment.driver.req.list_records",
             "list_samples": "experiment.driver.req.list_samples",
             "list_snapshots": "experiment.driver.req.list_snapshots",
             "list_substrates": "experiment.driver.req.list_substrates",
+            "list_target_preablation": "experiment.driver.req.list_target_preablation",
             "measurement_file": "experiment.driver.req.measurement_file",
             "move_mask_to_position": "experiment.driver.req.move_mask_to_position",
             "move_rheed_to_position": "experiment.driver.req.move_rheed_to_position",
@@ -19733,6 +20375,7 @@
             "set_pressure_control": "experiment.driver.req.set_pressure_control",
             "set_rheed_gain": "experiment.driver.req.set_rheed_gain",
             "set_target": "experiment.driver.req.set_target",
+            "set_target_preablation": "experiment.driver.req.set_target_preablation",
             "show_available_targets": "experiment.driver.req.show_available_targets",
             "snapshot_frame": "experiment.driver.req.snapshot_frame",
             "snapshot_jpeg": "experiment.driver.req.snapshot_jpeg",
