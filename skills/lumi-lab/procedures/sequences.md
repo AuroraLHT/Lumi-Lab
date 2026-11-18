@@ -47,7 +47,7 @@ Wedge pattern: `mask` with `wait: false` and a speed, then a waited `fire_laser`
    after the run, however it ends. Watch `sequence` in the driver state (step i of n,
    loops, operations done / total, layers so far, message).
 3. While it runs pld-service refuses every other operation, from every client, except
-   stop_fire, the RHEED all-offs and pause/cancel. `pause_sequence`: a wait stops
+   stop_fire, stop_motors (which cancels the run), the RHEED all-offs and pause/cancel. `pause_sequence`: a wait stops
    counting, a waited fire stops its train (resume fires the pulses left), any other step
    finishes first. `stop_deposition` or `cancel_sequence` ends it: a move or ramp under
    way carries on, nothing is undone. If something moves while it is paused (the Deck

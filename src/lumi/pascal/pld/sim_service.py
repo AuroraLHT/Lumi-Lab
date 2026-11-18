@@ -94,6 +94,10 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self._laser_on_at: float | None = None  # monotonic time OFF,WAIT ends
         self.laser_interlock: tuple[int, str] | None = None
         self._fire_stopped = False
+        # stop_motors (pld-service 2c7504f): latched until ResetMotors; the axes that were
+        # moving lose their home reference until homed.
+        self.motors_stopped = False
+        self.homing_needed: set[str] = set()
         self.read_only = False  # reported only, as hardware without --allow-operations would
         self._subscribers: list[queue.Queue] = []
 
@@ -132,6 +136,8 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
 
     def _motion(self, request, context, start, what: str) -> pb.OperationReply:
         self._require_control(context)
+        if self.motors_stopped:
+            return self._no("the motors are stopped (Motor Stop): ResetMotors first")
         if self.model.motor_lock_released:
             return self._no("motor holding lock is released (motor free); engage it first")
         try:
@@ -182,14 +188,13 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
                     sample_angle=m.sample_rot.position, mask_position=m.mask1.position,
                     rheed_gun_x=m.rheed_gun_x.position,
                     axes={
-                        "TG": pb.MOVING if m.rotation.busy else pb.IDLE,
-                        "Mask1": pb.MOVING if m.mask1.busy else pb.IDLE,
-                        "RHEED gun X": pb.MOVING if m.rheed_gun_x.busy else pb.IDLE,
-                        "Substrate": pb.MOVING if m.sample_rot.busy else pb.IDLE,
+                        name: pb.STOPPED if self.motors_stopped else (pb.MOVING if axis.busy else pb.IDLE)
+                        for name, axis in self._named_axes()
                     },
                     target_spinning=m.target_rotation_mode == "ON" or (m.target_rotation_mode == "AUTO" and firing),
                     target_twisting=m.target_twist_mode == "ON" or (m.target_twist_mode == "AUTO" and firing),
                     motor_free=m.motor_lock_released, auto_spin=self.auto_spin, auto_twist=self.auto_twist,
+                    motors_stopped=self.motors_stopped, homing_needed=sorted(self.homing_needed),
                 ),
                 laser=pb.Laser(
                     status="firing" if firing else ("finished" if m.laser_pulses else "idle"),
@@ -319,6 +324,39 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         return self._motion(request, context, lambda: self.model.move_rheed_gun_x(request.position),
                             f"RHEED gun X {request.position:g}")
 
+    def _named_axes(self):
+        m = self.model
+        return (("TG", m.rotation), ("Mask1", m.mask1), ("RHEED gun X", m.rheed_gun_x), ("Substrate", m.sample_rot))
+
+    def StopMotors(self, request, context):
+        # Any client, with or without control, as StopFire.
+        m = self.model
+        if self.motors_stopped:
+            return self._ok("motors already stopped: nothing sent (ResetMotors undoes it)")
+        with m._lock:
+            for name, axis in self._named_axes():
+                if axis.busy:
+                    axis.target = axis.position
+                    if name != "Substrate":  # the sample rotation has no home
+                        self.homing_needed.add(name)
+            if m._pending_slot is not None:
+                m._pending_slot, m.target_slot = None, ""
+            m.target_rotation_mode = m.target_twist_mode = "OFF"
+            self.motors_stopped = True
+        fire = self.StopFire(request, context).message
+        self._emit("motor_stop", "motors stopped (Motor Stop latched): every axis halted, moves refused until ResetMotors")
+        return self._ok(f"motors stopped (ST 01900); {fire}")
+
+    def ResetMotors(self, request, context):
+        self._require_control(context)
+        if not self.motors_stopped:
+            return self._ok("motors not stopped: nothing sent")
+        self.motors_stopped = False
+        needed = ", ".join(sorted(self.homing_needed))
+        self._emit("motor_stop", "motor stop reset" + (f"; homing needed: {needed}" if needed else ""),
+                   homing_needed=needed)
+        return self._ok("motor stop reset (ST 01901)" + (f"; home {needed}" if needed else ": no axis needs homing"))
+
     def HomeAxis(self, request, context):
         home = {
             "TG": lambda: self.model.select_target("Clear"),
@@ -328,15 +366,22 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         if home is None:
             self._require_control(context)
             return self._no(f"unknown axis {request.axis!r}")
-        return self._motion(request, context, home, f"{request.axis} home")
+        reply = self._motion(request, context, home, f"{request.axis} home")
+        if reply.ok and request.wait:
+            self.homing_needed.discard(request.axis)
+        return reply
 
     def SetTargetSpin(self, request, context):
         self._require_control(context)
+        if request.on and self.motors_stopped:
+            return self._no("target spin on refused: the motors are stopped (Motor Stop): ResetMotors first")
         self.model.set_target_rotation_mode("ON" if request.on else "OFF")
         return self._ok()
 
     def SetTargetTwist(self, request, context):
         self._require_control(context)
+        if request.on and self.motors_stopped:
+            return self._no("target twist on refused: the motors are stopped (Motor Stop): ResetMotors first")
         self.model.set_target_twist_mode("ON" if request.on else "OFF")
         return self._ok()
 
@@ -422,6 +467,8 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self._require_control(context)
         if request.pulses <= 0 or request.rate_hz <= 0:
             return self._no("pulses and rate_hz must be positive")
+        if self.motors_stopped:
+            return self._no("fire refused: the motors are stopped (Motor Stop), the target cannot spin or twist; ResetMotors first")
         self._fire_stopped = False
         start = self.model.laser_pulses
         expected = self.model.trigger_laser(request.pulses, request.rate_hz)

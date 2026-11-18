@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 50f4980e720f8d2c
+# contract_hash: 8727b37ccaa3d113
 
 """Generated clients for the chamber node."""
 
@@ -182,6 +182,14 @@ class ChamberPldClient(CapabilityClient):
         """Release (on) or engage (off) the motor holding lock."""
         return await self.call("set_motor_free", req)  # type: ignore[return-value]
 
+    async def stop_motors(self) -> PldReply:
+        """PLD Controller's master Motor Stop: every axis halts at once, spin and twist go off, a pulse train in progress is stopped and a sequence in progress is cancelled. Needs no control: the stop from any client. Until reset_motors, moves, homing, spin, twist and fire_laser are refused ('ResetMotors first'); state.motion.motors_stopped shows it. Already stopped: ok, nothing sent."""
+        return await self.call("stop_motors")  # type: ignore[return-value]
+
+    async def reset_motors(self) -> PldReply:
+        """Undo stop_motors (needs control). Spin and twist stay off. The axes that were moving have lost their home reference (state.motion.homing_needed): home_axis them before relying on their position. Not stopped: ok, nothing sent."""
+        return await self.call("reset_motors")  # type: ignore[return-value]
+
     async def set_target_auto_motion(self, req: PldAutoMotionRequest) -> PldReply:
         """Auto mode: the chosen motions go on with each fire_laser and off when the train ends. Service default: spin on, twist off."""
         return await self.call("set_target_auto_motion", req)  # type: ignore[return-value]
@@ -343,7 +351,7 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("rheed_all_off")  # type: ignore[return-value]
 
     async def run_sequence(self, req: PldSequenceRequest) -> PldReply:
-        """Upload a step list for pld-service to run one step at a time (REA 38ca32e): each step one operation with its usual checks and waits, plus wait_s, pause, wait_axis_idle and loop_start/loop_end. Answers 'started' at once (wait=false). While it runs every other operation from every client is refused except stop_fire, the RHEED all-offs and pause/cancel. Progress: state.sequence and 'sequence' events. The experiment node's run_sequence is the vetted way in."""
+        """Upload a step list for pld-service to run one step at a time (REA 38ca32e): each step one operation with its usual checks and waits, plus wait_s, pause, wait_axis_idle and loop_start/loop_end. Answers 'started' at once (wait=false). While it runs every other operation from every client is refused except stop_fire, stop_motors (which cancels the run), the RHEED all-offs and pause/cancel. Progress: state.sequence and 'sequence' events. The experiment node's run_sequence is the vetted way in."""
         return await self.call("run_sequence", req)  # type: ignore[return-value]
 
     async def pause_sequence(self) -> PldReply:

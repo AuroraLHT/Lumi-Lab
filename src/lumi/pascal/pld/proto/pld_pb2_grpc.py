@@ -104,6 +104,16 @@ class ChamberStub:
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SwitchRequest.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
+        self.StopMotors = channel.unary_unary(
+                '/pld.v1.Chamber/StopMotors',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.ResetMotors = channel.unary_unary(
+                '/pld.v1.Chamber/ResetMotors',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
         self.SetTargetAutoMotion = channel.unary_unary(
                 '/pld.v1.Chamber/SetTargetAutoMotion',
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.AutoMotionRequest.SerializeToString,
@@ -431,6 +441,26 @@ class ChamberServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StopMotors(self, request, context):
+        """PLD Controller's master Motor Stop (ST 01900, captured 2026-11-17): every axis halts at once,
+        the PLC drops spin and twist, and moves, homing, spin, twist and fires are refused until
+        ResetMotors. A pulse train in progress is stopped too (as StopFire), and a sequence in progress
+        is cancelled. Any client, no control needed; sent at the next poll even during a waited
+        operation. Already stopped: ok, nothing sent.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResetMotors(self, request, context):
+        """Undo the motor stop (ST 01901; needs control). Spin and twist stay off. The axes that were
+        moving have no home reference afterwards (Motion.homing_needed): home them (PLD Controller
+        prompts for it too). Not stopped: ok, nothing sent.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SetTargetAutoMotion(self, request, context):
         """Auto mode: the chosen motions go on with each FireLaser and off when the train ends
         (only those the fire switched on; one already running is left alone). Default: spin and twist on (user, 2026-11-06).
@@ -507,6 +537,9 @@ class ChamberServicer:
 
     def FireLaser(self, request, context):
         """---- deposition laser -------------------------------------------------------------
+        Rates above [motion] fire_rate_max_hz (default 20 Hz; at most 100 Hz, the excimer's maximum)
+        are refused (user, 2026-11-17). A train the service did not start (e.g. left by a killed
+        service) is adopted at the next poll: spin and twist are switched on and go off at its end.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -879,6 +912,16 @@ def add_ChamberServicer_to_server(servicer, server):
             'SetMotorFree': grpc.unary_unary_rpc_method_handler(
                     servicer.SetMotorFree,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SwitchRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'StopMotors': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopMotors,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'ResetMotors': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResetMotors,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
             'SetTargetAutoMotion': grpc.unary_unary_rpc_method_handler(
@@ -1489,6 +1532,60 @@ class Chamber:
             target,
             '/pld.v1.Chamber/SetMotorFree',
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SwitchRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopMotors(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/StopMotors',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResetMotors(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/ResetMotors',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
             options,
             channel_credentials,

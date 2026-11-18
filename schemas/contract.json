@@ -1413,7 +1413,7 @@
                     },
                     "status": {
                       "default": "",
-                      "description": "idle, firing, finished",
+                      "description": "idle, firing, finished, or stopped (after stop_fire)",
                       "title": "Status",
                       "type": "string"
                     },
@@ -1573,9 +1573,17 @@
                       "additionalProperties": {
                         "type": "string"
                       },
-                      "description": "axis -> IDLE/MOVING/HOMING/SETTLING",
+                      "description": "axis -> IDLE/MOVING/HOMING/SETTLING/STOPPED",
                       "title": "Axes",
                       "type": "object"
+                    },
+                    "homing_needed": {
+                      "description": "Axes left without a home reference (the ones moving when the motors were stopped): home_axis before relying on their position",
+                      "items": {
+                        "type": "string"
+                      },
+                      "title": "Homing Needed",
+                      "type": "array"
                     },
                     "mask_position": {
                       "anyOf": [
@@ -1593,6 +1601,12 @@
                       "default": false,
                       "description": "Holding lock released: axes back-driveable, not under servo",
                       "title": "Motor Free",
+                      "type": "boolean"
+                    },
+                    "motors_stopped": {
+                      "default": false,
+                      "description": "Motor Stop latched (stop_motors): moves, homing, spin, twist and fires refused until reset_motors",
+                      "title": "Motors Stopped",
                       "type": "boolean"
                     },
                     "rheed_gun_x": {
@@ -3048,6 +3062,66 @@
                 "on"
               ],
               "title": "PldSwitchRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "stop_motors",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "reset_motors",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
               "type": "object"
             },
             "request_codec": "json",
@@ -4830,6 +4904,7 @@
             "recent_events": "chamber.pld.req.recent_events",
             "release_control": "chamber.pld.req.release_control",
             "release_laser": "chamber.pld.req.release_laser",
+            "reset_motors": "chamber.pld.req.reset_motors",
             "resume_sequence": "chamber.pld.req.resume_sequence",
             "rheed_all_off": "chamber.pld.req.rheed_all_off",
             "rheed_all_off_gentle": "chamber.pld.req.rheed_all_off_gentle",
@@ -4871,6 +4946,7 @@
             "start_logging": "chamber.pld.req.start_logging",
             "stop_fire": "chamber.pld.req.stop_fire",
             "stop_logging": "chamber.pld.req.stop_logging",
+            "stop_motors": "chamber.pld.req.stop_motors",
             "take_laser_control": "chamber.pld.req.take_laser_control",
             "tune_heater": "chamber.pld.req.tune_heater",
             "tune_pressure": "chamber.pld.req.tune_pressure"
@@ -5662,7 +5738,7 @@
                   },
                   "status": {
                     "default": "",
-                    "description": "idle, firing, finished",
+                    "description": "idle, firing, finished, or stopped (after stop_fire)",
                     "title": "Status",
                     "type": "string"
                   },
@@ -5822,9 +5898,17 @@
                     "additionalProperties": {
                       "type": "string"
                     },
-                    "description": "axis -> IDLE/MOVING/HOMING/SETTLING",
+                    "description": "axis -> IDLE/MOVING/HOMING/SETTLING/STOPPED",
                     "title": "Axes",
                     "type": "object"
+                  },
+                  "homing_needed": {
+                    "description": "Axes left without a home reference (the ones moving when the motors were stopped): home_axis before relying on their position",
+                    "items": {
+                      "type": "string"
+                    },
+                    "title": "Homing Needed",
+                    "type": "array"
                   },
                   "mask_position": {
                     "anyOf": [
@@ -5842,6 +5926,12 @@
                     "default": false,
                     "description": "Holding lock released: axes back-driveable, not under servo",
                     "title": "Motor Free",
+                    "type": "boolean"
+                  },
+                  "motors_stopped": {
+                    "default": false,
+                    "description": "Motor Stop latched (stop_motors): moves, homing, spin, twist and fires refused until reset_motors",
+                    "title": "Motors Stopped",
                     "type": "boolean"
                   },
                   "rheed_gun_x": {

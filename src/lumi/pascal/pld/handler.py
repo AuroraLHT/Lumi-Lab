@@ -141,6 +141,9 @@ class PldHandler:
     set_target_spin = _op("SetTargetSpin", lambda r: pb.SwitchRequest(on=r.on))
     set_target_twist = _op("SetTargetTwist", lambda r: pb.SwitchRequest(on=r.on))
     set_motor_free = _op("SetMotorFree", lambda r: pb.SwitchRequest(on=r.on))
+    # Needs no control, like StopFire; the reset does.
+    stop_motors = _op("StopMotors", lambda r: pb.Empty())
+    reset_motors = _op("ResetMotors", lambda r: pb.Empty())
     set_target_auto_motion = _op("SetTargetAutoMotion", lambda r: pb.AutoMotionRequest(spin=r.spin, twist=r.twist))
     set_heater_key = _op("SetHeaterKey", lambda r: pb.SwitchRequest(on=r.on))
     set_heater_start = _op("SetHeaterStart", lambda r: pb.SwitchRequest(on=r.on))

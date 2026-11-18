@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 50f4980e720f8d2c
+# contract_hash: 8727b37ccaa3d113
 
 """Generated clients for the experiment node."""
 
@@ -384,7 +384,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("approve_sequence", req)  # type: ignore[return-value]
 
     async def run_sequence(self, req: RunSequence) -> TaskAck:
-        """Run one approved version on pld-service; refused if that version is not approved. Returns a TaskAck at once; progress is `sequence` in the driver state and each step goes in the step journal. meter_energy steps need today's laser test. While it runs pld-service refuses every other operation, from every client, except stop_fire, the RHEED all-offs and pause/cancel. A failed step ends the run; nothing is undone or retried. stop_deposition and cancel_task cancel it. Needs a substrate and project loaded (no_sample=true for a rehearsal). Each fire with the shutter open grows a layer of the selected target's material (consecutive fires on one material merge): a sequence_layer journal row and a growth record with the sequence ref, as perform_deposition plus finish_experiment_record would. record={project_name, ...} wraps the run in a recording."""
+        """Run one approved version on pld-service; refused if that version is not approved. Returns a TaskAck at once; progress is `sequence` in the driver state and each step goes in the step journal. meter_energy steps need today's laser test. While it runs pld-service refuses every other operation, from every client, except stop_fire, stop_motors (which cancels it), the RHEED all-offs and pause/cancel. A failed step ends the run; nothing is undone or retried. stop_deposition and cancel_task cancel it. Needs a substrate and project loaded (no_sample=true for a rehearsal). Each fire with the shutter open grows a layer of the selected target's material (consecutive fires on one material merge): a sequence_layer journal row and a growth record with the sequence ref, as perform_deposition plus finish_experiment_record would. record={project_name, ...} wraps the run in a recording."""
         return await self.call("run_sequence", req)  # type: ignore[return-value]
 
     async def pause_sequence(self) -> Ack:
