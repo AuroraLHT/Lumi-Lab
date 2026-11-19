@@ -74,7 +74,7 @@ class WatchRequest(_message.Message):
     def __init__(self, rate_hz: _Optional[float] = ...) -> None: ...
 
 class ChamberState(_message.Message):
-    __slots__ = ("time", "backend", "connected", "controller", "valves", "pressures", "heater", "motion", "laser", "gas", "sample_shutter_away", "interlocks", "raw_words", "excimer", "read_only", "pumps", "load_lock", "session", "limits", "rheed", "sequence")
+    __slots__ = ("time", "backend", "connected", "controller", "valves", "pressures", "heater", "motion", "laser", "gas", "sample_shutter_away", "interlocks", "raw_words", "excimer", "read_only", "pumps", "load_lock", "session", "limits", "rheed", "sequence", "bypass")
     class ValvesEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -117,6 +117,7 @@ class ChamberState(_message.Message):
     LIMITS_FIELD_NUMBER: _ClassVar[int]
     RHEED_FIELD_NUMBER: _ClassVar[int]
     SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    BYPASS_FIELD_NUMBER: _ClassVar[int]
     time: float
     backend: Backend
     connected: bool
@@ -138,7 +139,8 @@ class ChamberState(_message.Message):
     limits: Limits
     rheed: Rheed
     sequence: SequenceStatus
-    def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ..., pumps: _Optional[_Mapping[str, Pump]] = ..., load_lock: _Optional[_Union[LoadLock, _Mapping]] = ..., session: _Optional[_Union[Session, _Mapping]] = ..., limits: _Optional[_Union[Limits, _Mapping]] = ..., rheed: _Optional[_Union[Rheed, _Mapping]] = ..., sequence: _Optional[_Union[SequenceStatus, _Mapping]] = ...) -> None: ...
+    bypass: BypassValve
+    def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ..., pumps: _Optional[_Mapping[str, Pump]] = ..., load_lock: _Optional[_Union[LoadLock, _Mapping]] = ..., session: _Optional[_Union[Session, _Mapping]] = ..., limits: _Optional[_Union[Limits, _Mapping]] = ..., rheed: _Optional[_Union[Rheed, _Mapping]] = ..., sequence: _Optional[_Union[SequenceStatus, _Mapping]] = ..., bypass: _Optional[_Union[BypassValve, _Mapping]] = ...) -> None: ...
 
 class SequenceRequest(_message.Message):
     __slots__ = ("name", "steps", "wait")
@@ -217,6 +219,54 @@ class SequenceStatus(_message.Message):
     done: int
     total: int
     def __init__(self, name: _Optional[str] = ..., state: _Optional[str] = ..., step: _Optional[int] = ..., steps: _Optional[int] = ..., label: _Optional[str] = ..., message: _Optional[str] = ..., client: _Optional[str] = ..., started: _Optional[float] = ..., loops: _Optional[str] = ..., done: _Optional[int] = ..., total: _Optional[int] = ...) -> None: ...
+
+class BypassRequest(_message.Message):
+    __slots__ = ("value", "wait")
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    WAIT_FIELD_NUMBER: _ClassVar[int]
+    value: float
+    wait: bool
+    def __init__(self, value: _Optional[float] = ..., wait: _Optional[bool] = ...) -> None: ...
+
+class BypassValve(_message.Message):
+    __slots__ = ("present", "connected", "port", "firmware", "state", "position", "homed", "open_position", "close_switch", "open_switch", "energized", "rpm", "last_end", "moves_ended", "error", "max_rpm", "max_steps", "open_fraction")
+    PRESENT_FIELD_NUMBER: _ClassVar[int]
+    CONNECTED_FIELD_NUMBER: _ClassVar[int]
+    PORT_FIELD_NUMBER: _ClassVar[int]
+    FIRMWARE_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    POSITION_FIELD_NUMBER: _ClassVar[int]
+    HOMED_FIELD_NUMBER: _ClassVar[int]
+    OPEN_POSITION_FIELD_NUMBER: _ClassVar[int]
+    CLOSE_SWITCH_FIELD_NUMBER: _ClassVar[int]
+    OPEN_SWITCH_FIELD_NUMBER: _ClassVar[int]
+    ENERGIZED_FIELD_NUMBER: _ClassVar[int]
+    RPM_FIELD_NUMBER: _ClassVar[int]
+    LAST_END_FIELD_NUMBER: _ClassVar[int]
+    MOVES_ENDED_FIELD_NUMBER: _ClassVar[int]
+    ERROR_FIELD_NUMBER: _ClassVar[int]
+    MAX_RPM_FIELD_NUMBER: _ClassVar[int]
+    MAX_STEPS_FIELD_NUMBER: _ClassVar[int]
+    OPEN_FRACTION_FIELD_NUMBER: _ClassVar[int]
+    present: bool
+    connected: bool
+    port: str
+    firmware: str
+    state: str
+    position: float
+    homed: bool
+    open_position: float
+    close_switch: bool
+    open_switch: bool
+    energized: bool
+    rpm: float
+    last_end: str
+    moves_ended: int
+    error: str
+    max_rpm: float
+    max_steps: float
+    open_fraction: float
+    def __init__(self, present: _Optional[bool] = ..., connected: _Optional[bool] = ..., port: _Optional[str] = ..., firmware: _Optional[str] = ..., state: _Optional[str] = ..., position: _Optional[float] = ..., homed: _Optional[bool] = ..., open_position: _Optional[float] = ..., close_switch: _Optional[bool] = ..., open_switch: _Optional[bool] = ..., energized: _Optional[bool] = ..., rpm: _Optional[float] = ..., last_end: _Optional[str] = ..., moves_ended: _Optional[int] = ..., error: _Optional[str] = ..., max_rpm: _Optional[float] = ..., max_steps: _Optional[float] = ..., open_fraction: _Optional[float] = ...) -> None: ...
 
 class Rheed(_message.Message):
     __slots__ = ("present", "read_only", "link_ok", "interlock", "filament_open", "filament_on", "filament_set_ma", "filament_target_ma", "filament_readback_ma", "filament_last_ma", "hv_on", "hv_set_kv", "hv_target_kv", "hv_readback_kv", "hv_last_kv", "emission_ua", "focus_on", "focus_set_ma", "focus_readback_ma", "x_on", "x_set_ma", "x_readback_ma", "y_on", "y_set_ma", "y_readback_ma", "hv_ramping_down", "filament_ramping_down", "all_ramping_down", "hv_ramp_v_per_s", "filament_ramp_ma_per_s", "last_alert", "hv_max_kv", "filament_min_ma", "filament_max_ma", "focus_min_ma", "focus_max_ma", "x_min_ma", "x_max_ma", "y_min_ma", "y_max_ma")

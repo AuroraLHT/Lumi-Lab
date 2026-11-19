@@ -32,6 +32,7 @@ Everything else (valves beyond MV10, the excimer's tube) is bookkeeping, not phy
 from __future__ import annotations
 
 import logging
+import math
 import queue
 import threading
 import time
@@ -98,6 +99,10 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         # moving lose their home reference until homed.
         self.motors_stopped = False
         self.homing_needed: set[str] = set()
+        # The bypass-valve stepper (pld-service 98af5c6), much simplified: moves end at once,
+        # 850 steps of travel, unhomed at 300 steps after a (re)start, as the REA twin assumes.
+        self.bypass = {"position": 300.0, "homed": False, "open_position": NAN, "rpm": 10.0,
+                       "last_end": "", "moves_ended": 0}
         self.read_only = False  # reported only, as hardware without --allow-operations would
         self._subscribers: list[queue.Queue] = []
 
@@ -212,7 +217,7 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
                 ),
                 sample_shutter_away=m.shutter_open,
                 interlocks=[f"laser {code} {meaning}" for code, meaning in filter(None, [self.laser_interlock])],
-                excimer=self._excimer(), read_only=self.read_only,
+                excimer=self._excimer(), read_only=self.read_only, bypass=self._bypass(),
                 session=pb.Session(plc_session=True, watchdog=not self.read_only),
                 # The twin's config (REA 05f8b85); the simulator itself enforces none of them.
                 limits=pb.Limits(ig1_max_torr=1e-2, ig3_max_torr=1e-2, mv3_max_torr=4e-2,
@@ -356,6 +361,74 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self._emit("motor_stop", "motor stop reset" + (f"; homing needed: {needed}" if needed else ""),
                    homing_needed=needed)
         return self._ok("motor stop reset (ST 01901)" + (f"; home {needed}" if needed else ": no axis needs homing"))
+
+    # --- bypass-valve stepper (pld-service 98af5c6) ------------------------------------
+
+    BYPASS_TRAVEL = 850.0
+
+    def _bypass(self) -> pb.BypassValve:
+        b = self.bypass
+        known = b["homed"] and math.isfinite(b["open_position"]) and b["open_position"] > 0
+        return pb.BypassValve(
+            present=True, connected=True, port="sim", firmware="lumi-sim", state="IDLE",
+            position=b["position"], homed=b["homed"], open_position=b["open_position"],
+            open_fraction=b["position"] / b["open_position"] if known else NAN,
+            close_switch=b["homed"] and b["position"] == 0, open_switch=b["position"] >= self.BYPASS_TRAVEL,
+            rpm=b["rpm"], last_end=b["last_end"], moves_ended=b["moves_ended"], max_rpm=60.0, max_steps=0.0)
+
+    def _bypass_go(self, context, position: float) -> pb.OperationReply:
+        self._require_control(context)
+        if self.motors_stopped:
+            return self._no("BypassMove refused: the motors are stopped (Motor Stop latched): ResetMotors first")
+        b = self.bypass
+        b["position"] = max(0.0, min(self.BYPASS_TRAVEL, position))
+        b["last_end"], b["moves_ended"] = f"EVT DONE pos={b['position']:.2f}", b["moves_ended"] + 1
+        self._emit("bypass", f"bypass move ended: {b['last_end'][4:]}", device="bypass")
+        return self._ok(b["last_end"])
+
+    def BypassHome(self, request, context):
+        reply = self._bypass_go(context, 0.0)
+        if reply.ok:
+            self.bypass["homed"] = True
+        return reply
+
+    def BypassOpenFully(self, request, context):
+        reply = self._bypass_go(context, self.BYPASS_TRAVEL if self.bypass["homed"] else math.inf)
+        if reply.ok:
+            self.bypass["open_position"] = self.bypass["position"]
+        return reply
+
+    def BypassMoveTo(self, request, context):
+        if not self.bypass["homed"]:
+            self._require_control(context)
+            return self._no("BypassMoveTo refused: not homed (BypassHome first)")
+        return self._bypass_go(context, request.value)
+
+    def BypassMoveBy(self, request, context):
+        return self._bypass_go(context, self.bypass["position"] + request.value)
+
+    def BypassSetSpeed(self, request, context):
+        self._require_control(context)
+        if not 0 < request.value <= 60.0:
+            return self._no(f"BypassSetSpeed refused: {request.value:g} rpm outside 0..60")
+        self.bypass["rpm"] = request.value
+        return self._ok(f"speed {request.value:g} rpm")
+
+    def BypassRelease(self, request, context):
+        self._require_control(context)
+        return self._ok("released")
+
+    def BypassStop(self, request, context):
+        return self._ok("stopped (MX)")
+
+    def restart_bypass(self) -> None:
+        """The board resets (as opening its port resets an UNO): unhomed, boot speed."""
+        b = self.bypass
+        before = b["rpm"]
+        b.update(position=300.0, homed=False, open_position=NAN, rpm=10.0)
+        speed = f"; speed back to 10 rpm (was {before:g}): BypassSetSpeed again if needed" if before != 10.0 else ""
+        self._emit("bypass", f"bypass board (re)started: fw lumi-sim; not homed until BypassHome{speed}",
+                   device="bypass")
 
     def HomeAxis(self, request, context):
         home = {

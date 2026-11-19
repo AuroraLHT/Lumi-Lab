@@ -314,6 +314,41 @@ class ChamberStub:
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
+        self.BypassHome = channel.unary_unary(
+                '/pld.v1.Chamber/BypassHome',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.BypassOpenFully = channel.unary_unary(
+                '/pld.v1.Chamber/BypassOpenFully',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.BypassMoveTo = channel.unary_unary(
+                '/pld.v1.Chamber/BypassMoveTo',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.BypassMoveBy = channel.unary_unary(
+                '/pld.v1.Chamber/BypassMoveBy',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.BypassSetSpeed = channel.unary_unary(
+                '/pld.v1.Chamber/BypassSetSpeed',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.BypassRelease = channel.unary_unary(
+                '/pld.v1.Chamber/BypassRelease',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.BypassStop = channel.unary_unary(
+                '/pld.v1.Chamber/BypassStop',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
         self.GetSettings = channel.unary_unary(
                 '/pld.v1.Chamber/GetSettings',
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
@@ -445,7 +480,9 @@ class ChamberServicer:
         """PLD Controller's master Motor Stop (ST 01900, captured 2026-11-17): every axis halts at once,
         the PLC drops spin and twist, and moves, homing, spin, twist and fires are refused until
         ResetMotors. A pulse train in progress is stopped too (as StopFire), and a sequence in progress
-        is cancelled. Any client, no control needed; sent at the next poll even during a waited
+        is cancelled. The bypass stepper is stopped too (MX) and its moves are refused while latched
+        (user, 2026-11-19). A Motor Stop latched outside this service (PLD Controller, the PLC) stops
+        a running bypass move too, within a poll (event "bypass stopped (MX) after a Motor Stop"). Any client, no control needed; sent at the next poll even during a waited
         operation. Already stopped: ok, nothing sent.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -780,6 +817,73 @@ class ChamberServicer:
 
     def RheedAllOffGentle(self, request, context):
         """Ramped all off: HV to 0 and off, filament to its floor and off, then focus, X and Y off. Any client.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BypassHome(self, request, context):
+        """---- bypass-valve stepper (Arduino board, firmware 2.1; docs/bypass-valve.md; 2026-11-17) ---
+        Its own link and thread, like the laser. Positions are full steps, + toward open, 0 = the close
+        switch once homed. Every operation but BypassStop needs control. `wait`: reply when the move ends
+        (EVT DONE / STOPPED / FAULT), else as soon as the board accepts it. Not yet run on hardware.
+        Refusals (not homed, out of range, rpm above max_rpm, no board, read-only, busy) are ok=false
+        replies; FAILED_PRECONDITION / PERMISSION_DENIED only for control (and a running sequence).
+        Every move end is a WatchEvents event, kind "bypass" ("error" for EVT FAULT), device "bypass".
+        Homing: only MoveTo needs it; Home, OpenFully and MoveBy work unhomed. A waited MoveTo is ok
+        when it ends with EVT DONE, or STOPPED by the switch at its target (0 / the open switch).
+        Motor Stop (from StopMotors, PLD Controller or the PLC) also stops it (MX); from the moment
+        StopMotors is called (not only once the latch shows), Home, OpenFully, MoveTo and MoveBy are refused
+        (ok=false, "ResetMotors first") while motors_stopped. A stop keeps the position (the board
+        settles to a full step and keeps counting), so it does not appear in homing_needed.
+        Reserved: once pressure control drives the bypass, manual Bypass* moves will be refused
+        (ok=false, saying so) while it runs; BypassStop always works.
+        MC: run to the close switch, pos = 0
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BypassOpenFully(self, request, context):
+        """MO: run to the open switch (no homing needed)
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BypassMoveTo(self, request, context):
+        """value = position; needs homing first
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BypassMoveBy(self, request, context):
+        """value = steps (+ open, - close); no homing needed
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BypassSetSpeed(self, request, context):
+        """value = rpm, up to [bypass] max_rpm. Not kept across a board reset: it boots at 10 rpm; the
+        service does not re-send it, but reads the new speed into `rpm` at once and says so in the
+        restart event (kind "bypass").
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BypassRelease(self, request, context):
+        """MR: stop at once and power the coils off. The firmware also powers them off by itself 1 s
+        after every move (energized false), so there is no holding torque between moves either way.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BypassStop(self, request, context):
+        """MX: stop a move. Any client, no control needed (like StopFire).
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -1121,6 +1225,41 @@ def add_ChamberServicer_to_server(servicer, server):
             ),
             'RheedAllOffGentle': grpc.unary_unary_rpc_method_handler(
                     servicer.RheedAllOffGentle,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'BypassHome': grpc.unary_unary_rpc_method_handler(
+                    servicer.BypassHome,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'BypassOpenFully': grpc.unary_unary_rpc_method_handler(
+                    servicer.BypassOpenFully,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'BypassMoveTo': grpc.unary_unary_rpc_method_handler(
+                    servicer.BypassMoveTo,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'BypassMoveBy': grpc.unary_unary_rpc_method_handler(
+                    servicer.BypassMoveBy,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'BypassSetSpeed': grpc.unary_unary_rpc_method_handler(
+                    servicer.BypassSetSpeed,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'BypassRelease': grpc.unary_unary_rpc_method_handler(
+                    servicer.BypassRelease,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'BypassStop': grpc.unary_unary_rpc_method_handler(
+                    servicer.BypassStop,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
@@ -2665,6 +2804,195 @@ class Chamber:
             request,
             target,
             '/pld.v1.Chamber/RheedAllOffGentle',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BypassHome(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/BypassHome',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BypassOpenFully(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/BypassOpenFully',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BypassMoveTo(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/BypassMoveTo',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BypassMoveBy(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/BypassMoveBy',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BypassSetSpeed(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/BypassSetSpeed',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.BypassRequest.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BypassRelease(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/BypassRelease',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BypassStop(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/BypassStop',
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
             options,

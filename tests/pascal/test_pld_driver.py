@@ -19,6 +19,9 @@ import pytest_asyncio
 from lumi.contracts.chamber import MI_MODE, PLD
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
+    PldBypassMoveRequest,
+    PldBypassSpeedRequest,
+    PldBypassStepsRequest,
     PldAxisRequest,
     PldControlRequest,
     PldEventQuery,
@@ -499,3 +502,40 @@ async def test_stop_motors_latches_from_any_client_until_the_reset(driver):
     assert (await handler.home_axis(PldAxisRequest(axis="Mask1", wait=True))).ok
     assert (await handler.chamber_state(Empty())).motion.homing_needed == []
     assert service.servicer.controller == "lumi-pascal"
+
+
+async def test_the_bypass_valve_maps_and_sets_its_speed_again_after_a_board_restart(driver):
+    # pld-service 98af5c6: the bypass-valve stepper. Unknown readings come as None; MoveTo
+    # needs homing; the board forgets its speed on a restart and this node sends it again.
+    handler, _, service = driver
+    bypass = (await handler.chamber_state(Empty())).bypass
+    assert bypass.present and not bypass.homed and bypass.open_position is None and bypass.open_fraction is None
+    reply = await handler.bypass_move_to(PldBypassStepsRequest(steps=100))
+    assert not reply.ok and "not homed" in reply.message, reply.message
+    assert (await handler.bypass_set_speed(PldBypassSpeedRequest(rpm=30))).ok
+    for reply in (await handler.bypass_home(PldBypassMoveRequest()),
+                  await handler.bypass_open_fully(PldBypassMoveRequest()),
+                  await handler.bypass_move_to(PldBypassStepsRequest(steps=425))):
+        assert reply.ok and "(speed set" not in reply.message, reply.message
+    bypass = (await handler.chamber_state(Empty())).bypass
+    assert bypass.homed and bypass.position == 425 and bypass.open_fraction == 0.5 and bypass.rpm == 30
+
+    service.servicer.restart_bypass()
+    for _ in range(100):  # the restart event and a state with the boot speed
+        await asyncio.sleep(0.05)
+        latest = handler.state_monitor.latest
+        if latest.bypass.rpm == 10 and any("(re)started" in e.message for e in handler.event_monitor.events):
+            break
+    reply = await handler.bypass_move_by(PldBypassStepsRequest(steps=-50))
+    assert reply.ok and "speed set to 30 rpm again" in reply.message, reply.message
+    bypass = (await handler.chamber_state(Empty())).bypass
+    assert bypass.rpm == 30 and bypass.position == 250 and not bypass.homed
+    reply = await handler.bypass_move_by(PldBypassStepsRequest(steps=10))  # once only
+    assert reply.ok and "speed set" not in reply.message, reply.message
+
+    assert (await handler.stop_motors(Empty())).ok
+    reply = await handler.bypass_home(PldBypassMoveRequest())
+    assert not reply.ok and "ResetMotors first" in reply.message, reply.message
+    assert (await handler.bypass_stop(Empty())).ok
+    assert (await handler.reset_motors(Empty())).ok
+    assert (await handler.bypass_home(PldBypassMoveRequest())).ok
