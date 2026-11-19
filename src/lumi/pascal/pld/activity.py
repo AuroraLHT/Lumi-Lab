@@ -82,8 +82,12 @@ class ActivityLog:
             return
         entry, started = opened
         result = result or {}
-        # A PldReply's ok is the service's answer; a PldControlReply says granted.
-        answer = result.get("ok", result.get("granted", True))
+        # A PldReply's ok is the service's answer; a PldControlReply says granted, whether
+        # the caller holds control afterwards: so a release succeeded when it is false.
+        if entry.op == "release_control":
+            answer = not result.get("granted", False)
+        else:
+            answer = result.get("ok", result.get("granted", True))
         entry.ok = bool(ok and answer)
         entry.message = error or str(result.get("message", ""))
         entry.duration_s = round(time.monotonic() - started, 3)

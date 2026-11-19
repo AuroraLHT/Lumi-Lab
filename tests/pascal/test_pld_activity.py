@@ -39,15 +39,23 @@ async def test_an_entry_runs_then_carries_the_answer_and_is_kept_across_a_restar
 
     s2 = await log.begin("acquire_control", params={"force": False}, actor="hliang16")
     await log.end(s2, ok=True, result={"granted": True, "controller": "lumi-pascal", "message": ""})
+    # A release that went through answers granted=false: the caller no longer holds control.
+    s3 = await log.begin("release_control", params={}, actor="hliang16")
+    await log.end(s3, ok=True, result={"granted": False, "controller": "", "message": "released"})
+    assert log.recent()[-1].ok is True
+    s3 = await log.begin("release_control", params={}, actor="hliang16")
+    await log.end(s3, ok=True, result={"granted": True, "controller": "lumi-pascal", "message": "still held"})
+    assert log.recent()[-1].ok is False
     assert [json.loads(line)["op"] for line in path.read_text().splitlines()] == [
-        "rheed_all_off_gentle", "acquire_control"]
+        "rheed_all_off_gentle", "acquire_control", "release_control", "release_control"]
 
     again = ActivityLog(path)
     assert [(e.seq, e.op, e.ok) for e in again.recent()] == [
-        (seq, "rheed_all_off_gentle", False), (s2, "acquire_control", True)]
-    assert again.latest_seq == s2
-    assert await again.begin("set_valve", params={}) == s2 + 1  # seq never repeats
-    assert [e.seq for e in again.recent(since_seq=s2)] == [s2 + 1]
+        (seq, "rheed_all_off_gentle", False), (s2, "acquire_control", True),
+        (s3 - 1, "release_control", True), (s3, "release_control", False)]
+    assert again.latest_seq == s3
+    assert await again.begin("set_valve", params={}) == s3 + 1  # seq never repeats
+    assert [e.seq for e in again.recent(since_seq=s3)] == [s3 + 1]
 
 
 async def test_a_line_cut_short_by_a_crash_is_skipped(tmp_path):
