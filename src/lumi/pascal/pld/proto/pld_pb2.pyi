@@ -229,7 +229,7 @@ class BypassRequest(_message.Message):
     def __init__(self, value: _Optional[float] = ..., wait: _Optional[bool] = ...) -> None: ...
 
 class BypassValve(_message.Message):
-    __slots__ = ("present", "connected", "port", "firmware", "state", "position", "homed", "open_position", "close_switch", "open_switch", "energized", "rpm", "last_end", "moves_ended", "error", "max_rpm", "max_steps", "open_fraction")
+    __slots__ = ("present", "connected", "port", "firmware", "state", "position", "homed", "open_position", "close_switch", "open_switch", "energized", "rpm", "last_end", "moves_ended", "error", "max_rpm", "max_steps", "open_fraction", "motion_enabled")
     PRESENT_FIELD_NUMBER: _ClassVar[int]
     CONNECTED_FIELD_NUMBER: _ClassVar[int]
     PORT_FIELD_NUMBER: _ClassVar[int]
@@ -248,6 +248,7 @@ class BypassValve(_message.Message):
     MAX_RPM_FIELD_NUMBER: _ClassVar[int]
     MAX_STEPS_FIELD_NUMBER: _ClassVar[int]
     OPEN_FRACTION_FIELD_NUMBER: _ClassVar[int]
+    MOTION_ENABLED_FIELD_NUMBER: _ClassVar[int]
     present: bool
     connected: bool
     port: str
@@ -266,7 +267,8 @@ class BypassValve(_message.Message):
     max_rpm: float
     max_steps: float
     open_fraction: float
-    def __init__(self, present: _Optional[bool] = ..., connected: _Optional[bool] = ..., port: _Optional[str] = ..., firmware: _Optional[str] = ..., state: _Optional[str] = ..., position: _Optional[float] = ..., homed: _Optional[bool] = ..., open_position: _Optional[float] = ..., close_switch: _Optional[bool] = ..., open_switch: _Optional[bool] = ..., energized: _Optional[bool] = ..., rpm: _Optional[float] = ..., last_end: _Optional[str] = ..., moves_ended: _Optional[int] = ..., error: _Optional[str] = ..., max_rpm: _Optional[float] = ..., max_steps: _Optional[float] = ..., open_fraction: _Optional[float] = ...) -> None: ...
+    motion_enabled: bool
+    def __init__(self, present: _Optional[bool] = ..., connected: _Optional[bool] = ..., port: _Optional[str] = ..., firmware: _Optional[str] = ..., state: _Optional[str] = ..., position: _Optional[float] = ..., homed: _Optional[bool] = ..., open_position: _Optional[float] = ..., close_switch: _Optional[bool] = ..., open_switch: _Optional[bool] = ..., energized: _Optional[bool] = ..., rpm: _Optional[float] = ..., last_end: _Optional[str] = ..., moves_ended: _Optional[int] = ..., error: _Optional[str] = ..., max_rpm: _Optional[float] = ..., max_steps: _Optional[float] = ..., open_fraction: _Optional[float] = ..., motion_enabled: _Optional[bool] = ...) -> None: ...
 
 class Rheed(_message.Message):
     __slots__ = ("present", "read_only", "link_ok", "interlock", "filament_open", "filament_on", "filament_set_ma", "filament_target_ma", "filament_readback_ma", "filament_last_ma", "hv_on", "hv_set_kv", "hv_target_kv", "hv_readback_kv", "hv_last_kv", "emission_ua", "focus_on", "focus_set_ma", "focus_readback_ma", "x_on", "x_set_ma", "x_readback_ma", "y_on", "y_set_ma", "y_readback_ma", "hv_ramping_down", "filament_ramping_down", "all_ramping_down", "hv_ramp_v_per_s", "filament_ramp_ma_per_s", "last_alert", "hv_max_kv", "filament_min_ma", "filament_max_ma", "focus_min_ma", "focus_max_ma", "x_min_ma", "x_max_ma", "y_min_ma", "y_max_ma")

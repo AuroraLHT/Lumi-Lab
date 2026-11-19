@@ -103,6 +103,7 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         # 850 steps of travel, unhomed at 300 steps after a (re)start, as the REA twin assumes.
         self.bypass = {"position": 300.0, "homed": False, "open_position": NAN, "rpm": 10.0,
                        "last_end": "", "moves_ended": 0}
+        self.bypass_motion = True  # [bypass] motion (be75673; off by default there, on here for the tests)
         self.read_only = False  # reported only, as hardware without --allow-operations would
         self._subscribers: list[queue.Queue] = []
 
@@ -374,12 +375,15 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
             position=b["position"], homed=b["homed"], open_position=b["open_position"],
             open_fraction=b["position"] / b["open_position"] if known else NAN,
             close_switch=b["homed"] and b["position"] == 0, open_switch=b["position"] >= self.BYPASS_TRAVEL,
-            rpm=b["rpm"], last_end=b["last_end"], moves_ended=b["moves_ended"], max_rpm=60.0, max_steps=0.0)
+            rpm=b["rpm"], last_end=b["last_end"], moves_ended=b["moves_ended"], max_rpm=60.0, max_steps=0.0,
+            motion_enabled=self.bypass_motion)
 
     def _bypass_go(self, context, position: float) -> pb.OperationReply:
         self._require_control(context)
         if self.motors_stopped:
             return self._no("BypassMove refused: the motors are stopped (Motor Stop latched): ResetMotors first")
+        if not self.bypass_motion:
+            return self._no("bypass motor movement is disabled ([bypass] motion = 0)")
         b = self.bypass
         b["position"] = max(0.0, min(self.BYPASS_TRAVEL, position))
         b["last_end"], b["moves_ended"] = f"EVT DONE pos={b['position']:.2f}", b["moves_ended"] + 1

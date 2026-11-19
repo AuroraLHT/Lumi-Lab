@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 83c6745e90472dd9
+# contract_hash: cddb733d6d0451e8
 
 """Generated clients for the storage node."""
 

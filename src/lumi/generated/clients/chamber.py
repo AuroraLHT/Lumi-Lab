@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 83c6745e90472dd9
+# contract_hash: cddb733d6d0451e8
 
 """Generated clients for the chamber node."""
 
@@ -191,7 +191,7 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("reset_motors")  # type: ignore[return-value]
 
     async def bypass_home(self, req: PldBypassMoveRequest) -> PldReply:
-        """Bypass-valve stepper: run to the close switch; position 0 there. Works unhomed. Bypass ops refuse with ok=false (not homed, out of range, no board, Motor Stop latched); state.bypass shows the board. Not yet run on hardware."""
+        """Bypass-valve stepper: run to the close switch; position 0 there. Works unhomed. Bypass ops refuse with ok=false (not homed, out of range, no board, Motor Stop latched, or moves disabled: state.bypass.motion_enabled false, the default while the mechanism is redesigned); state.bypass shows the board. Not yet run on hardware."""
         return await self.call("bypass_home", req)  # type: ignore[return-value]
 
     async def bypass_open_fully(self, req: PldBypassMoveRequest) -> PldReply:

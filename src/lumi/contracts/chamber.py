@@ -209,7 +209,9 @@ PLD = Capability(
         _pld_op("bypass_home", PldBypassMoveRequest,
                 "Bypass-valve stepper: run to the close switch; position 0 there. Works unhomed. "
                 "Bypass ops refuse with ok=false (not homed, out of range, no board, Motor Stop "
-                "latched); state.bypass shows the board. Not yet run on hardware.", timeout_s=_MOVE_S),
+                "latched, or moves disabled: state.bypass.motion_enabled false, the default while the "
+                "mechanism is redesigned); state.bypass shows the board. Not yet run on hardware.",
+                timeout_s=_MOVE_S),
         _pld_op("bypass_open_fully", PldBypassMoveRequest,
                 "Bypass valve: run to the open switch (sets state.bypass.open_position). Works unhomed.",
                 timeout_s=_MOVE_S),

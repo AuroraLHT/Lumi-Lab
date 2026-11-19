@@ -892,6 +892,12 @@
                       "description": "[bypass] max_steps",
                       "title": "Max Steps"
                     },
+                    "motion_enabled": {
+                      "default": false,
+                      "description": "[bypass] motion = 1. False (the default while the mechanism is redesigned, 2026-11-19): home, open-fully, move-to and move-by are refused; stop, release and set-speed still work",
+                      "title": "Motion Enabled",
+                      "type": "boolean"
+                    },
                     "moves_ended": {
                       "default": 0,
                       "description": "Counts the end lines",
@@ -5634,6 +5640,12 @@
                     "default": null,
                     "description": "[bypass] max_steps",
                     "title": "Max Steps"
+                  },
+                  "motion_enabled": {
+                    "default": false,
+                    "description": "[bypass] motion = 1. False (the default while the mechanism is redesigned, 2026-11-19): home, open-fully, move-to and move-by are refused; stop, release and set-speed still work",
+                    "title": "Motion Enabled",
+                    "type": "boolean"
                   },
                   "moves_ended": {
                     "default": 0,

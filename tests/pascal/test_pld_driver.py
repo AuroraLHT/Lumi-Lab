@@ -539,3 +539,9 @@ async def test_the_bypass_valve_maps_and_sets_its_speed_again_after_a_board_rest
     assert (await handler.bypass_stop(Empty())).ok
     assert (await handler.reset_motors(Empty())).ok
     assert (await handler.bypass_home(PldBypassMoveRequest())).ok
+
+    service.servicer.bypass_motion = False  # [bypass] motion = 0 (be75673's default)
+    assert not (await handler.chamber_state(Empty())).bypass.motion_enabled
+    reply = await handler.bypass_move_by(PldBypassStepsRequest(steps=10))
+    assert not reply.ok and "disabled" in reply.message, reply.message
+    assert (await handler.bypass_stop(Empty())).ok

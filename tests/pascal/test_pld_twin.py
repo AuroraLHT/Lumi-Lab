@@ -595,10 +595,31 @@ async def test_stop_motors_halts_a_move_and_a_waited_fire(handler):
 async def test_the_bypass_valve_homes_moves_and_stops_with_the_motors(handler):
     # REA 98af5c6: the bypass-valve stepper on the twin's PORT+5 (assumed 850 steps of travel).
     # MoveTo needs homing; Motor Stop refuses its moves until reset, and keeps its position.
+    from lumi.pascal.pld.proto import pld_pb2 as pb
+
+    def motion(on: bool):
+        return asyncio.to_thread(h.client.call, "SetSettings", pb.SetSettingsRequest(
+            changes=[pb.Setting(section="bypass", key="motion", value="1" if on else "0")]))
+
     h = handler
     assert (await h.reset_motors(Empty())).ok
     bypass = (await h.chamber_state(Empty())).bypass
     assert bypass.present and bypass.connected, bypass
+    # be75673: moves are off by default while the mechanism is redesigned ([bypass] motion).
+    ok, message = await motion(False)
+    assert ok, message
+    reply = await h.bypass_move_by(PldBypassStepsRequest(steps=10, wait=True))
+    assert not reply.ok and "disabled" in reply.message, reply.message
+    assert not (await h.chamber_state(Empty())).bypass.motion_enabled
+    ok, message = await motion(True)
+    assert ok, message
+    try:
+        await _bypass_moves(h)
+    finally:
+        await motion(False)
+
+
+async def _bypass_moves(h):
     assert (await h.bypass_set_speed(PldBypassSpeedRequest(rpm=60))).ok
     reply = await h.bypass_home(PldBypassMoveRequest(wait=True))
     assert reply.ok, reply.message

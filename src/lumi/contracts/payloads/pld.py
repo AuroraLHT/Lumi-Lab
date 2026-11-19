@@ -277,6 +277,10 @@ class PldBypass(BaseModel):
     error: str = Field("", description="The last link or board error; '' = none")
     max_rpm: float | None = Field(None, description="[bypass] max_rpm: bypass_set_speed's cap")
     max_steps: float | None = Field(None, description="[bypass] max_steps")
+    motion_enabled: bool = Field(
+        False, description="[bypass] motion = 1. False (the default while the mechanism is redesigned, "
+                           "2026-11-19): home, open-fully, move-to and move-by are refused; stop, release "
+                           "and set-speed still work")
 
 
 class PldSequenceStatus(BaseModel):
