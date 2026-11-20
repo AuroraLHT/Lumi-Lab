@@ -545,3 +545,11 @@ async def test_the_bypass_valve_maps_and_sets_its_speed_again_after_a_board_rest
     reply = await handler.bypass_move_by(PldBypassStepsRequest(steps=10))
     assert not reply.ok and "disabled" in reply.message, reply.message
     assert (await handler.bypass_stop(Empty())).ok
+
+
+def test_session_valves_locked_maps_through():
+    # pld-service 4cc4d04: the PLC watchdog tripped (DM30146 bit 8 off) and the PLC
+    # ignores the open relays of MV10, MV11, MV20 and MV21.
+    assert not convert.chamber_state(pb.ChamberState()).session.valves_locked
+    state = convert.chamber_state(pb.ChamberState(session=pb.Session(plc_session=True, valves_locked=True)))
+    assert state.session.valves_locked and state.session.plc_session and not state.session.watchdog

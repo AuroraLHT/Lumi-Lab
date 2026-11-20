@@ -355,14 +355,16 @@ class Rheed(_message.Message):
     def __init__(self, present: _Optional[bool] = ..., read_only: _Optional[bool] = ..., link_ok: _Optional[bool] = ..., interlock: _Optional[bool] = ..., filament_open: _Optional[bool] = ..., filament_on: _Optional[bool] = ..., filament_set_ma: _Optional[float] = ..., filament_target_ma: _Optional[float] = ..., filament_readback_ma: _Optional[float] = ..., filament_last_ma: _Optional[float] = ..., hv_on: _Optional[bool] = ..., hv_set_kv: _Optional[float] = ..., hv_target_kv: _Optional[float] = ..., hv_readback_kv: _Optional[float] = ..., hv_last_kv: _Optional[float] = ..., emission_ua: _Optional[float] = ..., focus_on: _Optional[bool] = ..., focus_set_ma: _Optional[float] = ..., focus_readback_ma: _Optional[float] = ..., x_on: _Optional[bool] = ..., x_set_ma: _Optional[float] = ..., x_readback_ma: _Optional[float] = ..., y_on: _Optional[bool] = ..., y_set_ma: _Optional[float] = ..., y_readback_ma: _Optional[float] = ..., hv_ramping_down: _Optional[bool] = ..., filament_ramping_down: _Optional[bool] = ..., all_ramping_down: _Optional[bool] = ..., hv_ramp_v_per_s: _Optional[float] = ..., filament_ramp_ma_per_s: _Optional[float] = ..., last_alert: _Optional[str] = ..., hv_max_kv: _Optional[float] = ..., filament_min_ma: _Optional[float] = ..., filament_max_ma: _Optional[float] = ..., focus_min_ma: _Optional[float] = ..., focus_max_ma: _Optional[float] = ..., x_min_ma: _Optional[float] = ..., x_max_ma: _Optional[float] = ..., y_min_ma: _Optional[float] = ..., y_max_ma: _Optional[float] = ...) -> None: ...
 
 class Session(_message.Message):
-    __slots__ = ("plc_session", "watchdog", "link_error")
+    __slots__ = ("plc_session", "watchdog", "link_error", "valves_locked")
     PLC_SESSION_FIELD_NUMBER: _ClassVar[int]
     WATCHDOG_FIELD_NUMBER: _ClassVar[int]
     LINK_ERROR_FIELD_NUMBER: _ClassVar[int]
+    VALVES_LOCKED_FIELD_NUMBER: _ClassVar[int]
     plc_session: bool
     watchdog: bool
     link_error: str
-    def __init__(self, plc_session: _Optional[bool] = ..., watchdog: _Optional[bool] = ..., link_error: _Optional[str] = ...) -> None: ...
+    valves_locked: bool
+    def __init__(self, plc_session: _Optional[bool] = ..., watchdog: _Optional[bool] = ..., link_error: _Optional[str] = ..., valves_locked: _Optional[bool] = ...) -> None: ...
 
 class Limits(_message.Message):
     __slots__ = ("ig1_max_torr", "ig3_max_torr", "mv3_max_torr", "heater_max_celsius", "heater_max_amps", "ig1_off_torr")

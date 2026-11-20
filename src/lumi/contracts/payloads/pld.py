@@ -177,9 +177,14 @@ class PldSession(BaseModel):
     """pld-service's PLC host-link session."""
 
     plc_session: bool = Field(False, description="The session is open")
-    watchdog: bool = Field(False, description="The service started the PLC watchdog (operations allowed only)")
+    watchdog: bool = Field(
+        False, description="The service started the PLC watchdog (only with pld-service --plc-watchdog)")
     link_error: str = Field(
         "", description="Why the PLC/gauge/pyrometer polls are failing (the service reconnects); empty while they work")
+    valves_locked: bool = Field(
+        False, description="The PLC watchdog tripped (DM30146 bit 8 off): the PLC ignores the open relays "
+                           "of MV10, MV11, MV20 and MV21, and opening them is refused until PLD Controller's "
+                           "start-up clears it")
 
 
 class PldLimits(BaseModel):

@@ -2428,9 +2428,15 @@
                       "title": "Plc Session",
                       "type": "boolean"
                     },
+                    "valves_locked": {
+                      "default": false,
+                      "description": "The PLC watchdog tripped (DM30146 bit 8 off): the PLC ignores the open relays of MV10, MV11, MV20 and MV21, and opening them is refused until PLD Controller's start-up clears it",
+                      "title": "Valves Locked",
+                      "type": "boolean"
+                    },
                     "watchdog": {
                       "default": false,
-                      "description": "The service started the PLC watchdog (operations allowed only)",
+                      "description": "The service started the PLC watchdog (only with pld-service --plc-watchdog)",
                       "title": "Watchdog",
                       "type": "boolean"
                     }
@@ -7177,9 +7183,15 @@
                     "title": "Plc Session",
                     "type": "boolean"
                   },
+                  "valves_locked": {
+                    "default": false,
+                    "description": "The PLC watchdog tripped (DM30146 bit 8 off): the PLC ignores the open relays of MV10, MV11, MV20 and MV21, and opening them is refused until PLD Controller's start-up clears it",
+                    "title": "Valves Locked",
+                    "type": "boolean"
+                  },
                   "watchdog": {
                     "default": false,
-                    "description": "The service started the PLC watchdog (operations allowed only)",
+                    "description": "The service started the PLC watchdog (only with pld-service --plc-watchdog)",
                     "title": "Watchdog",
                     "type": "boolean"
                   }
