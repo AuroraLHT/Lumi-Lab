@@ -33,9 +33,9 @@ more than a missing one. Background: [Sample tracking](https://github.com/Aurora
   confirm. Pass it as `register_substrate(substrate_name=…)`: that names the substrate
   record (what the GUI shows), the root sample and every position sample
   `<name>-p<index>` in one go. Without it the positions fall back to
-  `<material>-p<index>` (`YSZ-p0` on every YSZ substrate). Renaming later does **not**
-  propagate: `update_substrate(substrate_name)` changes only the substrate record; also
-  `update_sample` the root sample and each position sample.
+  `<material>-p<index>` (`YSZ-p0` on every YSZ substrate). Renaming later with
+  `update_substrate(substrate_name)` renames the root sample and the `<old>-p<index>`
+  position samples too; a sample someone renamed by hand keeps its name.
 - **[hard]** Do not `finish_current_pixel` / `finish_substrate` on a position that was
   not really used. If it was done by mistake, `reopen_position`.
 - **[thumb]** Attach a measurement to the sample (`add_measurement`) as soon as there is
