@@ -299,6 +299,21 @@ class ChamberStub:
                 request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
                 response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
                 _registered_method=True)
+        self.RheedAllOffGentle = channel.unary_unary(
+                '/pld.v1.Chamber/RheedAllOffGentle',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
+        self.GetSettings = channel.unary_unary(
+                '/pld.v1.Chamber/GetSettings',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SettingsReply.FromString,
+                _registered_method=True)
+        self.SetSettings = channel.unary_unary(
+                '/pld.v1.Chamber/SetSettings',
+                request_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SetSettingsRequest.SerializeToString,
+                response_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+                _registered_method=True)
 
 
 class ChamberServicer:
@@ -643,15 +658,16 @@ class ChamberServicer:
         Its own link and thread (rheed.rs, docs/rheed-link.md). Needs control, except RheedAllOff.
         On hardware without --allow-operations the RHEED port stays closed (any record, even a
         k poll, restarts the controller's outputs) and every RHEED operation is refused.
-        Filament on ramps from the 507 mA floor at filament_ramp_ma_per_s; HV on ramps from 0 at
-        hv_ramp_v_per_s and needs the filament on. RheedHvOff ramps HV to 0, then switches it off;
+        Filament on starts at the 507 mA floor; HV on starts at 0 and needs the filament on. Both ramp
+        (filament_ramp_ma_per_s, hv_ramp_v_per_s) only to a value given explicitly: On with `ma` / `kv`
+        unset holds at the floor / 0 until a SetRheed* (user, 2026-11-13). RheedHvOff ramps HV to 0, then switches it off;
         RheedFilamentOff ramps HV down and off first, then the filament to filament_min_ma, then off
         (same rates; the remembered set points are not changed). A SetRheed*/On during a ramp-down
         cancels it and goes to the new target (HV on/set is refused during a filament ramp-down:
-        switch the filament on again first). RheedAllOff, interlock, faults and link loss are immediate.
+        switch the filament on again first). RheedAllOffGentle ramps like RheedFilamentOff and leaves
+        focus, X and Y on. RheedAllOff ("ALL OFF BRUTAL"), interlock, faults and link loss are immediate.
         An interlock, an open filament or an over-current held 1 s switches filament and HV off;
         nothing comes back on by itself.
-        `ma` / `kv` unset: the remembered set point (from this or a previous run); refused if none.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -704,6 +720,30 @@ class ChamberServicer:
 
     def RheedAllOff(self, request, context):
         """Filament, HV, focus, X and Y off at once. Any client, no control needed (like StopFire).
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RheedAllOffGentle(self, request, context):
+        """Ramped all off: HV to 0 and off, filament to its floor and off, then focus, X and Y off. Any client.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSettings(self, request, context):
+        """---- settings (the --config file's keys; GUI Maintenance > Settings) ------------------------
+        Every setting with its value, unit and help. Watching needs nothing.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetSettings(self, request, context):
+        """Change settings (needs control). Checked together, as the config file is; on success they are
+        saved to the config file (the service's --config file, or pld-service.ini in the log folder).
+        Settings with live = false (the RHEED caps) are saved but take effect at the next start.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -975,6 +1015,21 @@ def add_ChamberServicer_to_server(servicer, server):
             'RheedAllOff': grpc.unary_unary_rpc_method_handler(
                     servicer.RheedAllOff,
                     request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'RheedAllOffGentle': grpc.unary_unary_rpc_method_handler(
+                    servicer.RheedAllOffGentle,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
+            ),
+            'GetSettings': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSettings,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.FromString,
+                    response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SettingsReply.SerializeToString,
+            ),
+            'SetSettings': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetSettings,
+                    request_deserializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SetSettingsRequest.FromString,
                     response_serializer=lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.SerializeToString,
             ),
     }
@@ -2408,6 +2463,87 @@ class Chamber:
             target,
             '/pld.v1.Chamber/RheedAllOff',
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RheedAllOffGentle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/RheedAllOffGentle',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSettings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/GetSettings',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.Empty.SerializeToString,
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SettingsReply.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetSettings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/pld.v1.Chamber/SetSettings',
+            lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.SetSettingsRequest.SerializeToString,
             lumi_dot_pascal_dot_pld_dot_proto_dot_pld__pb2.OperationReply.FromString,
             options,
             channel_credentials,

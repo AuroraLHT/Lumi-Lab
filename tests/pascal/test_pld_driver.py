@@ -366,7 +366,7 @@ async def test_stop_fire_cuts_a_waited_train_short_from_another_client(driver):
 
 
 async def test_rheed_on_without_a_set_point_leaves_it_unset():
-    # pld-service then uses the remembered set point; 0 would be a set point of its own.
+    # pld-service then holds at the floor / 0 kV (REA 0089410); 0 would be a set point of its own.
     from lumi.contracts.payloads.pld import PldRheedFilamentOnRequest, PldRheedHvOnRequest
     from lumi.pascal.pld.handler import PldHandler
 

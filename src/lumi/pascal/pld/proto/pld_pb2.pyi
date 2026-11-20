@@ -29,6 +29,38 @@ MOVING: AxisStatus
 HOMING: AxisStatus
 SETTLING: AxisStatus
 
+class Setting(_message.Message):
+    __slots__ = ("section", "key", "value", "unit", "help", "live", "pending")
+    SECTION_FIELD_NUMBER: _ClassVar[int]
+    KEY_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    UNIT_FIELD_NUMBER: _ClassVar[int]
+    HELP_FIELD_NUMBER: _ClassVar[int]
+    LIVE_FIELD_NUMBER: _ClassVar[int]
+    PENDING_FIELD_NUMBER: _ClassVar[int]
+    section: str
+    key: str
+    value: str
+    unit: str
+    help: str
+    live: bool
+    pending: str
+    def __init__(self, section: _Optional[str] = ..., key: _Optional[str] = ..., value: _Optional[str] = ..., unit: _Optional[str] = ..., help: _Optional[str] = ..., live: _Optional[bool] = ..., pending: _Optional[str] = ...) -> None: ...
+
+class SettingsReply(_message.Message):
+    __slots__ = ("settings", "file")
+    SETTINGS_FIELD_NUMBER: _ClassVar[int]
+    FILE_FIELD_NUMBER: _ClassVar[int]
+    settings: _containers.RepeatedCompositeFieldContainer[Setting]
+    file: str
+    def __init__(self, settings: _Optional[_Iterable[_Union[Setting, _Mapping]]] = ..., file: _Optional[str] = ...) -> None: ...
+
+class SetSettingsRequest(_message.Message):
+    __slots__ = ("changes",)
+    CHANGES_FIELD_NUMBER: _ClassVar[int]
+    changes: _containers.RepeatedCompositeFieldContainer[Setting]
+    def __init__(self, changes: _Optional[_Iterable[_Union[Setting, _Mapping]]] = ...) -> None: ...
+
 class Empty(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
@@ -105,7 +137,7 @@ class ChamberState(_message.Message):
     def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ..., pumps: _Optional[_Mapping[str, Pump]] = ..., load_lock: _Optional[_Union[LoadLock, _Mapping]] = ..., session: _Optional[_Union[Session, _Mapping]] = ..., limits: _Optional[_Union[Limits, _Mapping]] = ..., rheed: _Optional[_Union[Rheed, _Mapping]] = ...) -> None: ...
 
 class Rheed(_message.Message):
-    __slots__ = ("present", "read_only", "link_ok", "interlock", "filament_open", "filament_on", "filament_set_ma", "filament_target_ma", "filament_readback_ma", "filament_last_ma", "hv_on", "hv_set_kv", "hv_target_kv", "hv_readback_kv", "hv_last_kv", "emission_ua", "focus_on", "focus_set_ma", "focus_readback_ma", "x_on", "x_set_ma", "x_readback_ma", "y_on", "y_set_ma", "y_readback_ma", "hv_ramping_down", "filament_ramping_down", "last_alert", "hv_max_kv", "filament_min_ma", "filament_max_ma", "focus_min_ma", "focus_max_ma", "x_min_ma", "x_max_ma", "y_min_ma", "y_max_ma")
+    __slots__ = ("present", "read_only", "link_ok", "interlock", "filament_open", "filament_on", "filament_set_ma", "filament_target_ma", "filament_readback_ma", "filament_last_ma", "hv_on", "hv_set_kv", "hv_target_kv", "hv_readback_kv", "hv_last_kv", "emission_ua", "focus_on", "focus_set_ma", "focus_readback_ma", "x_on", "x_set_ma", "x_readback_ma", "y_on", "y_set_ma", "y_readback_ma", "hv_ramping_down", "filament_ramping_down", "all_ramping_down", "hv_ramp_v_per_s", "filament_ramp_ma_per_s", "last_alert", "hv_max_kv", "filament_min_ma", "filament_max_ma", "focus_min_ma", "focus_max_ma", "x_min_ma", "x_max_ma", "y_min_ma", "y_max_ma")
     PRESENT_FIELD_NUMBER: _ClassVar[int]
     READ_ONLY_FIELD_NUMBER: _ClassVar[int]
     LINK_OK_FIELD_NUMBER: _ClassVar[int]
@@ -133,6 +165,9 @@ class Rheed(_message.Message):
     Y_READBACK_MA_FIELD_NUMBER: _ClassVar[int]
     HV_RAMPING_DOWN_FIELD_NUMBER: _ClassVar[int]
     FILAMENT_RAMPING_DOWN_FIELD_NUMBER: _ClassVar[int]
+    ALL_RAMPING_DOWN_FIELD_NUMBER: _ClassVar[int]
+    HV_RAMP_V_PER_S_FIELD_NUMBER: _ClassVar[int]
+    FILAMENT_RAMP_MA_PER_S_FIELD_NUMBER: _ClassVar[int]
     LAST_ALERT_FIELD_NUMBER: _ClassVar[int]
     HV_MAX_KV_FIELD_NUMBER: _ClassVar[int]
     FILAMENT_MIN_MA_FIELD_NUMBER: _ClassVar[int]
@@ -170,6 +205,9 @@ class Rheed(_message.Message):
     y_readback_ma: float
     hv_ramping_down: bool
     filament_ramping_down: bool
+    all_ramping_down: bool
+    hv_ramp_v_per_s: float
+    filament_ramp_ma_per_s: float
     last_alert: str
     hv_max_kv: float
     filament_min_ma: float
@@ -180,7 +218,7 @@ class Rheed(_message.Message):
     x_max_ma: float
     y_min_ma: float
     y_max_ma: float
-    def __init__(self, present: _Optional[bool] = ..., read_only: _Optional[bool] = ..., link_ok: _Optional[bool] = ..., interlock: _Optional[bool] = ..., filament_open: _Optional[bool] = ..., filament_on: _Optional[bool] = ..., filament_set_ma: _Optional[float] = ..., filament_target_ma: _Optional[float] = ..., filament_readback_ma: _Optional[float] = ..., filament_last_ma: _Optional[float] = ..., hv_on: _Optional[bool] = ..., hv_set_kv: _Optional[float] = ..., hv_target_kv: _Optional[float] = ..., hv_readback_kv: _Optional[float] = ..., hv_last_kv: _Optional[float] = ..., emission_ua: _Optional[float] = ..., focus_on: _Optional[bool] = ..., focus_set_ma: _Optional[float] = ..., focus_readback_ma: _Optional[float] = ..., x_on: _Optional[bool] = ..., x_set_ma: _Optional[float] = ..., x_readback_ma: _Optional[float] = ..., y_on: _Optional[bool] = ..., y_set_ma: _Optional[float] = ..., y_readback_ma: _Optional[float] = ..., hv_ramping_down: _Optional[bool] = ..., filament_ramping_down: _Optional[bool] = ..., last_alert: _Optional[str] = ..., hv_max_kv: _Optional[float] = ..., filament_min_ma: _Optional[float] = ..., filament_max_ma: _Optional[float] = ..., focus_min_ma: _Optional[float] = ..., focus_max_ma: _Optional[float] = ..., x_min_ma: _Optional[float] = ..., x_max_ma: _Optional[float] = ..., y_min_ma: _Optional[float] = ..., y_max_ma: _Optional[float] = ...) -> None: ...
+    def __init__(self, present: _Optional[bool] = ..., read_only: _Optional[bool] = ..., link_ok: _Optional[bool] = ..., interlock: _Optional[bool] = ..., filament_open: _Optional[bool] = ..., filament_on: _Optional[bool] = ..., filament_set_ma: _Optional[float] = ..., filament_target_ma: _Optional[float] = ..., filament_readback_ma: _Optional[float] = ..., filament_last_ma: _Optional[float] = ..., hv_on: _Optional[bool] = ..., hv_set_kv: _Optional[float] = ..., hv_target_kv: _Optional[float] = ..., hv_readback_kv: _Optional[float] = ..., hv_last_kv: _Optional[float] = ..., emission_ua: _Optional[float] = ..., focus_on: _Optional[bool] = ..., focus_set_ma: _Optional[float] = ..., focus_readback_ma: _Optional[float] = ..., x_on: _Optional[bool] = ..., x_set_ma: _Optional[float] = ..., x_readback_ma: _Optional[float] = ..., y_on: _Optional[bool] = ..., y_set_ma: _Optional[float] = ..., y_readback_ma: _Optional[float] = ..., hv_ramping_down: _Optional[bool] = ..., filament_ramping_down: _Optional[bool] = ..., all_ramping_down: _Optional[bool] = ..., hv_ramp_v_per_s: _Optional[float] = ..., filament_ramp_ma_per_s: _Optional[float] = ..., last_alert: _Optional[str] = ..., hv_max_kv: _Optional[float] = ..., filament_min_ma: _Optional[float] = ..., filament_max_ma: _Optional[float] = ..., focus_min_ma: _Optional[float] = ..., focus_max_ma: _Optional[float] = ..., x_min_ma: _Optional[float] = ..., x_max_ma: _Optional[float] = ..., y_min_ma: _Optional[float] = ..., y_max_ma: _Optional[float] = ...) -> None: ...
 
 class Session(_message.Message):
     __slots__ = ("plc_session", "watchdog", "link_error")
@@ -193,18 +231,20 @@ class Session(_message.Message):
     def __init__(self, plc_session: _Optional[bool] = ..., watchdog: _Optional[bool] = ..., link_error: _Optional[str] = ...) -> None: ...
 
 class Limits(_message.Message):
-    __slots__ = ("ig1_max_torr", "ig3_max_torr", "mv3_max_torr", "heater_max_celsius", "heater_max_amps")
+    __slots__ = ("ig1_max_torr", "ig3_max_torr", "mv3_max_torr", "heater_max_celsius", "heater_max_amps", "ig1_off_torr")
     IG1_MAX_TORR_FIELD_NUMBER: _ClassVar[int]
     IG3_MAX_TORR_FIELD_NUMBER: _ClassVar[int]
     MV3_MAX_TORR_FIELD_NUMBER: _ClassVar[int]
     HEATER_MAX_CELSIUS_FIELD_NUMBER: _ClassVar[int]
     HEATER_MAX_AMPS_FIELD_NUMBER: _ClassVar[int]
+    IG1_OFF_TORR_FIELD_NUMBER: _ClassVar[int]
     ig1_max_torr: float
     ig3_max_torr: float
     mv3_max_torr: float
     heater_max_celsius: float
     heater_max_amps: float
-    def __init__(self, ig1_max_torr: _Optional[float] = ..., ig3_max_torr: _Optional[float] = ..., mv3_max_torr: _Optional[float] = ..., heater_max_celsius: _Optional[float] = ..., heater_max_amps: _Optional[float] = ...) -> None: ...
+    ig1_off_torr: float
+    def __init__(self, ig1_max_torr: _Optional[float] = ..., ig3_max_torr: _Optional[float] = ..., mv3_max_torr: _Optional[float] = ..., heater_max_celsius: _Optional[float] = ..., heater_max_amps: _Optional[float] = ..., ig1_off_torr: _Optional[float] = ...) -> None: ...
 
 class LoadLock(_message.Message):
     __slots__ = ("hatch_closed", "ready", "sequence", "step", "pump_down_complete", "below_sp1", "below_sp2", "ig3_disabled", "by_service", "gv1")

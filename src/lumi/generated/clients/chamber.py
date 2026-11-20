@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: f0a0bfe4157db746
+# contract_hash: f011d1d700c7f97f
 
 """Generated clients for the chamber node."""
 
@@ -21,7 +21,7 @@ from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta,
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
-from lumi.contracts.payloads.pld import PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
+from lumi.contracts.payloads.pld import PldActivityList, PldActivityQuery, PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
 
 
 class ChamberLogClient(CapabilityClient):
@@ -134,6 +134,10 @@ class ChamberPldClient(CapabilityClient):
         """The service's latest discrete events (valve_changed, move_done, interlock, laser_done, error, control), oldest first."""
         return await self.call("recent_events", req)  # type: ignore[return-value]
 
+    async def recent_activity(self, req: PldActivityQuery) -> PldActivityList:
+        """The chamber.pld operations this node handled, oldest first: who asked (actor: a Deck user's name, 'mcp:<user>' for the agent), the request, and the service's answer; running while a ramp or a waited move is under way. `since_seq` for only the newer ones. The newest 10 also ride on every state-stream message as `activity`. pld-gui and other gRPC clients do not go through this node, so they are not here: see recent_events' control events."""
+        return await self.call("recent_activity", req)  # type: ignore[return-value]
+
     async def acquire_control(self, req: PldControlRequest) -> PldControlReply:
         """Take control of the chamber as 'lumi-pascal'. Operations do this themselves; call it to see who holds control, or with force=true to take it from another client (logged by the service; never the default)."""
         return await self.call("acquire_control", req)  # type: ignore[return-value]
@@ -143,7 +147,7 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("release_control")  # type: ignore[return-value]
 
     async def set_valve(self, req: PldValveRequest) -> PldReply:
-        """Open or close a valve by its reference name."""
+        """Open or close a valve by its reference name. The service refuses an order that breaks a valve lock (ok=false, the reason in message, nothing moved): open a turbo's fore valve before its main valve and close the main valve before the fore valve (FV1 with MV10/MV11, FV20-MV20, FV21-MV21, FV3-MV3); on the load lock, close MV3 and FV3 before opening RV3, and close RV3 before opening FV3, then MV3. Closing a main valve or RV3 is never refused."""
         return await self.call("set_valve", req)  # type: ignore[return-value]
 
     async def select_target(self, req: PldTargetRequest) -> PldReply:
@@ -299,7 +303,7 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("release_laser")  # type: ignore[return-value]
 
     async def rheed_filament_on(self, req: PldRheedFilamentOnRequest) -> PldReply:
-        """RHEED filament on, ramping from the 507 mA floor at 30 mA/s to `ma` (unset: the remembered set point; refused if there is none). During a ramp down it cancels the ramp. Returns when the ramp starts: done when state.rheed.filament_set_ma reaches filament_target_ma."""
+        """RHEED filament on at the 507 mA floor, ramping at 30 mA/s to `ma`. Unset, it holds at the floor until set_rheed_filament. During a ramp down it cancels the ramp. Returns when the ramp starts: done when state.rheed.filament_set_ma reaches filament_target_ma."""
         return await self.call("rheed_filament_on", req)  # type: ignore[return-value]
 
     async def rheed_filament_off(self) -> PldReply:
@@ -307,7 +311,7 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("rheed_filament_off")  # type: ignore[return-value]
 
     async def rheed_hv_on(self, req: PldRheedHvOnRequest) -> PldReply:
-        """RHEED HV on, ramping from 0 at 500 V/s to `kv` (unset: the remembered set point). Needs the filament on, and is refused during a filament ramp down. Returns when the ramp starts."""
+        """RHEED HV on at 0 kV, ramping at 500 V/s to `kv`. Unset, it holds at 0 until set_rheed_hv. Needs the filament on, and is refused during a filament ramp down. Returns when the ramp starts."""
         return await self.call("rheed_hv_on", req)  # type: ignore[return-value]
 
     async def rheed_hv_off(self) -> PldReply:
@@ -323,15 +327,19 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("set_rheed_hv", req)  # type: ignore[return-value]
 
     async def set_rheed_focus(self, req: PldRheedFocusRequest) -> PldReply:
-        """RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 when focus is off). Returns when it is there: up to about 22 s across the range."""
+        """RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 when focus is off). Returns when it is there: up to about 14 s across the range."""
         return await self.call("set_rheed_focus", req)  # type: ignore[return-value]
 
     async def set_rheed_deflection(self, req: PldRheedDeflectionRequest) -> PldReply:
         """RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in 0.2 s steps, both arriving together. Returns when they are there."""
         return await self.call("set_rheed_deflection", req)  # type: ignore[return-value]
 
+    async def rheed_all_off_gentle(self) -> PldReply:
+        """RHEED all off, ramped: HV down at 500 V/s and off, the filament down at 30 mA/s to its floor and off (state.rheed.all_ramping_down meanwhile). Focus, X and Y are left on: the beam optics stay powered. The normal way to switch the gun off. Returns when HV and filament are off, about two minutes from full; set points are kept for the next on. Needs no control, like rheed_all_off."""
+        return await self.call("rheed_all_off_gentle")  # type: ignore[return-value]
+
     async def rheed_all_off(self) -> PldReply:
-        """RHEED filament, HV, focus, X and Y off at once, unramped: the emergency stop, for a fault; rheed_filament_off is the normal way down. Set points are kept for the next on. Needs no control, like stop_fire: the stop from any client. An interlock, an open filament or an over-current held 1 s switches filament and HV off by itself; nothing comes back on by itself."""
+        """RHEED filament, HV, focus, X and Y off at once, unramped ("ALL OFF BRUTAL" in pld-gui): the emergency stop, for a fault; rheed_all_off_gentle is the normal way down. Set points are kept for the next on. Needs no control, like stop_fire: the stop from any client. An interlock, an open filament or an over-current held 1 s switches filament and HV off by itself; nothing comes back on by itself."""
         return await self.call("rheed_all_off")  # type: ignore[return-value]
 
     async def start_logging(self, req: PldLoggingRequest) -> PldReply:

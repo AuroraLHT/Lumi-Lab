@@ -402,6 +402,7 @@ def build_pld_driver(address: str, log_dir: str | Path | None):
 
     Returns `(handler, workers)`; the workers are threads for `node.thread`.
     """
+    from lumi.pascal.pld.activity import ActivityLog
     from lumi.pascal.pld.client import PldClient
     from lumi.pascal.pld.handler import PldHandler
     from lumi.pascal.pld.monitor import GrowthLog, PldEventMonitor, PldStateMonitor
@@ -418,7 +419,12 @@ def build_pld_driver(address: str, log_dir: str | Path | None):
     state_monitor = PldStateMonitor(client, growth_log, interval_s=interval,
                                     rate_hz=float(cfg.get("state_rate_hz", 2.0)))
     event_monitor = PldEventMonitor(client)
-    handler = PldHandler(client, state_monitor, event_monitor, growth_log)
+    # Who did what through chamber.pld, kept on this PC across restarts: beside the
+    # growth logs by default (the log archive lists only *.csv), in memory only for
+    # --src test.
+    path = cfg.get("activity_log") or (Path(log_dir) / "lumi_pld_activity.jsonl" if log_dir is not None else None)
+    activity = ActivityLog(_resolve(path) if path is not None else None)
+    handler = PldHandler(client, state_monitor, event_monitor, growth_log, activity)
     if client.wait_ready(timeout=float(cfg.get("connect_timeout", 5.0))):
         log.info("pld-service at %s is up", address)
     else:

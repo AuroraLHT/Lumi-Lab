@@ -45,6 +45,8 @@ from .payloads.pld import (
     PldControlRequest,
     PldCurrentLimitsRequest,
     PldCurrentRequest,
+    PldActivityList,
+    PldActivityQuery,
     PldEventList,
     PldEventQuery,
     PldFireRequest,
@@ -157,13 +159,26 @@ PLD = Capability(
         Op("recent_events", PldEventQuery, PldEventList,
            doc="The service's latest discrete events (valve_changed, move_done, "
                "interlock, laser_done, error, control), oldest first."),
+        Op("recent_activity", PldActivityQuery, PldActivityList,
+           doc="The chamber.pld operations this node handled, oldest first: who asked "
+               "(actor: a Deck user's name, 'mcp:<user>' for the agent), the request, and "
+               "the service's answer; running while a ramp or a waited move is under way. "
+               "`since_seq` for only the newer ones. The newest 10 also ride on every "
+               "state-stream message as `activity`. pld-gui and other gRPC clients do not "
+               "go through this node, so they are not here: see recent_events' control events."),
         Op("acquire_control", PldControlRequest, PldControlReply, journal=True,
            doc="Take control of the chamber as 'lumi-pascal'. Operations do this "
                "themselves; call it to see who holds control, or with force=true to take "
                "it from another client (logged by the service; never the default)."),
         Op("release_control", Empty, PldControlReply, journal=True,
            doc="Hand control back, e.g. so the REA GUI can drive. Release it when a run ends."),
-        _pld_op("set_valve", PldValveRequest, "Open or close a valve by its reference name.",
+        _pld_op("set_valve", PldValveRequest,
+                "Open or close a valve by its reference name. The service refuses an order "
+                "that breaks a valve lock (ok=false, the reason in message, nothing moved): "
+                "open a turbo's fore valve before its main valve and close the main valve "
+                "before the fore valve (FV1 with MV10/MV11, FV20-MV20, FV21-MV21, FV3-MV3); on "
+                "the load lock, close MV3 and FV3 before opening RV3, and close RV3 before "
+                "opening FV3, then MV3. Closing a main valve or RV3 is never refused.",
                 timeout_s=_MOVE_S),
         _pld_op("select_target", PldTargetRequest, "Revolve the carousel to target A..F or Clear.",
                 timeout_s=_MOVE_S),
@@ -244,8 +259,8 @@ PLD = Capability(
         # its limits are there too (hv_max_kv, filament_min_ma..y_max_ma).
         # Everything ramps: on, set points and off (the off-ops ramp down first).
         _pld_op("rheed_filament_on", PldRheedFilamentOnRequest,
-                "RHEED filament on, ramping from the 507 mA floor at 30 mA/s to `ma` (unset: the "
-                "remembered set point; refused if there is none). During a ramp down it "
+                "RHEED filament on at the 507 mA floor, ramping at 30 mA/s to `ma`. Unset, it "
+                "holds at the floor until set_rheed_filament. During a ramp down it "
                 "cancels the ramp. Returns when the ramp starts: "
                 "done when state.rheed.filament_set_ma reaches filament_target_ma."),
         _pld_op("rheed_filament_off", Empty,
@@ -256,8 +271,8 @@ PLD = Capability(
                 "Clears filament_open.",
                 timeout_s=300.0),
         _pld_op("rheed_hv_on", PldRheedHvOnRequest,
-                "RHEED HV on, ramping from 0 at 500 V/s to `kv` (unset: the remembered set point). "
-                "Needs the filament on, and is refused during a filament ramp down. "
+                "RHEED HV on at 0 kV, ramping at 500 V/s to `kv`. Unset, it holds at 0 until "
+                "set_rheed_hv. Needs the filament on, and is refused during a filament ramp down. "
                 "Returns when the ramp starts."),
         _pld_op("rheed_hv_off", Empty,
                 "RHEED HV off, ramped: down to 0 kV at 500 V/s, then off (pld-service's ramp; "
@@ -270,15 +285,23 @@ PLD = Capability(
                 "Returns when the ramp starts."),
         _pld_op("set_rheed_focus", PldRheedFocusRequest,
                 "RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 "
-                "when focus is off). Returns when it is there: up to about 22 s across the range.",
+                "when focus is off). Returns when it is there: up to about 14 s across the range.",
                 timeout_s=120.0),
         _pld_op("set_rheed_deflection", PldRheedDeflectionRequest,
                 "RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in "
                 "0.2 s steps, both arriving together. Returns when they are there.",
                 timeout_s=120.0),
+        _pld_op("rheed_all_off_gentle", Empty,
+                "RHEED all off, ramped: HV down at 500 V/s and off, the filament down at 30 mA/s "
+                "to its floor and off (state.rheed.all_ramping_down meanwhile). Focus, X and Y "
+                "are left on: the beam optics stay powered. The normal way to switch the gun "
+                "off. Returns when HV and filament are off, about two minutes from full; set "
+                "points are kept for the next on. Needs no control, like rheed_all_off.",
+                timeout_s=300.0),
         _pld_op("rheed_all_off", Empty,
-                "RHEED filament, HV, focus, X and Y off at once, unramped: the emergency stop, "
-                "for a fault; rheed_filament_off is the normal way down. Set points are kept "
+                "RHEED filament, HV, focus, X and Y off at once, unramped (\"ALL OFF BRUTAL\" in "
+                "pld-gui): the emergency stop, for a fault; rheed_all_off_gentle is the normal "
+                "way down. Set points are kept "
                 "for the next on. Needs no control, like stop_fire: the stop from any client. "
                 "An interlock, an open filament or an over-current held 1 s switches filament "
                 "and HV off by itself; nothing comes back on by itself."),

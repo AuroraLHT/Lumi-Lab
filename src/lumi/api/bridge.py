@@ -267,7 +267,7 @@ class BridgeSession:
         op = cap.op(op_name)
         if op.request_codec is Codec.JSON:
             req = op.request.model_validate_json(payload or b"{}")
-            result = await client.call(op_name, req)
+            result = await client.call(op_name, req, actor=self.user)
         else:
             # A binary request (an upload): the model rides in the frame header as
             # `body`, and the frame's payload is the bytes, passed through untouched --
@@ -275,7 +275,7 @@ class BridgeSession:
             req = op.request.model_validate((header or {}).get("body") or {})
             data = payload if op.request_codec is Codec.RAW else decode_body(
                 op.request, op.request_codec, payload, {"meta": req.model_dump_json()})[1]
-            result = await client.call(op_name, req, data)
+            result = await client.call(op_name, req, data, actor=self.user)
         if op.response_codec is Codec.JSON:
             return result, None
         # The transport handed back a decoded (model, ndarray/bytes). Re-encode the

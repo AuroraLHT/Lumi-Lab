@@ -97,7 +97,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
     # the load lock or the pumps (auto_vent, auto_vac, cancel_load_lock, set_pump):
     # venting and pumping down are a person's, with the hatch and GV1 in front of them.
     (CHAMBER, {"log": None, "camera": None, "pld": frozenset({
-        "chamber_state", "recent_events", "set_valve", "select_target",
+        "chamber_state", "recent_events", "recent_activity", "set_valve", "select_target",
         "set_mask_position", "set_sample_position", "set_rheed_gun_x", "home_axis",
         "set_target_spin", "set_target_twist", "set_target_auto_motion",
         "set_heater_key", "set_heater_start", "set_heater_threshold",
@@ -111,7 +111,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
         # X/Y deflection for aligning the beam.
         "rheed_filament_on", "rheed_filament_off", "rheed_hv_on", "rheed_hv_off",
         "set_rheed_filament", "set_rheed_hv", "set_rheed_focus", "set_rheed_deflection",
-        "rheed_all_off",
+        "rheed_all_off_gentle", "rheed_all_off",
     })}),
     # Which nodes are up, so "the call timed out" can become "the storage node is
     # not running". Not wait_for: it blocks for its own timeout, longer than a call's.
@@ -449,6 +449,9 @@ oscillations); chamber.log.log the latest chamber readings. chamber.pld.* is the
 driver itself (pld-service): chamber_state for everything it reads (read_only=true means
 the service was started on hardware without operations allowed, and every operation will
 be refused), and one tool per operation -- valves, motion, heater, gas, the excimer laser.
+Valves are locked in pairs: open a turbo's fore valve (FV) before its main valve (MV) and
+close the MV before the FV; on the load lock close MV3 and FV3 before opening RV3, and RV3
+before opening FV3. A refused valve says which valve to move first.
 The excimer takes settings only from the port its CM names: chamber_state's
 excimer.control true means this PC has it, false means the second PC does and every laser
 op (laser_off included) is refused. take_laser_control and release_laser are the only
@@ -460,10 +463,17 @@ experiment.driver.cancel_task ends any running task the same way; a ramp or anne
 switches the PID off, leaving the heating LD at its present current.
 The RHEED gun is chamber.pld's rheed_* ops, its state chamber_state's `rheed`. Every on,
 set point and off ramps; check rheed.interlock, filament_open and link_ok before and after.
-Switch it off with rheed_filament_off, which ramps HV and filament down; rheed_all_off cuts
-everything at once and is only for a fault. To align the beam, change set_rheed_focus or
+rheed_filament_on and rheed_hv_on with no value switch on at the 507 mA floor / 0 kV and
+hold there: raise them with set_rheed_filament and set_rheed_hv. Switch the gun off with
+rheed_all_off_gentle, which ramps HV and filament down and off and leaves focus and X/Y on
+(the beam optics stay powered); rheed_all_off cuts everything, focus and X/Y too, at once and
+is only for a fault. To align the beam, change set_rheed_focus or
 set_rheed_deflection a few mA at a time within the rheed limits and look at the RHEED image
 between steps.
+chamber.pld.recent_activity lists the chamber operations made through Lumi and who made
+each one (your own calls show as mcp:<user>, the person's in the Deck under their name):
+look there before assuming who changed something. Your chamber operations are shown to the
+operator as you make them.
 chamber.pld.stop_fire stops only the pulse train, for a fire_laser of your own. A fire or
 deposition cut short fails with "stopped by request" -- that is a person's or your own
 abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add
