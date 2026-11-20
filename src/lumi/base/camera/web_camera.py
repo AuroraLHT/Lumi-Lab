@@ -34,6 +34,10 @@ class WebCamera(GenericCamera):
         
     def on_initiate(self, config:WebCameraConfig):
         self.capture = cv2.VideoCapture(config.device)
+        if not self.capture.isOpened():
+            # The grab loop runs only while the camera is open, so without this the
+            # camera just never produces a frame and nothing says why.
+            logging.error(f"{self.name}: cannot open video device {config.device!r}; no frames will come")
         self.capture.set(cv2.CAP_PROP_FPS, config.fps)
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH, config.frame_dims[0])
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, config.frame_dims[1])
