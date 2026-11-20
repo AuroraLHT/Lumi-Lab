@@ -40,6 +40,9 @@ from .payloads.fiducial import (
 from .payloads.pld import (
     PldAutoMotionRequest,
     PldAxisRequest,
+    PldBypassMoveRequest,
+    PldBypassSpeedRequest,
+    PldBypassStepsRequest,
     PldChamberState,
     PldControlReply,
     PldControlRequest,
@@ -195,14 +198,38 @@ PLD = Capability(
         _pld_op("set_motor_free", PldSwitchRequest, "Release (on) or engage (off) the motor holding lock."),
         _pld_op("stop_motors", Empty,
                 "PLD Controller's master Motor Stop: every axis halts at once, spin and twist "
-                "go off, a pulse train in progress is stopped and a sequence in progress is "
+                "go off, the bypass valve stops, a pulse train in progress is stopped and a sequence in progress is "
                 "cancelled. Needs no control: the stop from any client. Until reset_motors, "
-                "moves, homing, spin, twist and fire_laser are refused ('ResetMotors first'); "
+                "moves, homing, spin, twist, fire_laser and bypass moves are refused ('ResetMotors first'); "
                 "state.motion.motors_stopped shows it. Already stopped: ok, nothing sent."),
         _pld_op("reset_motors", Empty,
                 "Undo stop_motors (needs control). Spin and twist stay off. The axes that were "
                 "moving have lost their home reference (state.motion.homing_needed): home_axis "
                 "them before relying on their position. Not stopped: ok, nothing sent."),
+        _pld_op("bypass_home", PldBypassMoveRequest,
+                "Bypass-valve stepper: run to the close switch; position 0 there. Works unhomed. "
+                "Bypass ops refuse with ok=false (not homed, out of range, no board, Motor Stop "
+                "latched, or moves disabled: state.bypass.motion_enabled false, the default while the "
+                "mechanism is redesigned); state.bypass shows the board. Not yet run on hardware.",
+                timeout_s=_MOVE_S),
+        _pld_op("bypass_open_fully", PldBypassMoveRequest,
+                "Bypass valve: run to the open switch (sets state.bypass.open_position). Works unhomed.",
+                timeout_s=_MOVE_S),
+        _pld_op("bypass_move_to", PldBypassStepsRequest,
+                "Bypass valve: go to an absolute position in full steps (0 = the close switch). "
+                "Refused unless state.bypass.homed (lost on every board restart): bypass_home first.",
+                timeout_s=_MOVE_S),
+        _pld_op("bypass_move_by", PldBypassStepsRequest,
+                "Bypass valve: move by full steps, + toward open. Works unhomed.", timeout_s=_MOVE_S),
+        _pld_op("bypass_set_speed", PldBypassSpeedRequest,
+                "Bypass valve speed in rpm, up to state.bypass.max_rpm. The board forgets it on a "
+                "restart (boots at 10 rpm); this node sets it again before its next bypass move."),
+        _pld_op("bypass_release", Empty,
+                "Bypass valve: stop at once and power the coils off (the board also does so 1 s "
+                "after every move: there is no holding torque)."),
+        _pld_op("bypass_stop", Empty,
+                "Stop a bypass-valve move. Needs no control: the stop from any client. "
+                "stop_motors stops the bypass too and latches its moves until reset_motors."),
         _pld_op("set_target_auto_motion", PldAutoMotionRequest,
                 "Auto mode: the chosen motions go on with each fire_laser and off when the "
                 "train ends. Service default: spin on, twist off."),

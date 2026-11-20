@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at 2c7504f (motor stop/reset; identical apart
+// branch decode-program at be75673 (bypass-valve stepper; moves off by default; identical apart
 // from line endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this
 // header) and run scripts/gen_pld_stubs.sh.
 //
@@ -46,7 +46,9 @@ service Chamber {
   // PLD Controller's master Motor Stop (ST 01900, captured 2026-11-17): every axis halts at once,
   // the PLC drops spin and twist, and moves, homing, spin, twist and fires are refused until
   // ResetMotors. A pulse train in progress is stopped too (as StopFire), and a sequence in progress
-  // is cancelled. Any client, no control needed; sent at the next poll even during a waited
+  // is cancelled. The bypass stepper is stopped too (MX) and its moves are refused while latched
+  // (user, 2026-11-19). A Motor Stop latched outside this service (PLD Controller, the PLC) stops
+  // a running bypass move too, within a poll (event "bypass stopped (MX) after a Motor Stop"). Any client, no control needed; sent at the next poll even during a waited
   // operation. Already stopped: ok, nothing sent.
   rpc StopMotors(Empty) returns (OperationReply);
   // Undo the motor stop (ST 01901; needs control). Spin and twist stay off. The axes that were
@@ -183,6 +185,35 @@ service Chamber {
   // Ramped all off: HV to 0 and off, filament to its floor and off, then focus, X and Y off. Any client.
   rpc RheedAllOffGentle(Empty) returns (OperationReply);
 
+  // ---- bypass-valve stepper (Arduino board, firmware 2.1; docs/bypass-valve.md; 2026-11-17) ---
+  // Its own link and thread, like the laser. Positions are full steps, + toward open, 0 = the close
+  // switch once homed. Every operation but BypassStop needs control. `wait`: reply when the move ends
+  // (EVT DONE / STOPPED / FAULT), else as soon as the board accepts it. Not yet run on hardware.
+  // Refusals (not homed, out of range, rpm above max_rpm, no board, read-only, busy) are ok=false
+  // replies; FAILED_PRECONDITION / PERMISSION_DENIED only for control (and a running sequence).
+  // Every move end is a WatchEvents event, kind "bypass" ("error" for EVT FAULT), device "bypass".
+  // Homing: only MoveTo needs it; Home, OpenFully and MoveBy work unhomed. A waited MoveTo is ok
+  // when it ends with EVT DONE, or STOPPED by the switch at its target (0 / the open switch).
+  // Motor Stop (from StopMotors, PLD Controller or the PLC) also stops it (MX); from the moment
+  // StopMotors is called (not only once the latch shows), Home, OpenFully, MoveTo and MoveBy are refused
+  // (ok=false, "ResetMotors first") while motors_stopped. A stop keeps the position (the board
+  // settles to a full step and keeps counting), so it does not appear in homing_needed.
+  // Reserved: once pressure control drives the bypass, manual Bypass* moves will be refused
+  // (ok=false, saying so) while it runs; BypassStop always works.
+  rpc BypassHome(BypassRequest) returns (OperationReply);  // MC: run to the close switch, pos = 0
+  rpc BypassOpenFully(BypassRequest) returns (OperationReply);  // MO: run to the open switch (no homing needed)
+  rpc BypassMoveTo(BypassRequest) returns (OperationReply);  // value = position; needs homing first
+  rpc BypassMoveBy(BypassRequest) returns (OperationReply);  // value = steps (+ open, - close); no homing needed
+  // value = rpm, up to [bypass] max_rpm. Not kept across a board reset: it boots at 10 rpm; the
+  // service does not re-send it, but reads the new speed into `rpm` at once and says so in the
+  // restart event (kind "bypass").
+  rpc BypassSetSpeed(BypassRequest) returns (OperationReply);
+  // MR: stop at once and power the coils off. The firmware also powers them off by itself 1 s
+  // after every move (energized false), so there is no holding torque between moves either way.
+  rpc BypassRelease(Empty) returns (OperationReply);
+  // MX: stop a move. Any client, no control needed (like StopFire).
+  rpc BypassStop(Empty) returns (OperationReply);
+
   // ---- settings (the --config file's keys; GUI Maintenance > Settings) ------------------------
   // Every setting with its value, unit and help. Watching needs nothing.
   rpc GetSettings(Empty) returns (SettingsReply);
@@ -262,6 +293,7 @@ message ChamberState {
   Limits limits = 24;
   Rheed rheed = 25;
   SequenceStatus sequence = 26;
+  BypassValve bypass = 27;
 }
 
 // ---------------------------------------------------------------------------- sequences
@@ -314,6 +346,44 @@ message SequenceStatus {
   string loops = 9;  // iteration of each open loop, outermost first, e.g. "2/5 1/3"; "" outside loops
   uint32 done = 10;  // operations finished so far (loops multiplied out; loop markers not counted)
   uint32 total = 11;  // operations the whole run will do
+}
+
+message BypassRequest {
+  // MoveTo: absolute position, full steps (0 = close switch). MoveBy: relative full steps, + toward
+  // open. SetSpeed: rpm. Home / OpenFully: unused.
+  double value = 1;
+  bool wait = 2;
+}
+
+// The bypass-valve stepper board as last polled (MQ every 0.5 s, and its EVT lines).
+message BypassValve {
+  bool present = 1;  // the service has a link to it (--bypass PORT / [ports] bypass)
+  bool connected = 2;  // the board answered the last poll
+  string port = 3;
+  string firmware = 4;  // from EVT READY or *IDN?
+  string state = 5;  // IDLE, MOVE, SEEK_OPEN, SEEK_CLOSE, SETTLE
+  double position = 6;  // full steps, + toward open
+  // 0 = the close switch. false after a board reset (opening the port resets an UNO) or a lost
+  // link: position is NaN until the next poll, then counts from the board's power-on; MoveTo refused.
+  bool homed = 7;
+  double open_position = 8;  // where the open switch was last hit; NaN: not known
+  bool close_switch = 9;
+  bool open_switch = 10;
+  bool energized = 11;  // coils powered (holding); the board releases them 1 s after a move
+  double rpm = 12;
+  // The last move's end line as the board sent it; "" = none yet. One of:
+  //   "EVT DONE pos=<p>"
+  //   "EVT STOPPED reason=<close_endstop|open_endstop|user|release> pos=<p>"
+  //   "EVT FAULT code=<5|6> reason=<endstop_not_found|no_motor_shield> pos=<p>"
+  string last_end = 13;
+  uint32 moves_ended = 14;  // counts the end lines (a waiting client watches it)
+  string error = 15;  // the last link or board error, "" = none
+  double max_rpm = 16;  // [bypass] caps
+  double max_steps = 17;
+  double open_fraction = 18;  // position / open_position; NaN unless homed and both known
+  // [bypass] motion = 1. false (the default while the mechanism is redesigned, 2026-11-19): Home,
+  // OpenFully, MoveTo and MoveBy are refused (ok=false); Stop, Release and SetSpeed still work.
+  bool motion_enabled = 19;
 }
 
 // The RHEED controller as the service's handset cycle sees it (every 50 ms). Units, never
@@ -550,7 +620,7 @@ message ControlRequest {
 }
 
 message ControlReply {
-  bool granted = 1;
+  bool granted = 1;  // the caller holds control after this call (so always false from ReleaseControl)
   string controller = 2;
   string message = 3;
 }

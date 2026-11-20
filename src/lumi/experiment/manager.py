@@ -513,6 +513,7 @@ class BaseExperimentManager:
         # Rebuild off the stored row so untouched fields keep their values, then let
         # Substrate re-derive positions exactly the way registration would have.
         substrate = self._substrate_by_id(substrate_id) or await self._load_substrate(row)
+        old_name, old_base = substrate.name, substrate.name or substrate.materials
         columns = {}
         for name, value in fields.items():
             attribute, column = self._FIELD_ALIASES.get(name, (name, name))
@@ -534,8 +535,28 @@ class BaseExperimentManager:
             columns["positions"] = json.dumps(substrate.positions)
 
         await self.growth_db.update_substrate(substrate_id, **columns)
+        await self._rename_samples(substrate, old_name, old_base)
         log.info("substrate %s updated: %s", substrate_id, sorted(fields))
         return substrate
+
+    async def _rename_samples(self, substrate: Substrate, old_name: str | None,
+                              old_base: str) -> None:
+        """Carry a new substrate name (or, unnamed, new materials) onto its samples.
+
+        Registration names the root sample after the substrate and each position
+        `<name>-p<index>`, so renaming only the substrate row left samples, layer
+        stacks and journal lookups under the old name. Only names still in the form
+        registration gave them are rewritten; a sample someone renamed by hand keeps
+        its name.
+        """
+        new_base = substrate.name or substrate.materials
+        for r in await self.growth_db.get_samples_for_substrate(substrate.db_id):
+            sample_id, kind, index, name = r[0], r[4], r[5], r[7]
+            if kind == "substrate":
+                if name == old_name and name != substrate.name:
+                    await self.growth_db.update_row("sample", sample_id, sample_name=substrate.name)
+            elif index is not None and name == f"{old_base}-p{index}" and old_base != new_base:
+                await self.growth_db.update_row("sample", sample_id, sample_name=f"{new_base}-p{index}")
 
     async def _load_substrate(self, row) -> Substrate:
         """A Substrate rebuilt from a database row, without pushing it onto the stack.

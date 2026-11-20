@@ -726,6 +726,24 @@ async def test_update_substrate_refuses_geometry_once_a_growth_is_recorded(handl
     assert renamed.substrate_name == "STO-7"
 
 
+async def test_update_substrate_renames_its_samples_too(handler):
+    """The root sample and the `<name>-p<index>` positions follow a rename; a sample
+    renamed by hand keeps its own name."""
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+        substrate_name="STO-42",
+    ))
+    rows = await handler.growth_db.get_samples_for_substrate(info.substrate_id)
+    custom = next(r[0] for r in rows if r[5] == 2)
+    await handler.growth_db.update_row("sample", custom, sample_name="the good one")
+
+    await handler.update_substrate(UpdateSubstrate(substrate_name="HZO-1"))
+
+    rows = await handler.growth_db.get_samples_for_substrate(info.substrate_id)
+    assert {r[5]: r[7] for r in rows} == {0: "HZO-1-p0", 1: "HZO-1-p1", 2: "the good one",
+                                          None: "HZO-1"}
+
+
 async def test_reopen_position_undoes_an_accidental_finish(handler):
     """The other reported case: finished a substrate by mistake and had to register a
     fake one to carry on. Nothing was deposited, so the position goes straight back."""

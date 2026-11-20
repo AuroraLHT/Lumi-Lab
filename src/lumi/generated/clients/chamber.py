@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 8727b37ccaa3d113
+# contract_hash: cddb733d6d0451e8
 
 """Generated clients for the chamber node."""
 
@@ -21,7 +21,7 @@ from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta,
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
-from lumi.contracts.payloads.pld import PldActivityList, PldActivityQuery, PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldSequenceRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
+from lumi.contracts.payloads.pld import PldActivityList, PldActivityQuery, PldAutoMotionRequest, PldAxisRequest, PldBypassMoveRequest, PldBypassSpeedRequest, PldBypassStepsRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldSequenceRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
 
 
 class ChamberLogClient(CapabilityClient):
@@ -183,12 +183,40 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("set_motor_free", req)  # type: ignore[return-value]
 
     async def stop_motors(self) -> PldReply:
-        """PLD Controller's master Motor Stop: every axis halts at once, spin and twist go off, a pulse train in progress is stopped and a sequence in progress is cancelled. Needs no control: the stop from any client. Until reset_motors, moves, homing, spin, twist and fire_laser are refused ('ResetMotors first'); state.motion.motors_stopped shows it. Already stopped: ok, nothing sent."""
+        """PLD Controller's master Motor Stop: every axis halts at once, spin and twist go off, the bypass valve stops, a pulse train in progress is stopped and a sequence in progress is cancelled. Needs no control: the stop from any client. Until reset_motors, moves, homing, spin, twist, fire_laser and bypass moves are refused ('ResetMotors first'); state.motion.motors_stopped shows it. Already stopped: ok, nothing sent."""
         return await self.call("stop_motors")  # type: ignore[return-value]
 
     async def reset_motors(self) -> PldReply:
         """Undo stop_motors (needs control). Spin and twist stay off. The axes that were moving have lost their home reference (state.motion.homing_needed): home_axis them before relying on their position. Not stopped: ok, nothing sent."""
         return await self.call("reset_motors")  # type: ignore[return-value]
+
+    async def bypass_home(self, req: PldBypassMoveRequest) -> PldReply:
+        """Bypass-valve stepper: run to the close switch; position 0 there. Works unhomed. Bypass ops refuse with ok=false (not homed, out of range, no board, Motor Stop latched, or moves disabled: state.bypass.motion_enabled false, the default while the mechanism is redesigned); state.bypass shows the board. Not yet run on hardware."""
+        return await self.call("bypass_home", req)  # type: ignore[return-value]
+
+    async def bypass_open_fully(self, req: PldBypassMoveRequest) -> PldReply:
+        """Bypass valve: run to the open switch (sets state.bypass.open_position). Works unhomed."""
+        return await self.call("bypass_open_fully", req)  # type: ignore[return-value]
+
+    async def bypass_move_to(self, req: PldBypassStepsRequest) -> PldReply:
+        """Bypass valve: go to an absolute position in full steps (0 = the close switch). Refused unless state.bypass.homed (lost on every board restart): bypass_home first."""
+        return await self.call("bypass_move_to", req)  # type: ignore[return-value]
+
+    async def bypass_move_by(self, req: PldBypassStepsRequest) -> PldReply:
+        """Bypass valve: move by full steps, + toward open. Works unhomed."""
+        return await self.call("bypass_move_by", req)  # type: ignore[return-value]
+
+    async def bypass_set_speed(self, req: PldBypassSpeedRequest) -> PldReply:
+        """Bypass valve speed in rpm, up to state.bypass.max_rpm. The board forgets it on a restart (boots at 10 rpm); this node sets it again before its next bypass move."""
+        return await self.call("bypass_set_speed", req)  # type: ignore[return-value]
+
+    async def bypass_release(self) -> PldReply:
+        """Bypass valve: stop at once and power the coils off (the board also does so 1 s after every move: there is no holding torque)."""
+        return await self.call("bypass_release")  # type: ignore[return-value]
+
+    async def bypass_stop(self) -> PldReply:
+        """Stop a bypass-valve move. Needs no control: the stop from any client. stop_motors stops the bypass too and latches its moves until reset_motors."""
+        return await self.call("bypass_stop")  # type: ignore[return-value]
 
     async def set_target_auto_motion(self, req: PldAutoMotionRequest) -> PldReply:
         """Auto mode: the chosen motions go on with each fire_laser and off when the train ends. Service default: spin on, twist off."""

@@ -103,6 +103,9 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
         # The master motor stop, as stop_fire: anyone may stop. Not reset_motors: a stop
         # is a person's (or the agent's own) alarm, and undoing it is the person's call.
         "stop_motors",
+        # The bypass-valve stepper: only its stop. Moving it changes the chamber's pumping,
+        # and no one has run it on hardware yet (REA 98af5c6, 2026-11-19).
+        "bypass_stop",
         "set_heater_key", "set_heater_start", "set_heater_threshold",
         "set_heating_current", "set_heater_current_limits", "set_temperature",
         "set_temperature_control", "set_sample_shutter", "fire_laser", "stop_fire", "set_mfc_flow",
@@ -505,6 +508,8 @@ for a move going wrong; it latches until a person resets it (reset_motors is the
 the axes that were moving then need homing (state.motion.homing_needed). While
 state.motion.motors_stopped is true, moves and fires are refused: tell the person, do not
 work around it.
+The bypass-valve stepper (state.bypass) is new and untested on hardware: you may only stop it
+(chamber.pld.bypass_stop); leave moving it to the person.
 chamber.pld.stop_fire stops only the pulse train, for a fire_laser of your own. A fire or
 deposition cut short fails with "stopped by request" -- that is a person's or your own
 abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add

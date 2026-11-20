@@ -246,6 +246,43 @@ class PldRheed(BaseModel):
     y_max_ma: float | None = None
 
 
+class PldBypass(BaseModel):
+    """The bypass-valve stepper (Arduino board, firmware 2.1) on pld-service's own link
+    (98af5c6). Positions are full steps, + toward open, 0 = the close switch once homed.
+    Not yet run on hardware: travel, the closed end and a safe rpm come from the bench test."""
+
+    present: bool = Field(False, description="The service has a link to the board")
+    connected: bool = Field(False, description="The board answered the last poll")
+    port: str = ""
+    firmware: str = ""
+    state: str = Field("", description="IDLE, MOVE, SEEK_OPEN, SEEK_CLOSE, SETTLE")
+    position: float | None = Field(
+        None, description="Full steps, + toward open; None right after a board reset or a lost link")
+    homed: bool = Field(
+        False, description="0 = the close switch; false after a board reset or a lost link, and bypass_move_to "
+                           "is refused until bypass_home")
+    open_position: float | None = Field(None, description="Where the open switch was last hit; None = not known")
+    open_fraction: float | None = Field(
+        None, description="position / open_position; None unless homed and both known")
+    close_switch: bool = False
+    open_switch: bool = False
+    energized: bool = Field(
+        False, description="Coils powered; the board powers them off 1 s after every move (no holding torque)")
+    rpm: float | None = Field(
+        None, description="The board's speed; it boots at 10 rpm, so a set speed is lost on a board reset")
+    last_end: str = Field(
+        "", description="The last move's end line: 'EVT DONE pos=<p>', 'EVT STOPPED reason=<...> pos=<p>' or "
+                        "'EVT FAULT code=<n> reason=<...> pos=<p>'; '' = none yet")
+    moves_ended: int = Field(0, description="Counts the end lines")
+    error: str = Field("", description="The last link or board error; '' = none")
+    max_rpm: float | None = Field(None, description="[bypass] max_rpm: bypass_set_speed's cap")
+    max_steps: float | None = Field(None, description="[bypass] max_steps")
+    motion_enabled: bool = Field(
+        False, description="[bypass] motion = 1. False (the default while the mechanism is redesigned, "
+                           "2026-11-19): home, open-fully, move-to and move-by are refused; stop, release "
+                           "and set-speed still work")
+
+
 class PldSequenceStatus(BaseModel):
     """The sequence pld-service runs (or ran last): RunSequence's progress."""
 
@@ -294,6 +331,7 @@ class PldChamberState(BaseModel):
     limits: PldLimits = Field(default_factory=PldLimits)
     rheed: PldRheed = Field(default_factory=PldRheed)
     sequence: PldSequenceStatus = Field(default_factory=PldSequenceStatus)
+    bypass: PldBypass = Field(default_factory=PldBypass)
     activity: list["PldActivity"] = Field(
         default_factory=list,
         description="The newest chamber.pld operations (up to 10, oldest first), on the state stream so a "
@@ -505,6 +543,20 @@ class PldRheedFilamentRequest(BaseModel):
 
 class PldRheedHvRequest(BaseModel):
     kv: float
+
+
+class PldBypassMoveRequest(BaseModel):
+    wait: bool = True
+
+
+class PldBypassStepsRequest(BaseModel):
+    steps: int = Field(description="bypass_move_to: absolute full steps (0 = the close switch); "
+                                   "bypass_move_by: relative full steps, + toward open")
+    wait: bool = True
+
+
+class PldBypassSpeedRequest(BaseModel):
+    rpm: float = Field(gt=0, description="Up to bypass.max_rpm")
 
 
 class PldRheedFocusRequest(BaseModel):

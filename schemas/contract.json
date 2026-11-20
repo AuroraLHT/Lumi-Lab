@@ -823,6 +823,165 @@
                   "title": "PldActivity",
                   "type": "object"
                 },
+                "PldBypass": {
+                  "description": "The bypass-valve stepper (Arduino board, firmware 2.1) on pld-service's own link\n(98af5c6). Positions are full steps, + toward open, 0 = the close switch once homed.\nNot yet run on hardware: travel, the closed end and a safe rpm come from the bench test.",
+                  "properties": {
+                    "close_switch": {
+                      "default": false,
+                      "title": "Close Switch",
+                      "type": "boolean"
+                    },
+                    "connected": {
+                      "default": false,
+                      "description": "The board answered the last poll",
+                      "title": "Connected",
+                      "type": "boolean"
+                    },
+                    "energized": {
+                      "default": false,
+                      "description": "Coils powered; the board powers them off 1 s after every move (no holding torque)",
+                      "title": "Energized",
+                      "type": "boolean"
+                    },
+                    "error": {
+                      "default": "",
+                      "description": "The last link or board error; '' = none",
+                      "title": "Error",
+                      "type": "string"
+                    },
+                    "firmware": {
+                      "default": "",
+                      "title": "Firmware",
+                      "type": "string"
+                    },
+                    "homed": {
+                      "default": false,
+                      "description": "0 = the close switch; false after a board reset or a lost link, and bypass_move_to is refused until bypass_home",
+                      "title": "Homed",
+                      "type": "boolean"
+                    },
+                    "last_end": {
+                      "default": "",
+                      "description": "The last move's end line: 'EVT DONE pos=<p>', 'EVT STOPPED reason=<...> pos=<p>' or 'EVT FAULT code=<n> reason=<...> pos=<p>'; '' = none yet",
+                      "title": "Last End",
+                      "type": "string"
+                    },
+                    "max_rpm": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "[bypass] max_rpm: bypass_set_speed's cap",
+                      "title": "Max Rpm"
+                    },
+                    "max_steps": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "[bypass] max_steps",
+                      "title": "Max Steps"
+                    },
+                    "motion_enabled": {
+                      "default": false,
+                      "description": "[bypass] motion = 1. False (the default while the mechanism is redesigned, 2026-11-19): home, open-fully, move-to and move-by are refused; stop, release and set-speed still work",
+                      "title": "Motion Enabled",
+                      "type": "boolean"
+                    },
+                    "moves_ended": {
+                      "default": 0,
+                      "description": "Counts the end lines",
+                      "title": "Moves Ended",
+                      "type": "integer"
+                    },
+                    "open_fraction": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "position / open_position; None unless homed and both known",
+                      "title": "Open Fraction"
+                    },
+                    "open_position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Where the open switch was last hit; None = not known",
+                      "title": "Open Position"
+                    },
+                    "open_switch": {
+                      "default": false,
+                      "title": "Open Switch",
+                      "type": "boolean"
+                    },
+                    "port": {
+                      "default": "",
+                      "title": "Port",
+                      "type": "string"
+                    },
+                    "position": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Full steps, + toward open; None right after a board reset or a lost link",
+                      "title": "Position"
+                    },
+                    "present": {
+                      "default": false,
+                      "description": "The service has a link to the board",
+                      "title": "Present",
+                      "type": "boolean"
+                    },
+                    "rpm": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The board's speed; it boots at 10 rpm, so a set speed is lost on a board reset",
+                      "title": "Rpm"
+                    },
+                    "state": {
+                      "default": "",
+                      "description": "IDLE, MOVE, SEEK_OPEN, SEEK_CLOSE, SETTLE",
+                      "title": "State",
+                      "type": "string"
+                    }
+                  },
+                  "title": "PldBypass",
+                  "type": "object"
+                },
                 "PldExcimer": {
                   "description": "The COMPexPro as its own polls report it.",
                   "properties": {
@@ -2296,6 +2455,9 @@
                   "title": "Backend",
                   "type": "string"
                 },
+                "bypass": {
+                  "$ref": "#/$defs/PldBypass"
+                },
                 "connected": {
                   "default": false,
                   "description": "Every port answered in the last cycle",
@@ -3118,6 +3280,261 @@
           },
           {
             "name": "reset_motors",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bypass_home",
+            "request": {
+              "properties": {
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "title": "PldBypassMoveRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bypass_open_fully",
+            "request": {
+              "properties": {
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "title": "PldBypassMoveRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bypass_move_to",
+            "request": {
+              "properties": {
+                "steps": {
+                  "description": "bypass_move_to: absolute full steps (0 = the close switch); bypass_move_by: relative full steps, + toward open",
+                  "title": "Steps",
+                  "type": "integer"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "steps"
+              ],
+              "title": "PldBypassStepsRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bypass_move_by",
+            "request": {
+              "properties": {
+                "steps": {
+                  "description": "bypass_move_to: absolute full steps (0 = the close switch); bypass_move_by: relative full steps, + toward open",
+                  "title": "Steps",
+                  "type": "integer"
+                },
+                "wait": {
+                  "default": true,
+                  "title": "Wait",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "steps"
+              ],
+              "title": "PldBypassStepsRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bypass_set_speed",
+            "request": {
+              "properties": {
+                "rpm": {
+                  "description": "Up to bypass.max_rpm",
+                  "exclusiveMinimum": 0,
+                  "title": "Rpm",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "rpm"
+              ],
+              "title": "PldBypassSpeedRequest",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bypass_release",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "description": "False = refused; `message` says why",
+                  "title": "Ok",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "PldReply",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "bypass_stop",
             "request": {
               "description": "No payload. Used for ops that take or return nothing.",
               "properties": {},
@@ -4891,6 +5308,13 @@
             "acquire_control": "chamber.pld.req.acquire_control",
             "auto_vac": "chamber.pld.req.auto_vac",
             "auto_vent": "chamber.pld.req.auto_vent",
+            "bypass_home": "chamber.pld.req.bypass_home",
+            "bypass_move_by": "chamber.pld.req.bypass_move_by",
+            "bypass_move_to": "chamber.pld.req.bypass_move_to",
+            "bypass_open_fully": "chamber.pld.req.bypass_open_fully",
+            "bypass_release": "chamber.pld.req.bypass_release",
+            "bypass_set_speed": "chamber.pld.req.bypass_set_speed",
+            "bypass_stop": "chamber.pld.req.bypass_stop",
             "cancel_load_lock": "chamber.pld.req.cancel_load_lock",
             "cancel_sequence": "chamber.pld.req.cancel_sequence",
             "chamber_state": "chamber.pld.req.chamber_state",
@@ -5146,6 +5570,165 @@
                   }
                 },
                 "title": "PldActivity",
+                "type": "object"
+              },
+              "PldBypass": {
+                "description": "The bypass-valve stepper (Arduino board, firmware 2.1) on pld-service's own link\n(98af5c6). Positions are full steps, + toward open, 0 = the close switch once homed.\nNot yet run on hardware: travel, the closed end and a safe rpm come from the bench test.",
+                "properties": {
+                  "close_switch": {
+                    "default": false,
+                    "title": "Close Switch",
+                    "type": "boolean"
+                  },
+                  "connected": {
+                    "default": false,
+                    "description": "The board answered the last poll",
+                    "title": "Connected",
+                    "type": "boolean"
+                  },
+                  "energized": {
+                    "default": false,
+                    "description": "Coils powered; the board powers them off 1 s after every move (no holding torque)",
+                    "title": "Energized",
+                    "type": "boolean"
+                  },
+                  "error": {
+                    "default": "",
+                    "description": "The last link or board error; '' = none",
+                    "title": "Error",
+                    "type": "string"
+                  },
+                  "firmware": {
+                    "default": "",
+                    "title": "Firmware",
+                    "type": "string"
+                  },
+                  "homed": {
+                    "default": false,
+                    "description": "0 = the close switch; false after a board reset or a lost link, and bypass_move_to is refused until bypass_home",
+                    "title": "Homed",
+                    "type": "boolean"
+                  },
+                  "last_end": {
+                    "default": "",
+                    "description": "The last move's end line: 'EVT DONE pos=<p>', 'EVT STOPPED reason=<...> pos=<p>' or 'EVT FAULT code=<n> reason=<...> pos=<p>'; '' = none yet",
+                    "title": "Last End",
+                    "type": "string"
+                  },
+                  "max_rpm": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "[bypass] max_rpm: bypass_set_speed's cap",
+                    "title": "Max Rpm"
+                  },
+                  "max_steps": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "[bypass] max_steps",
+                    "title": "Max Steps"
+                  },
+                  "motion_enabled": {
+                    "default": false,
+                    "description": "[bypass] motion = 1. False (the default while the mechanism is redesigned, 2026-11-19): home, open-fully, move-to and move-by are refused; stop, release and set-speed still work",
+                    "title": "Motion Enabled",
+                    "type": "boolean"
+                  },
+                  "moves_ended": {
+                    "default": 0,
+                    "description": "Counts the end lines",
+                    "title": "Moves Ended",
+                    "type": "integer"
+                  },
+                  "open_fraction": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "position / open_position; None unless homed and both known",
+                    "title": "Open Fraction"
+                  },
+                  "open_position": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Where the open switch was last hit; None = not known",
+                    "title": "Open Position"
+                  },
+                  "open_switch": {
+                    "default": false,
+                    "title": "Open Switch",
+                    "type": "boolean"
+                  },
+                  "port": {
+                    "default": "",
+                    "title": "Port",
+                    "type": "string"
+                  },
+                  "position": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Full steps, + toward open; None right after a board reset or a lost link",
+                    "title": "Position"
+                  },
+                  "present": {
+                    "default": false,
+                    "description": "The service has a link to the board",
+                    "title": "Present",
+                    "type": "boolean"
+                  },
+                  "rpm": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The board's speed; it boots at 10 rpm, so a set speed is lost on a board reset",
+                    "title": "Rpm"
+                  },
+                  "state": {
+                    "default": "",
+                    "description": "IDLE, MOVE, SEEK_OPEN, SEEK_CLOSE, SETTLE",
+                    "title": "State",
+                    "type": "string"
+                  }
+                },
+                "title": "PldBypass",
                 "type": "object"
               },
               "PldExcimer": {
@@ -6620,6 +7203,9 @@
                 "description": "TWIN or HARDWARE",
                 "title": "Backend",
                 "type": "string"
+              },
+              "bypass": {
+                "$ref": "#/$defs/PldBypass"
               },
               "connected": {
                 "default": false,

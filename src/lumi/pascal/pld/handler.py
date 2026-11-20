@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import time
 
 from google.protobuf import json_format
 
@@ -33,6 +34,9 @@ from lumi.contracts.payloads.pld import (
     PldControlRequest,
     PldActivityList,
     PldActivityQuery,
+    PldBypassMoveRequest,
+    PldBypassSpeedRequest,
+    PldBypassStepsRequest,
     PldEventList,
     PldEventQuery,
     PldLoggingRequest,
@@ -77,6 +81,9 @@ class PldHandler:
         # MqServer journals every op the contract marks journal=True into this, with
         # the request's actor and source: who did what to the chamber.
         self.journal = activity if activity is not None else ActivityLog()
+        # The bypass speed this node last set, and when (Unix s): the board boots at its
+        # default speed, so a move after a board restart sends it again (see _bypass_move).
+        self._bypass_rpm: tuple[float, float] | None = None
 
     # --- readings -----------------------------------------------------------------
 
@@ -287,6 +294,49 @@ class PldHandler:
     async def rheed_all_off_gentle(self, req: Empty) -> PldReply:
         return await self._rheed_off("RheedAllOffGentle", lambda r: not (
             r.filament_on or r.hv_on or r.all_ramping_down))
+
+    # --- bypass-valve stepper (REA 98af5c6) ---------------------------------------
+
+    async def _bypass_move(self, rpc: str, request) -> PldReply:
+        """A bypass move, after setting the speed again if the board restarted since this
+        node set it: pld-service reads the boot speed back but does not re-send ours."""
+        resent = ""
+        if self._bypass_rpm is not None:
+            rpm, since = self._bypass_rpm
+            restarted = any(e.kind == "bypass" and e.message.startswith("bypass board (re)started")
+                            and e.time > since for e in list(self.event_monitor.events))
+            latest = self.state_monitor.latest
+            if restarted and latest is not None and latest.bypass.rpm != rpm:
+                reply = await self._operate("BypassSetSpeed", pb.BypassRequest(value=rpm))
+                if not reply.ok:
+                    return PldReply(ok=False, message=(
+                        f"{rpc} not sent: the board restarted and setting {rpm:g} rpm again failed: {reply.message}"))
+                resent = f" (speed set to {rpm:g} rpm again after a board restart)"
+            self._bypass_rpm = (rpm, time.time())
+        reply = await self._operate(rpc, request)
+        return PldReply(ok=reply.ok, message=reply.message + resent) if resent else reply
+
+    async def bypass_home(self, req: PldBypassMoveRequest) -> PldReply:
+        return await self._bypass_move("BypassHome", pb.BypassRequest(wait=req.wait))
+
+    async def bypass_open_fully(self, req: PldBypassMoveRequest) -> PldReply:
+        return await self._bypass_move("BypassOpenFully", pb.BypassRequest(wait=req.wait))
+
+    async def bypass_move_to(self, req: PldBypassStepsRequest) -> PldReply:
+        return await self._bypass_move("BypassMoveTo", pb.BypassRequest(value=req.steps, wait=req.wait))
+
+    async def bypass_move_by(self, req: PldBypassStepsRequest) -> PldReply:
+        return await self._bypass_move("BypassMoveBy", pb.BypassRequest(value=req.steps, wait=req.wait))
+
+    async def bypass_set_speed(self, req: PldBypassSpeedRequest) -> PldReply:
+        reply = await self._operate("BypassSetSpeed", pb.BypassRequest(value=req.rpm))
+        if reply.ok:
+            self._bypass_rpm = (req.rpm, time.time())
+        return reply
+
+    bypass_release = _op("BypassRelease", lambda r: pb.Empty())
+    # Needs no control, like StopMotors.
+    bypass_stop = _op("BypassStop", lambda r: pb.Empty())
 
     # --- sequences (REA 38ca32e) --------------------------------------------------
 
