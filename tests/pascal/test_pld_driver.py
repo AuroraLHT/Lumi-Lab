@@ -410,3 +410,13 @@ async def test_rheed_focus_and_deflection_are_walked_in_steps():
     # X is off, so from 0 (not its remembered 50); both arrive on the same last step.
     await h.set_rheed_deflection(PldRheedDeflectionRequest(x_ma=8.0, y_ma=-2.0))
     assert [(r.x_ma, r.y_ma) for r in sent] == [(4.0, -6.0), (8.0, -2.0)]
+
+
+async def test_speed_and_accel_are_for_the_mask_only(driver):
+    handler, model, _ = driver
+    reply = await handler.set_mask_position(PldPositionRequest(position=20.0, speed_mm_s=0.5, accel_mm_s_per_ms=0.18))
+    assert reply.ok, reply.message
+    reply = await handler.set_sample_position(PldPositionRequest(position=10.0, speed_mm_s=0.5))
+    assert not reply.ok and "Mask1 only" in reply.message
+    reply = await handler.set_rheed_gun_x(PldPositionRequest(position=1.0, accel_mm_s_per_ms=0.1))
+    assert not reply.ok and "Mask1 only" in reply.message

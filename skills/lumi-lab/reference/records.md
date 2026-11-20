@@ -21,8 +21,21 @@ more than a missing one. Background: [Sample tracking](https://github.com/Aurora
 - **[hard]** Never make a row say something that did not happen. To fix a mistake use
   `update_*` (the value was entered wrong) or `retire_*` (the row should not exist:
   a dry run logged as real, a duplicate). Retired rows stay in the database, hidden.
-- **[hard]** `finish_experiment_record` gets the **measured** pressure and laser power
-  (read back / reported by the person), never the requested values.
+- **[hard]** `finish_experiment_record` gets the **measured** pressure (read back),
+  never the requested value, and the laser energy `begin_set_laser_power` set at the
+  meter. The driver adds the excimer energy and the day's laser-test ratio it was set
+  from, and the pyrometer's emissivity.
+- **[hard]** Name the substrate when you register it. If the project has no naming
+  convention you know of (from the person, or from earlier substrates in the same
+  project via `list_substrates`), **ask the person for the name** before
+  `register_substrate`. Do not make one up and do not leave it empty. With a known
+  convention, propose the next name (e.g. `HZO-YSZ-03` → `HZO-YSZ-04`) and let them
+  confirm. Pass it as `register_substrate(substrate_name=…)`: that names the substrate
+  record (what the GUI shows), the root sample and every position sample
+  `<name>-p<index>` in one go. Without it the positions fall back to
+  `<material>-p<index>` (`YSZ-p0` on every YSZ substrate). Renaming later does **not**
+  propagate: `update_substrate(substrate_name)` changes only the substrate record; also
+  `update_sample` the root sample and each position sample.
 - **[hard]** Do not `finish_current_pixel` / `finish_substrate` on a position that was
   not really used. If it was done by mistake, `reopen_position`.
 - **[thumb]** Attach a measurement to the sample (`add_measurement`) as soon as there is

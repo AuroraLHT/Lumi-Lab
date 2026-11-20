@@ -439,6 +439,15 @@ def test_convert_v1_is_lossless_and_leaves_the_original(tmp_path):
         convert_v1(src)
 
 
+def test_convert_v1_fills_in_the_pyrometer_emissivity(tmp_path):
+    # T0 is 2026-09-21: before the October recalibration, so the old setting.
+    src = write_v1(tmp_path)
+    with open_recording(convert_v1(src)) as rec:
+        assert rec.attrs["pyrometer_emissivity"] == 0.65
+    with open_recording(convert_v1(src, tmp_path / "given.hdf5", emissivity=0.3)) as rec:
+        assert rec.attrs["pyrometer_emissivity"] == 0.3
+
+
 def test_convert_v1_reports_a_bad_copy(tmp_path):
     src = write_v1(tmp_path)
     dst = convert_v1(src)

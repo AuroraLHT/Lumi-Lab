@@ -43,6 +43,13 @@ from lumi.contracts.payloads.camera import CameraConfig
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.experiment import (
+    ConfirmLaserTest,
+    LaserTest,
+    LaserTestList,
+    ListLaserTests,
+    SetTargetPreablation,
+    TargetPreablation,
+    TargetPreablationList,
     AddMeasurement,
     CheckMiMode,
     CurrentTarget,
@@ -92,6 +99,7 @@ from lumi.contracts.payloads.experiment import (
     MfcQuery,
     MfcStatus,
     MotorFree,
+    MoveMask,
     MoveTo,
     PageInfo,
     PendingConfirmation,
@@ -172,7 +180,10 @@ from lumi.experiment.chamber import MiChamber, PldStopped
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
-from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration, PixelExperimentManager, Substrate
+from lumi.experiment.manager import (
+    LASER_TEST_KV, LASER_TEST_PULSES, LASER_TEST_RATE_HZ, ExperimentBounds, PLDChamberConfiguration,
+    PixelExperimentManager, Substrate,
+)
 from lumi.experiment.snapshots import decode_raw, encode_frame
 
 log = logging.getLogger(__name__)
@@ -508,7 +519,7 @@ class ExperimentHandler:
         return TaskAck(task_id=task_id)
 
     #: The tasks that fire the laser, which stop_deposition ends.
-    _ABLATING = frozenset({"perform_deposition", "perform_preablation"})
+    _ABLATING = frozenset({"perform_deposition", "perform_preablation", "fire_laser_test"})
 
     async def stop_deposition(self, req: StopDeposition) -> StopDepositionResult:
         """Stop the laser, then end a running deposition or preablation.
@@ -638,17 +649,52 @@ class ExperimentHandler:
             return None
 
     async def perform_preablation(self, req: PerformPreablation) -> TaskAck:
+        material = await self._target_material(req.target_id)
+        num_pulse, frequency = await self._preablation_amount(material, req)
         return await self._start_moving_task(
             "perform_preablation",
             self.manager.perform_preablation(
-                req.target_id, req.num_pulse, req.frequency, req.is_dryrun, req.move_mask_to_block_position,
+                req.target_id, num_pulse, frequency, req.is_dryrun, req.move_mask_to_block_position,
             ),
             {
-                "target_id": req.target_id, "num_pulse": req.num_pulse,
-                "target_material": await self._target_material(req.target_id),
-                "frequency": req.frequency, "is_dryrun": req.is_dryrun,
+                "target_id": req.target_id, "num_pulse": num_pulse,
+                "target_material": material,
+                "frequency": frequency, "is_dryrun": req.is_dryrun,
+                "amount_from": "target" if req.num_pulse is None else "request",
             },
         )
+
+    async def _preablation_amount(self, material: str | None, req: PerformPreablation) -> tuple[int, float]:
+        """The request's amount if it gives one (the person asked for it this time),
+        otherwise the one set for the target's material, which the person was asked
+        for once: some targets are damaged by extra pulses (HZO goes oxygen-deficient),
+        so there is no lab-wide default to fall back on."""
+        setting = await self.growth_db.get_target_preablation(material) if material else None
+        if req.num_pulse is not None:
+            return req.num_pulse, req.frequency or (setting["frequency"] if setting else 10.0)
+        if setting is None:
+            raise ValueError(
+                f"no pre-ablation amount is set for target {req.target_id} ({material or 'unknown material'}): "
+                "ask the person how many pulses (0 = never), then set_target_preablation")
+        if setting["num_pulse"] == 0:
+            raise ValueError(f"{material} is set to no pre-ablation (0 pulses): skip it")
+        return setting["num_pulse"], req.frequency or setting["frequency"]
+
+    @staticmethod
+    def _target_preablation(row: dict) -> TargetPreablation:
+        return TargetPreablation(
+            target_material=row["target_material"], num_pulse=row["num_pulse"],
+            frequency=row["frequency"], set_by=row.get("set_by"), set_at=to_epoch(row.get("set_at")))
+
+    async def list_target_preablation(self, req: Empty) -> TargetPreablationList:
+        return TargetPreablationList(
+            targets=[self._target_preablation(r) for r in await self.growth_db.list_target_preablation()])
+
+    async def set_target_preablation(self, req: SetTargetPreablation) -> TargetPreablation:
+        row = await self.growth_db.set_target_preablation(
+            req.target_material, req.num_pulse, req.frequency, set_by=current_actor.get())
+        log.info("pre-ablation for %s set to %d pulses at %g Hz", req.target_material, req.num_pulse, req.frequency)
+        return self._target_preablation(row)
 
     async def perform_deposition(self, req: PerformDeposition) -> TaskAck:
         return await self._start_moving_task(
@@ -844,9 +890,9 @@ class ExperimentHandler:
         await self.manager.stop_mi_logging()
         return Ack()
 
-    async def move_mask_to_position(self, req: MoveTo) -> Ack:
+    async def move_mask_to_position(self, req: MoveMask) -> Ack:
         async with self._moving("move_mask_to_position"):
-            await self.manager.move_mask_to_position(req.position)
+            await self.manager.move_mask_to_position(req.position, req.speed_mm_s, req.accel_mm_s_per_ms)
         return Ack()
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
@@ -1031,6 +1077,9 @@ class ExperimentHandler:
             before_experiment_waittime=_column(row, "before_experiment_waittime"),
             after_experiment_waittime=_column(row, "after_experiment_waittime"),
             ramp_rate=_column(row, "ramp_rate"),
+            pyrometer_emissivity=_column(row, "pyrometer_emissivity"),
+            laser_source_energy=_column(row, "laser_source_energy"),
+            laser_meter_ratio=_column(row, "laser_meter_ratio"),
             created_at=to_epoch(at), created_at_iso=to_iso(at),
             state=_column(row, "state") or "active",
         )
@@ -1050,7 +1099,7 @@ class ExperimentHandler:
         await self._fetch("experiment", req.experiment_id)
         fields = self._set_fields(
             req, "project_id", "temperature", "pressure", "laser_power",
-            "laser_pulse_rate", "target_material", "num_pulse", "ramp_rate",
+            "laser_pulse_rate", "target_material", "num_pulse", "ramp_rate", "pyrometer_emissivity",
         )
         await self.growth_db.update_row("experiment", req.experiment_id, **fields)
         return self._experiment_info(await self._fetch("experiment", req.experiment_id))
@@ -1386,6 +1435,34 @@ class ExperimentHandler:
         measured = await self.manager.confirm_laser_power(req.measured_power)
         await self._clear_pending()
         return LaserPowerResult(measured_power=measured)
+
+    # --- gated: the daily laser test -----------------------------------------------
+
+    async def begin_laser_test(self, req: Empty) -> Ack:
+        async with self._moving("begin_laser_test"):
+            await self.manager.begin_laser_test()
+        await self._set_pending(
+            "laser_test",
+            f"Daily laser test: the excimer is at {LASER_TEST_KV:g} kV (HV mode) on Clear, shutter "
+            f"closed. Say yes and Lumi fires {LASER_TEST_PULSES} pulses at {LASER_TEST_RATE_HZ:g} Hz, "
+            "or fire the laser yourself; then enter the energy meter's average")
+        return Ack()
+
+    async def fire_laser_test(self, req: Empty) -> TaskAck:
+        self._require_pending("laser_test")
+        return await self._start_moving_task("fire_laser_test", self.manager.fire_laser_test(), {})
+
+    async def confirm_laser_test(self, req: ConfirmLaserTest) -> LaserTest:
+        self._require_pending("laser_test")
+        row = await self.manager.confirm_laser_test(req.meter_mj, req.source_mj, actor=current_actor.get())
+        await self._clear_pending()
+        return LaserTest(**row, today=True)
+
+    async def list_laser_tests(self, req: ListLaserTests) -> LaserTestList:
+        today = await self.manager.todays_laser_test()
+        rows = await self.growth_db.list_laser_tests(req.limit)
+        return LaserTestList(tests=[
+            LaserTest(**r, today=today is not None and r["test_id"] == today["test_id"]) for r in rows])
 
     # --- gated: mask-center calibration --------------------------------------------
 

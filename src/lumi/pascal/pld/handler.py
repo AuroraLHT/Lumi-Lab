@@ -48,6 +48,11 @@ from lumi.pascal.pld.proto import pld_pb2 as pb
 log = logging.getLogger(__name__)
 
 
+def _position(r) -> pb.PositionRequest:
+    return pb.PositionRequest(position=r.position, wait=r.wait, speed_mm_s=r.speed_mm_s,
+                              accel_mm_s_per_ms=r.accel_mm_s_per_ms)
+
+
 def _op(rpc: str, build):
     """A handler method for one operation: build the request, call, answer {ok, message}."""
 
@@ -126,9 +131,9 @@ class PldHandler:
 
     set_valve = _op("SetValve", lambda r: pb.ValveRequest(valve=r.valve, open=r.open, wait=r.wait))
     select_target = _op("SelectTarget", lambda r: pb.TargetRequest(target=r.target, wait=r.wait))
-    set_mask_position = _op("SetMaskPosition", lambda r: pb.PositionRequest(position=r.position, wait=r.wait))
-    set_sample_position = _op("SetSamplePosition", lambda r: pb.PositionRequest(position=r.position, wait=r.wait))
-    set_rheed_gun_x = _op("SetRheedGunX", lambda r: pb.PositionRequest(position=r.position, wait=r.wait))
+    set_mask_position = _op("SetMaskPosition", _position)
+    set_sample_position = _op("SetSamplePosition", _position)
+    set_rheed_gun_x = _op("SetRheedGunX", _position)
     home_axis = _op("HomeAxis", lambda r: pb.AxisRequest(axis=r.axis, wait=r.wait))
     set_target_spin = _op("SetTargetSpin", lambda r: pb.SwitchRequest(on=r.on))
     set_target_twist = _op("SetTargetTwist", lambda r: pb.SwitchRequest(on=r.on))

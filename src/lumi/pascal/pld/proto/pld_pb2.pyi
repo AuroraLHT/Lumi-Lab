@@ -72,7 +72,7 @@ class WatchRequest(_message.Message):
     def __init__(self, rate_hz: _Optional[float] = ...) -> None: ...
 
 class ChamberState(_message.Message):
-    __slots__ = ("time", "backend", "connected", "controller", "valves", "pressures", "heater", "motion", "laser", "gas", "sample_shutter_away", "interlocks", "raw_words", "excimer", "read_only", "pumps", "load_lock", "session", "limits", "rheed")
+    __slots__ = ("time", "backend", "connected", "controller", "valves", "pressures", "heater", "motion", "laser", "gas", "sample_shutter_away", "interlocks", "raw_words", "excimer", "read_only", "pumps", "load_lock", "session", "limits", "rheed", "sequence")
     class ValvesEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -114,6 +114,7 @@ class ChamberState(_message.Message):
     SESSION_FIELD_NUMBER: _ClassVar[int]
     LIMITS_FIELD_NUMBER: _ClassVar[int]
     RHEED_FIELD_NUMBER: _ClassVar[int]
+    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
     time: float
     backend: Backend
     connected: bool
@@ -134,7 +135,86 @@ class ChamberState(_message.Message):
     session: Session
     limits: Limits
     rheed: Rheed
-    def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ..., pumps: _Optional[_Mapping[str, Pump]] = ..., load_lock: _Optional[_Union[LoadLock, _Mapping]] = ..., session: _Optional[_Union[Session, _Mapping]] = ..., limits: _Optional[_Union[Limits, _Mapping]] = ..., rheed: _Optional[_Union[Rheed, _Mapping]] = ...) -> None: ...
+    sequence: SequenceStatus
+    def __init__(self, time: _Optional[float] = ..., backend: _Optional[_Union[Backend, str]] = ..., connected: _Optional[bool] = ..., controller: _Optional[str] = ..., valves: _Optional[_Mapping[str, bool]] = ..., pressures: _Optional[_Union[Pressures, _Mapping]] = ..., heater: _Optional[_Union[Heater, _Mapping]] = ..., motion: _Optional[_Union[Motion, _Mapping]] = ..., laser: _Optional[_Union[Laser, _Mapping]] = ..., gas: _Optional[_Union[Gas, _Mapping]] = ..., sample_shutter_away: _Optional[bool] = ..., interlocks: _Optional[_Iterable[str]] = ..., raw_words: _Optional[_Mapping[int, int]] = ..., excimer: _Optional[_Union[Excimer, _Mapping]] = ..., read_only: _Optional[bool] = ..., pumps: _Optional[_Mapping[str, Pump]] = ..., load_lock: _Optional[_Union[LoadLock, _Mapping]] = ..., session: _Optional[_Union[Session, _Mapping]] = ..., limits: _Optional[_Union[Limits, _Mapping]] = ..., rheed: _Optional[_Union[Rheed, _Mapping]] = ..., sequence: _Optional[_Union[SequenceStatus, _Mapping]] = ...) -> None: ...
+
+class SequenceRequest(_message.Message):
+    __slots__ = ("name", "steps", "wait")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    STEPS_FIELD_NUMBER: _ClassVar[int]
+    WAIT_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    steps: _containers.RepeatedCompositeFieldContainer[SequenceStep]
+    wait: bool
+    def __init__(self, name: _Optional[str] = ..., steps: _Optional[_Iterable[_Union[SequenceStep, _Mapping]]] = ..., wait: _Optional[bool] = ...) -> None: ...
+
+class SequenceStep(_message.Message):
+    __slots__ = ("label", "select_target", "mask", "sample", "rheed_gun_x", "target_spin", "target_twist", "target_auto_motion", "sample_shutter", "fire_laser", "temperature", "pressure", "mfc_flow", "wait_s", "pause", "wait_axis_idle", "loop_start", "loop_end", "laser_energy")
+    LABEL_FIELD_NUMBER: _ClassVar[int]
+    SELECT_TARGET_FIELD_NUMBER: _ClassVar[int]
+    MASK_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_FIELD_NUMBER: _ClassVar[int]
+    RHEED_GUN_X_FIELD_NUMBER: _ClassVar[int]
+    TARGET_SPIN_FIELD_NUMBER: _ClassVar[int]
+    TARGET_TWIST_FIELD_NUMBER: _ClassVar[int]
+    TARGET_AUTO_MOTION_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_SHUTTER_FIELD_NUMBER: _ClassVar[int]
+    FIRE_LASER_FIELD_NUMBER: _ClassVar[int]
+    TEMPERATURE_FIELD_NUMBER: _ClassVar[int]
+    PRESSURE_FIELD_NUMBER: _ClassVar[int]
+    MFC_FLOW_FIELD_NUMBER: _ClassVar[int]
+    WAIT_S_FIELD_NUMBER: _ClassVar[int]
+    PAUSE_FIELD_NUMBER: _ClassVar[int]
+    WAIT_AXIS_IDLE_FIELD_NUMBER: _ClassVar[int]
+    LOOP_START_FIELD_NUMBER: _ClassVar[int]
+    LOOP_END_FIELD_NUMBER: _ClassVar[int]
+    LASER_ENERGY_FIELD_NUMBER: _ClassVar[int]
+    label: str
+    select_target: TargetRequest
+    mask: PositionRequest
+    sample: PositionRequest
+    rheed_gun_x: PositionRequest
+    target_spin: SwitchRequest
+    target_twist: SwitchRequest
+    target_auto_motion: AutoMotionRequest
+    sample_shutter: ShutterRequest
+    fire_laser: LaserRequest
+    temperature: TemperatureRequest
+    pressure: PressureRequest
+    mfc_flow: FlowRequest
+    wait_s: float
+    pause: str
+    wait_axis_idle: AxisRequest
+    loop_start: int
+    loop_end: Empty
+    laser_energy: LaserEnergyRequest
+    def __init__(self, label: _Optional[str] = ..., select_target: _Optional[_Union[TargetRequest, _Mapping]] = ..., mask: _Optional[_Union[PositionRequest, _Mapping]] = ..., sample: _Optional[_Union[PositionRequest, _Mapping]] = ..., rheed_gun_x: _Optional[_Union[PositionRequest, _Mapping]] = ..., target_spin: _Optional[_Union[SwitchRequest, _Mapping]] = ..., target_twist: _Optional[_Union[SwitchRequest, _Mapping]] = ..., target_auto_motion: _Optional[_Union[AutoMotionRequest, _Mapping]] = ..., sample_shutter: _Optional[_Union[ShutterRequest, _Mapping]] = ..., fire_laser: _Optional[_Union[LaserRequest, _Mapping]] = ..., temperature: _Optional[_Union[TemperatureRequest, _Mapping]] = ..., pressure: _Optional[_Union[PressureRequest, _Mapping]] = ..., mfc_flow: _Optional[_Union[FlowRequest, _Mapping]] = ..., wait_s: _Optional[float] = ..., pause: _Optional[str] = ..., wait_axis_idle: _Optional[_Union[AxisRequest, _Mapping]] = ..., loop_start: _Optional[int] = ..., loop_end: _Optional[_Union[Empty, _Mapping]] = ..., laser_energy: _Optional[_Union[LaserEnergyRequest, _Mapping]] = ...) -> None: ...
+
+class SequenceStatus(_message.Message):
+    __slots__ = ("name", "state", "step", "steps", "label", "message", "client", "started", "loops", "done", "total")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    STEP_FIELD_NUMBER: _ClassVar[int]
+    STEPS_FIELD_NUMBER: _ClassVar[int]
+    LABEL_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    CLIENT_FIELD_NUMBER: _ClassVar[int]
+    STARTED_FIELD_NUMBER: _ClassVar[int]
+    LOOPS_FIELD_NUMBER: _ClassVar[int]
+    DONE_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    state: str
+    step: int
+    steps: int
+    label: str
+    message: str
+    client: str
+    started: float
+    loops: str
+    done: int
+    total: int
+    def __init__(self, name: _Optional[str] = ..., state: _Optional[str] = ..., step: _Optional[int] = ..., steps: _Optional[int] = ..., label: _Optional[str] = ..., message: _Optional[str] = ..., client: _Optional[str] = ..., started: _Optional[float] = ..., loops: _Optional[str] = ..., done: _Optional[int] = ..., total: _Optional[int] = ...) -> None: ...
 
 class Rheed(_message.Message):
     __slots__ = ("present", "read_only", "link_ok", "interlock", "filament_open", "filament_on", "filament_set_ma", "filament_target_ma", "filament_readback_ma", "filament_last_ma", "hv_on", "hv_set_kv", "hv_target_kv", "hv_readback_kv", "hv_last_kv", "emission_ua", "focus_on", "focus_set_ma", "focus_readback_ma", "x_on", "x_set_ma", "x_readback_ma", "y_on", "y_set_ma", "y_readback_ma", "hv_ramping_down", "filament_ramping_down", "all_ramping_down", "hv_ramp_v_per_s", "filament_ramp_ma_per_s", "last_alert", "hv_max_kv", "filament_min_ma", "filament_max_ma", "focus_min_ma", "focus_max_ma", "x_min_ma", "x_max_ma", "y_min_ma", "y_max_ma")
@@ -561,12 +641,16 @@ class TargetRequest(_message.Message):
     def __init__(self, target: _Optional[str] = ..., wait: _Optional[bool] = ...) -> None: ...
 
 class PositionRequest(_message.Message):
-    __slots__ = ("position", "wait")
+    __slots__ = ("position", "wait", "speed_mm_s", "accel_mm_s_per_ms")
     POSITION_FIELD_NUMBER: _ClassVar[int]
     WAIT_FIELD_NUMBER: _ClassVar[int]
+    SPEED_MM_S_FIELD_NUMBER: _ClassVar[int]
+    ACCEL_MM_S_PER_MS_FIELD_NUMBER: _ClassVar[int]
     position: float
     wait: bool
-    def __init__(self, position: _Optional[float] = ..., wait: _Optional[bool] = ...) -> None: ...
+    speed_mm_s: float
+    accel_mm_s_per_ms: float
+    def __init__(self, position: _Optional[float] = ..., wait: _Optional[bool] = ..., speed_mm_s: _Optional[float] = ..., accel_mm_s_per_ms: _Optional[float] = ...) -> None: ...
 
 class AxisRequest(_message.Message):
     __slots__ = ("axis", "wait")

@@ -35,6 +35,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from math import floor
 
 from lumi.contracts.payloads.chamber import SectionQuery
@@ -50,6 +51,13 @@ from lumi.generated.clients.storage import StorageStorageClient
 from lumi.pascal import command as pcmd
 
 log = logging.getLogger(__name__)
+
+#: The daily laser test: the excimer in HV mode at this HV, fired into the energy meter
+#: at Clear. What reaches the meter per mJ the laser reports is what a deposition's
+#: excimer energy is worked out from (begin_set_laser_power).
+LASER_TEST_KV = 21.0
+LASER_TEST_PULSES = 100
+LASER_TEST_RATE_HZ = 1.0
 
 
 def _projection(base_xs, base_ys, target_ys, source_x=0.0, source_y=0.0):
@@ -276,6 +284,13 @@ class BaseExperimentManager:
         self.recording_name: str | None = None
         # Stashed between begin_set_laser_power() and confirm_laser_power().
         self._pending_laser_power: float | None = None
+        #: The excimer energy and meter/source ratio begin_set_laser_power set the
+        #: present beam from; None when the beam was not set that way.
+        self._laser_source_energy: float | None = None
+        self._laser_meter_ratio: float | None = None
+        # Between begin_laser_test() and confirm_laser_test(): who fired, and the
+        # excimer's energy readings while Lumi fired.
+        self._laser_test: dict | None = None
         # Stashed between begin_check_rheed_pixels() and resolve_pixel_check().
         self._pixel_check_index: int = 0
         self._pixel_check_dropped: list[int] = []
@@ -883,7 +898,8 @@ class BaseExperimentManager:
             "a commanded move cannot drive an unlocked axis"
         )
 
-    async def move_mask_to_position(self, position: float) -> None:
+    async def move_mask_to_position(self, position: float, speed_mm_s: float = 0.0,
+                                    accel_mm_s_per_ms: float = 0.0) -> None:
         if not (0 <= position < self.bounds.mask_travel_max):
             raise ValueError(f"mask position must be in [0, {self.bounds.mask_travel_max}), got {position}")
         # The original asserted `not is_motor_free()` here, with the message "Motor is
@@ -891,7 +907,7 @@ class BaseExperimentManager:
         # *free* was the bug: "Motor free" is the holding lock released, not an idle
         # flag, so an axis can only be driven while it is NOT free.
         await self._await_motor_ready()
-        await self.chamber.move_mask(position)
+        await self.chamber.move_mask(position, speed_mm_s, accel_mm_s_per_ms)
 
     async def move_rheed_to_position(self, position: float) -> None:
         lo, hi = min(self.pld_config.rheed_limit), max(self.pld_config.rheed_limit)
@@ -1098,7 +1114,8 @@ class BaseExperimentManager:
             project_name=storage_name, save_frame=save_frame, save_ai=save_ai, save_log=save_log,
             save_integration=save_integration, force_rewrite=force_rewrite,
             rheed_energy_kev=rheed_energy_kev, note=note, operator=operator,
-            context=self.recording_context(sample_name, storage_name, record_uuid),
+            context=self.recording_context(sample_name, storage_name, record_uuid,
+                                           pyrometer_emissivity=await self.pyrometer_emissivity()),
         ))
         if status.ok:
             self.recording_name = storage_name
@@ -1115,7 +1132,8 @@ class BaseExperimentManager:
             self.recording_name = None
         return {"ok": status.ok, "message": status.message}
 
-    def recording_context(self, sample_name: str | None, storage_name: str, record_uuid: str) -> dict:
+    def recording_context(self, sample_name: str | None, storage_name: str, record_uuid: str,
+                          pyrometer_emissivity: float | None = None) -> dict:
         """What the recording should know about the experiment it belongs to: kept in
         the file's /meta/experiment, so the file explains itself without growth.db."""
         substrate = self.current_substrate
@@ -1135,7 +1153,23 @@ class BaseExperimentManager:
             "record_name": storage_name, "record_uuid": record_uuid,
             "laser_pulse_energy_set_mj": self._laser_power_set,
             "laser_pulse_energy_measured_mj": self._laser_power_real,
+            "laser_source_energy_mj": self._laser_source_energy,
+            "laser_meter_ratio": self._laser_meter_ratio,
+            "pyrometer_emissivity": pyrometer_emissivity,
         }
+
+    async def pyrometer_emissivity(self) -> float | None:
+        """The emissivity the back pyrometer reads at now, which every temperature
+        recorded with it depends on (lumi.experiment.pyrometer). None under the legacy
+        MI driver, whose log does not carry it."""
+        if self.chamber.driver != "pld":
+            return None
+        try:
+            emissivity = (await self.chamber.state()).heater.emissivity
+        except Exception as exc:
+            log.warning("could not read the pyrometer emissivity: %s", exc)
+            return None
+        return emissivity if emissivity and emissivity > 0 else None
 
     async def add_recording_event(self, kind: str, message: str = "", detail: dict | None = None) -> None:
         """Tell the recording in progress what the driver is doing. Best effort: a
@@ -1159,6 +1193,8 @@ class BaseExperimentManager:
             experiment_uuid=experiment_uuid, project_id=project_id, temperature=temperature,
             pressure=pressure, laser_power=laser_power, laser_pulse_rate=laser_repetition_rate,
             target_material=target_material, num_pulse=num_pulse,
+            pyrometer_emissivity=await self.pyrometer_emissivity(),
+            laser_source_energy=self._laser_source_energy, laser_meter_ratio=self._laser_meter_ratio,
         )
         if storage_name is not None:
             await self.growth_db.add_recording(
@@ -1173,8 +1209,14 @@ class BaseExperimentManager:
         no confirmation is needed -- the caller should skip straight to the cached
         value rather than opening a pending gate for nothing.
 
-        Always measured at Clear: the meter reads the beam at the exit port, which
-        only the empty slot lets through."""
+        Under pld-service no one reads the meter: today's laser test gives what
+        reaches the meter per mJ the excimer reports, and the excimer runs in energy
+        mode at `laser_power` divided by that. Refused when there was no test today.
+
+        Under the legacy MI driver it is measured at Clear: the meter reads the beam at
+        the exit port, which only the empty slot lets through."""
+        if self.chamber.driver == "pld":
+            return await self._set_laser_power_from_test(laser_power, force)
         if not force and self._laser_power_set == laser_power:
             return True, self._laser_power_real
 
@@ -1203,6 +1245,100 @@ class BaseExperimentManager:
             # no longer describes the beam, so the next check measures it again.
             self._laser_power_set = None
             self._laser_power_real = None
+            self._laser_source_energy = None
+            self._laser_meter_ratio = None
+
+    async def _set_laser_power_from_test(self, laser_power: float, force: bool) -> tuple[bool, None]:
+        test = await self.todays_laser_test()
+        if test is None:
+            raise RuntimeError(
+                "no laser test today: run the daily test first (begin_laser_test, the "
+                f"excimer at {LASER_TEST_KV:g} kV into the meter), then set the energy")
+        ratio = test["ratio"]
+        if not force and self._laser_power_set == laser_power and self._laser_meter_ratio == ratio:
+            return True, None
+        source = laser_power / ratio
+        await self.set_laser_energy(source)
+        self._laser_power_set = laser_power
+        self._laser_source_energy, self._laser_meter_ratio = source, ratio
+        message = (f"{laser_power:.1f} mJ at the meter: excimer energy mode at {source:.1f} mJ "
+                   f"(ratio {ratio:.3f} from laser test {test['test_id']})")
+        log.info("laser energy: %s", message)
+        await self.add_recording_event("laser_energy", message, {
+            "meter_mj": laser_power, "source_mj": source, "ratio": ratio, "test_id": test["test_id"]})
+        return True, None
+
+    # --- the daily laser test ---------------------------------------------------------
+
+    async def todays_laser_test(self) -> dict | None:
+        """The latest laser test, if it was done today (this host's calendar day)."""
+        tests = await self.growth_db.list_laser_tests(limit=1)
+        if tests and date.fromtimestamp(tests[0]["tested_at"]) == date.today():
+            return tests[0]
+        return None
+
+    async def begin_laser_test(self) -> None:
+        """Shutter closed, carousel to Clear (the meter sits at the exit port), excimer
+        in HV mode at LASER_TEST_KV. Then the person either says yes and
+        fire_laser_test fires, or fires the laser themselves."""
+        if self.chamber.driver != "pld":
+            raise RuntimeError("the laser test needs pld-service: under --use-legacy-mi-mode "
+                               "the excimer is set on its own PC (use begin_set_laser_power)")
+        await self.chamber.sample_shutter(False)
+        await self._await_motor_ready()  # SelectTarget revolves the carousel
+        await self.chamber.select_target(pcmd.Targets.Clear)
+        await self.set_laser_hv(LASER_TEST_KV)
+        self._laser_test = {"fired_by": "person", "readings": []}
+
+    async def fire_laser_test(self) -> dict:
+        """Fire the test train into the meter, reading the excimer's energy while it
+        runs. Returns its average as source_mj (None if the laser reported none)."""
+        if self._laser_test is None:
+            raise RuntimeError("no laser test is open: call begin_laser_test first")
+        readings: list[float] = []
+        fire = asyncio.create_task(self.chamber.fire(LASER_TEST_PULSES, LASER_TEST_RATE_HZ))
+        while not fire.done():
+            await asyncio.wait({fire}, timeout=1.0)
+            try:
+                energy = (await self.chamber.state()).excimer.energy
+            except Exception as exc:
+                log.warning("laser test: could not read the excimer energy: %s", exc)
+                continue
+            if energy and energy > 0:
+                readings.append(float(energy))
+        await fire
+        self._laser_test = {"fired_by": "lumi", "readings": readings}
+        return {"source_mj": sum(readings) / len(readings) if readings else None,
+                "readings": len(readings)}
+
+    async def confirm_laser_test(self, meter_mj: float, source_mj: float | None = None,
+                                 actor: str | None = None) -> dict:
+        """Record the test: the meter's average from the person, the source energy
+        from what the excimer reported while firing (or `source_mj`, read off the
+        laser by the person)."""
+        test = self._laser_test
+        if test is None:
+            raise RuntimeError("no laser test is open: call begin_laser_test first")
+        if source_mj is None and test["readings"]:
+            source_mj = sum(test["readings"]) / len(test["readings"])
+        if source_mj is None:
+            energy = (await self.chamber.state()).excimer.energy  # the person fired it
+            source_mj = float(energy) if energy and energy > 0 else None
+        if source_mj is None:
+            raise ValueError("the excimer reported no energy: pass source_mj, the energy the laser showed")
+        lumi_fired = test["fired_by"] == "lumi"
+        row = await self.growth_db.add_laser_test(
+            tested_at=time.time(), hv_kv=LASER_TEST_KV,
+            pulses=LASER_TEST_PULSES if lumi_fired else None,
+            rate_hz=LASER_TEST_RATE_HZ if lumi_fired else None,
+            fired_by=test["fired_by"], source_mj=source_mj, meter_mj=meter_mj, actor=actor,
+        )
+        self._laser_test = None
+        message = (f"{LASER_TEST_KV:g} kV: {source_mj:.1f} mJ at the source, {meter_mj:.1f} mJ "
+                   f"at the meter, ratio {row['ratio']:.3f}")
+        log.info("laser test %d: %s", row["test_id"], message)
+        await self.add_recording_event("laser_test", message, row)
+        return row
 
     # --- gated: mask-center calibration --------------------------------------------
 

@@ -23,6 +23,7 @@ from lumi.contracts.payloads.experiment import (
     BeginSetLaserPower,
     ConfirmLaserPower,
     ConfirmProceed,
+    MoveMask,
     MoveTo,
     PerformDeposition,
     FinishCurrentPixel,
@@ -248,7 +249,7 @@ async def test_get_current_pressure_falls_back_to_process_gauge(handler):
 
 async def test_move_mask_to_position_rejects_out_of_bounds(handler):
     with pytest.raises(ValueError):
-        await handler.move_mask_to_position(MoveTo(position=200))
+        await handler.move_mask_to_position(MoveMask(position=200))
 
 
 async def test_move_mask_to_position_refuses_while_the_holding_lock_is_released(handler):
@@ -257,7 +258,7 @@ async def test_move_mask_to_position_refuses_while_the_holding_lock_is_released(
     # waits for the lock to re-engage and raises once bounds.motor_ready_timeout is up.
     handler.sources["chamber_log"].values["Motor free"] = "TRUE"
     with pytest.raises(RuntimeError, match="holding lock released"):
-        await handler.move_mask_to_position(MoveTo(position=50))
+        await handler.move_mask_to_position(MoveMask(position=50))
 
 
 async def test_set_target_refuses_while_the_holding_lock_is_released(handler):
@@ -864,6 +865,32 @@ async def test_migration_adds_state_to_a_database_without_it(tmp_path):
     await db.close()
 
 
+async def test_migration_fills_in_the_pyrometer_emissivity_of_old_growths(tmp_path):
+    """Growths from before the column get the emissivity the pyrometer ran at then:
+    0.65 before experiment 23, 0.262 from it. A later restart leaves them alone."""
+    db = GrowthDB(str(tmp_path / "old.db"))
+    await db.connect()
+    await db.conn.execute(
+        """CREATE TABLE experiment (
+            experiment_id INTEGER PRIMARY KEY, experiment_uuid VARCHAR(100), substrate_id INTEGER,
+            temperature FLOAT, experiment_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )"""
+    )
+    await db.conn.executemany(
+        "INSERT INTO experiment (experiment_id, temperature) VALUES (?, 650)", [(22,), (23,)])
+    await db.conn.commit()
+
+    await db.create_database()
+    rows = {r["experiment_id"]: r["pyrometer_emissivity"] for r in await db.list_rows("experiment")}
+    assert rows == {22: 0.65, 23: 0.262}
+
+    await db.update_row("experiment", 22, pyrometer_emissivity=0.6)  # corrected by hand
+    await db.create_database()
+    rows = {r["experiment_id"]: r["pyrometer_emissivity"] for r in await db.list_rows("experiment")}
+    assert rows == {22: 0.6, 23: 0.262}
+    await db.close()
+
+
 # --- growth.db as data: the CRUD surface a management UI reads ------------------
 
 
@@ -1237,7 +1264,7 @@ async def test_nothing_else_moves_while_a_deposition_runs(handler):
         num_pulse=10, laser_repetition_rate=5.0, target_id="A", is_dryrun=True,
     ))
     with pytest.raises(RuntimeError, match="perform_deposition is still moving"):
-        await handler.move_mask_to_position(MoveTo(position=50.0))
+        await handler.move_mask_to_position(MoveMask(position=50.0))
 
     for _ in range(200):
         event = await handler.next_update()
@@ -1246,7 +1273,7 @@ async def test_nothing_else_moves_while_a_deposition_runs(handler):
         await asyncio.sleep(0.01)
     assert handler._motion is None
     handler.manager.chamber = MiChamber(FakeMi(), handler.sources["chamber_log"])
-    await handler.move_mask_to_position(MoveTo(position=50.0))
+    await handler.move_mask_to_position(MoveMask(position=50.0))
 
 
 # --- pressure: by hand on the real chamber, direct in the simulator ----------------

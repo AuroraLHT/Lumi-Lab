@@ -13,41 +13,51 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
 1. Check the lab is alive (SKILL.md §3). **Snapshot: chamber `start`.**
 2. `current_substrate`: the substrate to grow on. If none, `register_substrate`, or
    `resume_substrate` if it is already in the database. Never register one twice.
-3. Ask the person: heat in gas or in vacuum? If gas, `set_pressure` first (step 6).
+   A new substrate needs a name first: ask the person unless the project's convention
+   is known, and pass it as `substrate_name` (`reference/records.md`).
+3. Ask the person: heat in gas or in vacuum? If gas, `set_pressure` first (step 8).
    `initiate_heating_laser`, then `to_temperature` to the first layer's temperature at
    the substrate's ramp rate (SKILL.md §1), with `wait: false` (SKILL.md §3). Poll the
    temperature until it is within tolerance. **Snapshot: chamber `heated`.**
-4. A person adjusts the RHEED gun and sample stage. Look at `rheed.camera.image`: is it a
+4. Laser test, if `list_laser_tests` shows none `today` (once a day, `reference/laser.md`).
+   A person sets the excimer to ON first. `begin_laser_test` → the person says yes and
+   you `fire_laser_test` (wait for its task), or they fire it themselves →
+   `confirm_laser_test` with the meter's average.
+5. Pre-ablation amounts: `list_target_preablation`. For any layer's target material not
+   listed, ask the person how many pulses (and the rate; 0 = never pre-ablate it) and
+   `set_target_preablation`. Do not pick a number yourself.
+6. A person adjusts the RHEED gun and sample stage. Look at `rheed.camera.image`: is it a
    good substrate pattern (`reference/rheed.md`)? If not, stop and say so. (Skipped
    while the RHEED is down for maintenance.)
 
 ## Each layer
 
-5. If the temperature changes from the last layer, `to_temperature` (wait, read back).
-6. `set_pressure` (the person sets it on the real chamber, then `confirm`); read it back
+7. If the temperature changes from the last layer, `to_temperature` (wait, read back).
+8. `set_pressure` (the person sets it on the real chamber, then `confirm`); read it back
    with `get_current_pressure` and wait until it
    is within tolerance (SKILL.md §4).
-7. A person sets the excimer to ON. `begin_set_laser_power` → the person reads the meter
-   → `confirm_laser_power` with their value.
-8. `perform_preablation` with this layer's target (SKILL.md §3 for pulses and rate). Wait.
-9. `start_storage`; it must return `ok`. One recording per layer. With the RHEED down,
-   `save_frame`, `save_ai` and `save_integration` all `false`.
-10. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
+9. `begin_set_laser_power` with this layer's energy at the meter. The driver sets the
+   excimer from today's laser test; no one reads the meter.
+10. `perform_preablation` with this layer's target, leaving `num_pulse` out (the amount
+    set for its material is used; a target set to 0 is refused: skip it). Wait.
+11. `start_storage`; it must return `ok`. One recording per layer. With the RHEED down,
+    `save_frame`, `save_ai` and `save_integration` all `false`.
+12. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
     chamber + RHEED `depo_end`.** Watch `rheed.integrator.cache`
     while it runs; stop on anything in SKILL.md §4.
-11. `end_storage`, then `finish_experiment_record` with the measured pressure and laser
-    power, `is_pixel: false`.
+13. `end_storage`, then `finish_experiment_record` with the measured pressure, the
+    laser energy set in step 9, `is_pixel: false`.
 
 Do **not** `finish_substrate` between layers: every layer goes on the same substrate,
 and finishing it after the first leaves nothing to grow the next on.
 
 ## After the last layer
 
-12. A person sets the excimer to standby.
-13. `anneal` if the stack calls for it, then `cool_down` at the substrate's ramp rate in
+14. A person sets the excimer to standby.
+15. `anneal` if the stack calls for it, then `cool_down` at the substrate's ramp rate in
     the right atmosphere (O2 for oxides). Wait until `get_current_temperature` reads
     165 °C or less. **Snapshot: chamber `cooled`.**
-14. `turn_off_heating_laser`, only now (SKILL.md §1).
-15. `finish_substrate`.
-16. Report: `get_sample` (the layer stack should match the plan), plus what each snapshot
+16. `turn_off_heating_laser`, only now (SKILL.md §1).
+17. `finish_substrate`.
+18. Report: `get_sample` (the layer stack should match the plan), plus what each snapshot
     showed (`list_snapshots` for the sample).
