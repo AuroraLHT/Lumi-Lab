@@ -292,6 +292,22 @@ publish_interval = 1
 log_file = "chamber_log_test.csv"
 name = "test_log_reader"
 
+# The chamber driver: pld-service, the REA control service on the PLD PC
+# (lumi.pascal.pld). It listens on loopback only, so the pascal node runs beside it.
+# Every key is optional; these are the defaults. `--use-legacy-mi-mode` ignores them.
+[pascal.pld]
+address = "127.0.0.1:50051"
+# Who this node is in the service log and in control ownership (`x-client`).
+client = "lumi-pascal"
+# Seconds between growth-log rows, which this node writes from the service's state.
+log_interval = 1.0
+# How often the service streams its state to this node.
+state_rate_hz = 2.0
+# How long to wait for the service at startup before carrying on without it (the node
+# keeps retrying, and chamber.pld reports connected=false meanwhile).
+connect_timeout = 5.0
+
+# The legacy driver (`--use-legacy-mi-mode`): MI script files PLD Controller picks up.
 [pascal.mi_mode_server]
 queue_size = 1000
 idle_time = 0.01

@@ -76,7 +76,8 @@ async def run_http(
 
 
 async def main(args: argparse.Namespace) -> None:
-    server = LumiMCPServer(host=args.host, user=args.user, password=args.password)
+    server = LumiMCPServer(host=args.host, user=args.user, password=args.password,
+                           use_legacy_mi_mode=args.use_legacy_mi_mode)
     await server.connect()
     try:
         if args.transport == "stdio":
@@ -125,6 +126,15 @@ def cli() -> None:
             "do not act as an OAuth authorization server: no login page, no client "
             "registration. Clients must then present a bearer token minted elsewhere "
             "(scripts/start_mcp_demo.sh --token-only), which is how this worked before"
+        ),
+    )
+    parser.add_argument(
+        "--use-legacy-mi-mode",
+        action="store_true",
+        help=(
+            "the lab runs the legacy MI-mode driver (chamber and experiment nodes started "
+            "with --use-legacy-mi-mode): leave out the chamber.pld tools, which would all be "
+            "refused. Default: pld-service, with its chamber.pld tools"
         ),
     )
     parser.add_argument("-v", "--verbose", action="store_true")

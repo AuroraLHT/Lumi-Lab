@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 19cdd099e66db588
+# contract_hash: 5f5a502e974ceaaf
 
 """Generated clients for the experiment node."""
 
@@ -240,7 +240,7 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("check_logging_alive", req)  # type: ignore[return-value]
 
     async def check_mi_mode(self, req: CheckMiMode) -> MiModeStatus:
-        """Check that PASCAL is in MI Mode, i.e. taking commands from this software. Nothing in the chamber log says so: with MI Mode off every command hangs until it times out. This sends a no-op script (`Wait 0 sec`) and reports `on` if it ran within timeout_s, `off` if not (ask a person to switch PASCAL to MI Mode), or `busy` if another script is running and the probe cannot tell. Run it before a growth."""
+        """Check that the chamber is taking commands from this software. Run it before a growth. With the pld-service driver (the default): `on` when the service is connected and operable, `off` when it is not answering or is read-only on hardware (a person must restart it with --allow-operations), `busy` when another client (the REA GUI) holds control. With --use-legacy-mi-mode: sends a no-op MI script (`Wait 0 sec`) and reports `on` if PASCAL ran it within timeout_s, `off` if not (ask a person to switch PASCAL to MI Mode), or `busy` if another script is running and the probe cannot tell."""
         return await self.call("check_mi_mode", req)  # type: ignore[return-value]
 
     async def set_target(self, req: SetTarget) -> Ack:

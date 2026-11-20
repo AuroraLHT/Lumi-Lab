@@ -1,6 +1,7 @@
 """The experiment node: drives a PLD growth end to end.
 
-    python -m nodes.experiment
+    python -m nodes.experiment                       # drives the chamber through pld-service
+    python -m nodes.experiment --use-legacy-mi-mode  # ... through PLD Controller's MI mode
 
 A consumer, not an instrument, like storage -- it needs clients on the chamber,
 RHEED, and storage exchanges, and asks the monitor whether they exist before
@@ -28,7 +29,9 @@ from lumi.experiment.handlers import SNAPSHOT_MAX_BYTES, ExperimentHandler
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 from lumi.experiment.mi import MiCommandRunner
+from lumi.experiment.pld import PldCommandRunner
 from lumi.generated.clients.chamber import (
+    ChamberPldClient,
     ChamberCameraClient,
     ChamberConfigClient,
     ChamberFiducialClient,
@@ -147,21 +150,31 @@ async def main(args: argparse.Namespace) -> None:
         SYSTEM.exchange, ExchangeType(SYSTEM.exchange_type), durable=True
     )
 
-    chamber_mi_client = ChamberMiModeClient(channel, chamber_x)
-    # 0 (or negative) means "no deadline": the script finishes when it finishes. See the
-    # setting's comment in cfg/settings.example.toml for what that gives up.
-    mi_timeout = args.mi_timeout if args.mi_timeout is not None else float(settings.experiment.mi_command_timeout)
-    if mi_timeout <= 0:
-        mi_timeout = None
-        log.warning("MI completion waits are unbounded -- a lost update will hang the op that is waiting")
-    raise_on_abort = not (args.ignore_mi_abort or bool(settings.get("experiment.mi_ignore_abort", False)))
-    if not raise_on_abort:
-        log.warning(
-            "MI abort reports are being ignored (--ignore-mi-abort / experiment.mi_ignore_abort) -- "
-            "an aborted script will not fail its op; confirm the physical result against the chamber log"
-        )
+    # The chamber driver: pld-service through chamber.pld by default, PLD Controller's MI
+    # mode only when asked for. The chamber node has to run the same one; the other
+    # refuses every op with a message naming the flag.
+    if args.use_legacy_mi_mode:
+        driver_client = ChamberMiModeClient(channel, chamber_x)
+        # 0 (or negative) means "no deadline": the script finishes when it finishes. See the
+        # setting's comment in cfg/settings.example.toml for what that gives up.
+        mi_timeout = args.mi_timeout if args.mi_timeout is not None else float(settings.experiment.mi_command_timeout)
+        if mi_timeout <= 0:
+            mi_timeout = None
+            log.warning("MI completion waits are unbounded -- a lost update will hang the op that is waiting")
+        raise_on_abort = not (args.ignore_mi_abort or bool(settings.get("experiment.mi_ignore_abort", False)))
+        if not raise_on_abort:
+            log.warning(
+                "MI abort reports are being ignored (--ignore-mi-abort / experiment.mi_ignore_abort) -- "
+                "an aborted script will not fail its op; confirm the physical result against the chamber log"
+            )
+        driver = MiCommandRunner(driver_client, timeout=mi_timeout, raise_on_abort=raise_on_abort)
+        log.info("chamber driver: legacy MI mode (--use-legacy-mi-mode)")
+    else:
+        driver_client = ChamberPldClient(channel, chamber_x)
+        driver = PldCommandRunner(driver_client)
+        log.info("chamber driver: pld-service (chamber.pld)")
     sources = {
-        "chamber_mi": MiCommandRunner(chamber_mi_client, timeout=mi_timeout, raise_on_abort=raise_on_abort),
+        "chamber_mi": driver,
         "chamber_log": ChamberLogClient(channel, chamber_x),
         "chamber_config": ChamberConfigClient(channel, chamber_x),
         "chamber_fiducial": ChamberFiducialClient(channel, chamber_x),
@@ -171,9 +184,9 @@ async def main(args: argparse.Namespace) -> None:
     }
     registry = SystemRegistryClient(channel, system_x)
 
-    # MiCommandRunner is not itself a CapabilityClient -- start the client it wraps.
-    startable = [c for c in sources.values() if not isinstance(c, MiCommandRunner)]
-    startable.append(chamber_mi_client)
+    # The driver is not itself a CapabilityClient -- start the client it wraps.
+    startable = [c for c in sources.values() if c is not driver]
+    startable.append(driver_client)
     for client in (*startable, registry):
         await client.start()
 
@@ -212,9 +225,13 @@ def cli() -> None:
     parser.add_argument("--instance", default=None)
     parser.add_argument("--db-path", default=None,
                         help="growth database path (defaults to experiment.growth_db_path)")
+    parser.add_argument("--use-legacy-mi-mode", action="store_true",
+                        help="drive the chamber through PLD Controller's MI mode (chamber.mi_mode) "
+                             "instead of pld-service (chamber.pld). The chamber node must run "
+                             "with the same flag")
     parser.add_argument("--mi-timeout", type=float, default=None,
-                        help="seconds to wait for an MI script to finish; 0 = wait forever "
-                             "(defaults to experiment.mi_command_timeout)")
+                        help="--use-legacy-mi-mode: seconds to wait for an MI script to "
+                             "finish; 0 = wait forever (defaults to experiment.mi_command_timeout)")
     parser.add_argument("--ignore-mi-abort", action="store_true",
                         help="do not fail an op when the chamber reports its MI script "
                              "aborted -- PASCAL raises spurious aborts for scripts that "

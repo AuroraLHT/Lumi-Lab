@@ -42,6 +42,7 @@ from lumi.contracts.payloads.storage import StorageRequest
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, utc_now
 from lumi.experiment.mask_align import locate_slit
 from lumi.experiment.mi import MiCommandRunner, brief as mi_brief
+from lumi.experiment.pld import PldCommandRunner
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
@@ -241,7 +242,7 @@ class BaseExperimentManager:
     def __init__(
         self,
         *,
-        chamber_mi: MiCommandRunner,
+        chamber_mi: MiCommandRunner | PldCommandRunner,
         chamber_log: ChamberLogClient,
         chamber_config: ChamberConfigClient,
         rheed_camera: RheedCameraClient,
@@ -835,7 +836,14 @@ class BaseExperimentManager:
         never picks a script up and every command just hangs until it times out. So
         send one that does nothing (`Wait 0 sec`) and see whether it completes.
         "busy" when another script is running -- the probe would only queue behind it.
+
+        Under the pld-service driver (the default) there is no MI Mode to be in: this
+        reports whether the service is connected, writable (not read-only) and free to
+        be operated (no other client holds control) instead.
         """
+        check = getattr(self.chamber_mi, "check", None)
+        if check is not None:
+            return await check()
         running = [
             e for e in (await self.chamber_mi.client.list_execution(Empty())).executions
             if not e.is_execution_finished

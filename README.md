@@ -19,7 +19,7 @@ Nodes:
 | --- | --- |
 | `monitor` | presence registry — who is alive on the bus |
 | `storage` | HDF5 recorder for RHEED frames and chamber logs |
-| `pascal` | the PLD chamber: growth log, `PLDconfig.ini`, MI mode, chamber camera, fiducial markers |
+| `pascal` | the PLD chamber: growth log, `PLDconfig.ini`, the chamber driver (pld-service; MI mode as the legacy fallback), chamber camera, fiducial markers |
 | `rheed` | RHEED camera acquisition (Basler/Pylon, webcam, or a canned video) |
 | `detection` | RHEED spot detection (needs the OpenMMLab stack — see below) |
 | `experiment` | the growth driver: plans and runs a deposition end to end |
@@ -149,10 +149,26 @@ scripts/start_server_host.sh               # --no-experiment / --no-rheed-sim to
 
 # On the instrument machine -- pascal and rheed. --host is required: the broker is
 # on the other machine, and RabbitMQ refuses `guest` off loopback.
-uv sync --extra pascal --extra camera
+uv sync --extra pascal --extra camera --extra pld
 scripts/start_instrument_host.sh --host <server ip> --user <node user> --password <pw> \
-    --log "C:/.../chamber_log" --mi "C:/.../mi_mode"
+    --log "C:/.../chamber_log"
 ```
+
+**The chamber driver.** The pascal node drives the chamber through **pld-service**, the
+REA control service on the PLD PC: a gRPC service that owns the PLC, gauge, pyrometer and
+excimer ports and enforces every safety rule itself. It listens on `127.0.0.1:50051`
+only, so the pascal node runs beside it and is what the rest of the lab reaches, through
+the broker (`chamber.pld`). Start pld-service first; the pascal node writes the growth log
+into `--log` from its state, since PLD Controller is not running. Develop against the twin
+(`rea-twin --tcp 127.0.0.1:5003` and `pld-service --twin 127.0.0.1:5003`), never the real
+chamber; `pld-service --hardware` is for a person at the chamber to start.
+
+The old path, driving PLD Controller through MI-mode script files, is kept as a fallback
+behind `--use-legacy-mi-mode`. It has to be given to the instrument host's pascal node
+(`--use-legacy-mi-mode --mi "C:/.../mi_mode"`), the server host's experiment node
+(`start_server_host.sh --use-legacy-mi-mode`), and the MCP server
+(`start_mcp_server.sh --use-legacy-mi-mode`). A node on the other driver refuses the
+call, and the refusal names the flag.
 
 Start the **server host first**: its storage node declares the exchanges the instrument
 host's producers publish into. Give the instrument host a real broker account (see
@@ -186,7 +202,7 @@ python nodes/monitor.py  --host <broker>
 python nodes/storage.py  --host <broker>                      # declares the exchanges
 
 python nodes/pascal.py   --host <broker> --src path \
-    --log "C:/.../chamber_log" --mi "C:/.../mi_mode"          # on the PASCAL PC
+    --log "C:/.../chamber_log"                                # on the PLD PC, beside pld-service
 python nodes/rheed.py    --host <broker> --src pylon          # on the camera host
 python nodes/detection.py --host <broker>                     # on the GPU box
 python nodes/experiment.py --host <broker>
@@ -198,11 +214,11 @@ python nodes/api.py                                           # on the web host
 Every node takes `--host/--user/--password`, `--instance` (override the instance id on
 the bus) and `-v`. The chamber's `--src` selects where the data comes from:
 
-| `--src` | chamber log | MI mode |
-| --- | --- | --- |
-| `path` | the folder PASCAL writes into (`--log`) | the real MI folder (`--mi`) |
-| `sim` | rendered from the chamber state model | executed by the state model |
-| `test` | replay of a recorded log (idle chamber) | a stub |
+| `--src` | chamber log | driver (default: pld-service) | driver with `--use-legacy-mi-mode` |
+| --- | --- | --- | --- |
+| `path` | written by the node into `--log` (legacy: PASCAL writes it) | pld-service at `--pld-address` | the real MI folder (`--mi`) |
+| `sim` | rendered from the chamber state model | a stand-in pld-service over the state model | executed by the state model |
+| `test` | replay of a recorded log (idle chamber) | a stand-in pld-service over the state model | a stub |
 
 `--src test` is a **recording of an idle chamber**: `Motor Stat` is `0x0000` for every
 row, so `is_motor_free()` never returns true and no growth can complete against it. Use
@@ -435,12 +451,14 @@ narrower than the browser bridge's, and set by `EXPOSED` in `src/lumi/mcp/server
 
 | Job | Tools |
 |---|---|
-| Drive a growth | all of `experiment.driver`; `rheed.camera`; `rheed.integrator.bboxes` / `cache` (the live oscillation of each box the operator drew); `chamber.log`; `chamber.camera`; `system.registry.list_nodes` / `get_node` (which nodes are up) |
+| Drive a growth | all of `experiment.driver`; `chamber.pld` (pld-service's readings and operations, the excimer included; left out with `--use-legacy-mi-mode`); `rheed.camera`; `rheed.integrator.bboxes` / `cache` (the live oscillation of each box the operator drew); `chamber.log`; `chamber.camera`; `system.registry.list_nodes` / `get_node` (which nodes are up) |
 | Read the history | the growth database through `experiment.driver` (`list_samples`, `sample_history`, `list_records`, `list_measurements`, `list_snapshots`, …); the recordings through `storage.archive` (frames, RHEED integration traces, the chamber log each file carries) |
 | Simulate | all of `simulation.rheed_sim`: structures, spot positions, patterns |
 
 Nothing else: an agent has no business reaching `system.supervisor.spawn`, raw MI script
-execution (`chamber.mi_mode`), or rearranging the operator's integration boxes.
+execution (`chamber.mi_mode`), pld-service's control ownership (`acquire_control` could
+take the chamber from the operator's GUI by force) or motor holding lock, or rearranging
+the operator's integration boxes.
 
 - **Read-only hints.** Every tool carries MCP's `readOnlyHint`, from the same
   classification the broker enforces (`lumi.contracts.policy`), so a host can auto-approve
@@ -591,9 +609,11 @@ guards the dangerous follow-up itself: `turn_off_heating_laser` is refused while
 substrate reads above 165 °C (`experiment.bounds.heating_laser_off_max_temperature`),
 unless called with `force: true`.
 
-`check_mi_mode` answers the one thing the chamber log cannot: whether PASCAL is in MI
-Mode. It sends a no-op script (`Wait 0 sec`) and reports `on`, `off`, or `busy` if another
-script is running.
+`check_mi_mode` answers the one thing the chamber log cannot: whether the chamber is
+taking commands. Under pld-service it reports `on`, `off` (not answering, or read-only on
+hardware), or `busy` (another client, such as the REA GUI, holds control). Under
+`--use-legacy-mi-mode` it sends a no-op script (`Wait 0 sec`) and reports `on`, `off`
+(PASCAL is not in MI Mode), or `busy` if another script is running.
 
 ## Tests
 
