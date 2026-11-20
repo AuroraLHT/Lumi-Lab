@@ -113,6 +113,12 @@ What applies to both:
   ramp is under way, do other set-up meanwhile (registering the substrate, setting the
   pressure), and poll `get_current_temperature` until it is within 10 °C of the
   setpoint before any step that needs it there. The laser-off rule in §1 still holds.
+  From cold the task first raises the heating current by hand, open-loop, until PID can
+  take over (about 235 °C). pld-service today still runs one operation at a time, so a
+  waited fire or move (the laser test's 100 s fire) delays those steps until it ends;
+  the warm-up waits rather than failing, but the heat-up is slower for it. If the
+  warm-up fails, the task ends `ok: false` with the current set back to where it
+  started; read `current_task`'s result.
 - Targets: the carousel slots are A–F plus Clear and Monitor. The chamber log's `TG No.`
   counts from 0: 0 = A, 1 = B, 2 = C, 3 = D, 4 = E, 5 = F, 6 = Clear, 7 = Monitor.
   `get_current_target` does the conversion and names what is loaded there.

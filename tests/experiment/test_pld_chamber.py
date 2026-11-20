@@ -79,11 +79,18 @@ class FakePldClient:
         #: Ops that block, as a real fire or carousel move does, until `release` is set.
         self.blocking: set[str] = set()
         self.release = asyncio.Event()
+        #: Ops whose next call times out, then takes effect (set_heating_current only).
+        self.queued: set[str] = set()
 
     async def call(self, op, req=None):
         if self.raise_remote:
             raise RemoteError("chamber.pld", op, "RuntimeError", self.raise_remote)
         self.calls.append((op, req.model_dump() if req is not None and not isinstance(req, Empty) else {}))
+        if op in self.queued:  # behind a long op: no answer in time, applied a little later
+            self.queued.discard(op)
+            asyncio.get_running_loop().call_later(
+                1.5, setattr, self.state.heater, "current_set", req.amps)
+            raise TimeoutError(f"chamber.pld.{op} did not answer within 10.0s")
         if op in self.blocking:
             await self.release.wait()
         if op in self.refuse:
@@ -169,14 +176,61 @@ async def test_cool_down_is_one_setpoint(fake):
 
 async def test_heater_on_and_off(fake):
     handler, client = fake
+    # From cold pld-service refuses PID ("no pyrometer reading"), so heater_on leaves it
+    # to to_temperature's ramp_to, after the warm-up (HZO twin dry run, 2026-11-20).
+    client.refuse["set_temperature_control"] = "PID refused: no pyrometer reading"
     await handler.manager.initiate_heating_laser(timeout=1)
     assert client.calls == [(op, {"on": True}) for op in (
-        "set_heater_key", "set_heater_start", "set_heater_threshold", "set_temperature_control")]
+        "set_heater_key", "set_heater_start", "set_heater_threshold")]
+    client.refuse.clear()
     client.calls.clear()
     client.state.heater.temperature = 150.0
     await handler.manager.turn_off_heating_laser()
     assert client.calls == [(op, {"on": False}) for op in (
         "set_temperature_control", "set_heater_threshold", "set_heater_start", "set_heater_key")]
+
+
+async def test_a_current_step_queued_behind_a_long_op_waits_for_it(fake):
+    # A warm-up step sent during the 100 s laser-test fire outlasts the op's 10 s answer
+    # timeout but still runs once the service is free.
+    handler, client = fake
+    client.queued.add("set_heating_current")
+    await handler.manager.chamber.set_heating_current(6.5)
+    assert client.state.heater.current_set == 6.5
+    assert ops(client) == ["set_heating_current"]  # waited for, not sent again
+
+
+async def test_a_current_step_that_never_takes_effect_times_out(fake, monkeypatch):
+    handler, client = fake
+    monkeypatch.setattr(PldChamber, "HEATING_CURRENT_QUEUE_S", 0.5)
+    client.queued.add("set_heating_current")
+    with pytest.raises(TimeoutError, match="did not take effect"):
+        await handler.manager.chamber.set_heating_current(9.0)
+
+
+async def test_a_failed_warm_up_sets_the_current_back_and_says_so(fake):
+    # Left alone, a warm-up that fails part-way holds the heater open-loop at its last
+    # step. It goes back to where it started and the task fails, saying so.
+    handler, client = fake
+    client.state.heater.temperature = 25.0
+    client.state.heater.current_set = 6.0
+    steps = 0
+
+    async def refuse_third(op, req=None, _call=client.call):
+        nonlocal steps
+        if op == "set_heating_current" and req.amps > 6.05:
+            steps += 1
+            if steps == 3:
+                return PldReply(ok=False, message="LD current refused")
+        return await _call(op, req)
+
+    client.call = refuse_third
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    result = await wait_task(handler)
+    assert result["ok"] is False
+    assert "manual warm-up failed" in result["error"] and "set back to 6.00 A" in result["error"]
+    currents = [c["amps"] for op, c in client.calls if op == "set_heating_current"]
+    assert currents[-1] == 6.0 and "set_temperature" not in ops(client)
 
 
 async def test_set_target_turns_on_auto_spin_and_twist(fake):

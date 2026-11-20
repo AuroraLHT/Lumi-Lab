@@ -1005,25 +1005,36 @@ class BaseExperimentManager:
                         starting_point, warm_up_current)
             return False
 
-        current = starting_point + b.warm_up_step
-        while current <= warm_up_current + b.warm_up_step * 0.5:
-            await self.chamber.set_heating_current(float(current))
-            await asyncio.sleep(b.warm_up_step / b.warm_up_current_ramp_rate)
-            current += b.warm_up_step
+        try:
+            current = starting_point + b.warm_up_step
+            while current <= warm_up_current + b.warm_up_step * 0.5:
+                await self.chamber.set_heating_current(float(current))
+                await asyncio.sleep(b.warm_up_step / b.warm_up_current_ramp_rate)
+                current += b.warm_up_step
 
-        start_time = time.time()
-        current_temperature = await self.get_current_temperature()
-        while time.time() - start_time < b.warm_up_max_waittime:
+            start_time = time.time()
             current_temperature = await self.get_current_temperature()
-            if current_temperature > b.temperature_pid_engage_threshold:
-                break
-            await asyncio.sleep(b.warm_up_wait_interval)
+            while time.time() - start_time < b.warm_up_max_waittime:
+                current_temperature = await self.get_current_temperature()
+                if current_temperature > b.temperature_pid_engage_threshold:
+                    break
+                await asyncio.sleep(b.warm_up_wait_interval)
 
-        if current_temperature < b.temperature_pid_engage_threshold:
-            raise RuntimeError(
-                f"temperature stalled at {current_temperature}C, below the "
-                f"{b.temperature_pid_engage_threshold}C PID-engage threshold -- check the heater"
-            )
+            if current_temperature < b.temperature_pid_engage_threshold:
+                raise RuntimeError(
+                    f"temperature stalled at {current_temperature}C, below the "
+                    f"{b.temperature_pid_engage_threshold}C PID-engage threshold -- check the heater"
+                )
+        except Exception as exc:
+            # The warm-up is open-loop: failing here would leave the heater at whatever
+            # current it had reached, with no PID and nobody ramping it. Put it back
+            # where it started before reporting.
+            try:
+                await self.chamber.set_heating_current(starting_point)
+                back = f"heating current set back to {starting_point:.2f} A"
+            except Exception as again:
+                back = f"could NOT set the heating current back to {starting_point:.2f} A ({again}) -- check the heater"
+            raise RuntimeError(f"manual warm-up failed: {exc}; {back}") from exc
         return True
 
     async def is_heating_laser_on(self) -> bool:
@@ -1034,9 +1045,15 @@ class BaseExperimentManager:
 
     async def to_temperature(self, temperature: float, ramp_rate: float = 20.0, wait: bool = True) -> float:
         """Ramp to `temperature`. With `wait` the call returns once the substrate
-        arrives; without it, once the ramp is set going. PASCAL runs one command at a
-        time and the arrival wait is a command, so `wait` holds every other chamber
-        command (moves, target, shutter) until the ramp ends."""
+        arrives; without it, once the ramp is set going.
+
+        Under legacy MI mode PASCAL runs one command at a time and the arrival wait is
+        a command, so `wait` holds every other chamber command until the ramp ends.
+        Under pld-service the intent is that nothing blocks a heater step, but today's
+        pld-service (REA control/src/engine.rs) still runs one operation at a time: a
+        waited fire or move holds the warm-up's current steps until it ends. The steps
+        ride that out (PldChamber.set_heating_current) and a failed warm-up puts the
+        current back (_warm_up_to_pid_limit)."""
         b = self.bounds
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
 
