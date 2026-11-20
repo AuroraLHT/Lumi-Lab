@@ -992,7 +992,7 @@ class BaseExperimentManager:
         if original_mask_position is not None:
             await self.move_mask_to_position(original_mask_position)
 
-    async def _warm_up_to_pid_limit(self) -> bool:
+    async def _warm_up_to_pid_limit(self) -> None:
         b = self.bounds
         await self.chamber.manual_current()
 
@@ -1000,10 +1000,12 @@ class BaseExperimentManager:
         warm_up_current = b.warm_up_current
         starting_point = float(values["HT set"])
 
-        if starting_point > warm_up_current:
-            log.warning("warm-up starting point %.2f is above the warm-up current %.2f; skipping",
-                        starting_point, warm_up_current)
-            return False
+        # Already at the warm-up current (set by hand, or a warm-up cut short): no steps
+        # to run, but PID still waits for the threshold below. Returning here engaged it
+        # at whatever the substrate read (177 C on the twin, 2026-11-20).
+        if starting_point >= warm_up_current:
+            log.info("warm-up starting point %.2f A is at or above the warm-up current %.2f A; "
+                     "no steps, waiting for the PID-engage threshold", starting_point, warm_up_current)
 
         try:
             current = starting_point + b.warm_up_step
@@ -1035,7 +1037,6 @@ class BaseExperimentManager:
             except Exception as again:
                 back = f"could NOT set the heating current back to {starting_point:.2f} A ({again}) -- check the heater"
             raise RuntimeError(f"manual warm-up failed: {exc}; {back}") from exc
-        return True
 
     async def is_heating_laser_on(self) -> bool:
         """`Heat Stat` bit 3, the power supply's own ON/OFF monitor -- what the heater
@@ -1049,11 +1050,9 @@ class BaseExperimentManager:
 
         Under legacy MI mode PASCAL runs one command at a time and the arrival wait is
         a command, so `wait` holds every other chamber command until the ramp ends.
-        Under pld-service the intent is that nothing blocks a heater step, but today's
-        pld-service (REA control/src/engine.rs) still runs one operation at a time: a
-        waited fire or move holds the warm-up's current steps until it ends. The steps
-        ride that out (PldChamber.set_heating_current) and a failed warm-up puts the
-        current back (_warm_up_to_pid_limit)."""
+        Under pld-service (7148fc7 on) only commands sharing a resource queue behind
+        each other, so a waited fire or move does not delay the heater. A failed warm-up
+        puts the current back (_warm_up_to_pid_limit)."""
         b = self.bounds
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
 

@@ -21,9 +21,7 @@ service enforces every chamber safety rule itself; this only surfaces its answer
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import time
 from typing import Protocol
 
 from lumi.base.mq.client import RemoteError
@@ -293,29 +291,8 @@ class PldChamber:
     async def manual_current(self) -> None:
         await self._call("set_temperature_control", PldSwitchRequest(on=False))
 
-    #: The safety net's limit: how long a current step may sit behind another operation
-    #: before the warm-up gives up on it.
-    HEATING_CURRENT_QUEUE_S = 600.0
-
     async def set_heating_current(self, amps: float) -> None:
-        # A safety net, not the intended behaviour. Nothing should delay a heater step,
-        # but pld-service (REA engine.rs, be75673/4cc4d04) runs one operation at a time,
-        # so a step sent during a waited fire or move outlasts the op's 10 s answer
-        # timeout. The request still runs once the service is free: wait for current_set
-        # to show it rather than failing the warm-up part-way.
-        try:
-            await self._call("set_heating_current", PldCurrentRequest(amps=float(amps)))
-            return
-        except TimeoutError:
-            log.warning("set_heating_current %.2f A queued behind another operation; waiting", amps)
-        deadline = time.monotonic() + self.HEATING_CURRENT_QUEUE_S
-        while time.monotonic() < deadline:
-            await asyncio.sleep(1.0)
-            if abs((await self.state()).heater.current_set - float(amps)) < 0.005:
-                return
-        raise TimeoutError(
-            f"set_heating_current {amps:.2f} A did not take effect within "
-            f"{self.HEATING_CURRENT_QUEUE_S:.0f}s: pld-service stayed busy with another operation")
+        await self._call("set_heating_current", PldCurrentRequest(amps=float(amps)))
 
     async def ramp_to(self, celsius: float, ramp_c_per_min: float, wait: bool) -> None:
         # PID first: engaged, it holds the present temperature; the setpoint then ramps
