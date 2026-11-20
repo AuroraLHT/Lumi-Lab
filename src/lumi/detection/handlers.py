@@ -73,9 +73,11 @@ class DetectionHandler:
         return self._latest
 
     async def set_detection_crop(self, req: CropSetup) -> Ack:
-        # The detector speaks in corners, the contract in origin+size.
+        # The detector speaks in corners, the contract in origin+size -- and rhana's
+        # Rheed.crop takes its "x" along rows (axis 0) and "y" along columns, the
+        # other way round from an image's x/y. See _crop_of for the reverse.
         self.detector.set_crop(
-            sx=req.x, sy=req.y, ex=req.x + req.width, ey=req.y + req.height
+            sx=req.y, sy=req.x, ex=req.y + req.height, ey=req.x + req.width
         )
         log.info("detection crop set to %s", req)
         return Ack()
@@ -112,16 +114,17 @@ class DetectionHandler:
         return DetectionReadout(
             classifier_classes=list(getattr(self.detector, "classifier_classes", []) or []),
             device=getattr(self.detector.config, "detector_model_device", None),
-            crop=(
-                CropSetup(
-                    x=crop["sx"], y=crop["sy"],
-                    width=crop["ex"] - crop["sx"], height=crop["ey"] - crop["sy"],
-                )
-                if crop
-                else None
-            ),
+            crop=_crop_of(crop) if crop else None,
             model_path=getattr(self.detector.config, "detector_model_path", None),
         )
+
+
+def _crop_of(crop: dict) -> CropSetup:
+    """The detector's crop_setup -> the contract's image-space crop. rhana slices
+    pattern[sx:ex, sy:ey], so sx/ex are rows (y, height) and sy/ey columns (x, width):
+    the full 540 x 720 frame is {sx: 0, ex: 540, sy: 0, ey: 720} -> width 720, height 540."""
+    return CropSetup(x=crop["sy"], y=crop["sx"],
+                     width=crop["ey"] - crop["sy"], height=crop["ex"] - crop["sx"])
 
 
 class OverlayHandler:

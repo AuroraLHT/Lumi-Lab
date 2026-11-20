@@ -21,7 +21,7 @@ from lumi.contracts.payloads.common import Empty
 from lumi.contracts.rheed import RHEED
 from lumi.contracts.storage import STORAGE_NODE
 from lumi.contracts.system import SYSTEM
-from lumi.generated.clients.chamber import ChamberLogClient
+from lumi.generated.clients.chamber import ChamberLogClient, ChamberPldClient
 from lumi.generated.clients.detection import DetectionDetectionClient
 from lumi.generated.clients.rheed import RheedCameraClient, RheedIntegratorClient
 from lumi.generated.clients.system import SystemRegistryClient
@@ -46,6 +46,7 @@ async def main(args: argparse.Namespace) -> None:
     # Reads the same folder the recorder writes, and stays off the file being written.
     node.mount("archive", ArchiveHandler(RecordingArchive(
         handler.root_folder, live_name=lambda: handler.project_name,
+        live_writer=lambda: handler.writer,
     )))
     await node.start()
 
@@ -67,6 +68,9 @@ async def main(args: argparse.Namespace) -> None:
         "integrator": RheedIntegratorClient(channel, rheed_x),
         "detection": DetectionDetectionClient(channel, rheed_x),
         "log": ChamberLogClient(channel, chamber_x),
+        # Read-only use: the chamber's state for /meta/chamber and its events for
+        # /events. Storage never commands the chamber.
+        "pld": ChamberPldClient(channel, chamber_x),
     }
     registry = SystemRegistryClient(channel, system_x)
 
@@ -96,7 +100,7 @@ async def main(args: argparse.Namespace) -> None:
     try:
         await node._shutdown.wait()
     finally:
-        if handler.recorder_server is not None:
+        if handler.writer is not None:
             # Never leave a half-written HDF5 file behind because someone hit Ctrl-C.
             log.warning("draining while recording %r -- closing the file", handler.project_name)
             await handler.stop_recording(Empty())

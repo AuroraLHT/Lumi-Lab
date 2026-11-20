@@ -16248,6 +16248,32 @@
                   "title": "Is Dryrun",
                   "type": "boolean"
                 },
+                "note": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Note"
+                },
+                "operator": {
+                  "anyOf": [
+                    {
+                      "maxLength": 200,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Operator"
+                },
                 "project_name": {
                   "title": "Project Name",
                   "type": "string"
@@ -19493,6 +19519,18 @@
               ],
               "default": null,
               "title": "Project Name"
+            },
+            "recording_name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Recording Name"
             },
             "substrate_id": {
               "anyOf": [
@@ -25176,10 +25214,42 @@
             "name": "start_recording",
             "request": {
               "properties": {
+                "context": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Context",
+                  "type": "object"
+                },
                 "force_rewrite": {
                   "default": false,
                   "title": "Force Rewrite",
                   "type": "boolean"
+                },
+                "note": {
+                  "anyOf": [
+                    {
+                      "maxLength": 4000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Note"
+                },
+                "operator": {
+                  "anyOf": [
+                    {
+                      "maxLength": 200,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Operator"
                 },
                 "project_name": {
                   "title": "Project Name",
@@ -25323,6 +25393,94 @@
               "type": "object"
             },
             "response_codec": "json"
+          },
+          {
+            "name": "add_recording_event",
+            "request": {
+              "description": "Something that happened during a recording, kept in its /events.",
+              "properties": {
+                "detail": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Detail",
+                  "type": "object"
+                },
+                "kind": {
+                  "description": "task_started, task_finished, note, ... -- a short tag",
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "title": "Kind",
+                  "type": "string"
+                },
+                "message": {
+                  "default": "",
+                  "maxLength": 4000,
+                  "title": "Message",
+                  "type": "string"
+                },
+                "time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Time"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "title": "RecordingEventIn",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "ok": {
+                  "title": "Ok",
+                  "type": "boolean"
+                },
+                "path": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Path"
+                },
+                "project_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Project Name"
+                }
+              },
+              "required": [
+                "ok"
+              ],
+              "title": "StorageStatus",
+              "type": "object"
+            },
+            "response_codec": "json"
           }
         ],
         "routing_keys": {
@@ -25330,6 +25488,7 @@
           "publish": "storage.storage.pub",
           "request_pattern": "storage.storage.req.*",
           "requests": {
+            "add_recording_event": "storage.storage.req.add_recording_event",
             "start_recording": "storage.storage.req.start_recording",
             "stop_recording": "storage.storage.req.stop_recording"
           },
@@ -25359,6 +25518,11 @@
               "default": null,
               "description": "Last error, if the capability is degraded",
               "title": "Error"
+            },
+            "format_version": {
+              "default": 2,
+              "title": "Format Version",
+              "type": "integer"
             },
             "is_running": {
               "default": false,
@@ -25448,6 +25612,18 @@
               "$defs": {
                 "RecordingSummary": {
                   "properties": {
+                    "complete": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Complete"
+                    },
                     "end": {
                       "anyOf": [
                         {
@@ -25484,6 +25660,18 @@
                       "default": null,
                       "title": "Error"
                     },
+                    "format_version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Format Version"
+                    },
                     "modified": {
                       "title": "Modified",
                       "type": "number"
@@ -25499,6 +25687,30 @@
                       ],
                       "default": null,
                       "title": "Modified Iso"
+                    },
+                    "n_detections": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "N Detections"
+                    },
+                    "n_events": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "N Events"
                     },
                     "n_frames": {
                       "anyOf": [
@@ -25539,6 +25751,30 @@
                     "name": {
                       "title": "Name",
                       "type": "string"
+                    },
+                    "note": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Note"
+                    },
+                    "operator": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Operator"
                     },
                     "recording": {
                       "default": false,
@@ -25670,9 +25906,89 @@
                   ],
                   "title": "IntegrationBox",
                   "type": "object"
+                },
+                "IntegrationBoxSpan": {
+                  "description": "One geometry a box had, and when: boxes can be moved or added mid-recording.",
+                  "properties": {
+                    "bbox_id": {
+                      "title": "Bbox Id",
+                      "type": "integer"
+                    },
+                    "center_x": {
+                      "title": "Center X",
+                      "type": "number"
+                    },
+                    "center_y": {
+                      "title": "Center Y",
+                      "type": "number"
+                    },
+                    "height": {
+                      "title": "Height",
+                      "type": "number"
+                    },
+                    "t_from": {
+                      "title": "T From",
+                      "type": "number"
+                    },
+                    "t_to": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "T To"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bbox_id",
+                    "center_x",
+                    "center_y",
+                    "width",
+                    "height",
+                    "t_from"
+                  ],
+                  "title": "IntegrationBoxSpan",
+                  "type": "object"
                 }
               },
               "properties": {
+                "attrs": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "default": {},
+                  "title": "Attrs",
+                  "type": "object"
+                },
+                "box_history": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/IntegrationBoxSpan"
+                  },
+                  "title": "Box History",
+                  "type": "array"
+                },
                 "boxes": {
                   "default": [],
                   "items": {
@@ -25681,6 +25997,18 @@
                   "title": "Boxes",
                   "type": "array"
                 },
+                "complete": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Complete"
+                },
                 "datasets": {
                   "additionalProperties": {
                     "type": "integer"
@@ -25688,6 +26016,14 @@
                   "default": {},
                   "title": "Datasets",
                   "type": "object"
+                },
+                "detection_classes": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Detection Classes",
+                  "type": "array"
                 },
                 "end": {
                   "anyOf": [
@@ -25724,6 +26060,18 @@
                   ],
                   "default": null,
                   "title": "Error"
+                },
+                "format_version": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Format Version"
                 },
                 "frame_dtype": {
                   "anyOf": [
@@ -25768,6 +26116,12 @@
                   "title": "Log Columns",
                   "type": "array"
                 },
+                "meta": {
+                  "additionalProperties": true,
+                  "default": {},
+                  "title": "Meta",
+                  "type": "object"
+                },
                 "modified": {
                   "title": "Modified",
                   "type": "number"
@@ -25783,6 +26137,30 @@
                   ],
                   "default": null,
                   "title": "Modified Iso"
+                },
+                "n_detections": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "N Detections"
+                },
+                "n_events": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "N Events"
                 },
                 "n_frames": {
                   "anyOf": [
@@ -25823,6 +26201,30 @@
                 "name": {
                   "title": "Name",
                   "type": "string"
+                },
+                "note": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Note"
+                },
+                "operator": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Operator"
                 },
                 "recording": {
                   "default": false,
@@ -26426,6 +26828,439 @@
               "type": "object"
             },
             "response_codec": "json"
+          },
+          {
+            "name": "recording_events",
+            "request": {
+              "properties": {
+                "kinds": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Kinds"
+                },
+                "limit": {
+                  "default": 1000,
+                  "maximum": 100000,
+                  "minimum": 1,
+                  "title": "Limit",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingEventsQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "RecordingEvent": {
+                  "properties": {
+                    "detail": {
+                      "additionalProperties": true,
+                      "default": {},
+                      "title": "Detail",
+                      "type": "object"
+                    },
+                    "kind": {
+                      "title": "Kind",
+                      "type": "string"
+                    },
+                    "message": {
+                      "default": "",
+                      "title": "Message",
+                      "type": "string"
+                    },
+                    "time": {
+                      "title": "Time",
+                      "type": "number"
+                    },
+                    "time_iso": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Time Iso"
+                    }
+                  },
+                  "required": [
+                    "time",
+                    "kind"
+                  ],
+                  "title": "RecordingEvent",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "events": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/RecordingEvent"
+                  },
+                  "title": "Events",
+                  "type": "array"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "total": {
+                  "default": 0,
+                  "title": "Total",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingEvents",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "recording_detections",
+            "request": {
+              "properties": {
+                "max_points": {
+                  "default": 4000,
+                  "maximum": 200000,
+                  "minimum": 2,
+                  "title": "Max Points",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Until"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingDetectionsQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "The detector's output over the recording: per detection, its time, how many\nboxes it found and the classifier's score for each class.",
+              "properties": {
+                "classes": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Classes",
+                  "type": "array"
+                },
+                "classification": {
+                  "additionalProperties": {
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "type": "array"
+                  },
+                  "default": {},
+                  "title": "Classification",
+                  "type": "object"
+                },
+                "index": {
+                  "default": [],
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "Index",
+                  "type": "array"
+                },
+                "n_boxes": {
+                  "default": [],
+                  "items": {
+                    "type": "integer"
+                  },
+                  "title": "N Boxes",
+                  "type": "array"
+                },
+                "n_detections": {
+                  "default": 0,
+                  "title": "N Detections",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "stride": {
+                  "default": 1,
+                  "title": "Stride",
+                  "type": "integer"
+                },
+                "time": {
+                  "default": [],
+                  "items": {
+                    "type": "number"
+                  },
+                  "title": "Time",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "name"
+              ],
+              "title": "RecordingDetections",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "recording_detection",
+            "request": {
+              "properties": {
+                "index": {
+                  "minimum": 0,
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "index"
+              ],
+              "title": "RecordingDetectionQuery",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "RecordedBox": {
+                  "description": "A detected box, in pattern coordinates: add the crop's x/y for the frame.",
+                  "properties": {
+                    "bbox_id": {
+                      "title": "Bbox Id",
+                      "type": "integer"
+                    },
+                    "label": {
+                      "title": "Label",
+                      "type": "integer"
+                    },
+                    "score": {
+                      "title": "Score",
+                      "type": "number"
+                    },
+                    "track": {
+                      "default": -1,
+                      "title": "Track",
+                      "type": "integer"
+                    },
+                    "x0": {
+                      "title": "X0",
+                      "type": "number"
+                    },
+                    "x1": {
+                      "title": "X1",
+                      "type": "number"
+                    },
+                    "y0": {
+                      "title": "Y0",
+                      "type": "number"
+                    },
+                    "y1": {
+                      "title": "Y1",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "bbox_id",
+                    "x0",
+                    "y0",
+                    "x1",
+                    "y1",
+                    "label",
+                    "score"
+                  ],
+                  "title": "RecordedBox",
+                  "type": "object"
+                },
+                "RecordedCrop": {
+                  "properties": {
+                    "height": {
+                      "title": "Height",
+                      "type": "integer"
+                    },
+                    "width": {
+                      "title": "Width",
+                      "type": "integer"
+                    },
+                    "x": {
+                      "title": "X",
+                      "type": "integer"
+                    },
+                    "y": {
+                      "title": "Y",
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "x",
+                    "y",
+                    "width",
+                    "height"
+                  ],
+                  "title": "RecordedCrop",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "boxes": {
+                  "default": [],
+                  "items": {
+                    "$ref": "#/$defs/RecordedBox"
+                  },
+                  "title": "Boxes",
+                  "type": "array"
+                },
+                "classification": {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "default": {},
+                  "title": "Classification",
+                  "type": "object"
+                },
+                "crop": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/RecordedCrop"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "index": {
+                  "title": "Index",
+                  "type": "integer"
+                },
+                "n_detections": {
+                  "title": "N Detections",
+                  "type": "integer"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "time": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Time"
+                },
+                "uuid": {
+                  "default": "",
+                  "title": "Uuid",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "index",
+                "n_detections"
+              ],
+              "title": "RecordingDetection",
+              "type": "object"
+            },
+            "response_codec": "json"
           }
         ],
         "routing_keys": {
@@ -26434,6 +27269,9 @@
           "request_pattern": "storage.archive.req.*",
           "requests": {
             "list_recordings": "storage.archive.req.list_recordings",
+            "recording_detection": "storage.archive.req.recording_detection",
+            "recording_detections": "storage.archive.req.recording_detections",
+            "recording_events": "storage.archive.req.recording_events",
             "recording_frame": "storage.archive.req.recording_frame",
             "recording_frame_jpeg": "storage.archive.req.recording_frame_jpeg",
             "recording_info": "storage.archive.req.recording_info",
@@ -26504,7 +27342,7 @@
     "exchange": "STORAGE",
     "exchange_type": "topic",
     "name": "storage",
-    "version": "2.0"
+    "version": "2.1"
   },
   "system": {
     "capabilities": [
