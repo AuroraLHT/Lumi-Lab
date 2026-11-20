@@ -187,6 +187,25 @@ async def test_nan_readings_become_none_and_zero_in_the_log():
     assert values["TG No."] == 7
 
 
+async def test_the_log_carries_the_train():
+    # From the state since REA 6d8df20, as the simulator writes them (the monitor's pulse
+    # chart reads all three). LaserHz idles at 0, as PLD Controller's does.
+    laser = pb.Laser(status="firing", pulses_fired=120, rate_hz=30.3, pulses_requested=500)
+    values = values_from_state(pb.ChamberState(laser=laser))
+    assert (values["LaserHz"], values["Laser set"], values["Laser moni"], values["LaserPuls"]) == (30.3, 500, 120, 120)
+    laser.status = "finished"
+    assert values_from_state(pb.ChamberState(laser=laser))["LaserHz"] == 0.0
+
+
+async def test_every_named_valve_has_its_confirmed_bit():
+    # REA's map off PLD Controller's own log (2026-11-10); 0x077F is the chamber idle.
+    idle = {name: True for name in ("MV10", "MV11", "FV1", "MV20", "FV20", "MV3", "FV3", "MV21", "FV21", "CV1")}
+    values = values_from_state(pb.ChamberState(valves=idle | {"RV3": False, "VT1": False, "VT2": False}))
+    assert (values["Valve Stat1"], values["Valve Stat2"]) == (0x077F, 0)
+    values = values_from_state(pb.ChamberState(valves={"VT2": True, "CV301": True}))
+    assert (values["Valve Stat1"], values["Valve Stat2"]) == (1 << 12, 1 << 2)
+
+
 async def test_the_unused_driver_refuses_every_op():
     pld_off = DisabledCapability(PLD, "use --use-legacy-mi-mode", PldReadout(driver="legacy-mi"))
     with pytest.raises(RuntimeError, match="legacy"):
@@ -344,3 +363,50 @@ async def test_stop_fire_cuts_a_waited_train_short_from_another_client(driver):
     assert not reply.ok and reply.message.startswith("stopped by request: fired ")
     assert 0 < model.laser_pulses < 100_000
     assert service.servicer.controller == "lumi-pascal"  # the stop took nothing
+
+
+async def test_rheed_on_without_a_set_point_leaves_it_unset():
+    # pld-service then uses the remembered set point; 0 would be a set point of its own.
+    from lumi.contracts.payloads.pld import PldRheedFilamentOnRequest, PldRheedHvOnRequest
+    from lumi.pascal.pld.handler import PldHandler
+
+    sent = []
+
+    class Recorder(PldHandler):
+        def __init__(self):
+            self.state_monitor = type("M", (), {"latest": None})()
+
+        async def _operate(self, rpc, request):
+            sent.append((rpc, request))
+
+    h = Recorder()
+    await h.rheed_filament_on(PldRheedFilamentOnRequest())
+    await h.rheed_hv_on(PldRheedHvOnRequest(kv=12.5))
+    (_, filament), (_, hv) = sent
+    assert not filament.HasField("ma") and hv.HasField("kv") and hv.kv == 12.5
+
+
+async def test_rheed_focus_and_deflection_are_walked_in_steps():
+    from lumi.contracts.payloads.pld import PldReply, PldRheedDeflectionRequest, PldRheedFocusRequest
+    from lumi.pascal.pld.handler import PldHandler
+
+    sent = []
+
+    class Recorder(PldHandler):
+        def __init__(self):
+            self.state_monitor = type("M", (), {"latest": None})()
+
+        async def _rheed(self):
+            return pb.Rheed(focus_on=True, focus_set_ma=100.0, x_on=False, x_set_ma=50.0, y_on=True, y_set_ma=-10.0)
+
+        async def _operate(self, rpc, request):
+            sent.append(request)
+            return PldReply(ok=True, message="done")
+
+    h = Recorder()
+    await h.set_rheed_focus(PldRheedFocusRequest(ma=130.0))  # 50 mA/s in 0.2 s: 10 mA a step
+    assert [r.ma for r in sent] == [110.0, 120.0, 130.0]
+    sent.clear()
+    # X is off, so from 0 (not its remembered 50); both arrive on the same last step.
+    await h.set_rheed_deflection(PldRheedDeflectionRequest(x_ma=8.0, y_ma=-2.0))
+    assert [(r.x_ma, r.y_ma) for r in sent] == [(4.0, -6.0), (8.0, -2.0)]

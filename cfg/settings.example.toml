@@ -598,9 +598,10 @@ flip_y = true
 exchange = "EXPERIMENT"
 exchange_type = "topic"
 growth_db_path = "cfg/growth.db"
-# The real chamber's pressure is set by a person at the gauge, so set_pressure raises a
-# `pressure` pending confirmation for them instead of commanding the controller.
-# start_simulation.sh turns this off: the simulator sets the pressure directly.
+# Legacy MI mode only (--use-legacy-mi-mode): there the real chamber's pressure is set
+# by a person at the gauge, so set_pressure raises a `pressure` pending confirmation for
+# them instead of commanding the controller. pld-service (the default driver) sets the
+# pressure itself and ignores this. start_simulation.sh turns it off.
 pressure_by_hand = true
 # Files attached to measurements (raw instrument files, AFM images). Empty means a
 # `measurement_files` folder beside growth.db -- keep the two together, they are one

@@ -16,6 +16,8 @@ from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 from .chamber_log import process_row
 from typing import TypedDict
 
+_SET_PATH = "set pascal.config_reader.config_path (env DYNACONF_PASCAL__CONFIG_READER__CONFIG_PATH)"
+
 class ConfigFileModifyHandler(FileSystemEventHandler):
     def __init__(self, config_reader:"ConfigReader") -> None:
         super().__init__()
@@ -130,13 +132,18 @@ class ConfigReader(threading.Thread):
                 logging.info(f"file {file_name} does not exist")
                 time.sleep(0.1)
             else:
-                raise TimeoutError(f"Cannot read the config .ini file {file_name}")
+                raise TimeoutError(f"PASCAL config .ini not found at {file_name} (waited {timeout}s); {_SET_PATH}")
             
             
     def run(self):
         """
             The main loop just keep reading row from the reader. reader would be changed if a new log file is detected.
         """
+        folder = Path(self.config.config_path).parent
+        if not folder.is_dir():
+            # The watcher cannot watch a folder that is not there, and dies with a bare
+            # OSError naming no setting.
+            raise FileNotFoundError(f"PASCAL config .ini not found at {self.config.config_path}: no folder {folder}; {_SET_PATH}")
         self.create_file_watcher()
         self._observer.start()
         logging.info("Config .ini file watch dog started")

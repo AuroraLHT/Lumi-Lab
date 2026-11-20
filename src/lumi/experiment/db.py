@@ -1145,7 +1145,7 @@ class GrowthDB:
 
         Both sources are needed and neither is sufficient. The `experiment` row holds
         the *measured* values a GP is actually regressing on -- the pressure read off
-        the gauge, the laser power read off the meter -- which the deposition request
+        the gauge, the laser pulse energy read off the meter -- which the deposition request
         never carried. The journal step holds what was asked of the hardware, plus the
         material resolved at the time. So the row is the base and the step overlays it;
         a sample grown before the journal existed still gets the row alone.

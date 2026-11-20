@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at 9858307 (load lock, pumps, heater tune; identical apart from line
+// branch decode-program at 36ac0b4 (RHEED ramped switch-off, RHEED controller, link reconnect; identical apart from line
 // endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this header)
 // and run scripts/gen_pld_stubs.sh.
 //
@@ -142,6 +142,30 @@ service Chamber {
   rpc SetLaserEnergy(LaserEnergyRequest) returns (OperationReply);
   rpc ReleaseLaser(Empty) returns (OperationReply);
   rpc TakeLaserControl(Empty) returns (OperationReply);
+
+  // ---- RHEED controller (its handset port; the service stands in for the handset) ----------
+  // Its own link and thread (rheed.rs, docs/rheed-link.md). Needs control, except RheedAllOff.
+  // On hardware without --allow-operations the RHEED port stays closed (any record, even a
+  // k poll, restarts the controller's outputs) and every RHEED operation is refused.
+  // Filament on ramps from the 507 mA floor at filament_ramp_ma_per_s; HV on ramps from 0 at
+  // hv_ramp_v_per_s and needs the filament on. RheedHvOff ramps HV to 0, then switches it off;
+  // RheedFilamentOff ramps HV down and off first, then the filament to filament_min_ma, then off
+  // (same rates; the remembered set points are not changed). A SetRheed*/On during a ramp-down
+  // cancels it and goes to the new target (HV on/set is refused during a filament ramp-down:
+  // switch the filament on again first). RheedAllOff, interlock, faults and link loss are immediate.
+  // An interlock, an open filament or an over-current held 1 s switches filament and HV off;
+  // nothing comes back on by itself.
+  // `ma` / `kv` unset: the remembered set point (from this or a previous run); refused if none.
+  rpc RheedFilamentOn(RheedFilamentOnRequest) returns (OperationReply);
+  rpc RheedFilamentOff(Empty) returns (OperationReply);
+  rpc RheedHvOn(RheedHvOnRequest) returns (OperationReply);
+  rpc RheedHvOff(Empty) returns (OperationReply);
+  rpc SetRheedHv(RheedHvRequest) returns (OperationReply);  // ramped
+  rpc SetRheedFilament(RheedFilamentRequest) returns (OperationReply);  // ramped
+  rpc SetRheedFocus(RheedFocusRequest) returns (OperationReply);
+  rpc SetRheedDeflection(RheedDeflectionRequest) returns (OperationReply);  // X and Y together
+  // Filament, HV, focus, X and Y off at once. Any client, no control needed (like StopFire).
+  rpc RheedAllOff(Empty) returns (OperationReply);
 }
 
 message Empty {}
@@ -171,6 +195,68 @@ message ChamberState {
   bool read_only = 20;  // hardware without --allow-operations: every operation is refused
   map<string, Pump> pumps = 21;  // name -> state (TMP1 .. DP3)
   LoadLock load_lock = 22;
+  Session session = 23;
+  Limits limits = 24;
+  Rheed rheed = 25;
+}
+
+// The RHEED controller as the service's handset cycle sees it (every 50 ms). Units, never
+// counts. Read-backs and set points not known yet are NaN.
+message Rheed {
+  bool present = 1;  // the service has a RHEED link (false with --no-rheed, read-only, or a port that did not open)
+  bool read_only = 2;  // hardware without --allow-operations: the RHEED port is not opened
+  bool link_ok = 3;  // the controller answered the last cycle
+  bool interlock = 4;  // k reply flag 0: filament and HV were switched off
+  bool filament_open = 5;  // open-circuit (burnt or broken) filament suspected: on with a set point but read-back near 0 for 1 s (the handset's E002); filament and HV were switched off; cleared by RheedFilamentOff / RheedAllOff
+  bool filament_on = 6;
+  double filament_set_ma = 7;  // sent now (ramping toward the target)
+  double filament_target_ma = 8;
+  double filament_readback_ma = 9;
+  optional double filament_last_ma = 10;  // remembered; unset = none
+  bool hv_on = 11;
+  double hv_set_kv = 12;
+  double hv_target_kv = 13;
+  double hv_readback_kv = 14;
+  optional double hv_last_kv = 15;
+  double emission_ua = 16;
+  bool focus_on = 17;
+  double focus_set_ma = 18;
+  double focus_readback_ma = 19;
+  bool x_on = 20;
+  double x_set_ma = 21;
+  double x_readback_ma = 22;
+  bool y_on = 23;
+  double y_set_ma = 24;
+  double y_readback_ma = 25;
+  bool hv_ramping_down = 36;  // RheedHvOff or RheedFilamentOff is ramping HV to 0 before switching it off
+  bool filament_ramping_down = 37;  // RheedFilamentOff in progress: HV down and off, then the filament to filament_min_ma, then off
+  string last_alert = 26;  // the last link-level alert (no reply, malformed reply), kept until the next one; times are in YYYYMMDD_rheed.jsonl. Faults (interlock, open filament, link lost) also go out as events.
+  // the service's caps ([rheed] config)
+  double hv_max_kv = 27;
+  double filament_min_ma = 28;
+  double filament_max_ma = 29;
+  double focus_min_ma = 30;
+  double focus_max_ma = 31;
+  double x_min_ma = 32;
+  double x_max_ma = 33;
+  double y_min_ma = 34;
+  double y_max_ma = 35;
+}
+
+// The service's PLC host-link session (as PLD Controller opens it: CR, SP 4, 115200).
+message Session {
+  bool plc_session = 1;  // the session is open (CR / SP 4 answered)
+  bool watchdog = 2;  // this service started the PLC watchdog (ST 02500; operations allowed only)
+  string link_error = 3;  // why the PLC/gauge/pyrometer polls are failing; "" while they work (then ChamberState.connected is true)
+}
+
+// The safety limits the service enforces (from --config), so a client can check before a refusal.
+message Limits {
+  double ig1_max_torr = 1;  // IG1 on refused, and switched off, above this on CDG10
+  double ig3_max_torr = 2;  // IG3 likewise on TCG31
+  double mv3_max_torr = 3;  // MV3 open refused above this on TCG31
+  double heater_max_celsius = 4;  // above this the heater trips off
+  double heater_max_amps = 5;  // LD current ceiling (Heater.current_max is the PID output limit within it)
 }
 
 message LoadLock {
@@ -216,7 +302,7 @@ message Heater {
   bool key_on = 10;  // what the service holds (the PLC reports no key bit)
   bool start_on = 11;  // requested; `started` is the PLC's answer
   bool threshold_on = 12;
-  double current_min = 13;  // PID output limits
+  double current_min = 13;  // PID output limits (min defaults to the 6 A threshold current)
   double current_max = 14;
   double temperature_goal = 15;  // final PID setpoint; NaN when not in PID mode
   double ramp_c_per_min = 16;  // 0 = jump
@@ -224,6 +310,10 @@ message Heater {
   double kp = 18;  // the PID gains in use (A/C, A/(C s), A s/C)
   double ki = 19;
   double kd = 20;
+  bool writes_failing = 21;  // the per-cycle LD writes are failing (reported once as an error event)
+  uint32 tune_cycles_done = 22;  // TuneHeater: relay cycles done of tune_cycles (0 when not tuning)
+  uint32 tune_cycles = 23;
+  bool warming_up = 24;  // SetTemperature from below pid_start_celsius (200 C): LDmin (7.6 A) held until then, PID after (pid_on is true)
 }
 
 message Motion {
@@ -258,6 +348,12 @@ message Laser {
   string status = 1;  // idle, firing, finished
   uint64 pulses_fired = 2;
   uint64 missed_shots = 3;
+  // The current or last train this service started (FireLaser, from any client); 0 before the
+  // first. The PLC words they are written to are not polled, so a train started by another
+  // program does not show here. rate_hz is what the PLC runs: 1000 / the whole-ms period sent.
+  double rate_hz = 4;
+  uint64 pulses_requested = 5;
+  bool stop_requested = 6;  // StopFire was sent during the present train (until the next fire)
 }
 
 // The COMPexPro as its polls report it: OPMODE every 0.2 s, the rest every 2 s.
@@ -416,6 +512,31 @@ message LaserHvRequest {
 
 message LaserEnergyRequest {
   double mj = 1;
+}
+
+message RheedFilamentOnRequest {
+  optional double ma = 1;  // unset: the remembered set point
+}
+
+message RheedHvOnRequest {
+  optional double kv = 1;  // unset: the remembered set point
+}
+
+message RheedFilamentRequest {
+  double ma = 1;
+}
+
+message RheedHvRequest {
+  double kv = 1;
+}
+
+message RheedFocusRequest {
+  double ma = 1;
+}
+
+message RheedDeflectionRequest {
+  double x_ma = 1;
+  double y_ma = 2;
 }
 
 message FlowRequest {

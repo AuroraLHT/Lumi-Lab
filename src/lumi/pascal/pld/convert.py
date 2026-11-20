@@ -1,8 +1,8 @@
 """pld-service messages -> the bus payloads in `lumi.contracts.payloads.pld`.
 
 Generic over the descriptor rather than field by field: the payload models mirror the
-proto's names, so a walk that turns floats' NaN into None, enums into their names and
-maps into dicts covers every message, and a field added on both sides needs no code here.
+proto's names, so a walk that turns floats' NaN and unset `optional` scalars into None,
+enums into their names and maps into dicts covers every message, and a field added on both sides needs no code here.
 """
 
 from __future__ import annotations
@@ -43,6 +43,8 @@ def to_dict(message) -> dict:
             out[field.name] = [to_dict(v) if field.message_type else _scalar(field, v) for v in value]
         elif field.message_type is not None:
             out[field.name] = to_dict(value)
+        elif field.has_presence and not message.HasField(field.name):
+            out[field.name] = None  # an `optional` scalar left unset: none, not 0
         else:
             out[field.name] = _scalar(field, value)
     return out

@@ -170,6 +170,11 @@ class BridgeSession:
     #: see that the socket died, so without this it happily forwards a 25fps feed into
     #: a closed transport, logging a full traceback per frame.
     _closed: bool = False
+    #: Requests in flight. Each runs as its own task: awaited in the read loop, one slow
+    #: op (a 13 s RHEED ramp, a ramped switch-off) held up every later click and poll
+    #: from this browser until it answered.
+    _requests: set[asyncio.Task] = field(default_factory=set)
+    _send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def run(self) -> None:
         try:
@@ -190,13 +195,21 @@ class BridgeSession:
         header, payload = unpack(frame)
         kind = header.get("kind")
         if kind == "request":
-            await self._request(header, payload)
+            task = asyncio.create_task(self._request_logged(header, payload))
+            self._requests.add(task)
+            task.add_done_callback(self._requests.discard)
         elif kind == "subscribe":
             await self._subscribe(header)
         elif kind == "unsubscribe":
             await self._unsubscribe(header)
         else:
             await self._error(header.get("correlation_id"), "BadFrame", f"unknown kind {kind!r}")
+
+    async def _request_logged(self, header: dict, payload: bytes) -> None:
+        try:
+            await self._request(header, payload)
+        except Exception:
+            log.exception("bridge request handling failed for %s", self.user)
 
     async def _request(self, header: dict, payload: bytes) -> None:
         cid = header.get("correlation_id")
@@ -379,7 +392,8 @@ class BridgeSession:
         if self._closed:
             return
         try:
-            await self.ws.send_bytes(frame)
+            async with self._send_lock:  # replies and stream frames come from many tasks
+                await self.ws.send_bytes(frame)
         except Exception:
             self._closed = True
             log.debug("browser gone; dropping outbound frame for %s", self.user)
@@ -393,6 +407,8 @@ class BridgeSession:
         # Latch first: the consumers are still live until _release returns, and there is
         # no socket left to write to.
         self._closed = True
+        for task in list(self._requests):  # nobody is left to answer
+            task.cancel()
         entries = list(self._stream_clients.values())
         self._stream_clients.clear()
         # Concurrently, so one slow teardown does not delay the others -- they are on

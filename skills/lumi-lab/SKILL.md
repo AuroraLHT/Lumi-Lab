@@ -61,22 +61,28 @@ being asked, wait, and pass their answer on.
 | `rheed_gain` | judges the RHEED image | `set_rheed_gain`, `confirm_rheed_gain` |
 | `pixel_check` | checks each position on the camera | `resolve_pixel_check` |
 | `fiducial_role` | tags the mask-center marker in the UI | (continues by itself) |
-| `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure` on the real chamber) | `confirm`, then read it back with `get_current_pressure` |
+| `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure` on the real chamber, legacy MI mode only) | `confirm`, then read it back with `get_current_pressure` |
 | `proceed` | a plain go/no-go | `confirm` |
 
 The excimer can be switched (`chamber.pld.laser_on` / `laser_standby` / `laser_off`, mode,
 HV, energy) only while `chamber_state.excimer.control` is true; otherwise the second PC
-holds it and every laser op is refused. To stop a deposition that is going wrong, call
-`chamber.pld.stop_fire` (no control needed); the fire it cuts short fails with "stopped by
-request", and that ends the run -- never fire again to make up the pulses. Moving it (`take_laser_control`,
-`release_laser`) is the person's call: ask first. Under `--use-legacy-mi-mode` it stays by hand.
+holds it and every laser op is refused. Moving that control (`take_laser_control`,
+`release_laser`) is the person's call: ask first. Under `--use-legacy-mi-mode` the excimer
+stays by hand.
+
+To stop a deposition or preablation that is going wrong, call
+`experiment.driver.stop_deposition`: it ends the task (its result says `aborted`) and
+stops the laser. `chamber.pld.stop_fire` stops only a pulse train, for a `fire_laser` of
+your own. A fire cut short fails with "stopped by request", and that ends the run --
+never fire again to make up the pulses. Under `--use-legacy-mi-mode` neither works: ask
+the person to press STOP on PASCAL.
 
 Also by hand, with no tool: RHEED gun and sample-stage adjustment,
 and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.
-The pressure too, on the real chamber: `set_pressure` there does not command the
-controller, it raises a `pressure` confirmation asking the person to set it. In the
-simulator it sets the pressure directly. Either way, read it back with
-`get_current_pressure` before going on.
+The pressure is set by pld-service itself under the default driver. Only under
+`--use-legacy-mi-mode` on the real chamber does `set_pressure` not command the
+controller: it raises a `pressure` confirmation asking the person to set it. Either way,
+read it back with `get_current_pressure` before going on.
 
 ## 3. Growing
 

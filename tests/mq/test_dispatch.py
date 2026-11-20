@@ -253,3 +253,68 @@ async def test_a_binary_request_hands_the_handler_its_bytes():
     assert seen == {"req": MeasurementFileId(file_id=7), "data": b"\x00raw bytes\xff"}
     reply = server.channel.default_exchange.publish.await_args.args[0]
     assert reply.headers.get("succ", True) is not False
+
+
+# --- acknowledging long ops --------------------------------------------------------
+
+
+ACK_CAP = Capability(
+    name="thing",
+    kind=Kind.RPC,
+    state=Empty,
+    ops=(
+        Op("quick", Empty, Ack),
+        Op("move", Empty, Ack, timeout_s=600.0),
+        Op("ramp", Empty, Ack, timeout_s=4 * 3600.0),
+    ),
+)
+
+
+class Acks:
+    def __init__(self, events): self.events = events
+    async def quick(self, req): self.events.append("handled"); return Ack()
+    async def move(self, req): self.events.append("handled"); return Ack()
+    async def ramp(self, req): self.events.append("handled"); return Ack()
+
+
+def _acked_message(op, events):
+    """A message whose ack, and the ack `process()` sends on leaving, are recorded."""
+    from contextlib import asynccontextmanager
+
+    msg = _message(op)
+    msg.routing_key = f"test.thing.req.{op}"
+    acked = False
+
+    async def ack():
+        nonlocal acked
+        acked = True
+        events.append("ack")
+
+    @asynccontextmanager
+    async def process(requeue=False, ignore_processed=False):
+        yield
+        if not (acked and ignore_processed):
+            events.append("ack")
+
+    msg.ack = ack
+    msg.process = process
+    return msg
+
+
+@pytest.mark.parametrize("op, order", [
+    ("quick", ["handled", "ack"]),  # a crash mid-request leaves it for another instance
+    ("move", ["handled", "ack"]),
+    # Past RabbitMQ's consumer_timeout the broker would close the channel, and the
+    # reply with it, while the ramp was still running.
+    ("ramp", ["ack", "handled"]),
+])
+async def test_an_op_that_outlives_the_brokers_ack_timeout_is_acked_on_receipt(op, order):
+    from unittest.mock import AsyncMock
+
+    events: list[str] = []
+    channel = MagicMock()
+    channel.default_exchange.publish = AsyncMock()
+    server = CapabilityServer(ACK_CAP, "test", Acks(events), channel=channel, exchange=MagicMock())
+    await server._on_request(_acked_message(op, events))
+    assert events == order
+    channel.default_exchange.publish.assert_awaited_once()  # and it still replies

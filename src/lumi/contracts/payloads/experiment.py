@@ -12,7 +12,7 @@ instead of a monolithic `perform_experiment` RPC:
   for a submitted command script -- a handler is one inline `await`, so nothing that
   can take minutes may sit inside an op and still expect its caller's RPC timeout to
   hold.
-- Ops that need a human to act or read something physical (laser power meter,
+- Ops that need a human to act or read something physical (laser energy meter,
   substrate swap, camera gain, a visual pixel-position check) are split into a
   `begin_*` that returns immediately and sets `state.pending_confirmation`, and a
   `confirm_*` (or the generic `confirm`) that resolves it once the value/decision is
@@ -236,7 +236,7 @@ class ExperimentInfo(BaseModel):
     pixel_location: int | None = None
     temperature: float | None = None
     pressure: float | None = None
-    laser_power: float | None = None
+    laser_power: float | None = Field(None, description="Laser pulse energy at the exit port, mJ (named laser_power for the database)")
     laser_pulse_rate: float | None = None
     target_material: str | None = None
     num_pulse: int | None = None
@@ -266,7 +266,7 @@ class UpdateExperiment(BaseModel):
     project_id: int | None = None
     temperature: float | None = None
     pressure: float | None = None
-    laser_power: float | None = None
+    laser_power: float | None = Field(None, description="Laser pulse energy at the exit port, mJ (named laser_power for the database)")
     laser_pulse_rate: float | None = None
     target_material: str | None = None
     num_pulse: int | None = None
@@ -590,7 +590,7 @@ class FinishExperimentRecord(BaseModel):
     experiment_uuid: str
     temperature: float
     pressure: float
-    laser_power: float
+    laser_power: float = Field(..., description="Laser pulse energy at the exit port, mJ (named laser_power for the database)")
     laser_repetition_rate: float
     target_material: str
     num_pulse: int
@@ -642,6 +642,40 @@ class PerformDeposition(BaseModel):
     is_dryrun: bool = False
 
 
+class StopDeposition(BaseModel):
+    #: Why, in a word or a sentence: it goes into the aborted task's result.
+    reason: str = ""
+
+
+class StopDepositionResult(BaseModel):
+    """What stop_deposition did. `laser` is pld-service's StopFire answer ("stop
+    sent ...", or "the laser is not firing: nothing sent"). `task_id`/`task_kind` name
+    the perform_deposition or perform_preablation it ended, None when none was running;
+    by the time this returns that task has ended, aborted."""
+
+    laser: str
+    task_id: str | None = None
+    task_kind: str | None = None
+
+
+class CancelTask(BaseModel):
+    #: Why: it goes into the cancelled task's result.
+    reason: str = ""
+    #: Cancel only this task; another one running by then is left alone. None: whatever runs.
+    task_id: str | None = None
+
+
+class CancelTaskResult(BaseModel):
+    """What cancel_task did. `task_id`/`task_kind` name the task it ended, None when
+    none was running; by the time this returns that task has ended, aborted.
+    `chamber` is what was done to the chamber: the laser stopped, the temperature
+    held, or nothing."""
+
+    task_id: str | None = None
+    task_kind: str | None = None
+    chamber: str = ""
+
+
 class AnnealStep(BaseModel):
     temperature: float
     ramp_rate: float = 20.0
@@ -652,20 +686,43 @@ class Anneal(BaseModel):
     steps: list[AnnealStep]
 
 
-# --- gated ops: laser power ---------------------------------------------------
+# --- gated ops: laser pulse energy ---------------------------------------------------
 
 
 class BeginSetLaserPower(BaseModel):
-    laser_power: float
+    laser_power: float = Field(..., description="Laser pulse energy at the exit port, mJ (named laser_power for the database)")
     force: bool = False
 
 
 class ConfirmLaserPower(BaseModel):
-    measured_power: float
+    measured_power: float = Field(description="Pulse energy read off the meter, mJ")
 
 
 class LaserPowerResult(BaseModel):
-    measured_power: float
+    measured_power: float = Field(description="Pulse energy read off the meter, mJ")
+
+
+# --- excimer settings ------------------------------------------------------------
+
+
+class SetLaserEnergy(BaseModel):
+    #: The COMPexPro's energy set point. pld-service refuses one outside the laser's
+    #: own range (100..400 mJ on ours).
+    mj: float
+
+
+class SetLaserHv(BaseModel):
+    #: The COMPexPro's HV set point. pld-service refuses one outside the laser's own
+    #: range (18.5..25.5 kV on ours).
+    kv: float
+
+
+class LaserSettings(BaseModel):
+    """The excimer as it reads back after the change."""
+
+    mode: str = Field(description="Running mode, e.g. EGY PGR, HV PGR")
+    hv_kv: float | None = None
+    energy_mj: float | None = None
 
 
 # --- gated ops: mask-center calibration / check ------------------------------
@@ -809,8 +866,8 @@ class ExperimentReadout(BaseModel):
     # to drive anything because a source is down. Surface that rather than failing
     # opaquely mid-growth -- same reasoning as StorageReadout.deps_available.
     deps_available: dict[str, bool] = {}
-    laser_power_set: float | None = None
-    laser_power_real: float | None = None
+    laser_power_set: float | None = Field(None, description="Pulse energy last checked for, mJ")
+    laser_power_real: float | None = Field(None, description="Pulse energy the meter read then, mJ")
     #: Mask1 position, mm, that centres the slit on the sample. Every change is saved
     #: to growth.db and survives a node restart; settings.experiment.pld_config is
     #: only the starting value for a database that has never had one.

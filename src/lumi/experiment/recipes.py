@@ -12,7 +12,7 @@ Two provider hooks replace the original's blocking `ainput`/`strong_ainput`:
   excimer laser to ON, then continue") that never touches server state -- these
   were never gated ops, just the notebook waiting on a person.
 - `value_provider(prompt) -> str`: collect a value a human has to physically read
-  (a laser power meter, "is this aligned?"). Used together with the server's
+  (a laser energy meter, "is this aligned?"). Used together with the server's
   begin_*/confirm_* gated ops, which are the actual state machine; this just
   supplies the human's answer to it.
 
@@ -208,7 +208,7 @@ async def run_set_laser_power(
         return state.laser_power_real  # begin_set_laser_power short-circuited: already set
 
     measured = await _ask_float(
-        value_provider, f"[Manual] Set Laser Power to {laser_power:.2f} W. Type the measured value: ", minimum=0,
+        value_provider, f"[Manual] Set the laser pulse energy to {laser_power:.1f} mJ. Type the measured energy, mJ: ", minimum=0,
     )
     result = await exp.driver.confirm_laser_power(ConfirmLaserPower(measured_power=measured))
     return result.measured_power

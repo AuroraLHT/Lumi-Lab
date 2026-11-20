@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 5f5a502e974ceaaf
+# contract_hash: c294a5d7c09bfc20
 
 """Generated clients for the chamber node."""
 
@@ -21,7 +21,7 @@ from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta,
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
-from lumi.contracts.payloads.pld import PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
+from lumi.contracts.payloads.pld import PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
 
 
 class ChamberLogClient(CapabilityClient):
@@ -297,6 +297,42 @@ class ChamberPldClient(CapabilityClient):
     async def release_laser(self) -> PldReply:
         """Hand the excimer's settings port back to the second PC (CM=1)."""
         return await self.call("release_laser")  # type: ignore[return-value]
+
+    async def rheed_filament_on(self, req: PldRheedFilamentOnRequest) -> PldReply:
+        """RHEED filament on, ramping from the 507 mA floor at 30 mA/s to `ma` (unset: the remembered set point; refused if there is none). During a ramp down it cancels the ramp. Returns when the ramp starts: done when state.rheed.filament_set_ma reaches filament_target_ma."""
+        return await self.call("rheed_filament_on", req)  # type: ignore[return-value]
+
+    async def rheed_filament_off(self) -> PldReply:
+        """RHEED filament off, ramped: HV down at 500 V/s and off first (it cannot stay on without the filament), then the filament down at 30 mA/s to its floor and off (pld-service's ramp; state.rheed.filament_ramping_down meanwhile). Returns when it is off, about a minute from full; the remembered set points stay. Clears filament_open."""
+        return await self.call("rheed_filament_off")  # type: ignore[return-value]
+
+    async def rheed_hv_on(self, req: PldRheedHvOnRequest) -> PldReply:
+        """RHEED HV on, ramping from 0 at 500 V/s to `kv` (unset: the remembered set point). Needs the filament on, and is refused during a filament ramp down. Returns when the ramp starts."""
+        return await self.call("rheed_hv_on", req)  # type: ignore[return-value]
+
+    async def rheed_hv_off(self) -> PldReply:
+        """RHEED HV off, ramped: down to 0 kV at 500 V/s, then off (pld-service's ramp; state.rheed.hv_ramping_down meanwhile). Returns when it is off."""
+        return await self.call("rheed_hv_off")  # type: ignore[return-value]
+
+    async def set_rheed_filament(self, req: PldRheedFilamentRequest) -> PldReply:
+        """RHEED filament set point, mA, ramped at 30 mA/s. Returns when the ramp starts."""
+        return await self.call("set_rheed_filament", req)  # type: ignore[return-value]
+
+    async def set_rheed_hv(self, req: PldRheedHvRequest) -> PldReply:
+        """RHEED HV set point, kV (up to state.rheed.hv_max_kv), ramped at 500 V/s. Returns when the ramp starts."""
+        return await self.call("set_rheed_hv", req)  # type: ignore[return-value]
+
+    async def set_rheed_focus(self, req: PldRheedFocusRequest) -> PldReply:
+        """RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 when focus is off). Returns when it is there: up to about 22 s across the range."""
+        return await self.call("set_rheed_focus", req)  # type: ignore[return-value]
+
+    async def set_rheed_deflection(self, req: PldRheedDeflectionRequest) -> PldReply:
+        """RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in 0.2 s steps, both arriving together. Returns when they are there."""
+        return await self.call("set_rheed_deflection", req)  # type: ignore[return-value]
+
+    async def rheed_all_off(self) -> PldReply:
+        """RHEED filament, HV, focus, X and Y off at once, unramped: the emergency stop, for a fault; rheed_filament_off is the normal way down. Set points are kept for the next on. Needs no control, like stop_fire: the stop from any client. An interlock, an open filament or an over-current held 1 s switches filament and HV off by itself; nothing comes back on by itself."""
+        return await self.call("rheed_all_off")  # type: ignore[return-value]
 
     async def start_logging(self, req: PldLoggingRequest) -> PldReply:
         """Start a new growth-log CSV in the chamber's log folder, one row every interval_s, written by this node from the service's state (PLD Controller's columns). `message` is the file's path."""

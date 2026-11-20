@@ -28,8 +28,8 @@ from lumi.experiment.files import MeasurementFileStore
 from lumi.experiment.handlers import SNAPSHOT_MAX_BYTES, ExperimentHandler
 from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
+from lumi.experiment.chamber import MiChamber, PldChamber
 from lumi.experiment.mi import MiCommandRunner
-from lumi.experiment.pld import PldCommandRunner
 from lumi.generated.clients.chamber import (
     ChamberPldClient,
     ChamberCameraClient,
@@ -103,7 +103,8 @@ async def main(args: argparse.Namespace) -> None:
     if settings.experiment.get("pressure_by_hand") is None:
         raise RuntimeError(
             "cfg/settings.toml [experiment] is missing pressure_by_hand (true on the real "
-            "chamber: set_pressure asks a person). Copy it from cfg/settings.example.toml."
+            "chamber under --use-legacy-mi-mode: set_pressure asks a person; pld-service "
+            "sets it itself). Copy it from cfg/settings.example.toml."
         )
     handler = ExperimentHandler(
         sources={}, growth_db=growth_db, pld_config=_pld_config(), bounds=_bounds(),
@@ -167,15 +168,18 @@ async def main(args: argparse.Namespace) -> None:
                 "MI abort reports are being ignored (--ignore-mi-abort / experiment.mi_ignore_abort) -- "
                 "an aborted script will not fail its op; confirm the physical result against the chamber log"
             )
-        driver = MiCommandRunner(driver_client, timeout=mi_timeout, raise_on_abort=raise_on_abort)
+        chamber_log = ChamberLogClient(channel, chamber_x)
+        chamber = MiChamber(MiCommandRunner(driver_client, timeout=mi_timeout, raise_on_abort=raise_on_abort),
+                            chamber_log)
         log.info("chamber driver: legacy MI mode (--use-legacy-mi-mode)")
     else:
         driver_client = ChamberPldClient(channel, chamber_x)
-        driver = PldCommandRunner(driver_client)
+        chamber_log = ChamberLogClient(channel, chamber_x)
+        chamber = PldChamber(driver_client)
         log.info("chamber driver: pld-service (chamber.pld)")
     sources = {
-        "chamber_mi": driver,
-        "chamber_log": ChamberLogClient(channel, chamber_x),
+        "chamber": chamber,
+        "chamber_log": chamber_log,
         "chamber_config": ChamberConfigClient(channel, chamber_x),
         "chamber_fiducial": ChamberFiducialClient(channel, chamber_x),
         "chamber_camera": ChamberCameraClient(channel, chamber_x),
@@ -184,8 +188,8 @@ async def main(args: argparse.Namespace) -> None:
     }
     registry = SystemRegistryClient(channel, system_x)
 
-    # The driver is not itself a CapabilityClient -- start the client it wraps.
-    startable = [c for c in sources.values() if c is not driver]
+    # The backend is not itself a CapabilityClient -- start the client it wraps.
+    startable = [c for c in sources.values() if c is not chamber]
     startable.append(driver_client)
     for client in (*startable, registry):
         await client.start()

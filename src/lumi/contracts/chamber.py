@@ -54,6 +54,12 @@ from .payloads.pld import (
     PldPumpRequest,
     PldLaserEnergyRequest,
     PldLaserHvRequest,
+    PldRheedDeflectionRequest,
+    PldRheedFilamentOnRequest,
+    PldRheedFilamentRequest,
+    PldRheedFocusRequest,
+    PldRheedHvOnRequest,
+    PldRheedHvRequest,
     PldLaserModeRequest,
     PldLaserOnRequest,
     PldLoggingRequest,
@@ -121,6 +127,9 @@ MI_MODE = Capability(
 #: train or a pressure regime switch is not, hence the longer one.
 _MOVE_S = 600.0
 _LONG_S = 4 * 3600.0
+#: A waited set_temperature lasts as long as the ramp: 25 to 800 C at 2 C/min is 6.5 h.
+#: A stuck one is ended sooner by pld-service's own stall answer, or by cancel_task.
+_RAMP_S = 24 * 3600.0
 
 
 def _pld_op(name: str, request, doc: str, *, timeout_s: float | None = None) -> Op:
@@ -178,7 +187,7 @@ PLD = Capability(
         _pld_op("set_heater_current_limits", PldCurrentLimitsRequest, "Limits on the PID output current, A."),
         _pld_op("set_temperature", PldTemperatureRequest,
                 "PID towards `celsius` at `ramp_c_per_min` (0 = jump); with wait, returns "
-                "once within `tolerance`.", timeout_s=_LONG_S),
+                "once within `tolerance`.", timeout_s=_RAMP_S),
         _pld_op("set_temperature_control", PldSwitchRequest,
                 "on = PID holding the present temperature (or the last setpoint); off = "
                 "manual at the present current."),
@@ -231,6 +240,48 @@ PLD = Capability(
         _pld_op("set_laser_hv", PldLaserHvRequest, "Excimer HV set point, 18.5..25.5 kV (hv mode only)."),
         _pld_op("set_laser_energy", PldLaserEnergyRequest, "Excimer energy set point, 100..400 mJ."),
         _pld_op("release_laser", Empty, "Hand the excimer's settings port back to the second PC (CM=1)."),
+        # The RHEED gun's controller, on pld-service's own link. Its state is state.rheed;
+        # its limits are there too (hv_max_kv, filament_min_ma..y_max_ma).
+        # Everything ramps: on, set points and off (the off-ops ramp down first).
+        _pld_op("rheed_filament_on", PldRheedFilamentOnRequest,
+                "RHEED filament on, ramping from the 507 mA floor at 30 mA/s to `ma` (unset: the "
+                "remembered set point; refused if there is none). During a ramp down it "
+                "cancels the ramp. Returns when the ramp starts: "
+                "done when state.rheed.filament_set_ma reaches filament_target_ma."),
+        _pld_op("rheed_filament_off", Empty,
+                "RHEED filament off, ramped: HV down at 500 V/s and off first (it cannot stay "
+                "on without the filament), then the filament down at 30 mA/s to its floor and "
+                "off (pld-service's ramp; state.rheed.filament_ramping_down meanwhile). Returns "
+                "when it is off, about a minute from full; the remembered set points stay. "
+                "Clears filament_open.",
+                timeout_s=300.0),
+        _pld_op("rheed_hv_on", PldRheedHvOnRequest,
+                "RHEED HV on, ramping from 0 at 500 V/s to `kv` (unset: the remembered set point). "
+                "Needs the filament on, and is refused during a filament ramp down. "
+                "Returns when the ramp starts."),
+        _pld_op("rheed_hv_off", Empty,
+                "RHEED HV off, ramped: down to 0 kV at 500 V/s, then off (pld-service's ramp; "
+                "state.rheed.hv_ramping_down meanwhile). Returns when it is off.",
+                timeout_s=180.0),
+        _pld_op("set_rheed_filament", PldRheedFilamentRequest,
+                "RHEED filament set point, mA, ramped at 30 mA/s. Returns when the ramp starts."),
+        _pld_op("set_rheed_hv", PldRheedHvRequest,
+                "RHEED HV set point, kV (up to state.rheed.hv_max_kv), ramped at 500 V/s. "
+                "Returns when the ramp starts."),
+        _pld_op("set_rheed_focus", PldRheedFocusRequest,
+                "RHEED focus current, mA, ramped by this node at 50 mA/s in 0.2 s steps (from 0 "
+                "when focus is off). Returns when it is there: up to about 22 s across the range.",
+                timeout_s=120.0),
+        _pld_op("set_rheed_deflection", PldRheedDeflectionRequest,
+                "RHEED beam deflection X and Y together, mA, ramped by this node at 20 mA/s in "
+                "0.2 s steps, both arriving together. Returns when they are there.",
+                timeout_s=120.0),
+        _pld_op("rheed_all_off", Empty,
+                "RHEED filament, HV, focus, X and Y off at once, unramped: the emergency stop, "
+                "for a fault; rheed_filament_off is the normal way down. Set points are kept "
+                "for the next on. Needs no control, like stop_fire: the stop from any client. "
+                "An interlock, an open filament or an over-current held 1 s switches filament "
+                "and HV off by itself; nothing comes back on by itself."),
         Op("start_logging", PldLoggingRequest, PldReply, journal=True,
            doc="Start a new growth-log CSV in the chamber's log folder, one row every "
                "interval_s, written by this node from the service's state (PLD "
@@ -239,7 +290,8 @@ PLD = Capability(
            doc="Close the growth-log CSV. Nothing is logged until start_logging."),
     ),
     stream=StreamSpec("state", PldChamberState,
-                      doc="Every poll of the chamber, as chamber_state returns it, at about 1 Hz."),
+                      doc="Every poll of the chamber, as chamber_state returns it: 2 Hz by "
+                          "default (`[pascal.pld] state_rate_hz`)."),
 )
 
 CAMERA = Capability(

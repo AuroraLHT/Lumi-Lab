@@ -112,7 +112,7 @@ SUBSTRATE = dict(
     width=5.0, height=5.0, thickness=0.5,   # 10 x 10 for the real HZO runs
 )
 
-LASER_POWER = 1.2        # real: 88 mJ, measured at the exit view port
+LASER_PULSE_ENERGY = 88.0  # mJ, read on the energy meter at the exit view port
 RAMP_RATE = 20.0         # real: 10 for >= 75 mm^2 substrates, 20 otherwise
 
 # The three layers, bottom-up. `target` is the carousel slot; the material name is
@@ -134,7 +134,7 @@ physical. It takes two hooks for this -- an `input_provider` for "do X now" mess
 a `value_provider` for questions that need an answer back.
 
 Below they answer themselves so the notebook runs end to end against the simulator with
-nobody at the keyboard. A real run needs an actual person reading the laser power meter
+nobody at the keyboard. A real run needs an actual person reading the laser energy meter
 and the RHEED screen, so it gets `recipes.default_input_provider` /
 `default_value_provider` -- terminal-input functions -- selected the moment `DRYRUN` is
 off.
@@ -145,9 +145,9 @@ async def auto_input(message: str) -> None:
 
 
 async def auto_value(prompt: str) -> str:
-    # The recipe asks two kinds of question: a measured laser power, and yes/no
+    # The recipe asks two kinds of question: a measured laser pulse energy, and yes/no
     # alignment checks.
-    answer = str(LASER_POWER) if "measured" in prompt.lower() else "y"
+    answer = str(LASER_PULSE_ENERGY) if "measured" in prompt.lower() else "y"
     print(f"  [auto] {prompt} -> {answer}")
     return answer
 
@@ -237,7 +237,7 @@ for i, layer in enumerate(LAYERS):
         project_name=PROJECT,
         pressure=layer["pressure"],
         temperature=layer["temperature"],
-        laser_power=LASER_POWER,
+        laser_power=LASER_PULSE_ENERGY,
         laser_repetition_rate=layer["rate"],
         target_id=layer["target"],
         target_material=material,
