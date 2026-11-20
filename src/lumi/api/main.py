@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 
 from aio_pika import connect_robust
@@ -34,6 +35,31 @@ from .routes import auth as auth_routes
 from .routes import settings as settings_routes
 
 log = logging.getLogger(__name__)
+
+_TOKEN_IN_QUERY = re.compile(r"([?&]token=)[^&\s\"]*")
+
+
+class RedactToken(logging.Filter):
+    """Blank the `token` query parameter in uvicorn's access lines.
+
+    The browser presents its JWT on the `/ws` upgrade as `?token=...`, and uvicorn
+    logs that path in full; a readable log would otherwise hand out live tokens.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple):
+            record.args = tuple(
+                _TOKEN_IN_QUERY.sub(r"\1<redacted>", a) if isinstance(a, str) else a
+                for a in record.args
+            )
+        elif isinstance(record.msg, str):
+            record.msg = _TOKEN_IN_QUERY.sub(r"\1<redacted>", record.msg)
+        return True
+
+
+# Each uvicorn worker imports this module after uvicorn has set up its loggers.
+for _name in ("uvicorn.access", "uvicorn.error"):
+    logging.getLogger(_name).addFilter(RedactToken())
 
 
 def _amqp_url() -> str:
