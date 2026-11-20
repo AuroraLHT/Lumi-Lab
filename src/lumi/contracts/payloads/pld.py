@@ -72,18 +72,23 @@ class PldMotion(BaseModel):
     sample_angle: float | None = None
     mask_position: float | None = None
     rheed_gun_x: float | None = None
-    axes: dict[str, str] = Field(default_factory=dict, description="axis -> IDLE/MOVING/HOMING/SETTLING")
+    axes: dict[str, str] = Field(default_factory=dict, description="axis -> IDLE/MOVING/HOMING/SETTLING/STOPPED")
     target_spinning: bool = False
     target_twisting: bool = False
     motor_free: bool = Field(False, description="Holding lock released: axes back-driveable, not under servo")
     auto_spin: bool = False
     auto_twist: bool = False
+    motors_stopped: bool = Field(False, description="Motor Stop latched (stop_motors): moves, homing, "
+                                 "spin, twist and fires refused until reset_motors")
+    homing_needed: list[str] = Field(default_factory=list, description="Axes left without a home "
+                                     "reference (the ones moving when the motors were stopped): "
+                                     "home_axis before relying on their position")
 
 
 class PldLaser(BaseModel):
     """The PLC's trigger train (FireLaser), not the excimer itself."""
 
-    status: str = Field("", description="idle, firing, finished")
+    status: str = Field("", description="idle, firing, finished, or stopped (after stop_fire)")
     pulses_fired: int = 0
     missed_shots: int = 0
     rate_hz: float = Field(0.0, description="The current or last train's rate as the PLC runs it "

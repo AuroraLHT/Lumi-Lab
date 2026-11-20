@@ -21,6 +21,8 @@ import pytest_asyncio
 
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
+    PldAutoMotionRequest,
+    PldAxisRequest,
     PldEventQuery,
     PldFireRequest,
     PldPositionRequest,
@@ -137,6 +139,7 @@ async def test_the_experiment_driver_drives_the_chamber(handler):
     assert state.sample_shutter_away
     assert state.laser.pulses_fired == 20
     assert state.controller == "lumi-pascal"
+    await chamber.set_mfc_flow(1, 0.0)  # no gas left flowing for the next user of the twin
 
     await asyncio.sleep(2.5)
     path = h.growth_log.path
@@ -541,3 +544,46 @@ async def test_a_sequence_runs_pauses_and_holds_the_service(handler):
     assert (await h.cancel_sequence(Empty())).ok
     await asyncio.sleep(0.5)
     assert (await h.chamber_state(Empty())).sequence.state == "cancelled"
+
+
+async def test_stop_motors_halts_a_move_and_a_waited_fire(handler):
+    # REA 2c7504f: StopMotors from any client stops every axis and the train and latches;
+    # ResetMotors needs control; the interrupted axis is listed in homing_needed.
+    from lumi.pascal.pld.client import PldClient
+    from lumi.pascal.pld.proto import pld_pb2 as pb
+
+    h = handler
+    assert (await h.reset_motors(Empty())).ok  # a stop left by an earlier run
+    assert (await h.set_mask_position(PldPositionRequest(position=0.0, wait=True))).ok
+    assert (await h.set_mask_position(PldPositionRequest(position=30.0, wait=False, speed_mm_s=2.0))).ok
+    await asyncio.sleep(1.0)
+    other = PldClient(ADDRESS, client="lumi-twin-other")  # holds no control
+    try:
+        ok, message = await asyncio.to_thread(other.call, "StopMotors", pb.Empty())
+    finally:
+        other.close()
+    assert ok, message
+    await asyncio.sleep(0.5)
+    state = await h.chamber_state(Empty())
+    assert state.motion.motors_stopped and "Mask1" in state.motion.homing_needed, state.motion
+    assert 0 < state.motion.mask_position < 30
+    refused = await h.select_target(PldTargetRequest(target="B", wait=True))
+    assert not refused.ok and "ResetMotors first" in refused.message, refused.message
+    refused = await h.fire_laser(PldFireRequest(pulses=5, rate_hz=5, wait=True))
+    assert not refused.ok and "ResetMotors first" in refused.message, refused.message
+    assert (await h.reset_motors(Empty())).ok
+    assert (await h.home_axis(PldAxisRequest(axis="Mask1", wait=True))).ok
+    state = await h.chamber_state(Empty())
+    assert not state.motion.motors_stopped and state.motion.homing_needed == [], state.motion
+
+    # A waited fire cut short by the stop answers as any stopped train.
+    assert (await h.select_target(PldTargetRequest(target="A", wait=True))).ok
+    fire = asyncio.create_task(h.fire_laser(PldFireRequest(pulses=200, rate_hz=10, wait=True)))
+    await asyncio.sleep(2.0)
+    assert (await h.stop_motors(Empty())).ok
+    reply = await asyncio.wait_for(fire, 30)
+    assert not reply.ok and reply.message.startswith("stopped by request: fired "), reply.message
+    assert (await h.reset_motors(Empty())).ok
+    for axis in (await h.chamber_state(Empty())).motion.homing_needed:
+        assert (await h.home_axis(PldAxisRequest(axis=axis, wait=True))).ok
+    assert (await h.set_target_auto_motion(PldAutoMotionRequest(spin=True, twist=True))).ok

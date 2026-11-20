@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at 38ca32e (sequences: uploaded step lists, pause/cancel; identical apart
+// branch decode-program at 2c7504f (motor stop/reset; identical apart
 // from line endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this
 // header) and run scripts/gen_pld_stubs.sh.
 //
@@ -43,6 +43,16 @@ service Chamber {
   rpc SetTargetSpin(SwitchRequest) returns (OperationReply);
   rpc SetTargetTwist(SwitchRequest) returns (OperationReply);
   rpc SetMotorFree(SwitchRequest) returns (OperationReply);
+  // PLD Controller's master Motor Stop (ST 01900, captured 2026-11-17): every axis halts at once,
+  // the PLC drops spin and twist, and moves, homing, spin, twist and fires are refused until
+  // ResetMotors. A pulse train in progress is stopped too (as StopFire), and a sequence in progress
+  // is cancelled. Any client, no control needed; sent at the next poll even during a waited
+  // operation. Already stopped: ok, nothing sent.
+  rpc StopMotors(Empty) returns (OperationReply);
+  // Undo the motor stop (ST 01901; needs control). Spin and twist stay off. The axes that were
+  // moving have no home reference afterwards (Motion.homing_needed): home them (PLD Controller
+  // prompts for it too). Not stopped: ok, nothing sent.
+  rpc ResetMotors(Empty) returns (OperationReply);
   // Auto mode: the chosen motions go on with each FireLaser and off when the train ends
   // (only those the fire switched on; one already running is left alone). Default: spin and twist on (user, 2026-11-06).
   rpc SetTargetAutoMotion(AutoMotionRequest) returns (OperationReply);
@@ -70,6 +80,9 @@ service Chamber {
   rpc SetSampleShutter(ShutterRequest) returns (OperationReply);
 
   // ---- deposition laser -------------------------------------------------------------
+  // Rates above [motion] fire_rate_max_hz (default 20 Hz; at most 100 Hz, the excimer's maximum)
+  // are refused (user, 2026-11-17). A train the service did not start (e.g. left by a killed
+  // service) is adopted at the next poll: spin and twist are switched on and go off at its end.
   rpc FireLaser(LaserRequest) returns (OperationReply);
   // Stop the present pulse train (ST 02003, as PLD Controller's stop, captured 2026-11-03): the
   // fire ends early, pulses fired are kept, and the motions the fire started go off. Any client
@@ -435,6 +448,10 @@ message Motion {
   bool motor_free = 9;
   bool auto_spin = 10;  // auto mode (SetTargetAutoMotion)
   bool auto_twist = 11;
+  bool motors_stopped = 12;  // Motor Stop latched (DM30139 bit 6): moves refused until ResetMotors
+  // Axes with a homing (TG, Mask1, RHEED gun X) that show no home reference (status nibble bits
+  // 0-2 off): the axis that was moving when the motors were stopped (2026-11-17 captures).
+  repeated string homing_needed = 13;
 }
 
 message Pump {
@@ -449,10 +466,11 @@ enum AxisStatus {
   MOVING = 2;
   HOMING = 3;
   SETTLING = 4;
+  STOPPED = 5;  // Motor Stop latched (status nibble bit 3)
 }
 
 message Laser {
-  string status = 1;  // idle, firing, finished
+  string status = 1;  // idle, firing, finished, or stopped (finished after StopFire; 2026-11-17)
   uint64 pulses_fired = 2;
   uint64 missed_shots = 3;
   // The current or last train this service started (FireLaser, from any client); 0 before the
@@ -551,7 +569,7 @@ message ValveRequest {
 }
 
 message TargetRequest {
-  string target = 1;  // A..F or Clear
+  string target = 1;  // A..F or Clear, exactly as written (user, 2026-11-17: "a" is refused)
   bool wait = 2;
 }
 

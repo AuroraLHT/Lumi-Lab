@@ -19,6 +19,7 @@ import pytest_asyncio
 from lumi.contracts.chamber import MI_MODE, PLD
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
+    PldAxisRequest,
     PldControlRequest,
     PldEventQuery,
     PldFireRequest,
@@ -463,3 +464,38 @@ async def test_a_sequence_is_refused_by_the_simulator_and_checked_before_sending
     assert not reply.ok and "RunSequence not sent" in reply.message
     state = await handler.chamber_state(Empty())
     assert state.sequence.state == ""
+
+
+async def test_stop_motors_latches_from_any_client_until_the_reset(driver):
+    # pld-service 2c7504f: the master Motor Stop. Any client; moves and fires refused until
+    # ResetMotors (control); the axis that was moving needs homing afterwards.
+    handler, model, service = driver
+    assert (await handler.set_mask_position(PldPositionRequest(position=0.0, wait=True))).ok
+    model.mask1.speed /= 1000  # long enough to stop it partway
+    assert (await handler.set_mask_position(PldPositionRequest(position=30.0, wait=False))).ok
+    await asyncio.sleep(0.3)
+    gui = PldClient(service.address, client="pld-gui")  # holds no control
+    try:
+        ok, message = await asyncio.to_thread(gui.call, "StopMotors", pb.Empty())
+        assert ok, message
+        ok, message = await asyncio.to_thread(gui.call, "ResetMotors", pb.Empty())
+        assert not ok and "control is held" in message, message
+    finally:
+        gui.close()
+    state = await handler.chamber_state(Empty())
+    assert state.motion.motors_stopped and state.motion.homing_needed == ["Mask1"]
+    assert set(state.motion.axes.values()) == {"STOPPED"}
+    assert 0 < state.motion.mask_position < 30
+    for reply in (await handler.set_mask_position(PldPositionRequest(position=5.0, wait=True)),
+                  await handler.select_target(PldTargetRequest(target="B", wait=True)),
+                  await handler.set_target_spin(PldSwitchRequest(on=True)),
+                  await handler.fire_laser(PldFireRequest(pulses=5, rate_hz=5, wait=True))):
+        assert not reply.ok and "ResetMotors first" in reply.message, reply.message
+    assert (await handler.stop_motors(Empty())).message.startswith("motors already stopped")
+    assert (await handler.reset_motors(Empty())).ok
+    state = await handler.chamber_state(Empty())
+    assert not state.motion.motors_stopped and state.motion.homing_needed == ["Mask1"]
+    model.mask1.speed *= 1000
+    assert (await handler.home_axis(PldAxisRequest(axis="Mask1", wait=True))).ok
+    assert (await handler.chamber_state(Empty())).motion.homing_needed == []
+    assert service.servicer.controller == "lumi-pascal"

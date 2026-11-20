@@ -74,7 +74,9 @@ To stop a deposition or preablation that is going wrong, call
 `experiment.driver.stop_deposition`: it ends the task (its result says `aborted`) and
 stops the laser. `chamber.pld.stop_fire` stops only a pulse train, for a `fire_laser` of
 your own. A fire cut short fails with "stopped by request", and that ends the run --
-never fire again to make up the pulses. Under `--use-legacy-mi-mode` neither works: ask
+never fire again to make up the pulses. `chamber.pld.stop_motors` halts every axis (and the
+laser and a running sequence) for a move going wrong; it latches, and only the person resets
+it (`reset_motors`) and re-homes the axes in `motion.homing_needed`. Under `--use-legacy-mi-mode` neither works: ask
 the person to press STOP on PASCAL.
 
 Also by hand, with no tool: RHEED gun and sample-stage adjustment,

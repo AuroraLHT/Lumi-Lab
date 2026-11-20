@@ -193,6 +193,16 @@ PLD = Capability(
         _pld_op("set_target_spin", PldSwitchRequest, "Target spin on or off."),
         _pld_op("set_target_twist", PldSwitchRequest, "Target twist on or off."),
         _pld_op("set_motor_free", PldSwitchRequest, "Release (on) or engage (off) the motor holding lock."),
+        _pld_op("stop_motors", Empty,
+                "PLD Controller's master Motor Stop: every axis halts at once, spin and twist "
+                "go off, a pulse train in progress is stopped and a sequence in progress is "
+                "cancelled. Needs no control: the stop from any client. Until reset_motors, "
+                "moves, homing, spin, twist and fire_laser are refused ('ResetMotors first'); "
+                "state.motion.motors_stopped shows it. Already stopped: ok, nothing sent."),
+        _pld_op("reset_motors", Empty,
+                "Undo stop_motors (needs control). Spin and twist stay off. The axes that were "
+                "moving have lost their home reference (state.motion.homing_needed): home_axis "
+                "them before relying on their position. Not stopped: ok, nothing sent."),
         _pld_op("set_target_auto_motion", PldAutoMotionRequest,
                 "Auto mode: the chosen motions go on with each fire_laser and off when the "
                 "train ends. Service default: spin on, twist off."),
@@ -311,7 +321,7 @@ PLD = Capability(
                 "step one operation with its usual checks and waits, plus wait_s, pause, "
                 "wait_axis_idle and loop_start/loop_end. Answers 'started' at once (wait=false). "
                 "While it runs every other operation from every client is refused except "
-                "stop_fire, the RHEED all-offs and pause/cancel. Progress: state.sequence and "
+                "stop_fire, stop_motors (which cancels the run), the RHEED all-offs and pause/cancel. Progress: state.sequence and "
                 "'sequence' events. The experiment node's run_sequence is the vetted way in."),
         _pld_op("pause_sequence", Empty,
                 "Pause the running sequence, from any client: a wait stops counting, a waited fire "

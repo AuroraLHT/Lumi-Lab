@@ -100,6 +100,9 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
         "chamber_state", "recent_events", "recent_activity", "set_valve", "select_target",
         "set_mask_position", "set_sample_position", "set_rheed_gun_x", "home_axis",
         "set_target_spin", "set_target_twist", "set_target_auto_motion",
+        # The master motor stop, as stop_fire: anyone may stop. Not reset_motors: a stop
+        # is a person's (or the agent's own) alarm, and undoing it is the person's call.
+        "stop_motors",
         "set_heater_key", "set_heater_start", "set_heater_threshold",
         "set_heating_current", "set_heater_current_limits", "set_temperature",
         "set_temperature_control", "set_sample_shutter", "fire_laser", "stop_fire", "set_mfc_flow",
@@ -497,6 +500,11 @@ chamber.pld.recent_activity lists the chamber operations made through Lumi and w
 each one (your own calls show as mcp:<user>, the person's in the Deck under their name):
 look there before assuming who changed something. Your chamber operations are shown to the
 operator as you make them.
+chamber.pld.stop_motors halts every axis at once (and the pulse train, and a running sequence)
+for a move going wrong; it latches until a person resets it (reset_motors is theirs), and
+the axes that were moving then need homing (state.motion.homing_needed). While
+state.motion.motors_stopped is true, moves and fires are refused: tell the person, do not
+work around it.
 chamber.pld.stop_fire stops only the pulse train, for a fire_laser of your own. A fire or
 deposition cut short fails with "stopped by request" -- that is a person's or your own
 abort: stop the run, do not fire again. Prefer the experiment.driver ops where one exists: they add
