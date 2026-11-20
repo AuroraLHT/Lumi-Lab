@@ -228,6 +228,17 @@ class PldHandler:
     set_rheed_filament = _op("SetRheedFilament", lambda r: pb.RheedFilamentRequest(ma=r.ma))
     set_rheed_hv = _op("SetRheedHv", lambda r: pb.RheedHvRequest(kv=r.kv))
 
+    @staticmethod
+    def _rheed_goal_refused(rpc: str, goals: list[tuple[str, float, float, float]]) -> PldReply | None:
+        """The goal checked against pld-service's limits before the first step: it refuses
+        only the step that crosses one, after the earlier steps were applied."""
+        for name, value, lo, hi in goals:
+            if not math.isfinite(value):
+                return PldReply(ok=False, message=f"{rpc}: {name} {value} mA is not a number")
+            if (lo or hi) and not lo <= value <= hi:
+                return PldReply(ok=False, message=f"{rpc}: {name} {value:g} mA outside {lo:g}..{hi:g} mA; nothing changed")
+        return None
+
     async def _step_rheed(self, start: tuple[float, ...], goal: tuple[float, ...], rate: float, send) -> PldReply:
         """Walk from `start` to `goal` together, every value at most `rate` mA/s."""
         steps = max(1, math.ceil(max(abs(g - s) for s, g in zip(start, goal)) / (rate * self._STEP_S)))
@@ -242,6 +253,10 @@ class PldHandler:
 
     async def set_rheed_focus(self, req: PldRheedFocusRequest) -> PldReply:
         rheed = await self._rheed()
+        refused = self._rheed_goal_refused(
+            "SetRheedFocus", [("focus", req.ma, rheed.focus_min_ma, rheed.focus_max_ma)])
+        if refused is not None:
+            return refused
         start = rheed.focus_set_ma if rheed.focus_on and math.isfinite(rheed.focus_set_ma) else 0.0
         return await self._step_rheed(
             (start,), (req.ma,), self._FOCUS_MA_PER_S,
@@ -253,6 +268,10 @@ class PldHandler:
         def present(on: bool, ma: float) -> float:
             return ma if on and math.isfinite(ma) else 0.0
 
+        refused = self._rheed_goal_refused("SetRheedDeflection", [
+            ("X", req.x_ma, rheed.x_min_ma, rheed.x_max_ma), ("Y", req.y_ma, rheed.y_min_ma, rheed.y_max_ma)])
+        if refused is not None:
+            return refused
         start = (present(rheed.x_on, rheed.x_set_ma), present(rheed.y_on, rheed.y_set_ma))
         return await self._step_rheed(
             start, (req.x_ma, req.y_ma), self._DEFLECTION_MA_PER_S,
