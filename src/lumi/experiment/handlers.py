@@ -53,6 +53,9 @@ from lumi.contracts.payloads.experiment import (
     SaveSequence,
     SequenceInfo,
     SequenceList,
+    RunSequence,
+    SequenceLayer,
+    SequenceRecording,
     SequenceRef,
     SequenceRun,
     SetTargetPreablation,
@@ -191,7 +194,7 @@ from lumi.experiment.journal import StepJournal
 from lumi.experiment import sequence as seqlib
 from lumi.experiment.manager import (
     LASER_TEST_KV, LASER_TEST_PULSES, LASER_TEST_RATE_HZ, ExperimentBounds, PLDChamberConfiguration,
-    PixelExperimentManager, Substrate,
+    PixelExperimentManager, SequenceLost, Substrate,
 )
 from lumi.experiment.snapshots import decode_raw, encode_frame
 
@@ -1096,6 +1099,10 @@ class ExperimentHandler:
             pyrometer_emissivity=_column(row, "pyrometer_emissivity"),
             laser_source_energy=_column(row, "laser_source_energy"),
             laser_meter_ratio=_column(row, "laser_meter_ratio"),
+            sequence_name=_column(row, "sequence_name"),
+            sequence_version=_column(row, "sequence_version"),
+            sequence_hash=_column(row, "sequence_hash"),
+            sequence_run_id=_column(row, "sequence_run_id"),
             created_at=to_epoch(at), created_at_iso=to_iso(at),
             state=_column(row, "state") or "active",
         )
@@ -1543,34 +1550,109 @@ class ExperimentHandler:
             row = await self.growth_db.approve_sequence(req.name, req.version, actor)
         return self._sequence_info(row, latest=await self._is_latest(row))
 
-    async def run_sequence(self, req: SequenceRef) -> TaskAck:
-        if self.manager.chamber.driver != "pld":
+    async def run_sequence(self, req: RunSequence) -> TaskAck:
+        m = self.manager
+        if m.chamber.driver != "pld":
             raise RuntimeError("sequences need pld-service: not under --use-legacy-mi-mode")
         row = await self._sequence_row(req)
         if row["approved_at"] is None:
             raise PermissionError(
                 f"{req.name!r} version {req.version} is not approved: a person reviews it once "
                 "(approve_sequence, in the Deck) before it runs")
-        if seqlib.METER_ENERGY in row["steps_json"] and await self.manager.todays_laser_test() is None:
+        if seqlib.METER_ENERGY in row["steps_json"] and await m.todays_laser_test() is None:
             raise RuntimeError("no laser test today: run the daily test (begin_laser_test) first; "
                                "this sequence sets the energy at the meter")
-        run = SequenceRun(run_id=uuid.uuid4().hex, name=row["name"], version=row["version"],
-                          content_hash=row["content_hash"], started_at=time.time())
-        self._sequence_run = run
-        return await self._start_moving_task("run_sequence", self._follow_sequence(row, run), {
-            "name": row["name"], "version": row["version"], "content_hash": row["content_hash"],
-            "run_id": run.run_id})
+        substrate = m.current_substrate
+        if not req.no_sample and (substrate is None or substrate.db_id is None):
+            raise RuntimeError("no substrate loaded: register_substrate or resume_substrate first, so "
+                               "the layers it grows have a sample (no_sample=true for a rehearsal)")
+        if not req.no_sample and m.project_id is None:
+            raise RuntimeError("no project: register_project first, so the run's growth records have one "
+                               "(no_sample=true for a rehearsal)")
+        run = SequenceRun(
+            run_id=uuid.uuid4().hex, name=row["name"], version=row["version"],
+            content_hash=row["content_hash"], started_at=time.time(), no_sample=req.no_sample,
+            substrate_id=None if req.no_sample else substrate.db_id,
+            pixel_index=None if req.no_sample else substrate.current_position_id,
+            sample_name=None if req.no_sample else await m._current_sample_name())
+        # Shown only once it has started: a run refused here (another still moving)
+        # must not hide the one that is.
+        previous, self._sequence_run = self._sequence_run, run
+        try:
+            return await self._start_moving_task("run_sequence", self._follow_sequence(row, run, req.record), {
+                "name": row["name"], "version": row["version"], "content_hash": row["content_hash"],
+                "run_id": run.run_id, "no_sample": req.no_sample, "substrate_id": run.substrate_id,
+                "pixel_index": run.pixel_index, "record": req.record.model_dump() if req.record else None})
+        except BaseException:
+            self._sequence_run = previous
+            raise
 
-    async def _follow_sequence(self, row: dict, run: SequenceRun) -> dict:
+    async def _follow_sequence(self, row: dict, run: SequenceRun, record: SequenceRecording | None) -> dict:
+        m = self.manager
         journaled = 0
+        test = await m.todays_laser_test()
+        ratio = test["ratio"] if test else None
+        state = await m.chamber.state()
+        tracker = seqlib.RunTracker(json.loads(row["steps_json"]), target=state.motion.target or "",
+                                    shutter_away=state.sample_shutter_away)
+        ref = {"name": row["name"], "version": row["version"], "content_hash": row["content_hash"],
+               "run_id": run.run_id}
+        storage: dict = {}
+        paused_at: dict | None = None
+
+        async def journal(kind: str, params: dict, *, ok: bool = True, result: dict | None = None,
+                          error: str | None = None) -> None:
+            if self.journal is None:
+                return
+            step_id = await self.journal.begin(kind, params=params, actor=current_actor.get(),
+                                               source="experiment.driver")
+            await self.journal.end(step_id, ok=ok, result=result or {}, error=error)
+
+        async def where() -> dict:
+            s = await m.chamber.state()
+            return {"target": s.motion.target, "sample_angle": s.motion.sample_angle,
+                    "mask_position": s.motion.mask_position, "shutter_away": s.sample_shutter_away}
+
+        async def close_layer(layer: dict | None) -> None:
+            if layer is None or run.no_sample:
+                return
+            layer["target_material"] = await self._target_material(layer["target_id"])
+            experiment_id = await m.record_sequence_layer(
+                layer, sequence=ref, temperature=layer.get("temperature"), pressure=layer.get("pressure"),
+                ratio=ratio, storage_name=storage.get("storage_name"), record_uuid=storage.get("record_uuid"))
+            await journal("sequence_layer", {
+                **{k: ref[k] for k in ("run_id", "content_hash")}, "sequence": ref["name"],
+                "version": ref["version"], "target_id": layer["target_id"],
+                "target_material": layer["target_material"], "num_pulse": layer["num_pulse"],
+                "laser_repetition_rate": layer["laser_repetition_rate"], "meter_mj": layer.get("meter_mj"),
+                "is_dryrun": False}, result={"experiment_id": experiment_id})
+            run.layers.append(SequenceLayer(
+                target_id=layer["target_id"], target_material=layer["target_material"],
+                num_pulse=layer["num_pulse"], laser_repetition_rate=layer["laser_repetition_rate"],
+                meter_mj=layer.get("meter_mj"), experiment_id=experiment_id))
+            await self._push()
 
         async def on_status(status) -> None:
+            nonlocal paused_at
             fields = {k: getattr(status, k) for k in
                       ("state", "step", "steps", "label", "loops", "done", "total", "message")}
-            if fields != {k: getattr(run, k) for k in fields}:
-                for k, v in fields.items():
-                    setattr(run, k, v)
-                await self._push()
+            if fields == {k: getattr(run, k) for k in fields}:
+                return
+            was = run.state
+            for k, v in fields.items():
+                setattr(run, k, v)
+            # Paused, the controller may operate (pld-service's design): note what moved.
+            if status.state == "paused" and was != "paused":
+                paused_at = await where()
+            elif was == "paused" and status.state != "paused" and paused_at is not None:
+                now = await where()
+                moved = {k: [paused_at[k], now[k]] for k in now if now[k] != paused_at[k]}
+                if moved:
+                    await journal("sequence_event", {"run_id": run.run_id, "sequence": run.name,
+                                                     "version": run.version, "moved_during_pause": moved})
+                    await m.add_recording_event("sequence", "moved during the pause", {"moved": moved})
+                paused_at = None
+            await self._push()
 
         async def on_event(event) -> None:
             # pld-service: "step 5 of 10 (loop 1/2): sweep out" as a step starts, "step 5
@@ -1580,31 +1662,72 @@ class ExperimentHandler:
             if _SEQUENCE_STEP_STARTED.match(event.message):
                 return
             ended = _SEQUENCE_STEP_ENDED.match(event.message)
+            params = {"run_id": run.run_id, "sequence": run.name, "version": run.version,
+                      "step": int(event.detail.get("step") or (ended["step"] if ended else 0))}
+            if ended is None and event.detail.get("part") == "paused":
+                # A waited fire paused mid-train (REA): this part's pulses; the step's
+                # final event carries the rest.
+                did, closed = tracker.ended(params["step"], True, event.message, dict(event.detail))
+                await close_layer(closed)
+                params.update(did)
             if ended is None:
-                await self.manager.add_recording_event("sequence", event.message, {"run_id": run.run_id})
+                await m.add_recording_event("sequence", event.message, {"run_id": run.run_id})
+            else:
+                failed = event.detail.get("ok", "").lower() == "false" if "ok" in event.detail \
+                    else ended["outcome"] == "FAILED"
+                did, closed = tracker.ended(params["step"], not failed, event.message, dict(event.detail))
+                await close_layer(closed)
+                if did.get("deposition") and tracker.layer is not None and tracker.layer.get("new"):
+                    t = await m.get_current_temperature()
+                    p, _ = await m.get_current_pressure()
+                    tracker.layer.update(temperature=t, pressure=p, new=False)
+                params.update(loops=ended["loops"] or "", **did)
             journaled += 1
-            if self.journal is None or journaled > self.SEQUENCE_JOURNAL_MAX:
+            if journaled > self.SEQUENCE_JOURNAL_MAX:
                 if journaled == self.SEQUENCE_JOURNAL_MAX + 1:
                     log.info("sequence %s: more than %d steps, the rest are not journaled",
                              run.name, self.SEQUENCE_JOURNAL_MAX)
                 return
-            params = {"run_id": run.run_id, "sequence": run.name, "version": run.version,
-                      "step": int(event.detail.get("step") or 0)}
-            if ended is not None:
-                params["loops"] = ended["loops"] or ""
-            step_id = await self.journal.begin(
-                "sequence_step" if ended else "sequence_event", params=params,
-                actor=current_actor.get(), source="experiment.driver")
             failed = ended is not None and ended["outcome"] == "FAILED"
-            await self.journal.end(step_id, ok=not failed, result={"message": event.message},
-                                   error=event.message if failed else None)
+            await journal("sequence_step" if ended else "sequence_event", params, ok=not failed,
+                          result={"message": event.message}, error=event.message if failed else None)
 
+        if record is not None:
+            started = await m.start_storage(
+                record.project_name, save_frame=record.save_frame, save_ai=record.save_ai,
+                save_integration=record.save_integration, note=record.note,
+                operator=current_actor.get())
+            if not started["ok"]:
+                raise RuntimeError(f"the recording did not start: {started['message']}")
+            storage.update(storage_name=started["storage_name"], record_uuid=started["record_uuid"])
+            run.recording_name = started["storage_name"]
+            await self._push()
         try:
-            return await self.manager.run_sequence(row, on_status, on_event)
+            result = await m.run_sequence(row, on_status, on_event)
+            await close_layer(tracker.finish())
+            return {**result, "layers": [layer.model_dump() for layer in run.layers],
+                    "recording_name": run.recording_name}
         except asyncio.CancelledError:
             run.state = "cancelled"
             raise
+        except SequenceLost as exc:
+            run.state, run.message = "unknown", str(exc)
+            raise
+        except Exception as exc:
+            if run.state not in ("finished", "failed", "cancelled"):
+                run.state, run.message = "failed", str(exc)
+            raise
         finally:
+            # What was fired was deposited, however the run ended.
+            try:
+                await close_layer(tracker.finish())
+            except Exception:
+                log.exception("sequence %s: could not record its last layer", run.name)
+            if record is not None:
+                try:
+                    await m.end_storage()
+                except Exception:
+                    log.exception("sequence %s: could not end its recording", run.name)
             await self._push()
 
     async def _sequence_control(self, what: str) -> Ack:

@@ -19,10 +19,12 @@ hash names exactly the steps a person approved.
 from __future__ import annotations
 
 import hashlib
+import re
 import json
 
 from google.protobuf import json_format
 
+from lumi.contracts.payloads.pld import LASER_RATE_MAX_HZ
 from lumi.pascal.pld.proto import pld_pb2 as pb
 
 MAX_STEPS = 10_000
@@ -64,6 +66,10 @@ def check(steps: list[dict]) -> dict:
                 "today's laser test")
         if op not in _OPS | _LUMI_OPS:
             raise ValueError(f"step {i}: unknown operation {op!r} (one of {sorted(_OPS - {'laser_energy'} | _LUMI_OPS)})")
+        if op == FIRE and isinstance(step[op], dict) and isinstance(step[op].get("rate_hz"), (int, float)) \
+                and step[op]["rate_hz"] > LASER_RATE_MAX_HZ:
+            raise ValueError(f"step {i}: fire_laser at {step[op]['rate_hz']} Hz: Lumi fires at most "
+                             f"{LASER_RATE_MAX_HZ:g} Hz")
         if op == METER_ENERGY:
             mj = step[op].get("mj") if isinstance(step[op], dict) else None
             if not isinstance(mj, (int, float)) or not mj > 0:
@@ -130,3 +136,77 @@ def resolve(steps: list[dict], ratio: float | None) -> list[dict]:
         else:
             out.append(step)
     return out
+
+
+# --- what a run grew ---------------------------------------------------------------------
+
+_FIRED = re.compile(r"fired (\d+) of (\d+)")
+
+
+def _flag(value) -> bool | None:
+    return None if value is None else str(value).lower() == "true"
+
+
+class RunTracker:
+    """Follows a run's steps to the layers it grows.
+
+    A layer is the material in the selected slot, for the pulses actually fired while
+    the shutter is open; fires one after another on the same material merge (a wedge is
+    one layer, an ABAB superlattice stays ABAB). A fire with the shutter in front is a
+    pre-ablation, not a layer. The target and shutter come from the step-ended event's
+    detail when pld-service sends them ("target", "shutter_away", "pulses_fired"), else
+    from the steps themselves and "fired N of M" in the message.
+    """
+
+    def __init__(self, steps: list[dict], *, target: str, shutter_away: bool) -> None:
+        self.steps = steps
+        self.target = target
+        self.shutter_away = shutter_away
+        self.meter_mj: float | None = None
+        self.layer: dict | None = None
+
+    def ended(self, step: int, ok: bool, message: str, detail: dict) -> tuple[dict, dict | None]:
+        """One step ended. Returns what it did (for the journal) and the layer it
+        closed, if a fire on another material started a new one."""
+        spec = self.steps[step - 1] if 1 <= step <= len(self.steps) else {}
+        op = detail.get("op") or next((k for k in spec if k != "label"), "")
+        if ok and op == "select_target":
+            self.target = spec[op].get("target", self.target)
+        if ok and op == "sample_shutter":
+            self.shutter_away = not spec[op].get("in_front", False)
+        if ok and op == METER_ENERGY:
+            self.meter_mj = spec[op]["mj"]
+        if ok and op == "laser_energy" and isinstance(spec.get("laser_energy"), dict):
+            self.meter_mj = None  # a source energy, not one at the meter
+        self.target = detail.get("target") or self.target
+        shutter = _flag(detail.get("shutter_away"))
+        if shutter is not None:
+            self.shutter_away = shutter
+        info: dict = {"op": op, "target": self.target, "shutter_away": self.shutter_away}
+        if op != "fire_laser":
+            return info, None
+        fired = detail.get("pulses_fired")
+        if fired is None:
+            m = _FIRED.search(message)
+            fired = m.group(1) if m else (spec.get(op, {}).get("pulses") if ok else 0)
+        fired = int(fired or 0)
+        rate = float(detail.get("rate_hz") or spec.get(op, {}).get("rate_hz") or 0.0)
+        info.update(pulses_fired=fired, rate_hz=rate,
+                    deposition=self.shutter_away and fired > 0 and self.target != "Clear")
+        if not info["deposition"]:
+            return info, None
+        closed = None
+        if self.layer is not None and self.layer["target_id"] != self.target:
+            closed, self.layer = self.layer, None
+        if self.layer is None:
+            self.layer = {"target_id": self.target, "num_pulse": 0, "laser_repetition_rate": rate,
+                          "meter_mj": self.meter_mj, "first_step": step, "new": True}
+        else:
+            self.layer["new"] = False
+        self.layer["num_pulse"] += fired
+        return info, closed
+
+    def finish(self) -> dict | None:
+        """The run ended: the layer still open, if any."""
+        layer, self.layer = self.layer, None
+        return layer

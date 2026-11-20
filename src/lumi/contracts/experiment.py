@@ -31,6 +31,7 @@ from .payloads.experiment import (
     SaveSequence,
     SequenceInfo,
     SequenceList,
+    RunSequence,
     SequenceRef,
     SetTargetPreablation,
     TargetPreablation,
@@ -528,14 +529,18 @@ DRIVER = Capability(
                "runs without anyone. Refused for the agent (actor mcp:...) and without a named "
                "actor: the agent shows the person the steps and asks them to approve in the Deck.",
            journal=True),
-        Op("run_sequence", SequenceRef, TaskAck,
+        Op("run_sequence", RunSequence, TaskAck,
            doc="Run one approved version on pld-service; refused if that version is not "
                "approved. Returns a TaskAck at once; progress is `sequence` in the driver "
                "state and each step goes in the step journal. meter_energy steps need today's "
                "laser test. While it runs pld-service refuses every other operation, from every "
                "client, except stop_fire, the RHEED all-offs and pause/cancel. A failed step "
                "ends the run; nothing is undone or retried. stop_deposition and cancel_task "
-               "cancel it. Wrap it in start_storage / finish_experiment_record as a deposition.",
+               "cancel it. Needs a substrate and project loaded (no_sample=true for a rehearsal). "
+               "Each fire with the shutter open grows a layer of the selected target's material "
+               "(consecutive fires on one material merge): a sequence_layer journal row and a growth "
+               "record with the sequence ref, as perform_deposition plus finish_experiment_record "
+               "would. record={project_name, ...} wraps the run in a recording.",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("pause_sequence", Empty, Ack,
            doc="Pause the running sequence: a wait stops counting, a waited fire stops its "

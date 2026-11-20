@@ -3442,7 +3442,9 @@
                   "type": "integer"
                 },
                 "rate_hz": {
+                  "description": "At most 20 Hz, Lumi's soft cap (the excimer does 100)",
                   "exclusiveMinimum": 0,
+                  "maximum": 20.0,
                   "title": "Rate Hz",
                   "type": "number"
                 },
@@ -12312,6 +12314,56 @@
                       "default": null,
                       "title": "Ramp Rate"
                     },
+                    "sequence_hash": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Sequence Hash"
+                    },
+                    "sequence_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "Grown by this sequence (run_sequence), if any",
+                      "title": "Sequence Name"
+                    },
+                    "sequence_run_id": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "The run: its layers share it",
+                      "title": "Sequence Run Id"
+                    },
+                    "sequence_version": {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Sequence Version"
+                    },
                     "state": {
                       "default": "active",
                       "title": "State",
@@ -12652,6 +12704,56 @@
                   ],
                   "default": null,
                   "title": "Ramp Rate"
+                },
+                "sequence_hash": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sequence Hash"
+                },
+                "sequence_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Grown by this sequence (run_sequence), if any",
+                  "title": "Sequence Name"
+                },
+                "sequence_run_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The run: its layers share it",
+                  "title": "Sequence Run Id"
+                },
+                "sequence_version": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sequence Version"
                 },
                 "state": {
                   "default": "active",
@@ -13055,6 +13157,56 @@
                   "default": null,
                   "title": "Ramp Rate"
                 },
+                "sequence_hash": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sequence Hash"
+                },
+                "sequence_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Grown by this sequence (run_sequence), if any",
+                  "title": "Sequence Name"
+                },
+                "sequence_run_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The run: its layers share it",
+                  "title": "Sequence Run Id"
+                },
+                "sequence_version": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sequence Version"
+                },
                 "state": {
                   "default": "active",
                   "title": "State",
@@ -13350,6 +13502,56 @@
                   ],
                   "default": null,
                   "title": "Ramp Rate"
+                },
+                "sequence_hash": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sequence Hash"
+                },
+                "sequence_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Grown by this sequence (run_sequence), if any",
+                  "title": "Sequence Name"
+                },
+                "sequence_run_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The run: its layers share it",
+                  "title": "Sequence Run Id"
+                },
+                "sequence_version": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sequence Version"
                 },
                 "state": {
                   "default": "active",
@@ -17691,6 +17893,9 @@
                   "type": "boolean"
                 },
                 "laser_repetition_rate": {
+                  "description": "Hz, at most 20 (Lumi's soft cap)",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20.0,
                   "title": "Laser Repetition Rate",
                   "type": "number"
                 },
@@ -18943,7 +19148,49 @@
           {
             "name": "run_sequence",
             "request": {
-              "description": "Exactly one version: what a person reviewed is what is approved or run.",
+              "$defs": {
+                "SequenceRecording": {
+                  "description": "start_storage before the first step and end_storage after the run, however it ends.",
+                  "properties": {
+                    "note": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "title": "Note"
+                    },
+                    "project_name": {
+                      "title": "Project Name",
+                      "type": "string"
+                    },
+                    "save_ai": {
+                      "default": true,
+                      "title": "Save Ai",
+                      "type": "boolean"
+                    },
+                    "save_frame": {
+                      "default": true,
+                      "title": "Save Frame",
+                      "type": "boolean"
+                    },
+                    "save_integration": {
+                      "default": true,
+                      "title": "Save Integration",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "project_name"
+                  ],
+                  "title": "SequenceRecording",
+                  "type": "object"
+                }
+              },
               "properties": {
                 "content_hash": {
                   "anyOf": [
@@ -18962,6 +19209,24 @@
                   "title": "Name",
                   "type": "string"
                 },
+                "no_sample": {
+                  "default": false,
+                  "description": "A rehearsal with no substrate loaded: no layers, no growth records",
+                  "title": "No Sample",
+                  "type": "boolean"
+                },
+                "record": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/SequenceRecording"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Record the run: a recording from before step 1 to after the last"
+                },
                 "version": {
                   "minimum": 1,
                   "title": "Version",
@@ -18972,7 +19237,7 @@
                 "name",
                 "version"
               ],
-              "title": "SequenceRef",
+              "title": "RunSequence",
               "type": "object"
             },
             "request_codec": "json",
@@ -21601,6 +21866,68 @@
               "title": "PendingConfirmation",
               "type": "object"
             },
+            "SequenceLayer": {
+              "description": "A layer a run grew: the material in the selected slot, for the pulses fired\nwith the shutter open (fires one after another on the same material merge).",
+              "properties": {
+                "experiment_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Its growth record (none for a no_sample run)",
+                  "title": "Experiment Id"
+                },
+                "laser_repetition_rate": {
+                  "title": "Laser Repetition Rate",
+                  "type": "number"
+                },
+                "meter_mj": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Energy at the meter, from the run's meter_energy step",
+                  "title": "Meter Mj"
+                },
+                "num_pulse": {
+                  "title": "Num Pulse",
+                  "type": "integer"
+                },
+                "target_id": {
+                  "title": "Target Id",
+                  "type": "string"
+                },
+                "target_material": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Target Material"
+                }
+              },
+              "required": [
+                "target_id",
+                "num_pulse",
+                "laser_repetition_rate"
+              ],
+              "title": "SequenceLayer",
+              "type": "object"
+            },
             "SequenceRun": {
               "description": "The step list this driver started on pld-service, while it runs and after.",
               "properties": {
@@ -21619,6 +21946,14 @@
                   "title": "Label",
                   "type": "string"
                 },
+                "layers": {
+                  "description": "Grown so far, in order",
+                  "items": {
+                    "$ref": "#/$defs/SequenceLayer"
+                  },
+                  "title": "Layers",
+                  "type": "array"
+                },
                 "loops": {
                   "default": "",
                   "description": "Open loops, outermost first, e.g. '2/5 1/3'",
@@ -21635,15 +21970,58 @@
                   "title": "Name",
                   "type": "string"
                 },
+                "no_sample": {
+                  "default": false,
+                  "description": "A rehearsal: no substrate, no growth records",
+                  "title": "No Sample",
+                  "type": "boolean"
+                },
                 "pause_note": {
                   "default": "Pause: a wait stops counting at once; a waited fire stops its train and resume fires the pulses left as a new train; any other step finishes first ('pausing', then 'paused').",
                   "description": "What pause_sequence does to the step running",
                   "title": "Pause Note",
                   "type": "string"
                 },
+                "pixel_index": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Pixel Index"
+                },
+                "recording_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The recording run_sequence started (record)",
+                  "title": "Recording Name"
+                },
                 "run_id": {
                   "title": "Run Id",
                   "type": "string"
+                },
+                "sample_name": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Sample Name"
                 },
                 "started_at": {
                   "default": 0.0,
@@ -21653,7 +22031,7 @@
                 },
                 "state": {
                   "default": "starting",
-                  "description": "starting, running, pausing, paused, finished, failed, cancelled",
+                  "description": "starting, running, pausing, paused, finished, failed, cancelled; unknown = Lumi lost track of it (pld-service stopped answering or restarted): check the chamber",
                   "title": "State",
                   "type": "string"
                 },
@@ -21667,6 +22045,18 @@
                   "default": 0,
                   "title": "Steps",
                   "type": "integer"
+                },
+                "substrate_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Substrate Id"
                 },
                 "total": {
                   "default": 0,

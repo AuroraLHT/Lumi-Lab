@@ -128,8 +128,8 @@ What applies to both:
   for a different amount. Never choose an amount yourself.
 - **[hard]** Sequences (`procedures/sequences.md`): a person reviews and approves each
   version once, in the Deck; you never approve one, and you run only the version and hash
-  they approved. Wrap a sequence that fires in `start_storage` /
-  `finish_experiment_record` like any deposition.
+  they approved. Run it with `record` (a recording around the whole run); it needs the
+  substrate and project loaded, and records its own layers and growth records.
 - **[thumb]** Anneal and cool down in O2 for oxides.
 
 ### Snapshots

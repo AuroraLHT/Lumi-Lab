@@ -457,7 +457,10 @@ Sequences: a step list pld-service runs by itself (a wedge, a combinatorial rout
 save_sequence, then a person reviews that exact version once and approves it in the Deck
 (you cannot approve: show them get_sequence's steps and ask). An approved version then
 runs without anyone: run_sequence(name, version, content_hash), followed through `sequence`
-in the driver state; pause/resume/cancel_sequence; stop_deposition cancels it. Energy steps
+in the driver state; pause/resume/cancel_sequence; stop_deposition cancels it. Give it
+record={project_name} so a recording covers the run. It needs the substrate and project
+loaded (no_sample=true only for a rehearsal) and records the layers it grows itself (one
+growth record per layer, linked to the version): no finish_experiment_record. Energy steps
 are meter_energy {mj} (set from today's laser test). Never edit an approved list to change
 what it does without telling the person: the edit is a new version that needs approval again.
 Temperatures are the back pyrometer's, and only comparable at the same emissivity:

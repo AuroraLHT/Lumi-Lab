@@ -173,6 +173,10 @@ class GrowthDB:
                 pyrometer_emissivity FLOAT,
                 laser_source_energy FLOAT,
                 laser_meter_ratio FLOAT,
+                sequence_name VARCHAR(100),
+                sequence_version INTEGER,
+                sequence_hash VARCHAR(32),
+                sequence_run_id VARCHAR(40),
                 FOREIGN KEY (substrate_id) REFERENCES substrate(substrate_id),
                 FOREIGN KEY (project_id) REFERENCES project(project_id)
             );
@@ -402,7 +406,9 @@ class GrowthDB:
         "project": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'"},
         "experiment": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
                        "pyrometer_emissivity": "FLOAT", "laser_source_energy": "FLOAT",
-                       "laser_meter_ratio": "FLOAT"},
+                       "laser_meter_ratio": "FLOAT", "sequence_name": "VARCHAR(100)",
+                       "sequence_version": "INTEGER", "sequence_hash": "VARCHAR(32)",
+                       "sequence_run_id": "VARCHAR(40)"},
         "record": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
                    "record_created_at": "TIMESTAMP"},
         "measurement": {"state": "VARCHAR(20) NOT NULL DEFAULT 'active'",
@@ -774,16 +780,21 @@ class GrowthDB:
         pyrometer_emissivity: float | None = None,
         laser_source_energy: float | None = None,
         laser_meter_ratio: float | None = None,
+        sequence: dict | None = None,
     ) -> int:
+        """`sequence`, for a layer a sequence grew: {name, version, content_hash, run_id}."""
+        seq = sequence or {}
         async with self.conn.execute(
             """INSERT INTO experiment
             (substrate_id, is_pixel, pixel_location, experiment_uuid, project_id,
              temperature, pressure, laser_power, laser_pulse_rate, target_material, num_pulse,
-             pyrometer_emissivity, laser_source_energy, laser_meter_ratio)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             pyrometer_emissivity, laser_source_energy, laser_meter_ratio,
+             sequence_name, sequence_version, sequence_hash, sequence_run_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (substrate_id, is_pixel, pixel_location, experiment_uuid, project_id,
              temperature, pressure, laser_power, laser_pulse_rate, target_material, num_pulse,
-             pyrometer_emissivity, laser_source_energy, laser_meter_ratio),
+             pyrometer_emissivity, laser_source_energy, laser_meter_ratio,
+             seq.get("name"), seq.get("version"), seq.get("content_hash"), seq.get("run_id")),
         ) as cursor:
             await self.conn.commit()
             return cursor.lastrowid
@@ -964,7 +975,7 @@ class GrowthDB:
                       step_id, started_at,
                       COALESCE(json_extract(params, '$.is_dryrun'), 0)
                FROM step
-               WHERE sample_id = ? AND kind = 'perform_deposition' AND ok = 1
+               WHERE sample_id = ? AND kind IN ('perform_deposition', 'sequence_layer') AND ok = 1
                ORDER BY started_at""",
             (sample_id,),
         ) as cursor:
@@ -1339,7 +1350,7 @@ class GrowthDB:
 
         async with self.conn.execute(
             """SELECT params FROM step
-               WHERE sample_id = ? AND kind = 'perform_deposition' AND ok = 1
+               WHERE sample_id = ? AND kind IN ('perform_deposition', 'sequence_layer') AND ok = 1
                ORDER BY started_at DESC LIMIT 1""",
             (sample_id,),
         ) as cursor:

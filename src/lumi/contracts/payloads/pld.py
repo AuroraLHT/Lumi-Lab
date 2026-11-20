@@ -436,9 +436,14 @@ class PldAutoMotionRequest(BaseModel):
     twist: bool = False
 
 
+#: Lumi's soft cap on the fire rate; the excimer itself does up to 100 Hz (user, 2026-11-17).
+LASER_RATE_MAX_HZ = 20.0
+
+
 class PldFireRequest(BaseModel):
     pulses: int = Field(ge=1)
-    rate_hz: float = Field(gt=0)
+    rate_hz: float = Field(gt=0, le=LASER_RATE_MAX_HZ,
+                           description=f"At most {LASER_RATE_MAX_HZ:g} Hz, Lumi's soft cap (the excimer does 100)")
     wait: bool = True
 
 

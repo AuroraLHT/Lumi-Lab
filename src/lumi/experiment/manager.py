@@ -53,6 +53,10 @@ from lumi.pascal import command as pcmd
 
 log = logging.getLogger(__name__)
 
+
+class SequenceLost(RuntimeError):
+    """Lumi lost track of a sequence run: pld-service stopped answering or restarted."""
+
 #: The daily laser test: the excimer in HV mode at this HV, fired into the energy meter
 #: at Clear. What reaches the meter per mJ the laser reports is what a deposition's
 #: excimer energy is worked out from (begin_set_laser_power).
@@ -1271,8 +1275,34 @@ class BaseExperimentManager:
 
     # --- the daily laser test ---------------------------------------------------------
 
+    async def record_sequence_layer(self, layer: dict, *, sequence: dict, temperature: float | None,
+                                    pressure: float | None, ratio: float | None,
+                                    storage_name: str | None, record_uuid: str | None) -> int | None:
+        """The growth record of one layer a sequence grew, as finish_experiment_record
+        writes one for a deposition. None without a substrate or project."""
+        substrate = self.current_substrate
+        if substrate is None or substrate.db_id is None or self.project_id is None:
+            return None
+        meter = layer.get("meter_mj")
+        experiment_id = await self.growth_db.add_experiment(
+            substrate_id=substrate.db_id, is_pixel=len(substrate.positions) > 1,
+            pixel_location=substrate.current_position_id, experiment_uuid=str(uuid.uuid4()),
+            project_id=self.project_id, temperature=temperature, pressure=pressure,
+            laser_power=meter, laser_pulse_rate=layer["laser_repetition_rate"],
+            target_material=layer.get("target_material"), num_pulse=layer["num_pulse"],
+            pyrometer_emissivity=await self.pyrometer_emissivity(),
+            laser_source_energy=meter / ratio if meter is not None and ratio else None,
+            laser_meter_ratio=ratio if meter is not None else None, sequence=sequence,
+        )
+        if storage_name is not None:
+            await self.growth_db.add_recording(
+                experiment_id=experiment_id, record_name=storage_name, record_uuid=record_uuid or "")
+        return experiment_id
+
     #: How often a running sequence is polled, s.
     SEQUENCE_POLL_S = 0.5
+    #: How long pld-service may not answer before a run being followed is given up as unknown.
+    SEQUENCE_LOST_S = 15.0
     _SEQUENCE_ENDED = frozenset({"finished", "failed", "cancelled"})
 
     async def run_sequence(self, seq: dict, on_status, on_event) -> dict:
@@ -1314,15 +1344,40 @@ class BaseExperimentManager:
             await self.add_recording_event("sequence", f"{name} started", {
                 "sequence": seq["name"], "version": seq["version"], "content_hash": seq["content_hash"],
                 "ratio": ratio})
+            # The run is the status whose `started` differs from the one before it. A poll
+            # that fails is retried for SEQUENCE_LOST_S (pld-service keeps running it); a
+            # status that no longer is this run (pld-service restarted) means it is lost.
+            run_started: float | None = None
+            quiet_since = asked = time.monotonic()
             while True:
                 await asyncio.sleep(self.SEQUENCE_POLL_S)
-                status = (await self.chamber.state()).sequence
-                for event in await self.chamber.recent_events():
+                try:
+                    status = (await self.chamber.state()).sequence
+                    events = await self.chamber.recent_events()
+                except Exception as exc:
+                    if time.monotonic() - quiet_since > self.SEQUENCE_LOST_S:
+                        raise SequenceLost(
+                            f"sequence {name}: pld-service has not answered for "
+                            f"{self.SEQUENCE_LOST_S:g} s ({exc}); whether it is still running is "
+                            "unknown: check the chamber") from exc
+                    continue
+                quiet_since = time.monotonic()
+                if run_started is None and status.started != prior.started:
+                    run_started = status.started
+                if run_started is None and time.monotonic() - asked > self.SEQUENCE_LOST_S:
+                    raise SequenceLost(f"sequence {name}: pld-service never showed it running "
+                                       f"(it shows {status.name!r}, {status.state or 'none'})")
+                if run_started is not None and status.started != run_started:
+                    raise SequenceLost(
+                        f"sequence {name}: pld-service no longer shows it (it shows "
+                        f"{status.name!r}, {status.state or 'none'}); it was restarted or the run "
+                        "was replaced, so how far it got is unknown: check the chamber")
+                for event in events:
                     if event.time > seen and event.kind == "sequence":
                         await on_event(event)
                     seen = max(seen, event.time)
                 await on_status(status)
-                if status.started != prior.started and status.state in self._SEQUENCE_ENDED:
+                if run_started is not None and status.state in self._SEQUENCE_ENDED:
                     break
         except asyncio.CancelledError:
             try:
