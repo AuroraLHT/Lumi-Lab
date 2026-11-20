@@ -781,6 +781,9 @@ class GrowthDB:
         laser_source_energy: float | None = None,
         laser_meter_ratio: float | None = None,
         sequence: dict | None = None,
+        do_preablation: bool = False,
+        preablation_pulse: int | None = None,
+        preablation_frequency: int | None = None,
     ) -> int:
         """`sequence`, for a layer a sequence grew: {name, version, content_hash, run_id}."""
         seq = sequence or {}
@@ -789,12 +792,14 @@ class GrowthDB:
             (substrate_id, is_pixel, pixel_location, experiment_uuid, project_id,
              temperature, pressure, laser_power, laser_pulse_rate, target_material, num_pulse,
              pyrometer_emissivity, laser_source_energy, laser_meter_ratio,
-             sequence_name, sequence_version, sequence_hash, sequence_run_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+             sequence_name, sequence_version, sequence_hash, sequence_run_id,
+             do_preablation, preablation_pulse, preablation_frequency)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (substrate_id, is_pixel, pixel_location, experiment_uuid, project_id,
              temperature, pressure, laser_power, laser_pulse_rate, target_material, num_pulse,
              pyrometer_emissivity, laser_source_energy, laser_meter_ratio,
-             seq.get("name"), seq.get("version"), seq.get("content_hash"), seq.get("run_id")),
+             seq.get("name"), seq.get("version"), seq.get("content_hash"), seq.get("run_id"),
+             do_preablation, preablation_pulse, preablation_frequency),
         ) as cursor:
             await self.conn.commit()
             return cursor.lastrowid

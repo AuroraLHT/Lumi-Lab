@@ -25,6 +25,7 @@ import logging
 from typing import Protocol
 
 from lumi.base.mq.client import RemoteError
+from lumi.base.mq.context import current_actor
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
     PldAutoMotionRequest,
@@ -136,7 +137,9 @@ class PldChamber:
 
     async def _call(self, op: str, req=None) -> PldReply:
         try:
-            reply = await self.client.call(op, req if req is not None else Empty())
+            # Credit the op to whoever asked the experiment node for it (an MCP agent, a
+            # Deck user), so chamber.pld's activity says who, not just "experiment".
+            reply = await self.client.call(op, req if req is not None else Empty(), actor=current_actor.get())
         except RemoteError as e:
             if "--use-legacy-mi-mode" in e.error_message:
                 raise RuntimeError(

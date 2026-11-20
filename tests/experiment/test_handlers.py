@@ -744,6 +744,20 @@ async def test_update_substrate_renames_its_samples_too(handler):
                                           None: "HZO-1"}
 
 
+async def test_after_the_last_position_the_current_sample_is_the_substrate(handler):
+    # Every position finished, the substrate still on the chamber: the cool-down's steps
+    # and snapshots belong to the root sample, not to nothing.
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0, substrate_name="STO-9",
+    ))
+    rows = await handler.growth_db.get_samples_for_substrate(info.substrate_id)
+    by_index = {r[5]: r[0] for r in rows}
+    assert await handler.current_sample_id() == by_index[0]
+    for _ in info.positions:
+        await handler.finish_current_pixel(FinishCurrentPixel())
+    assert await handler.current_sample_id() == by_index[None]
+
+
 async def test_reopen_position_undoes_an_accidental_finish(handler):
     """The other reported case: finished a substrate by mistake and had to register a
     fake one to carry on. Nothing was deposited, so the position goes straight back."""

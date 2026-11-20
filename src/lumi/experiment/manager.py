@@ -54,6 +54,14 @@ from lumi.pascal import command as pcmd
 log = logging.getLogger(__name__)
 
 
+
+def _preablation_fields(preablation: tuple[int, float] | None) -> dict:
+    """add_experiment's pre-ablation columns. The frequency column is an INTEGER."""
+    if preablation is None:
+        return {}
+    pulses, hz = preablation
+    return {"do_preablation": True, "preablation_pulse": int(pulses), "preablation_frequency": round(hz)}
+
 class SequenceLost(RuntimeError):
     """Lumi lost track of a sequence run: pld-service stopped answering or restarted."""
 
@@ -299,6 +307,9 @@ class BaseExperimentManager:
         # Stashed between begin_check_rheed_pixels() and resolve_pixel_check().
         self._pixel_check_index: int = 0
         self._pixel_check_dropped: list[int] = []
+        #: Pre-ablations run and not yet written to a growth record, by target material:
+        #: (pulses, Hz). The next record of that material says it was pre-ablated.
+        self._preablations: dict[str, tuple[int, float]] = {}
 
     @property
     def current_substrate(self) -> Substrate | None:
@@ -992,6 +1003,16 @@ class BaseExperimentManager:
         if original_mask_position is not None:
             await self.move_mask_to_position(original_mask_position)
 
+    def note_preablation(self, material: str | None, num_pulse: int, frequency: float) -> None:
+        """A pre-ablation really fired: the next growth record of `material` says so."""
+        if material and num_pulse > 0:
+            self._preablations[material] = (int(num_pulse), float(frequency))
+
+    def take_preablation(self, material: str | None) -> dict:
+        """The do_preablation fields for a record of `material`, once per pre-ablation."""
+        found = self._preablations.pop(material, None) if material else None
+        return _preablation_fields(found)
+
     async def _warm_up_to_pid_limit(self) -> None:
         b = self.bounds
         await self.chamber.manual_current()
@@ -1237,6 +1258,7 @@ class BaseExperimentManager:
             target_material=target_material, num_pulse=num_pulse,
             pyrometer_emissivity=await self.pyrometer_emissivity(),
             laser_source_energy=self._laser_source_energy, laser_meter_ratio=self._laser_meter_ratio,
+            **self.take_preablation(target_material),
         )
         if storage_name is not None:
             await self.growth_db.add_recording(
@@ -1330,6 +1352,8 @@ class BaseExperimentManager:
             pyrometer_emissivity=await self.pyrometer_emissivity(),
             laser_source_energy=meter / ratio if meter is not None and ratio else None,
             laser_meter_ratio=ratio if meter is not None else None, sequence=sequence,
+            **(_preablation_fields(layer["preablation"]) if layer.get("preablation")
+               else self.take_preablation(layer.get("target_material"))),
         )
         if storage_name is not None:
             await self.growth_db.add_recording(

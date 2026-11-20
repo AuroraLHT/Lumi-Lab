@@ -22,6 +22,8 @@ from lumi.contracts.payloads.experiment import (
     BeginSetLaserPower,
     CheckMiMode,
     ConfirmLaserTest,
+    ExperimentId,
+    FinishExperimentRecord,
     ListLaserTests,
     MoveMask,
     PerformDeposition,
@@ -72,6 +74,7 @@ class FakePldClient:
     def __init__(self, state: PldChamberState) -> None:
         self.state = state
         self.calls: list[tuple[str, dict]] = []
+        self.actors: list[str | None] = []
         self.refuse: dict[str, str] = {}
         #: An ok reply's message other than "done", by op.
         self.answers: dict[str, str] = {}
@@ -80,7 +83,8 @@ class FakePldClient:
         self.blocking: set[str] = set()
         self.release = asyncio.Event()
 
-    async def call(self, op, req=None):
+    async def call(self, op, req=None, *, actor=None):
+        self.actors.append(actor)
         if self.raise_remote:
             raise RemoteError("chamber.pld", op, "RuntimeError", self.raise_remote)
         self.calls.append((op, req.model_dump() if req is not None and not isinstance(req, Empty) else {}))
@@ -191,13 +195,13 @@ async def test_a_failed_warm_up_sets_the_current_back_and_says_so(fake):
     client.state.heater.current_set = 6.0
     steps = 0
 
-    async def refuse_third(op, req=None, _call=client.call):
+    async def refuse_third(op, req=None, *, actor=None, _call=client.call):
         nonlocal steps
         if op == "set_heating_current" and req.amps > 6.05:
             steps += 1
             if steps == 3:
                 return PldReply(ok=False, message="LD current refused")
-        return await _call(op, req)
+        return await _call(op, req, actor=actor)
 
     client.call = refuse_third
     await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
@@ -230,6 +234,19 @@ async def test_a_warm_up_already_at_its_current_still_waits_for_the_threshold(fa
     assert result["ok"] is True, result
     assert "set_heating_current" not in ops(client)
     assert ops(client)[-2:] == ["set_temperature_control", "set_temperature"]
+
+
+async def test_chamber_ops_are_credited_to_whoever_asked(fake):
+    # HZO twin dry run: the driver's chamber.pld calls showed actor null in
+    # recent_activity; only direct chamber.pld calls were credited.
+    from lumi.base.mq.context import current_actor
+    handler, client = fake
+    token = current_actor.set("mcp:hliang16")
+    try:
+        await handler.move_mask_to_position(MoveMask(position=90))
+    finally:
+        current_actor.reset(token)
+    assert client.actors and set(client.actors) == {"mcp:hliang16"}
 
 
 async def test_set_target_turns_on_auto_spin_and_twist(fake):
@@ -361,6 +378,34 @@ async def test_preablation_uses_the_amount_set_for_the_target(fake):
     assert client.calls == []
     listed = (await handler.list_target_preablation(Empty())).targets
     assert [(t.target_material, t.num_pulse) for t in listed] == [("SRO", 0)]
+
+
+async def test_a_growth_record_says_its_target_was_preablated(fake):
+    # HZO twin dry run: do_preablation was false on every record although each layer was
+    # pre-ablated first. The next record of that material says so, once.
+    handler, client = fake  # slot A holds SRO
+    db = handler.growth_db
+    project = await db.add_project("p", "")
+    substrate = await db.add_substrate(materials="STO", orientation="(001)", width=5, height=5,
+                                       thickness=0.5, pixel_spacing=None, positions=None)
+
+    async def record(material):
+        rid = (await handler.finish_experiment_record(FinishExperimentRecord(
+            substrate_id=substrate, project_id=project, experiment_uuid=material + str(len(client.calls)),
+            temperature=400, pressure=0.1, laser_power=120, laser_repetition_rate=5,
+            target_material=material, num_pulse=300))).experiment_id
+        info = await handler.get_experiment(ExperimentId(experiment_id=rid))
+        return info.do_preablation, info.preablation_pulse, info.preablation_frequency
+
+    await handler.perform_preablation(PerformPreablation(target_id="A", num_pulse=50, frequency=10.0))
+    assert (await wait_task(handler))["ok"]
+    assert await record("LSMO") == (False, None, None)  # another material
+    assert await record("SRO") == (True, 50, 10)
+    assert await record("SRO") == (False, None, None)  # once per pre-ablation
+
+    await handler.perform_preablation(PerformPreablation(target_id="A", num_pulse=50, is_dryrun=True))
+    assert (await wait_task(handler))["ok"]
+    assert await record("SRO") == (False, None, None)  # a dry run fired nothing
 
 
 async def test_rotation_is_absolute_and_wraps(fake):
@@ -679,7 +724,7 @@ class HandlerBus:
     def __init__(self, pld_handler) -> None:
         self.pld = pld_handler
 
-    async def call(self, op, req=None):
+    async def call(self, op, req=None, *, actor=None):
         return await getattr(self.pld, op)(req if req is not None else Empty())
 
     async def chamber_state(self):

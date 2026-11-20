@@ -164,6 +164,8 @@ class RunTracker:
         self.shutter_away = shutter_away
         self.meter_mj: float | None = None
         self.layer: dict | None = None
+        #: Fires with the shutter in front, by target, until a layer on it opens: (pulses, Hz).
+        self.preablated: dict[str, tuple[int, float]] = {}
 
     def ended(self, step: int, ok: bool, message: str, detail: dict) -> tuple[dict, dict | None]:
         """One step ended. Returns what it did (for the journal) and the layer it
@@ -174,9 +176,12 @@ class RunTracker:
             self.target = spec[op].get("target", self.target)
         if ok and op == "sample_shutter":
             self.shutter_away = not spec[op].get("in_front", False)
-        if ok and op == METER_ENERGY:
-            self.meter_mj = spec[op]["mj"]
-        if ok and op == "laser_energy" and isinstance(spec.get("laser_energy"), dict):
+        # From the stored step, not the reported op: pld-service runs a meter_energy step
+        # as the laser_energy resolve() made of it, and reports it as that (exp 16 of the
+        # HZO twin dry run lost its 120 mJ this way).
+        if ok and METER_ENERGY in spec:
+            self.meter_mj = spec[METER_ENERGY]["mj"]
+        elif ok and isinstance(spec.get("laser_energy"), dict):
             self.meter_mj = None  # a source energy, not one at the meter
         self.target = detail.get("target") or self.target
         shutter = _flag(detail.get("shutter_away"))
@@ -194,13 +199,17 @@ class RunTracker:
         info.update(pulses_fired=fired, rate_hz=rate,
                     deposition=self.shutter_away and fired > 0 and self.target != "Clear")
         if not info["deposition"]:
+            if fired > 0 and self.target != "Clear":  # a pre-ablation: the next layer on it says so
+                pulses, _ = self.preablated.get(self.target, (0, rate))
+                self.preablated[self.target] = (pulses + fired, rate)
             return info, None
         closed = None
         if self.layer is not None and self.layer["target_id"] != self.target:
             closed, self.layer = self.layer, None
         if self.layer is None:
             self.layer = {"target_id": self.target, "num_pulse": 0, "laser_repetition_rate": rate,
-                          "meter_mj": self.meter_mj, "first_step": step, "new": True}
+                          "meter_mj": self.meter_mj, "first_step": step, "new": True,
+                          "preablation": self.preablated.pop(self.target, None)}
         else:
             self.layer["new"] = False
         self.layer["num_pulse"] += fired

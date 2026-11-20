@@ -56,7 +56,7 @@ class HandlerBus:
     def __init__(self, handler) -> None:
         self.handler = handler
 
-    async def call(self, op, req=None):
+    async def call(self, op, req=None, *, actor=None):
         return await getattr(self.handler, op)(req if req is not None else Empty())
 
     async def chamber_state(self):
