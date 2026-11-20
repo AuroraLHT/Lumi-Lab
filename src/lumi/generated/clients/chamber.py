@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 75a233b7fc85762b
+# contract_hash: b3d41dc4196d792f
 
 """Generated clients for the chamber node."""
 
@@ -21,7 +21,7 @@ from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta,
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
-from lumi.contracts.payloads.pld import PldActivityList, PldActivityQuery, PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
+from lumi.contracts.payloads.pld import PldActivityList, PldActivityQuery, PldAutoMotionRequest, PldAxisRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldSequenceRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
 
 
 class ChamberLogClient(CapabilityClient):
@@ -341,6 +341,22 @@ class ChamberPldClient(CapabilityClient):
     async def rheed_all_off(self) -> PldReply:
         """RHEED filament, HV, focus, X and Y off at once, unramped ("ALL OFF BRUTAL" in pld-gui): the emergency stop, for a fault; rheed_all_off_gentle is the normal way down. Set points are kept for the next on. Needs no control, like stop_fire: the stop from any client. An interlock, an open filament or an over-current held 1 s switches filament and HV off by itself; nothing comes back on by itself."""
         return await self.call("rheed_all_off")  # type: ignore[return-value]
+
+    async def run_sequence(self, req: PldSequenceRequest) -> PldReply:
+        """Upload a step list for pld-service to run one step at a time (REA 38ca32e): each step one operation with its usual checks and waits, plus wait_s, pause, wait_axis_idle and loop_start/loop_end. Answers 'started' at once (wait=false). While it runs every other operation from every client is refused except stop_fire, the RHEED all-offs and pause/cancel. Progress: state.sequence and 'sequence' events. The experiment node's run_sequence is the vetted way in."""
+        return await self.call("run_sequence", req)  # type: ignore[return-value]
+
+    async def pause_sequence(self) -> PldReply:
+        """Pause the running sequence, from any client: a wait stops counting, a waited fire stops its train (resume fires the pulses left), any other step finishes first ('pausing', then 'paused'). While paused the controller may operate as usual."""
+        return await self.call("pause_sequence")  # type: ignore[return-value]
+
+    async def resume_sequence(self) -> PldReply:
+        """Carry on a paused sequence (also ends a `pause` step). Needs control."""
+        return await self.call("resume_sequence")  # type: ignore[return-value]
+
+    async def cancel_sequence(self) -> PldReply:
+        """End the sequence now, from any client: a fire train is stopped; a move or ramp under way carries on; nothing is undone."""
+        return await self.call("cancel_sequence")  # type: ignore[return-value]
 
     async def start_logging(self, req: PldLoggingRequest) -> PldReply:
         """Start a new growth-log CSV in the chamber's log folder, one row every interval_s, written by this node from the service's state (PLD Controller's columns). `message` is the file's path."""

@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 75a233b7fc85762b
+# contract_hash: b3d41dc4196d792f
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CancelTask, CancelTaskResult, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmLaserTest, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, LaserPowerResult, LaserSettings, LaserTest, LaserTestList, ListExperiments, ListLaserTests, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveMask, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SetLaserEnergy, SetLaserHv, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SetTargetPreablation, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StopDeposition, StopDepositionResult, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TargetPreablation, TargetPreablationList, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CancelTask, CancelTaskResult, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmLaserTest, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, GetSequence, LaserPowerResult, LaserSettings, LaserTest, LaserTestList, ListExperiments, ListLaserTests, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSequences, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveMask, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SaveSequence, SequenceInfo, SequenceList, SequenceRef, SetLaserEnergy, SetLaserHv, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SetTargetPreablation, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StopDeposition, StopDepositionResult, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TargetPreablation, TargetPreablationList, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -366,6 +366,38 @@ class ExperimentDriverClient(CapabilityClient):
     async def list_laser_tests(self, req: ListLaserTests) -> LaserTestList:
         """The laser tests, newest first; `today` marks one begin_set_laser_power can use."""
         return await self.call("list_laser_tests", req)  # type: ignore[return-value]
+
+    async def save_sequence(self, req: SaveSequence) -> SequenceInfo:
+        """Store a step list for pld-service to run. Different steps under an existing name become its next version (a version never changes); the same steps return the version they already are. A new version is unapproved: a person reviews it once (approve_sequence) before it can run."""
+        return await self.call("save_sequence", req)  # type: ignore[return-value]
+
+    async def list_sequences(self, req: ListSequences) -> SequenceList:
+        """Stored sequences, every version, with who saved and who approved each."""
+        return await self.call("list_sequences", req)  # type: ignore[return-value]
+
+    async def get_sequence(self, req: GetSequence) -> SequenceInfo:
+        """One version with its full step list (the latest when version is left out)."""
+        return await self.call("get_sequence", req)  # type: ignore[return-value]
+
+    async def approve_sequence(self, req: SequenceRef) -> SequenceInfo:
+        """A person approves one exact version after reviewing its steps; from then on it runs without anyone. Refused for the agent (actor mcp:...) and without a named actor: the agent shows the person the steps and asks them to approve in the Deck."""
+        return await self.call("approve_sequence", req)  # type: ignore[return-value]
+
+    async def run_sequence(self, req: SequenceRef) -> TaskAck:
+        """Run one approved version on pld-service; refused if that version is not approved. Returns a TaskAck at once; progress is `sequence` in the driver state and each step goes in the step journal. meter_energy steps need today's laser test. While it runs pld-service refuses every other operation, from every client, except stop_fire, the RHEED all-offs and pause/cancel. A failed step ends the run; nothing is undone or retried. stop_deposition and cancel_task cancel it. Wrap it in start_storage / finish_experiment_record as a deposition."""
+        return await self.call("run_sequence", req)  # type: ignore[return-value]
+
+    async def pause_sequence(self) -> Ack:
+        """Pause the running sequence: a wait stops counting, a waited fire stops its train (resume fires the pulses left), any other step finishes first."""
+        return await self.call("pause_sequence")  # type: ignore[return-value]
+
+    async def resume_sequence(self) -> Ack:
+        """Carry on a paused sequence (also ends a `pause` step)."""
+        return await self.call("resume_sequence")  # type: ignore[return-value]
+
+    async def cancel_sequence(self) -> Ack:
+        """End the running sequence now; a fire train stops, a move or ramp under way carries on, nothing is undone."""
+        return await self.call("cancel_sequence")  # type: ignore[return-value]
 
     async def list_target_preablation(self) -> TargetPreablationList:
         """The pre-ablation amount set for each target material. A material not listed has none yet: ask the person before pre-ablating it."""

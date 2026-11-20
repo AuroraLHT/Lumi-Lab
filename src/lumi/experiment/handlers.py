@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import re
 import logging
 import time
 import uuid
@@ -47,6 +48,13 @@ from lumi.contracts.payloads.experiment import (
     LaserTest,
     LaserTestList,
     ListLaserTests,
+    ListSequences,
+    GetSequence,
+    SaveSequence,
+    SequenceInfo,
+    SequenceList,
+    SequenceRef,
+    SequenceRun,
     SetTargetPreablation,
     TargetPreablation,
     TargetPreablationList,
@@ -180,6 +188,7 @@ from lumi.experiment.chamber import MiChamber, PldStopped
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
+from lumi.experiment import sequence as seqlib
 from lumi.experiment.manager import (
     LASER_TEST_KV, LASER_TEST_PULSES, LASER_TEST_RATE_HZ, ExperimentBounds, PLDChamberConfiguration,
     PixelExperimentManager, Substrate,
@@ -248,6 +257,11 @@ def _laser_settings(excimer) -> LaserSettings:
     return LaserSettings(mode=excimer.mode, hv_kv=excimer.hv, energy_mj=excimer.energy_set)
 
 
+#: pld-service's per-step 'sequence' events (REA 38ca32e).
+_SEQUENCE_STEP_STARTED = re.compile(r"^step \d+ of \d+")
+_SEQUENCE_STEP_ENDED = re.compile(r"^step (?P<step>\d+)(?: \(loop (?P<loops>[^)]*)\))? (?P<outcome>done|FAILED)\b")
+
+
 class ExperimentHandler:
     def __init__(
         self,
@@ -299,6 +313,7 @@ class ExperimentHandler:
         # why it was stopped once it has been.
         self._task_handle: asyncio.Task | None = None
         self._stop_reason: str | None = None
+        self._sequence_run: SequenceRun | None = None
         self._updates: asyncio.Queue[TaskEvent] = asyncio.Queue()
         # The op currently moving a motor, if any. Requests are not serialised (the
         # server dispatches each as it arrives), so without this a caller that retried
@@ -374,6 +389,7 @@ class ExperimentHandler:
             laser_power_set=m._laser_power_set if m else None,
             laser_power_real=m._laser_power_real if m else None,
             center_mask_pos=self.pld_config.center_mask_pos,
+            sequence=self._sequence_run,
         )
 
     async def next_update(self) -> TaskEvent | None:
@@ -519,7 +535,7 @@ class ExperimentHandler:
         return TaskAck(task_id=task_id)
 
     #: The tasks that fire the laser, which stop_deposition ends.
-    _ABLATING = frozenset({"perform_deposition", "perform_preablation", "fire_laser_test"})
+    _ABLATING = frozenset({"perform_deposition", "perform_preablation", "fire_laser_test", "run_sequence"})
 
     async def stop_deposition(self, req: StopDeposition) -> StopDepositionResult:
         """Stop the laser, then end a running deposition or preablation.
@@ -1463,6 +1479,149 @@ class ExperimentHandler:
         rows = await self.growth_db.list_laser_tests(req.limit)
         return LaserTestList(tests=[
             LaserTest(**r, today=today is not None and r["test_id"] == today["test_id"]) for r in rows])
+
+    # --- sequences: step lists pld-service runs ------------------------------------
+
+    #: Journal rows per run, at most: one per step, loops multiplied out, can be 1e6.
+    SEQUENCE_JOURNAL_MAX = 5000
+
+    def _sequence_info(self, row: dict, *, latest: bool, steps: bool = False) -> SequenceInfo:
+        parsed = json.loads(row["steps_json"])
+        vetted = seqlib.check(parsed)
+        return SequenceInfo(
+            sequence_id=row["sequence_id"], name=row["name"], version=row["version"],
+            content_hash=row["content_hash"], description=row["description"],
+            num_steps=vetted["num_steps"], num_operations=vetted["num_operations"],
+            fires=vetted["fires"], sets_energy=vetted["sets_energy"],
+            saved_by=row["saved_by"], saved_at=row["saved_at"],
+            approved_by=row["approved_by"], approved_at=row["approved_at"],
+            latest=latest, steps=parsed if steps else None)
+
+    async def _sequence_row(self, req: SequenceRef) -> dict:
+        row = await self.growth_db.get_sequence(req.name, req.version)
+        if row is None:
+            raise ValueError(f"no sequence {req.name!r} version {req.version}")
+        if req.content_hash is not None and req.content_hash != row["content_hash"]:
+            raise ValueError(
+                f"{req.name!r} version {req.version} is {row['content_hash']}, not {req.content_hash}: "
+                "look at it again before approving or running it")
+        return row
+
+    async def _is_latest(self, row: dict) -> bool:
+        latest = await self.growth_db.get_sequence(row["name"])
+        return latest is not None and latest["version"] == row["version"]
+
+    async def save_sequence(self, req: SaveSequence) -> SequenceInfo:
+        vetted = seqlib.check(req.steps)
+        row = await self.growth_db.save_sequence(
+            req.name, vetted["steps_json"], vetted["content_hash"], req.description, current_actor.get())
+        return self._sequence_info(row, latest=True)
+
+    async def list_sequences(self, req: ListSequences) -> SequenceList:
+        rows = await self.growth_db.list_sequences(req.name)
+        seen: set[str] = set()
+        out = []
+        for row in rows:  # by name, newest version first
+            out.append(self._sequence_info(row, latest=row["name"] not in seen))
+            seen.add(row["name"])
+        return SequenceList(sequences=out)
+
+    async def get_sequence(self, req: GetSequence) -> SequenceInfo:
+        row = await self.growth_db.get_sequence(req.name, req.version)
+        if row is None:
+            raise ValueError(f"no sequence {req.name!r}" + (f" version {req.version}" if req.version else ""))
+        return self._sequence_info(row, latest=await self._is_latest(row), steps=True)
+
+    async def approve_sequence(self, req: SequenceRef) -> SequenceInfo:
+        actor = current_actor.get()
+        if not actor or actor.startswith("mcp:"):
+            raise PermissionError(
+                "a person approves a sequence, once, after reading its steps: show them "
+                f"get_sequence({req.name!r}, {req.version}) and ask them to approve it in the Deck")
+        row = await self._sequence_row(req)
+        if row["approved_at"] is None:
+            row = await self.growth_db.approve_sequence(req.name, req.version, actor)
+        return self._sequence_info(row, latest=await self._is_latest(row))
+
+    async def run_sequence(self, req: SequenceRef) -> TaskAck:
+        if self.manager.chamber.driver != "pld":
+            raise RuntimeError("sequences need pld-service: not under --use-legacy-mi-mode")
+        row = await self._sequence_row(req)
+        if row["approved_at"] is None:
+            raise PermissionError(
+                f"{req.name!r} version {req.version} is not approved: a person reviews it once "
+                "(approve_sequence, in the Deck) before it runs")
+        if seqlib.METER_ENERGY in row["steps_json"] and await self.manager.todays_laser_test() is None:
+            raise RuntimeError("no laser test today: run the daily test (begin_laser_test) first; "
+                               "this sequence sets the energy at the meter")
+        run = SequenceRun(run_id=uuid.uuid4().hex, name=row["name"], version=row["version"],
+                          content_hash=row["content_hash"], started_at=time.time())
+        self._sequence_run = run
+        return await self._start_moving_task("run_sequence", self._follow_sequence(row, run), {
+            "name": row["name"], "version": row["version"], "content_hash": row["content_hash"],
+            "run_id": run.run_id})
+
+    async def _follow_sequence(self, row: dict, run: SequenceRun) -> dict:
+        journaled = 0
+
+        async def on_status(status) -> None:
+            fields = {k: getattr(status, k) for k in
+                      ("state", "step", "steps", "label", "loops", "done", "total", "message")}
+            if fields != {k: getattr(run, k) for k in fields}:
+                for k, v in fields.items():
+                    setattr(run, k, v)
+                await self._push()
+
+        async def on_event(event) -> None:
+            # pld-service: "step 5 of 10 (loop 1/2): sweep out" as a step starts, "step 5
+            # (loop 1/2) done: ..." or "... FAILED: ..." as it ends; and "pause asked by",
+            # "paused before ...", "resumed by", "sequence finished: ...".
+            nonlocal journaled
+            if _SEQUENCE_STEP_STARTED.match(event.message):
+                return
+            ended = _SEQUENCE_STEP_ENDED.match(event.message)
+            if ended is None:
+                await self.manager.add_recording_event("sequence", event.message, {"run_id": run.run_id})
+            journaled += 1
+            if self.journal is None or journaled > self.SEQUENCE_JOURNAL_MAX:
+                if journaled == self.SEQUENCE_JOURNAL_MAX + 1:
+                    log.info("sequence %s: more than %d steps, the rest are not journaled",
+                             run.name, self.SEQUENCE_JOURNAL_MAX)
+                return
+            params = {"run_id": run.run_id, "sequence": run.name, "version": run.version,
+                      "step": int(event.detail.get("step") or 0)}
+            if ended is not None:
+                params["loops"] = ended["loops"] or ""
+            step_id = await self.journal.begin(
+                "sequence_step" if ended else "sequence_event", params=params,
+                actor=current_actor.get(), source="experiment.driver")
+            failed = ended is not None and ended["outcome"] == "FAILED"
+            await self.journal.end(step_id, ok=not failed, result={"message": event.message},
+                                   error=event.message if failed else None)
+
+        try:
+            return await self.manager.run_sequence(row, on_status, on_event)
+        except asyncio.CancelledError:
+            run.state = "cancelled"
+            raise
+        finally:
+            await self._push()
+
+    async def _sequence_control(self, what: str) -> Ack:
+        chamber = self.manager.chamber
+        if chamber.driver != "pld":
+            raise RuntimeError("sequences need pld-service: not under --use-legacy-mi-mode")
+        await getattr(chamber, f"{what}_sequence")()
+        return Ack()
+
+    async def pause_sequence(self, req: Empty) -> Ack:
+        return await self._sequence_control("pause")
+
+    async def resume_sequence(self, req: Empty) -> Ack:
+        return await self._sequence_control("resume")
+
+    async def cancel_sequence(self, req: Empty) -> Ack:
+        return await self._sequence_control("cancel")
 
     # --- gated: mask-center calibration --------------------------------------------
 

@@ -241,6 +241,30 @@ class PldRheed(BaseModel):
     y_max_ma: float | None = None
 
 
+class PldSequenceStatus(BaseModel):
+    """The sequence pld-service runs (or ran last): RunSequence's progress."""
+
+    name: str = ""
+    state: str = Field("", description="'', running, pausing, paused, finished, failed, cancelled")
+    step: int = Field(0, description="The step running, 1-based")
+    steps: int = Field(0, description="Steps in the list")
+    label: str = ""
+    message: str = Field("", description="The last step's reply, the pause message, or why it ended")
+    client: str = Field("", description="The gRPC client that started it")
+    started: float = Field(0.0, description="Unix s")
+    loops: str = Field("", description="Open loops, outermost first, e.g. '2/5 1/3'")
+    done: int = Field(0, description="Operations done, loops multiplied out")
+    total: int = 0
+
+
+class PldSequenceRequest(BaseModel):
+    name: str = ""
+    steps: list[dict[str, object]] = Field(
+        description="pld.proto SequenceStep messages in proto JSON names, e.g. "
+                    "{'mask': {'position': 20, 'wait': false, 'speed_mm_s': 0.5}}, {'loop_start': 3}")
+    wait: bool = False
+
+
 class PldChamberState(BaseModel):
     """One poll cycle of pld-service: everything it reads off the chamber."""
 
@@ -264,6 +288,7 @@ class PldChamberState(BaseModel):
     session: PldSession = Field(default_factory=PldSession)
     limits: PldLimits = Field(default_factory=PldLimits)
     rheed: PldRheed = Field(default_factory=PldRheed)
+    sequence: PldSequenceStatus = Field(default_factory=PldSequenceStatus)
     activity: list["PldActivity"] = Field(
         default_factory=list,
         description="The newest chamber.pld operations (up to 10, oldest first), on the state stream so a "

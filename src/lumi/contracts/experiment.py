@@ -26,6 +26,12 @@ from .payloads.experiment import (
     LaserTest,
     LaserTestList,
     ListLaserTests,
+    ListSequences,
+    GetSequence,
+    SaveSequence,
+    SequenceInfo,
+    SequenceList,
+    SequenceRef,
     SetTargetPreablation,
     TargetPreablation,
     TargetPreablationList,
@@ -506,6 +512,41 @@ DRIVER = Capability(
            journal=True),
         Op("list_laser_tests", ListLaserTests, LaserTestList,
            doc="The laser tests, newest first; `today` marks one begin_set_laser_power can use."),
+        # --- sequences: step lists pld-service runs (pld driver only)
+        Op("save_sequence", SaveSequence, SequenceInfo,
+           doc="Store a step list for pld-service to run. Different steps under an existing "
+               "name become its next version (a version never changes); the same steps "
+               "return the version they already are. A new version is unapproved: a person "
+               "reviews it once (approve_sequence) before it can run.",
+           journal=True),
+        Op("list_sequences", ListSequences, SequenceList,
+           doc="Stored sequences, every version, with who saved and who approved each."),
+        Op("get_sequence", GetSequence, SequenceInfo,
+           doc="One version with its full step list (the latest when version is left out)."),
+        Op("approve_sequence", SequenceRef, SequenceInfo,
+           doc="A person approves one exact version after reviewing its steps; from then on it "
+               "runs without anyone. Refused for the agent (actor mcp:...) and without a named "
+               "actor: the agent shows the person the steps and asks them to approve in the Deck.",
+           journal=True),
+        Op("run_sequence", SequenceRef, TaskAck,
+           doc="Run one approved version on pld-service; refused if that version is not "
+               "approved. Returns a TaskAck at once; progress is `sequence` in the driver "
+               "state and each step goes in the step journal. meter_energy steps need today's "
+               "laser test. While it runs pld-service refuses every other operation, from every "
+               "client, except stop_fire, the RHEED all-offs and pause/cancel. A failed step "
+               "ends the run; nothing is undone or retried. stop_deposition and cancel_task "
+               "cancel it. Wrap it in start_storage / finish_experiment_record as a deposition.",
+           journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("pause_sequence", Empty, Ack,
+           doc="Pause the running sequence: a wait stops counting, a waited fire stops its "
+               "train (resume fires the pulses left), any other step finishes first.",
+           journal=True),
+        Op("resume_sequence", Empty, Ack, doc="Carry on a paused sequence (also ends a `pause` step).",
+           journal=True),
+        Op("cancel_sequence", Empty, Ack,
+           doc="End the running sequence now; a fire train stops, a move or ramp under way "
+               "carries on, nothing is undone.",
+           journal=True),
         # --- per-target pre-ablation
         Op("list_target_preablation", Empty, TargetPreablationList,
            doc="The pre-ablation amount set for each target material. A material not "

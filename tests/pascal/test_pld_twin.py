@@ -21,6 +21,7 @@ import pytest_asyncio
 
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
+    PldEventQuery,
     PldFireRequest,
     PldPositionRequest,
     PldLaserEnergyRequest,
@@ -32,6 +33,7 @@ from lumi.contracts.payloads.pld import (
     PldRheedFilamentOnRequest,
     PldRheedFocusRequest,
     PldRheedHvOnRequest,
+    PldTargetRequest,
 )
 from lumi.experiment.chamber import PldChamber, PldStopped
 from lumi.pascal.chamber_log import process_row
@@ -501,3 +503,41 @@ async def test_mask_speed_per_move(handler):
     assert not reply.ok and "mask_speed" in reply.message, reply.message
     reply = await h.set_sample_position(PldPositionRequest(position=10.0, wait=True, speed_mm_s=1.0))
     assert not reply.ok and "Mask1 only" in reply.message, reply.message
+
+
+async def test_a_sequence_runs_pauses_and_holds_the_service(handler):
+    # REA 38ca32e: the service runs the list; every other operation is refused meanwhile.
+    from lumi.contracts.payloads.pld import PldSequenceRequest
+
+    h = handler
+    steps = [{"label": "out", "mask": {"position": 30, "wait": False, "speed_mm_s": 2.0}},
+             {"wait_axis_idle": {"axis": "Mask1"}},
+             {"loop_start": 2}, {"wait_s": 1.0}, {"loop_end": {}},
+             # Last: a final pause holds until resume (REA 79a686d).
+             {"pause": "lumi twin test"}]
+    reply = await h.run_sequence(PldSequenceRequest(name="lumi-twin", steps=steps))
+    assert reply.ok, reply.message
+    refused = await h.select_target(PldTargetRequest(target="B"))
+    assert not refused.ok and "sequence" in refused.message, refused.message
+    for _ in range(300):  # the pause step
+        state = await h.chamber_state(Empty())
+        if state.sequence.state == "paused":
+            break
+        await asyncio.sleep(0.1)
+    assert state.sequence.state == "paused" and state.sequence.message == "lumi twin test", state.sequence
+    assert state.sequence.done >= 4 and state.sequence.total == 5
+    events = (await h.recent_events(PldEventQuery(limit=200))).events
+    assert any(e.kind == "sequence" for e in events)
+    assert (await h.resume_sequence(Empty())).ok
+    for _ in range(100):
+        state = await h.chamber_state(Empty())
+        if state.sequence.state == "finished":
+            break
+        await asyncio.sleep(0.1)
+    assert state.sequence.state == "finished", state.sequence
+    # Cancelled midway: ends at once, nothing undone.
+    assert (await h.run_sequence(PldSequenceRequest(name="lumi-twin-2", steps=[{"wait_s": 30}]))).ok
+    await asyncio.sleep(0.5)
+    assert (await h.cancel_sequence(Empty())).ok
+    await asyncio.sleep(0.5)
+    assert (await h.chamber_state(Empty())).sequence.state == "cancelled"

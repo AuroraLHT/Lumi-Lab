@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -349,6 +350,23 @@ class GrowthDB:
                 frequency REAL NOT NULL,
                 set_by TEXT,
                 set_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Step lists for pld-service to run (RunSequence). A version never changes:
+            -- saving different steps under a name adds the next version. A person
+            -- approves one exact version once; after that it runs without one.
+            CREATE TABLE IF NOT EXISTS sequence (
+                sequence_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name VARCHAR(100) NOT NULL,
+                version INTEGER NOT NULL,
+                steps_json TEXT NOT NULL,
+                content_hash VARCHAR(32) NOT NULL,
+                description TEXT,
+                saved_by TEXT,
+                saved_at REAL NOT NULL,
+                approved_by TEXT,
+                approved_at REAL,
+                UNIQUE (name, version)
             );
 
             CREATE INDEX IF NOT EXISTS idx_meas_file ON measurement_file(measurement_id);
@@ -1024,6 +1042,52 @@ class GrowthDB:
         )
         await self.conn.commit()
         return await self.get_target_preablation(target_material)
+
+    # --- sequences: step lists pld-service runs ----------------------------------
+
+    async def save_sequence(self, name: str, steps_json: str, content_hash: str,
+                            description: str | None = None, saved_by: str | None = None) -> dict:
+        """The next version of `name`, or the latest one unchanged if its steps are
+        the same (so re-saving does not undo an approval)."""
+        latest = await self.get_sequence(name)
+        if latest is not None and latest["content_hash"] == content_hash:
+            return latest
+        version = (latest["version"] + 1) if latest else 1
+        await self.conn.execute(
+            """INSERT INTO sequence (name, version, steps_json, content_hash, description,
+            saved_by, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (name, version, steps_json, content_hash, description, saved_by, time.time()),
+        )
+        await self.conn.commit()
+        return await self.get_sequence(name, version)
+
+    async def get_sequence(self, name: str, version: int | None = None) -> dict | None:
+        """One version, or the latest when `version` is None."""
+        if version is None:
+            sql, args = "SELECT * FROM sequence WHERE name = ? ORDER BY version DESC LIMIT 1", (name,)
+        else:
+            sql, args = "SELECT * FROM sequence WHERE name = ? AND version = ?", (name, version)
+        async with self.conn.execute(sql, args) as cursor:
+            row = await cursor.fetchone()
+        return dict(row) if row else None
+
+    async def list_sequences(self, name: str | None = None) -> list[dict]:
+        """Every version, newest first by name; or every version of one name."""
+        sql = "SELECT * FROM sequence"
+        args: tuple = ()
+        if name is not None:
+            sql, args = sql + " WHERE name = ?", (name,)
+        async with self.conn.execute(sql + " ORDER BY name, version DESC", args) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+    async def approve_sequence(self, name: str, version: int, approved_by: str) -> dict | None:
+        await self.conn.execute(
+            """UPDATE sequence SET approved_by = ?, approved_at = ?
+            WHERE name = ? AND version = ? AND approved_at IS NULL""",
+            (approved_by, time.time(), name, version),
+        )
+        await self.conn.commit()
+        return await self.get_sequence(name, version)
 
     # --- chamber session + step journal: what happened -------------------------
 

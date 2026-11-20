@@ -434,6 +434,15 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
             self._emit("laser_done", f"{request.pulses} pulses at {request.rate_hz:g} Hz")
         return self._ok()
 
+    # Sequences (pld-service 38ca32e) are not modelled; the twin runs them.
+    def RunSequence(self, request, context):
+        return self._no("sequences are not modelled by Lumi's simulator: use pld-service --twin")
+
+    def PauseSequence(self, request, context):
+        return self._no("no sequence is running")
+
+    ResumeSequence = CancelSequence = PauseSequence
+
     def StopFire(self, request, context):
         # Any client, with or without control: a person must be able to stop a run.
         m = self.model

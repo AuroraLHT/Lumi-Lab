@@ -420,3 +420,15 @@ async def test_speed_and_accel_are_for_the_mask_only(driver):
     assert not reply.ok and "Mask1 only" in reply.message
     reply = await handler.set_rheed_gun_x(PldPositionRequest(position=1.0, accel_mm_s_per_ms=0.1))
     assert not reply.ok and "Mask1 only" in reply.message
+
+
+async def test_a_sequence_is_refused_by_the_simulator_and_checked_before_sending(driver):
+    from lumi.contracts.payloads.pld import PldSequenceRequest
+
+    handler, _, _ = driver
+    reply = await handler.run_sequence(PldSequenceRequest(name="x", steps=[{"wait_s": 1}]))
+    assert not reply.ok and "not modelled" in reply.message
+    reply = await handler.run_sequence(PldSequenceRequest(name="x", steps=[{"teleport": {}}]))
+    assert not reply.ok and "RunSequence not sent" in reply.message
+    state = await handler.chamber_state(Empty())
+    assert state.sequence.state == ""
