@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: cddb733d6d0451e8
+# contract_hash: 98ccd27487ab29dc
 
 """Generated clients for the chamber node."""
 
@@ -147,7 +147,7 @@ class ChamberPldClient(CapabilityClient):
         return await self.call("release_control")  # type: ignore[return-value]
 
     async def set_valve(self, req: PldValveRequest) -> PldReply:
-        """Open or close a valve by its reference name. The service refuses an order that breaks a valve lock (ok=false, the reason in message, nothing moved): open a turbo's fore valve before its main valve and close the main valve before the fore valve (FV1 with MV10/MV11, FV20-MV20, FV21-MV21, FV3-MV3); on the load lock, close MV3 and FV3 before opening RV3, and close RV3 before opening FV3, then MV3. Closing a main valve or RV3 is never refused."""
+        """Open or close a valve by its reference name. The service refuses an order that breaks a valve lock (ok=false, the reason in message, nothing moved): open a turbo's fore valve before its main valve and close the main valve before the fore valve (FV1 with MV10/MV11, FV20-MV20, FV21-MV21, FV3-MV3); on the load lock, close MV3 and FV3 before opening RV3, and close RV3 before opening FV3, then MV3. Closing a main valve or RV3 is never refused. While state.session.valves_locked is true (the PLC watchdog tripped), opening MV10, MV11, MV20 or MV21 is refused too."""
         return await self.call("set_valve", req)  # type: ignore[return-value]
 
     async def select_target(self, req: PldTargetRequest) -> PldReply:

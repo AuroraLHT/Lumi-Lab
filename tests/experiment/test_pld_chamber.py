@@ -169,14 +169,67 @@ async def test_cool_down_is_one_setpoint(fake):
 
 async def test_heater_on_and_off(fake):
     handler, client = fake
+    # From cold pld-service refuses PID ("no pyrometer reading"), so heater_on leaves it
+    # to to_temperature's ramp_to, after the warm-up (HZO twin dry run, 2026-11-20).
+    client.refuse["set_temperature_control"] = "PID refused: no pyrometer reading"
     await handler.manager.initiate_heating_laser(timeout=1)
     assert client.calls == [(op, {"on": True}) for op in (
-        "set_heater_key", "set_heater_start", "set_heater_threshold", "set_temperature_control")]
+        "set_heater_key", "set_heater_start", "set_heater_threshold")]
+    client.refuse.clear()
     client.calls.clear()
     client.state.heater.temperature = 150.0
     await handler.manager.turn_off_heating_laser()
     assert client.calls == [(op, {"on": False}) for op in (
         "set_temperature_control", "set_heater_threshold", "set_heater_start", "set_heater_key")]
+
+
+async def test_a_failed_warm_up_sets_the_current_back_and_says_so(fake):
+    # Left alone, a warm-up that fails part-way holds the heater open-loop at its last
+    # step. It goes back to where it started and the task fails, saying so.
+    handler, client = fake
+    client.state.heater.temperature = 25.0
+    client.state.heater.current_set = 6.0
+    steps = 0
+
+    async def refuse_third(op, req=None, _call=client.call):
+        nonlocal steps
+        if op == "set_heating_current" and req.amps > 6.05:
+            steps += 1
+            if steps == 3:
+                return PldReply(ok=False, message="LD current refused")
+        return await _call(op, req)
+
+    client.call = refuse_third
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    result = await wait_task(handler)
+    assert result["ok"] is False
+    assert "manual warm-up failed" in result["error"] and "set back to 6.00 A" in result["error"]
+    currents = [c["amps"] for op, c in client.calls if op == "set_heating_current"]
+    assert currents[-1] == 6.0 and "set_temperature" not in ops(client)
+
+
+async def test_a_warm_up_already_at_its_current_still_waits_for_the_threshold(fake):
+    # Threshold on can leave the LD at the warm-up current already (7.81 A on the twin,
+    # 2026-11-20). No steps then, but PID must not engage below the threshold.
+    handler, client = fake
+    client.state.heater.temperature = 177.0
+    client.state.heater.current_set = 7.81
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    result = await wait_task(handler)
+    assert result["ok"] is False and "stalled at 177" in result["error"], result
+    assert "set_temperature_control" not in [op for op, c in client.calls if c.get("on")]
+    assert [c["amps"] for op, c in client.calls if op == "set_heating_current"] == [7.81]  # set back only
+
+    # The same start, but the substrate passes the threshold while the warm-up waits.
+    client.calls.clear()
+    client.state.heater.temperature = 177.0
+    client.state.heater.current_set = 7.81
+    asyncio.get_running_loop().call_later(0.3, setattr, client.state.heater, "temperature", 230.0)
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    result = await wait_task(handler)
+    assert result["ok"] is True, result
+    assert "set_heating_current" not in ops(client)
+    assert ops(client)[-2:] == ["set_temperature_control", "set_temperature"]
 
 
 async def test_set_target_turns_on_auto_spin_and_twist(fake):

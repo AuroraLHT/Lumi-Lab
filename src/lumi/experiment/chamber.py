@@ -277,8 +277,11 @@ class PldChamber:
     # --- heater -------------------------------------------------------------------
 
     async def heater_on(self) -> None:
-        # MI's Heating Laser Lock ACTIVE / Heating Laser ON / Threshold ON / PID, in order.
-        for op in ("set_heater_key", "set_heater_start", "set_heater_threshold", "set_temperature_control"):
+        # MI's Heating Laser Lock ACTIVE / Heating Laser ON / Threshold ON, in order. Not
+        # PID: from cold the pyrometer has no reading and pld-service refuses it ("PID
+        # refused: no pyrometer reading"). ramp_to engages it once there is something to
+        # hold, after to_temperature's manual warm-up.
+        for op in ("set_heater_key", "set_heater_start", "set_heater_threshold"):
             await self._call(op, PldSwitchRequest(on=True))
 
     async def heater_off(self) -> None:

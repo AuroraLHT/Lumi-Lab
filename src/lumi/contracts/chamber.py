@@ -182,7 +182,9 @@ PLD = Capability(
                 "open a turbo's fore valve before its main valve and close the main valve "
                 "before the fore valve (FV1 with MV10/MV11, FV20-MV20, FV21-MV21, FV3-MV3); on "
                 "the load lock, close MV3 and FV3 before opening RV3, and close RV3 before "
-                "opening FV3, then MV3. Closing a main valve or RV3 is never refused.",
+                "opening FV3, then MV3. Closing a main valve or RV3 is never refused. While "
+                "state.session.valves_locked is true (the PLC watchdog tripped), opening MV10, "
+                "MV11, MV20 or MV21 is refused too.",
                 timeout_s=_MOVE_S),
         _pld_op("select_target", PldTargetRequest, "Revolve the carousel to target A..F or Clear.",
                 timeout_s=_MOVE_S),
