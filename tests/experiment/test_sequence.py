@@ -95,10 +95,10 @@ class SequenceClient(FakePldClient):
         self.hold = False  # keep reporting "running" until cancelled
         self.down = False  # pld-service not answering
 
-    async def call(self, op, req=None):
+    async def call(self, op, req=None, *, actor=None):
         if op == "recent_events":
             return PldEventList(events=list(self.events))
-        reply = await super().call(op, req)
+        reply = await super().call(op, req, actor=actor)
         if op == "run_sequence" and reply.ok:
             self.state.sequence = PldSequenceStatus(name=req.name, state="running", started=1000.0,
                                                     steps=len(req.steps))
@@ -483,6 +483,33 @@ def test_the_tracker_prefers_the_events_detail_to_the_text():
     # At Clear nothing is deposited.
     tracker = seqlib.RunTracker(steps, target="Clear", shutter_away=True)
     assert not tracker.ended(1, True, "fired 100 of 100", {})[0]["deposition"]
+
+
+def test_the_tracker_carries_a_preablation_onto_the_next_layer_on_that_target():
+    steps = [{"sample_shutter": {"in_front": True}}, {"fire_laser": {"pulses": 50, "rate_hz": 10, "wait": True}},
+             {"sample_shutter": {"in_front": False}}, {"fire_laser": {"pulses": 40, "rate_hz": 5, "wait": True}},
+             {"select_target": {"target": "B"}}, {"fire_laser": {"pulses": 10, "rate_hz": 5, "wait": True}}]
+    tracker = seqlib.RunTracker(steps, target="A", shutter_away=True)
+    for step, message in enumerate(["", "fired 50 of 50", "", "fired 40 of 40", "", "fired 10 of 10"], 1):
+        _, closed = tracker.ended(step, True, message, {})
+    assert closed["target_id"] == "A" and closed["preablation"] == (50, 10.0) and closed["num_pulse"] == 40
+    assert tracker.finish()["preablation"] is None  # B was not pre-ablated
+
+
+def test_the_tracker_keeps_the_meter_energy_pld_service_reports_as_laser_energy():
+    # pld-service runs meter_energy as the laser_energy resolve() made of it and names
+    # it that in the event; the layer still carries the energy at the meter.
+    steps = [{"meter_energy": {"mj": 120}}, {"fire_laser": {"pulses": 40, "rate_hz": 10, "wait": True}},
+             {"laser_energy": {"mj": 250}}, {"select_target": {"target": "B"}},
+             {"fire_laser": {"pulses": 10, "rate_hz": 10, "wait": True}}]
+    tracker = seqlib.RunTracker(steps, target="A", shutter_away=True)
+    tracker.ended(1, True, "laser energy 200 mJ", {"op": "laser_energy"})
+    tracker.ended(2, True, "fired 40 of 40", {"op": "fire_laser"})
+    tracker.ended(3, True, "laser energy 250 mJ", {"op": "laser_energy"})
+    tracker.ended(4, True, "", {"op": "select_target"})
+    _, closed = tracker.ended(5, True, "fired 10 of 10", {"op": "fire_laser"})
+    assert closed["target_id"] == "A" and closed["meter_mj"] == 120
+    assert tracker.finish()["meter_mj"] is None  # a source energy, not one at the meter
 
 
 async def test_a_second_run_is_refused_and_leaves_the_first_ones_status(seq):

@@ -343,12 +343,19 @@ class ExperimentHandler:
         substrate. None whenever nothing is loaded, which is a normal state --
         alignment, a gas change and a warm-up are real steps that belong to the
         session and to no specimen.
+
+        Once every position is finished there is no current position, but the
+        substrate is still on the chamber: the cool-down and its snapshots belong to
+        the whole substrate, its root sample (they had sample_id null in the HZO twin
+        dry run).
         """
         m = self.manager
         substrate = m.current_substrate if m else None
         if substrate is None or substrate.db_id is None:
             return None
         row = await self.growth_db.find_sample(substrate.db_id, substrate.current_position_id)
+        if row is None:
+            row = await self.growth_db.find_sample(substrate.db_id, None)
         return row[0] if row else None
 
     def build_manager(self) -> None:
@@ -670,11 +677,16 @@ class ExperimentHandler:
     async def perform_preablation(self, req: PerformPreablation) -> TaskAck:
         material = await self._target_material(req.target_id)
         num_pulse, frequency = await self._preablation_amount(material, req)
+
+        async def preablate() -> None:
+            await self.manager.perform_preablation(
+                req.target_id, num_pulse, frequency, req.is_dryrun, req.move_mask_to_block_position)
+            if not req.is_dryrun:  # the next growth record of this material says so
+                self.manager.note_preablation(material, num_pulse, frequency)
+
         return await self._start_moving_task(
             "perform_preablation",
-            self.manager.perform_preablation(
-                req.target_id, num_pulse, frequency, req.is_dryrun, req.move_mask_to_block_position,
-            ),
+            preablate(),
             {
                 "target_id": req.target_id, "num_pulse": num_pulse,
                 "target_material": material,

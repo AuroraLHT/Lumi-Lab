@@ -286,15 +286,32 @@ def build_scene_renderer(model: ChamberModel) -> ChamberSceneRenderer:
     return ChamberSceneRenderer(model, holder, mask)
 
 
+class PldSceneSource:
+    """The sim camera's scene from pld-service's live state, for `--camera sim` against
+    a pld-service twin: the overlay reads `Substrate` and `Mask1` off `snapshot()`, as
+    it does off the simulator's ChamberModel. Without it the twin's sim camera showed a
+    still image, so nothing on it moved with the mask and auto_align_center_mask could
+    find no slit (HZO twin dry run, 2026-11-20)."""
+
+    def __init__(self, state_monitor) -> None:
+        self.state_monitor = state_monitor
+
+    def snapshot(self) -> dict:
+        from lumi.pascal.pld.columns import values_from_state  # no grpc in columns
+
+        latest = self.state_monitor.latest
+        return values_from_state(latest) if latest is not None else {}
+
+
 def build_camera(src: str, model: ChamberModel | None = None, kind: str | None = None):
     """The chamber's own webcam. Returns (camera, height, width).
 
     `kind` is "webcam" or "sim"; None picks the webcam for `path` and the simulated
     camera otherwise. "sim" with `path` is for a pld-service twin on a PC with no webcam.
 
-    `model` is the live chamber model from `build_simulated_chamber` -- only ever set
-    for `--src sim`, where it drives the rotation/mask overlay (see
-    `build_scene_renderer`). Without it the sim camera shows the plain asset.
+    `model` is the live chamber model from `build_simulated_chamber` for `--src sim`,
+    or a `PldSceneSource` for a pld-service twin; it drives the rotation/mask overlay
+    (see `build_scene_renderer`). Without it the sim camera shows the plain asset.
     """
     if (kind or ("webcam" if src == "path" else "sim")) == "webcam":
         cfg = settings.pascal.webcam

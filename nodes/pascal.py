@@ -41,6 +41,7 @@ from lumi.contracts.chamber import MI_MODE, PLD
 from lumi.contracts.payloads.chamber import MIModeReadout
 from lumi.contracts.payloads.pld import PldReadout
 from lumi.pascal.hardware import (
+    PldSceneSource,
     build_camera,
     build_config_reader,
     build_fiducials,
@@ -97,6 +98,9 @@ def build(args: argparse.Namespace) -> EquipmentNode:
         pld_handler, pld_workers = build_pld_driver(address, log_dir)
         sim_workers += pld_workers
         drain_hooks.insert(0, pld_handler.release_on_shutdown)
+    if model is None and pld_handler is not None and args.camera == "sim":
+        # A pld-service twin with no webcam: the sim camera's overlay follows the service.
+        model = PldSceneSource(pld_handler.state_monitor)
     camera, _, _ = build_camera(args.src, model=model, kind=args.camera)
 
     # The camera's in-process fan-out: one grab feeds every consumer. The stream is

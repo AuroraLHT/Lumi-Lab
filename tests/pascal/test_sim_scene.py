@@ -214,3 +214,23 @@ def test_a_marker_at_the_slit_position_dips_as_mask1_sweeps_past_it(model, holde
     assert readings[mask.hidden_position_mm] == pytest.approx(200.0)  # slit far away: unobstructed
     assert readings[mask.center_position_mm] == pytest.approx(200.0)  # slit right on it: unobstructed
     assert readings[dip_mm] < 50  # mask has slid on: opaque
+
+
+def test_the_overlay_follows_pld_service_through_a_pld_scene_source(holder, mask):
+    # A pld-service twin with the sim camera: the mask is drawn where the service says
+    # Mask1 is, so auto_align_center_mask has a slit to find (HZO twin dry run).
+    from types import SimpleNamespace
+
+    from lumi.pascal.hardware import PldSceneSource
+    from lumi.pascal.pld.proto import pld_pb2 as pb
+
+    monitor = SimpleNamespace(latest=None)
+    renderer = ChamberSceneRenderer(PldSceneSource(monitor), holder, mask)
+    assert PldSceneSource(monitor).snapshot() == {}  # nothing streamed yet
+    frames = {}
+    away = mask.hidden_position_mm - 10.0
+    for mm in (away, mask.center_position_mm):
+        monitor.latest = pb.ChamberState(motion=pb.Motion(mask_position=mm, sample_angle=0.0))
+        frames[mm] = renderer.render(blank())
+    assert np.array_equal(frames[away], blank())
+    assert not np.array_equal(frames[mask.center_position_mm], blank())
