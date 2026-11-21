@@ -699,7 +699,7 @@ async def test_readings_come_from_the_service_not_the_log(fake):
     assert await m.get_current_mask_position() == 100.0
     assert await m.is_heating_laser_on() is True
     assert await m.is_motor_free() is False
-    assert (await m.get_current_target())[0] == 1
+    assert (await m.get_current_target())[0] == 0  # A, zero-based like the log
     valves = await m.get_valve_status()
     assert valves["MV10 (Main)"] and valves["MV3 (L/L)"] and not valves["FV1 (Main)"]
     pumps = await m.get_pump_status()
@@ -712,7 +712,20 @@ async def test_readings_come_from_the_service_not_the_log(fake):
 def test_no_reading_is_zero_not_nan():
     row = readings_from_state(PldChamberState())
     assert row["HT Temp moni"] == 0.0 and not math.isnan(row["Vac Pres Main"])
-    assert row["Motor free"] is False and row["TG No."] == 0
+    assert row["Motor free"] is False and row["TG No."] == -1  # no slot, not A
+
+
+@pytest.mark.parametrize("target, number, slot", [("A", 0, "A"), ("C", 2, "C"), ("Clear", 6, "Clear"), ("", -1, None)])
+async def test_the_current_target_counts_from_zero_like_the_log(fake, target, number, slot):
+    # The twin dry run: TG No. was one-based under pld-service, so A read as B.
+    handler, client = fake
+    handler.manager.target_mapper = {"A": "TG1name", "C": "TG3name", "Clear": "TG7name"}
+    async def material(slot):
+        return {"A": "SRO", "C": "LSMO", "Clear": None}[slot]
+    handler.manager.get_target_name_by_id = material
+    client.state.motion.target = target
+    got_number, got_slot, _ = await handler.manager.get_current_target()
+    assert (got_number, got_slot) == (number, slot)
 
 
 # --- end to end over gRPC, against the simulator ------------------------------------

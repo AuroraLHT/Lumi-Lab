@@ -132,7 +132,7 @@ async def test_the_growth_log_parses_like_pld_controllers(driver):
         rows = list(csv.DictReader(f))
     assert list(rows[0]) == list(LOG_COLUMNS)
     row = process_row(rows[-1])
-    assert row["TG No."] == "3"
+    assert row["TG No."] == "2"  # zero-based, as PLD Controller logs it: C is TG3name
     assert row["Mask1"] == "12.50"
     # The high regime: IG1 off, so the manager reads the capacitance gauge instead.
     assert row["Vac Pres Main"] == "0.00E+0"
@@ -188,7 +188,7 @@ async def test_nan_readings_become_none_and_zero_in_the_log():
     assert model.backend == "HARDWARE" and model.read_only is True
     values = values_from_state(state)
     assert values["HT Temp moni"] == 0.0 and values["Vac Pres Main"] == 0.0
-    assert values["TG No."] == 7
+    assert values["TG No."] == 6  # Clear, TG7name
 
 
 async def test_the_log_carries_the_train():

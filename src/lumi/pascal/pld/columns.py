@@ -11,8 +11,13 @@ import math
 
 from lumi.pascal.sim.columns import LOG_COLUMNS
 
-#: PLDconfig.ini TG1..TG7.
-TARGET_NUMBERS = {"A": 1, "B": 2, "C": 3, "D": 4, "E": 5, "F": 6, "Clear": 7}
+#: `TG No.` as PLD Controller logs it: zero-based, one less than PLDconfig.ini's TG<n>
+#: (A = TG1name = 0, Clear = TG7name = 6, Monitor = 7), as `get_current_target` reads it.
+#: It was one-based here, so on pld-service `get_current_target` said Monitor at Clear
+#: and B at A (HZO twin dry run, 2026-11-20).
+TARGET_NUMBERS = {"A": 0, "B": 1, "C": 2, "D": 3, "E": 4, "F": 5, "Clear": 6, "Monitor": 7}
+#: No slot in place (between slots, or not known yet): no slot's number.
+NO_TARGET = -1
 #: `Valve Stat1` and `Valve Stat2` bits, as `lumi.pascal.log_fields.PARSE_DICT` decodes
 #: them (1 = open). PLD Controller's MV2/FV2 (RHEED) are pld-service's MV20/FV20.
 #: Confirmed by REA (2026-11-10) against PLD Controller's own log, each named PLC
@@ -49,7 +54,7 @@ def values_from_state(s) -> dict:
     temp_set = _num(h.temperature_setpoint) if h.pid_on else 0.0
     values = {c: 0 for c in LOG_COLUMNS[1:]}
     values.update({
-        "TG No.": TARGET_NUMBERS.get(m.target, 0),
+        "TG No.": TARGET_NUMBERS.get(m.target, NO_TARGET),
         "TG Rotate": _num(m.target_angle),
         "Mask1": _num(m.mask_position),
         "Mask2": _num(m.rheed_gun_x),
