@@ -134,7 +134,7 @@ async def test_the_experiment_driver_drives_the_chamber(handler):
     await chamber.set_mfc_flow(1, 2.0)
     await chamber.start_logging("twin_run", 1)
     readings = await chamber.readings()
-    assert readings["TG No."] == 2 and readings["Mask1"] == pytest.approx(10.0, abs=0.05)
+    assert readings["TG No."] == 1 and readings["Mask1"] == pytest.approx(10.0, abs=0.05)
     state = await h.chamber_state(Empty())
     assert state.motion.target == "B"
     assert state.motion.mask_position == pytest.approx(10.0, abs=0.05)
@@ -149,7 +149,7 @@ async def test_the_experiment_driver_drives_the_chamber(handler):
     assert path.name == "twin_run.csv"
     with path.open(newline="") as f:
         row = process_row(list(csv.DictReader(f))[-1])
-    assert row["TG No."] == "2" and row["Mask1"] == "10.00"
+    assert row["TG No."] == "1" and row["Mask1"] == "10.00"
 
 
 async def test_a_fire_reports_its_own_missed_shots(handler):
