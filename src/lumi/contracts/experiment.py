@@ -22,6 +22,9 @@ from __future__ import annotations
 
 from .payloads.common import Ack, Empty
 from .payloads.experiment import (
+    FinishRheedOn,
+    RheedGunResult,
+    RheedOn,
     ConfirmLaserTest,
     LaserTest,
     LaserTestList,
@@ -370,6 +373,35 @@ DRIVER = Capability(
                "pld-service's default). Refused while the motor holding lock is released.",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("move_rheed_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("rheed_on", RheedOn, RheedGunResult,
+           doc="Switch the RHEED gun on at the lab's operating values (pld driver only): "
+               "filament on, HV on (25 kV), then the filament raised in 50 mA steps from "
+               "1800 mA (2100 mA at most) until the emission's first two digits stop "
+               "changing; that last step is taken back. With by_person (the lab's "
+               "default) it stops after filament and HV and raises a `rheed_emission` "
+               "pending confirmation instead: show the person the table, then "
+               "rheed_emission_step_up per step until they say stop, then finish_rheed_on. "
+               "The result's message ends with the filament-vs-emission table, then focus and deflection X/Y. Each "
+               "value can be overridden for this call; focus and deflection depend on the "
+               "alignment. Waits for every readback, about 2-4 minutes from off. Fails "
+               "with what was and was not reached, leaving the gun as it got. Beam "
+               "position screws, incidence angle and camera gain stay with a person.",
+           journal=True, timeout_s=600.0),
+        Op("rheed_emission_step_up", Empty, RheedGunResult,
+           doc="During a `rheed_emission` confirmation: the filament up one step (50 mA) "
+               "and the emission read after it settles. Returns the table so far and "
+               "whether the first two digits changed. Only when the person says so.",
+           journal=True, timeout_s=300.0),
+        Op("finish_rheed_on", FinishRheedOn, RheedGunResult,
+           doc="End a `rheed_emission` confirmation where the person said stop: the "
+               "filament stays at filament_ma (one of the tried steps; left out, where it "
+               "is), then focus and deflection as rheed_on would.",
+           journal=True, timeout_s=300.0),
+        Op("rheed_off", Empty, RheedGunResult,
+           doc="Switch the RHEED gun's HV and filament off, ramped (pld-service's "
+               "rheed_all_off_gentle; pld driver only): about two minutes from full. "
+               "The normal way off at the end of a substrate.",
+           journal=True, timeout_s=360.0),
         Op("rotate_sample_to", SampleAngle, Ack,
            doc="Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused "
                "while the motor holding lock is released (see is_motor_free).",

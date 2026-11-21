@@ -17777,6 +17777,399 @@
             "response_codec": "json"
           },
           {
+            "name": "rheed_on",
+            "request": {
+              "description": "rheed_on's values for this call; None = the lab's (`[experiment.rheed]`).",
+              "properties": {
+                "by_person": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "True: stop after filament and HV for the person to say when the emission has saturated (rheed_emission_step_up / finish_rheed_on); false: the first-two-digits rule decides; None = the lab's setting",
+                  "title": "By Person"
+                },
+                "deflection_x_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Beam deflection X, mA (depends on the alignment)",
+                  "title": "Deflection X Ma"
+                },
+                "deflection_y_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Beam deflection Y, mA (depends on the alignment)",
+                  "title": "Deflection Y Ma"
+                },
+                "filament_max_ma": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The most the search raises the filament to, mA",
+                  "title": "Filament Max Ma"
+                },
+                "filament_start_ma": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Filament current to start the emission search from, mA",
+                  "title": "Filament Start Ma"
+                },
+                "focus_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Focus current, mA (depends on the alignment)",
+                  "title": "Focus Ma"
+                },
+                "hv_kv": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 30,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Beam energy, kV",
+                  "title": "Hv Kv"
+                }
+              },
+              "title": "RheedOn",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "emission_steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Emission Steps",
+                  "type": "array"
+                },
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Ma"
+                },
+                "gun": {
+                  "additionalProperties": true,
+                  "title": "Gun",
+                  "type": "object"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "searching": {
+                  "default": false,
+                  "title": "Searching",
+                  "type": "boolean"
+                },
+                "settings": {
+                  "additionalProperties": true,
+                  "title": "Settings",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedGunResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_emission_step_up",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "emission_steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Emission Steps",
+                  "type": "array"
+                },
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Ma"
+                },
+                "gun": {
+                  "additionalProperties": true,
+                  "title": "Gun",
+                  "type": "object"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "searching": {
+                  "default": false,
+                  "title": "Searching",
+                  "type": "boolean"
+                },
+                "settings": {
+                  "additionalProperties": true,
+                  "title": "Settings",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedGunResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "finish_rheed_on",
+            "request": {
+              "properties": {
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The filament current to stay at: one of the tried steps; None = where it is",
+                  "title": "Filament Ma"
+                }
+              },
+              "title": "FinishRheedOn",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "emission_steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Emission Steps",
+                  "type": "array"
+                },
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Ma"
+                },
+                "gun": {
+                  "additionalProperties": true,
+                  "title": "Gun",
+                  "type": "object"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "searching": {
+                  "default": false,
+                  "title": "Searching",
+                  "type": "boolean"
+                },
+                "settings": {
+                  "additionalProperties": true,
+                  "title": "Settings",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedGunResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_off",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "emission_steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Emission Steps",
+                  "type": "array"
+                },
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Ma"
+                },
+                "gun": {
+                  "additionalProperties": true,
+                  "title": "Gun",
+                  "type": "object"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "searching": {
+                  "default": false,
+                  "title": "Searching",
+                  "type": "boolean"
+                },
+                "settings": {
+                  "additionalProperties": true,
+                  "title": "Settings",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedGunResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "rotate_sample_to",
             "request": {
               "additionalProperties": false,
@@ -22406,6 +22799,7 @@
             "end_storage": "experiment.driver.req.end_storage",
             "finish_current_pixel": "experiment.driver.req.finish_current_pixel",
             "finish_experiment_record": "experiment.driver.req.finish_experiment_record",
+            "finish_rheed_on": "experiment.driver.req.finish_rheed_on",
             "finish_substrate": "experiment.driver.req.finish_substrate",
             "fire_laser_test": "experiment.driver.req.fire_laser_test",
             "get_current_log": "experiment.driver.req.get_current_log",
@@ -22456,6 +22850,9 @@
             "retire_record": "experiment.driver.req.retire_record",
             "retire_snapshot": "experiment.driver.req.retire_snapshot",
             "retire_substrate": "experiment.driver.req.retire_substrate",
+            "rheed_emission_step_up": "experiment.driver.req.rheed_emission_step_up",
+            "rheed_off": "experiment.driver.req.rheed_off",
+            "rheed_on": "experiment.driver.req.rheed_on",
             "rotate_sample_by": "experiment.driver.req.rotate_sample_by",
             "rotate_sample_to": "experiment.driver.req.rotate_sample_to",
             "run_sequence": "experiment.driver.req.run_sequence",

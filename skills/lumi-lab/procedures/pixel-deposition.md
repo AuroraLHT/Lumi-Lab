@@ -28,7 +28,9 @@ aligned by `auto_align_center_mask` rather than by a person.
    (SKILL.md §3). Poll the temperature until it is within tolerance. **Snapshot: chamber `heated`.** If the temperature
    changed, align the mask again (thermal expansion moves the holder), then
    `to_current_pixel`.
-9. A person sets the excimer to ON and adjusts the RHEED gun and stage.
+9. A person sets the excimer to ON. `rheed_on` if the gun is off
+   (`chamber.pld.chamber_state` `rheed.filament_on`; SKILL.md §2), then the person adjusts
+   the beam and stage.
    `begin_adjust_rheed_gain` → the person sets and confirms the gain. Look at
    `rheed.camera.image`: a good pattern for this position? If not, stop and say so.
    (Skipped while the RHEED is down for maintenance.)
@@ -59,6 +61,6 @@ whether to align by hand (`begin_check_mask_center`).
 15. A person sets the excimer to standby.
 16. `cool_down` at the substrate's ramp rate in the right atmosphere. Wait until
     `get_current_temperature` reads 165 °C or less. **Snapshot: chamber `cooled`.**
-17. `turn_off_heating_laser`, only now (SKILL.md §1).
+17. `turn_off_heating_laser`, only now (SKILL.md §1), then `rheed_off`.
 18. Report: `list_samples` with this substrate's `substrate_id` (every grown position
     should say so; left out, it lists every substrate), plus what each snapshot showed.

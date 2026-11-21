@@ -70,6 +70,25 @@ def default_energy_kev() -> float:
     return float(settings.get("rheed.energy_kev", 25.0) or 25.0)
 
 
+def beam_energy(requested: float | None, pld) -> dict:
+    """The recording's RHEED beam energy and where it came from: the gun's HV readback
+    when it is on (`gun`), else what start_recording was asked (`request`), else the
+    lab's usual (`default`). A gun that is off, or reads other than asked, is noted."""
+    r = getattr(pld, "rheed", None)
+    hv = r.hv_readback_kv if r is not None and r.present and r.hv_on else None
+    if hv is not None and hv > 0:
+        out = {"rheed_energy_kev": float(hv), "rheed_energy_source": "gun"}
+        if requested and abs(requested - hv) > 0.5:
+            out["rheed_energy_warning"] = (f"asked for {requested:g} keV but the gun's HV read "
+                                           f"{hv:g} kV at the start; the gun's is kept")
+        return out
+    out = ({"rheed_energy_kev": float(requested), "rheed_energy_source": "request"} if requested
+           else {"rheed_energy_kev": default_energy_kev(), "rheed_energy_source": "default"})
+    if r is not None and r.present:
+        out["rheed_energy_warning"] = "the RHEED gun's HV was off at the start"
+    return out
+
+
 #: What each save option needs to be up before a recording can start.
 DEPENDENCIES = {
     "save_frame": "rheed",
@@ -92,6 +111,12 @@ FLUSH_EVERY_S = 1.0
 WATCH_EVERY_S = 2.0
 #: A snapshot query that takes longer is left out of the metadata.
 SNAPSHOT_TIMEOUT_S = 3.0
+#: pld events asked for per look: all pld-service keeps (PldEventQuery's maximum).
+PLD_EVENTS_LIMIT = 1000
+#: A RHEED gun X move smaller than this is not an event, mm.
+RHEED_GUN_X_TOLERANCE_MM = 0.05
+#: Log rows the stream replays from before the start, older than this, are not kept, s.
+LOG_BACKLOG_SLACK_S = 1.0
 
 
 class StorageHandler:
@@ -113,6 +138,10 @@ class StorageHandler:
         self._crop = None
         self._frame_limit: SpeedLimiter | None = None
         self._detection_limit: SpeedLimiter | None = None
+        #: When the recording in progress started; what the watch loop compares to.
+        self._started_at: float | None = None
+        self._watch_meta: dict | None = None
+        self._watch_last: dict | None = None
         #: Last known liveness of each source, refreshed from the registry. readout()
         #: is synchronous (the heartbeat calls it), so it cannot query the bus itself.
         self._deps: dict[str, bool] = {name: False for name in set(DEPENDENCIES.values())}
@@ -134,6 +163,7 @@ class StorageHandler:
                 message=f"cannot record: {', '.join(missing)} not available on the bus",
             )
 
+        self._started_at = time.time()
         try:
             config = await self._build_config(req)
         except Exception as exc:
@@ -167,6 +197,7 @@ class StorageHandler:
                     f"recording {req.project_name}",
                     {k: getattr(req, k) for k in ("save_frame", "save_ai", "save_log", "save_integration")})
 
+        self._watch_meta = config["meta"]
         await self._subscribe(req)
         self._tasks = [asyncio.create_task(self._flush_loop(), name="storage-flush"),
                        asyncio.create_task(self._watch_loop(config["meta"]), name="storage-watch")]
@@ -182,6 +213,14 @@ class StorageHandler:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
+        # One last look, so what happened since the last pass (a ramp down that
+        # ended just now) is in the file.
+        if self._watch_meta is not None:
+            try:
+                await self._watch_once(self._watch_meta, self._watch_last or self._watch_start(self._watch_meta))
+            except Exception:
+                log.warning("the last look at the sources failed", exc_info=True)
+        self._watch_meta = self._watch_last = None
 
         name, writer, executor = self.project_name, self.writer, self._executor
         dropped = dict(self.dropped)
@@ -342,7 +381,7 @@ class StorageHandler:
             "integration": req.save_integration,
             "detection": detection,
             "meta": meta,
-            "attrs": {"rheed_energy_kev": float(req.rheed_energy_kev or default_energy_kev()),
+            "attrs": {**beam_energy(req.rheed_energy_kev, pld),
                       # What every temperature in this file was read at (lumi.experiment.pyrometer).
                       **({"pyrometer_emissivity": float(emissivity)}
                          if (emissivity := (req.context or {}).get("pyrometer_emissivity")) else {})},
@@ -385,43 +424,71 @@ class StorageHandler:
             if self.writer is not None:
                 self._write(self.writer.flush)
 
-    async def _watch_loop(self, meta: dict) -> None:
-        """Turn what changes on the sources into events: chamber events, camera
-        settings, the detector's crop, the integration boxes."""
-        last = {"camera": (meta.get("camera") or {}).get("config"),
+    def _watch_start(self, meta: dict) -> dict:
+        """What `_watch_once` compares against: the sources as the recording started."""
+        chamber = meta.get("chamber") or {}
+        return {"camera": (meta.get("camera") or {}).get("config"),
                 "crop": (meta.get("detection") or {}).get("crop"),
-                "bboxes": (meta.get("integrator") or {}).get("bboxes")}
-        since = time.time()
+                "bboxes": (meta.get("integrator") or {}).get("bboxes"),
+                "rheed_gun_x": (chamber.get("motion") or {}).get("rheed_gun_x"),
+                "since": self._started_at}
+
+    async def _watch_loop(self, meta: dict) -> None:
+        """Turn what changes on the sources into events, every WATCH_EVERY_S."""
+        last = self._watch_last = self._watch_last or self._watch_start(meta)
         while True:
             await asyncio.sleep(WATCH_EVERY_S)
-            writer = self.writer
-            if writer is None:
+            if self.writer is None:
                 return
-            events = await self._ask("pld", "recent_events", PldEventQuery(limit=200))
-            if events is not None:
-                for e in events.events:
-                    if e.time > since:
-                        self._write(writer.add_event, e.time, f"chamber.{e.kind}", e.message, e.detail)
-                if events.events:
-                    since = max(since, max(e.time for e in events.events))
-            for key, source, op, kind in (("camera", "camera", "get_camera_config", "camera_config"),
-                                          ("bboxes", "integrator", "bboxes", "integration_boxes")):
-                if key == "camera" and "camera" not in meta:
-                    continue
-                if key == "bboxes" and "integrator" not in meta:
-                    continue
-                now = _dump(await self._ask(source, op))
-                if now is not None and now != last[key]:
-                    self._write(writer.add_event, time.time(), kind, f"{kind} changed",
-                                {"before": last[key], "after": now})
-                    last[key] = now
-            if "detection" in meta:
-                state = await self._ask("detection", "get_state")
-                crop = _dump(state.crop) if state is not None and state.crop is not None else None
-                if state is not None and crop != last["crop"]:
-                    self._write(writer.add_event, time.time(), "detection_crop", "detection crop changed",
-                                {"before": last["crop"], "after": crop})
-                    last["crop"] = crop
+            await self._watch_once(meta, last)
+
+    async def _watch_once(self, meta: dict, last: dict) -> None:
+        """One pass: chamber events, the RHEED gun's position, camera settings, the
+        detector's crop, the integration boxes."""
+        writer = self.writer
+        if writer is None:
+            return
+        # Every pld event since the last pass, by time. The service keeps the newest
+        # PLD_EVENTS_LIMIT; a focus ramp alone makes one per 0.2 s step, so ask for all
+        # of them and say so if some were already gone.
+        events = await self._ask("pld", "recent_events", PldEventQuery(limit=PLD_EVENTS_LIMIT))
+        if events is not None:
+            new = [e for e in events.events if e.time > last["since"]]
+            if new and len(new) == len(events.events) == PLD_EVENTS_LIMIT:
+                self._write(writer.add_event, new[0].time, "chamber_events_gap",
+                            f"more than {PLD_EVENTS_LIMIT} chamber events since the last look: "
+                            "some before this were not kept", {"since": last["since"]})
+            for e in new:
+                self._write(writer.add_event, e.time, f"chamber.{e.kind}", e.message, e.detail)
+            if new:
+                last["since"] = max(e.time for e in new)
+        # The gun's position is a motor, not a gun event: pld emits no event for it.
+        if "chamber" in meta:
+            state = await self._ask("pld", "chamber_state")
+            x = state.motion.rheed_gun_x if state is not None else None
+            if x is not None and (last["rheed_gun_x"] is None
+                                  or abs(x - last["rheed_gun_x"]) > RHEED_GUN_X_TOLERANCE_MM):
+                self._write(writer.add_event, state.time or time.time(), "rheed_gun_x",
+                            f"RHEED gun X {x:g} mm", {"before": last["rheed_gun_x"], "after": x})
+                last["rheed_gun_x"] = x
+        for key, source, op, kind in (("camera", "camera", "get_camera_config", "camera_config"),
+                                      ("bboxes", "integrator", "bboxes", "integration_boxes")):
+            if key == "camera" and "camera" not in meta:
+                continue
+            if key == "bboxes" and "integrator" not in meta:
+                continue
+            now = _dump(await self._ask(source, op))
+            if now is not None and now != last[key]:
+                self._write(writer.add_event, time.time(), kind, f"{kind} changed",
+                            {"before": last[key], "after": now})
+                last[key] = now
+        if "detection" in meta:
+            state = await self._ask("detection", "get_state")
+            crop = _dump(state.crop) if state is not None and state.crop is not None else None
+            if state is not None and crop != last["crop"]:
+                self._write(writer.add_event, time.time(), "detection_crop", "detection crop changed",
+                            {"before": last["crop"], "after": crop})
+                last["crop"] = crop
 
     # --- subscriptions ------------------------------------------------------
 
@@ -442,7 +509,13 @@ class StorageHandler:
         if req.save_log:
             chamber_log = self.sources["log"]
 
+            started = self._started_at or 0.0
+
             async def on_log(entry, _payload) -> None:
+                # The stream replays its backlog on subscribing: rows from before the
+                # recording are not part of it.
+                if entry.time < started - LOG_BACKLOG_SLACK_S:
+                    return
                 self._write(writer.add_log, entry.time, entry.values)
 
             await chamber_log.on_log(on_log)

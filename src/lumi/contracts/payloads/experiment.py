@@ -51,7 +51,7 @@ _STRICT = ConfigDict(extra="forbid")
 class PendingConfirmation(BaseModel):
     id: str
     kind: str  # "proceed" | "laser_power" | "mask_center_alignment" | "mask_center_check"
-    # | "rheed_gain" | "pixel_check" | "fiducial_role" | "pressure"
+    # | "rheed_gain" | "rheed_emission" | "pixel_check" | "fiducial_role" | "pressure"
     message: str
     requested_at: float
 
@@ -521,6 +521,42 @@ class SetTarget(BaseModel):
 
 class MoveTo(BaseModel):
     position: float
+
+
+class RheedOn(BaseModel):
+    """rheed_on's values for this call; None = the lab's (`[experiment.rheed]`)."""
+
+    hv_kv: float | None = Field(None, gt=0, le=30, description="Beam energy, kV")
+    filament_start_ma: float | None = Field(
+        None, gt=0, description="Filament current to start the emission search from, mA")
+    filament_max_ma: float | None = Field(
+        None, gt=0, description="The most the search raises the filament to, mA")
+    focus_ma: float | None = Field(None, description="Focus current, mA (depends on the alignment)")
+    deflection_x_ma: float | None = Field(None, description="Beam deflection X, mA (depends on the alignment)")
+    deflection_y_ma: float | None = Field(None, description="Beam deflection Y, mA (depends on the alignment)")
+    by_person: bool | None = Field(
+        None, description="True: stop after filament and HV for the person to say when the emission "
+                          "has saturated (rheed_emission_step_up / finish_rheed_on); false: the "
+                          "first-two-digits rule decides; None = the lab's setting")
+
+
+class FinishRheedOn(BaseModel):
+    filament_ma: float | None = Field(
+        None, description="The filament current to stay at: one of the tried steps; None = where it is")
+
+
+class RheedGunResult(BaseModel):
+    message: str
+    #: The gun's readbacks at the end (filament_ma, hv_kv, emission_ua, focus_ma, x_ma, y_ma, on flags).
+    gun: dict = Field(default_factory=dict)
+    #: rheed_on: the filament current it settled on, and each (filament_ma, emission_ua) it tried.
+    filament_ma: float | None = None
+    emission_steps: list[dict] = Field(default_factory=list)
+    saturation: str | None = None
+    #: rheed_on: the values it used (the lab's, with this call's overrides).
+    settings: dict = Field(default_factory=dict)
+    #: True while the person's emission search is open (pending `rheed_emission`).
+    searching: bool = False
 
 
 class MoveMask(MoveTo):

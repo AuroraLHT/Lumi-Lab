@@ -329,6 +329,8 @@ async def test_storage_handler_records_every_stream(tmp_path, monkeypatch):
     import lumi.storage.handlers as handlers
     monkeypatch.setattr(handlers, "FRAME_RATE_LIMIT", 1e6)
     monkeypatch.setattr(handlers, "DETECTION_RATE_LIMIT", 1e6)
+    # The rows are dated T0, before this run; test_storage_watch covers the backlog cut.
+    monkeypatch.setattr(handlers, "LOG_BACKLOG_SLACK_S", float("inf"))
     sources = fake_sources()
     handler = StorageHandler(sources, root_folder=str(tmp_path))
     status = await handler.start_recording(StorageRequest(

@@ -46,6 +46,7 @@ from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, ut
 from lumi.experiment.mask_align import locate_slit
 from lumi.experiment import sequence as seqlib
 from lumi.experiment.chamber import ChamberBackend
+from lumi.experiment.rheed_gun import RheedGun, RheedGunSettings
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
@@ -274,9 +275,12 @@ class BaseExperimentManager:
         bounds: ExperimentBounds,
         target_mapper: dict[str, str],
         chamber_fiducial: ChamberFiducialClient | None = None,
+        rheed_gun: RheedGunSettings | None = None,
     ) -> None:
         #: The driver: `PldChamber` (pld-service, the default) or `MiChamber` (legacy MI mode).
         self.chamber = chamber
+        #: The RHEED gun at the lab's operating values; pld-service only.
+        self.rheed_gun = RheedGun(chamber, rheed_gun or RheedGunSettings())
         # Only mask-centre auto-alignment reads it; None leaves everything else working.
         self.chamber_fiducial = chamber_fiducial
         self.chamber_log = chamber_log
@@ -952,6 +956,38 @@ class BaseExperimentManager:
             raise ValueError(f"RHEED gun position must be in [{lo}, {hi}], got {position}")
         await self._await_motor_ready()
         await self.chamber.move_rheed_gun(position)
+
+    async def rheed_on(self, by_person: bool | None = None, **overrides) -> dict:
+        """The RHEED gun on at the lab's operating values (`lumi.experiment.rheed_gun`).
+        `by_person` (None = the setting): stop after filament and HV with the emission
+        search open, for the person to step (`rheed_step_up`) and end (`rheed_finish`)."""
+        if self.chamber.driver != "pld":
+            raise RuntimeError("rheed_on needs pld-service: under --use-legacy-mi-mode the gun "
+                               "is switched on its own controller, by hand")
+        if by_person is None:
+            by_person = self.rheed_gun.settings.filament_by_person
+        result = await self.rheed_gun.on(by_person=by_person, **overrides)
+        await self.add_recording_event("rheed_on", result["message"], result)
+        return result
+
+    async def rheed_step_up(self) -> dict:
+        result = await self.rheed_gun.step_up()
+        await self.add_recording_event("rheed_emission_step", result["message"], result)
+        return result
+
+    async def rheed_finish(self, filament_ma: float | None = None) -> dict:
+        result = await self.rheed_gun.finish(filament_ma)
+        await self.add_recording_event("rheed_on", result["message"], result)
+        return result
+
+    async def rheed_off(self) -> dict:
+        """The RHEED gun's filament and HV off, ramped (rheed_all_off_gentle)."""
+        if self.chamber.driver != "pld":
+            raise RuntimeError("rheed_off needs pld-service: under --use-legacy-mi-mode the gun "
+                               "is switched on its own controller, by hand")
+        result = await self.rheed_gun.off()
+        await self.add_recording_event("rheed_off", result["message"], result)
+        return result
 
     async def set_target(self, target_id: str) -> None:
         # SelectTarget revolves the carousel and the mode commands spin the target;

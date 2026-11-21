@@ -1,8 +1,9 @@
 """The RHEED beam energy a recording is made at: asked for, stored, read back.
 
-Nothing reads the energy off the gun, so the recording keeps whatever it was told --
-`start_recording`'s `rheed_energy_kev`, else the lab's `rheed.energy_kev`. Files from
-before this existed have none, and read back as the default, flagged as such.
+With pld-service's gun on, the recording keeps its HV readback; otherwise whatever it
+was told -- `start_recording`'s `rheed_energy_kev`, else the lab's `rheed.energy_kev` --
+and `rheed_energy_source` says which. Files from before this existed have none, and
+read back as the default, flagged as such.
 
 T0: no broker; the real Recorder writes every file.
 """
@@ -16,7 +17,8 @@ import pytest
 from lumi.contracts.payloads.experiment import StartStorage
 from lumi.contracts.payloads.storage import ListRecordings, RecordingName, StorageRequest
 from lumi.storage.archive import RecordingArchive
-from lumi.storage.handlers import ArchiveHandler, StorageHandler, default_energy_kev
+from lumi.contracts.payloads.pld import PldChamberState, PldRheed
+from lumi.storage.handlers import ArchiveHandler, StorageHandler, beam_energy, default_energy_kev
 from lumi.storage.record import Recorder, RecorderConfig
 
 
@@ -55,12 +57,35 @@ async def test_an_older_recording_reads_back_as_the_default_and_says_so(tmp_path
     assert listed.recordings[0].rheed_energy_kev == 22.0
 
 
-@pytest.mark.parametrize("asked, stored", [(None, 25.0), (18.5, 18.5)])
-async def test_start_recording_stores_what_it_is_asked_or_the_default(tmp_path, asked, stored):
+@pytest.mark.parametrize("asked, stored, source", [(None, 25.0, "default"), (18.5, 18.5, "request")])
+async def test_start_recording_stores_what_it_is_asked_or_the_default(tmp_path, asked, stored, source):
     handler = StorageHandler(sources={}, root_folder=str(tmp_path))
-    # Nothing saved, so no source is consulted: this is only the file's own metadata.
+    # Nothing saved and no pld source, so this is only the file's own metadata.
     config = await handler._build_config(StorageRequest(project_name="x", rheed_energy_kev=asked))
-    assert config["attrs"] == {"rheed_energy_kev": stored}
+    assert config["attrs"] == {"rheed_energy_kev": stored, "rheed_energy_source": source}
+
+
+def gun(**rheed):
+    return PldChamberState(rheed=PldRheed(present=True, **rheed))
+
+
+@pytest.mark.parametrize("asked, state, expect", [
+    # The gun on: its HV readback, whatever was asked; a different ask is noted.
+    (None, gun(hv_on=True, hv_readback_kv=24.9), {"rheed_energy_kev": 24.9, "rheed_energy_source": "gun"}),
+    (25.0, gun(hv_on=True, hv_readback_kv=24.9), {"rheed_energy_kev": 24.9, "rheed_energy_source": "gun"}),
+    (15.0, gun(hv_on=True, hv_readback_kv=24.9), {"rheed_energy_kev": 24.9, "rheed_energy_source": "gun",
+                                                  "rheed_energy_warning": "asked for 15 keV but the gun's HV "
+                                                  "read 24.9 kV at the start; the gun's is kept"}),
+    # The gun off: what was asked or the default, with the gun noted as off.
+    (None, gun(hv_on=False, hv_readback_kv=0.0), {"rheed_energy_kev": 25.0, "rheed_energy_source": "default",
+                                                  "rheed_energy_warning": "the RHEED gun's HV was off at the start"}),
+    (20.0, gun(hv_on=False), {"rheed_energy_kev": 20.0, "rheed_energy_source": "request",
+                              "rheed_energy_warning": "the RHEED gun's HV was off at the start"}),
+    # No RHEED link (the legacy driver's chamber, a pld-service without one): no note.
+    (None, PldChamberState(), {"rheed_energy_kev": 25.0, "rheed_energy_source": "default"}),
+])
+def test_the_beam_energy_comes_from_the_gun_when_it_is_on(asked, state, expect):
+    assert beam_energy(asked, state) == expect
 
 
 def test_the_experiment_node_passes_the_energy_through():

@@ -112,6 +112,9 @@ from lumi.contracts.payloads.experiment import (
     MotorFree,
     MoveMask,
     MoveTo,
+    FinishRheedOn,
+    RheedGunResult,
+    RheedOn,
     PageInfo,
     PendingConfirmation,
     PendingStatus,
@@ -188,6 +191,7 @@ from lumi.contracts.payloads.experiment import (
     ValveStatus,
 )
 from lumi.experiment.chamber import MiChamber, PldStopped
+from lumi.experiment.rheed_gun import RheedGunSettings
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
@@ -277,8 +281,11 @@ class ExperimentHandler:
         file_store: MeasurementFileStore | None = None,
         snapshot_store: MeasurementFileStore | None = None,
         pressure_by_hand: bool = True,
+        rheed_gun: RheedGunSettings | None = None,
     ) -> None:
         self.sources = sources
+        #: The RHEED gun's operating values (`[experiment.rheed]`).
+        self.rheed_gun = rheed_gun
         #: Under legacy MI mode the real chamber's pressure is set by a person at the
         #: gauge: set_pressure asks them (a `pressure` pending confirmation) instead of
         #: commanding the controller; the simulator sets it directly. pld-service runs
@@ -374,6 +381,7 @@ class ExperimentHandler:
             bounds=self.bounds,
             target_mapper=self.target_mapper,
             chamber_fiducial=self.sources.get("chamber_fiducial"),
+            rheed_gun=self.rheed_gun,
         )
 
     # --- state / updates -----------------------------------------------------
@@ -925,6 +933,37 @@ class ExperimentHandler:
         async with self._moving("move_mask_to_position"):
             await self.manager.move_mask_to_position(req.position, req.speed_mm_s, req.accel_mm_s_per_ms)
         return Ack()
+
+    async def rheed_on(self, req: RheedOn) -> RheedGunResult:
+        if self._pending is not None and req.by_person is not False:
+            raise RuntimeError(f"a {self._pending.kind!r} confirmation is open: resolve it first")
+        result = RheedGunResult(**_jsonable(await self.manager.rheed_on(**req.model_dump())))
+        if result.searching:
+            await self._set_pending("rheed_emission", self._emission_prompt(result))
+        return result
+
+    @staticmethod
+    def _emission_prompt(result: RheedGunResult) -> str:
+        return ("RHEED emission search: say up for the next 50 mA filament step, or stop (at "
+                f"this step or an earlier one). {result.message}")
+
+    async def rheed_emission_step_up(self, req: Empty) -> RheedGunResult:
+        self._require_pending("rheed_emission")
+        result = RheedGunResult(**_jsonable(await self.manager.rheed_step_up()))
+        await self._set_pending("rheed_emission", self._emission_prompt(result))
+        return result
+
+    async def finish_rheed_on(self, req: FinishRheedOn) -> RheedGunResult:
+        self._require_pending("rheed_emission")
+        result = RheedGunResult(**_jsonable(await self.manager.rheed_finish(req.filament_ma)))
+        await self._clear_pending()
+        return result
+
+    async def rheed_off(self, req: Empty) -> RheedGunResult:
+        result = RheedGunResult(**_jsonable(await self.manager.rheed_off()))
+        if self._pending is not None and self._pending.kind == "rheed_emission":
+            await self._clear_pending()
+        return result
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
         async with self._moving("move_rheed_to_position"):

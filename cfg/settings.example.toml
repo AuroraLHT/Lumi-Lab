@@ -685,6 +685,28 @@ motor_ready_timeout = 60.0
 # cutting the laser hot cools the sample all at once. 160 is the pyrometer's floor.
 heating_laser_off_max_temperature = 165.0
 
+# The RHEED gun's operating values, for rheed_on (pld-service only). The lab's own, not
+# the gun's remembered set points: those are whatever the last person or test left.
+# The filament starts at filament_start_ma and goes up in filament_step_ma steps while
+# the emission current still rises, to filament_max_ma at most. It is saturated when a
+# step leaves the emission's first emission_digits significant digits unchanged (8.41 ->
+# 8.47 uA); that step is taken back. With filament_by_person (the default) a person
+# decides instead: rheed_on stops after filament and HV, and the agent steps the
+# filament up one step at a time, showing the filament-vs-emission table, until the
+# person says stop. Focus and deflection depend on the
+# alignment: rheed_on takes per-call overrides.
+[experiment.rheed]
+hv_kv = 25.0
+filament_start_ma = 1800.0
+filament_max_ma = 2100.0
+filament_step_ma = 50.0
+emission_digits = 2
+filament_by_person = true
+emission_settle_s = 3.0
+focus_ma = 476.0
+deflection_x_ma = -61.0
+deflection_y_ma = 223.0
+
 # PASCAL target-carousel slot -> chamber-log field name. Chamber-specific; was a
 # hardcoded dict (_target_id_mapper) inside BaseExperimentManager.__init__.
 [experiment.target_mapper]

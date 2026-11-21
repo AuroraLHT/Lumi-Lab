@@ -30,6 +30,7 @@ from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 from lumi.experiment.chamber import MiChamber, PldChamber
 from lumi.experiment.mi import MiCommandRunner
+from lumi.experiment.rheed_gun import RheedGunSettings
 from lumi.generated.clients.chamber import (
     ChamberPldClient,
     ChamberCameraClient,
@@ -82,6 +83,11 @@ def _bounds() -> ExperimentBounds:
     )
 
 
+def _rheed_gun() -> RheedGunSettings:
+    """[experiment.rheed]; a key left out keeps RheedGunSettings' default."""
+    return RheedGunSettings.from_settings(dict(settings.experiment.get("rheed", {}) or {}))
+
+
 async def main(args: argparse.Namespace) -> None:
     node = EquipmentNode(
         EXPERIMENT,
@@ -108,6 +114,7 @@ async def main(args: argparse.Namespace) -> None:
         )
     handler = ExperimentHandler(
         sources={}, growth_db=growth_db, pld_config=_pld_config(), bounds=_bounds(),
+        rheed_gun=_rheed_gun(),
         target_mapper=dict(settings.experiment.target_mapper), registry_client=None,
         file_store=MeasurementFileStore(
             files_root,
