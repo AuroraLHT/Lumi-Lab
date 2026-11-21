@@ -7,9 +7,11 @@ to expect for each in-plane direction.
 
 ## Who does what
 
-- Agent: `rotate_sample_to` / `rotate_sample_by` (the stage's in-plane angle, the log's
-  `Substrate` column), `rheed.camera.image`, the simulator, the decision.
-- Person, by hand: RHEED gun on, beam position, incidence angle, gain. Stage tilt is not
+- Agent: `rheed_on` (the gun, pld driver), `rotate_sample_to` / `rotate_sample_by` (the
+  stage's in-plane angle, the log's `Substrate` column), `rheed.camera.image`, the
+  simulator, the decision.
+- Person, by hand: beam position, incidence angle, gain (and the gun itself under
+  `--use-legacy-mi-mode`). Stage tilt is not
   motorised. If no specular spot shows, only the person can fix it.
 
 ## Steps
@@ -20,7 +22,8 @@ to expect for each in-plane direction.
    `to_temperature` **420 °C** at the substrate's ramp rate unless the person says
    otherwise (on the current pyrometer setting, `reference/temperature.md`). Poll until
    within 10 °C. **Snapshot: chamber `heated`.**
-3. Ask the person to bring the RHEED up.
+3. `rheed_on` (SKILL.md §2; under legacy MI mode ask the person), then ask the person
+   to bring the beam onto the sample.
    **First, clear the clips.** The sample is held by clips, and at some stage angles one
    sits in the beam path. If `rheed.camera.image` shows no diffraction (only the band
    near the top: shadow edge, holder), rotate the stage (`rotate_sample_by`, about 15°

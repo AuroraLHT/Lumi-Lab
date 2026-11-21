@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 98ccd27487ab29dc
+# contract_hash: ab9a7cfde3e87837
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CancelTask, CancelTaskResult, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmLaserTest, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, GetSequence, LaserPowerResult, LaserSettings, LaserTest, LaserTestList, ListExperiments, ListLaserTests, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSequences, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveMask, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, RunSequence, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SaveSequence, SequenceInfo, SequenceList, SequenceRef, SetLaserEnergy, SetLaserHv, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SetTargetPreablation, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StopDeposition, StopDepositionResult, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TargetPreablation, TargetPreablationList, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CancelTask, CancelTaskResult, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmLaserTest, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, FinishRheedOn, GetSequence, LaserPowerResult, LaserSettings, LaserTest, LaserTestList, ListExperiments, ListLaserTests, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSequences, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveMask, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, RheedGunResult, RheedOn, RunSequence, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SaveSequence, SequenceInfo, SequenceList, SequenceRef, SetLaserEnergy, SetLaserHv, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SetTargetPreablation, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StopDeposition, StopDepositionResult, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TargetPreablation, TargetPreablationList, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -262,6 +262,22 @@ class ExperimentDriverClient(CapabilityClient):
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
         """Call driver.move_rheed_to_position."""
         return await self.call("move_rheed_to_position", req)  # type: ignore[return-value]
+
+    async def rheed_on(self, req: RheedOn) -> RheedGunResult:
+        """Switch the RHEED gun on at the lab's operating values (pld driver only): filament on, HV on (25 kV), then the filament raised in 50 mA steps from 1800 mA (2100 mA at most) until the emission's first two digits stop changing; that last step is taken back. With by_person (the lab's default) it stops after filament and HV and raises a `rheed_emission` pending confirmation instead: show the person the table, then rheed_emission_step_up per step until they say stop, then finish_rheed_on. The result's message ends with the filament-vs-emission table, then focus and deflection X/Y. Each value can be overridden for this call; focus and deflection depend on the alignment. Waits for every readback, about 2-4 minutes from off. Fails with what was and was not reached, leaving the gun as it got. Beam position screws, incidence angle and camera gain stay with a person."""
+        return await self.call("rheed_on", req)  # type: ignore[return-value]
+
+    async def rheed_emission_step_up(self) -> RheedGunResult:
+        """During a `rheed_emission` confirmation: the filament up one step (50 mA) and the emission read after it settles. Returns the table so far and whether the first two digits changed. Only when the person says so."""
+        return await self.call("rheed_emission_step_up")  # type: ignore[return-value]
+
+    async def finish_rheed_on(self, req: FinishRheedOn) -> RheedGunResult:
+        """End a `rheed_emission` confirmation where the person said stop: the filament stays at filament_ma (one of the tried steps; left out, where it is), then focus and deflection as rheed_on would."""
+        return await self.call("finish_rheed_on", req)  # type: ignore[return-value]
+
+    async def rheed_off(self) -> RheedGunResult:
+        """Switch the RHEED gun's HV and filament off, ramped (pld-service's rheed_all_off_gentle; pld driver only): about two minutes from full. The normal way off at the end of a substrate."""
+        return await self.call("rheed_off")  # type: ignore[return-value]
 
     async def rotate_sample_to(self, req: SampleAngle) -> Ack:
         """Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused while the motor holding lock is released (see is_motor_free)."""

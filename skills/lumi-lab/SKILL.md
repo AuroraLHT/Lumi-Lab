@@ -59,6 +59,7 @@ being asked, wait, and pass their answer on.
 | `laser_power` | sets the excimer and reads the meter at the view port | `confirm_laser_power` (their measured value) |
 | `mask_center_alignment` / `mask_center_check` | looks at the mask on the camera | `confirm_center_mask` / `confirm_mask_center` |
 | `rheed_gain` | judges the RHEED image | `set_rheed_gain`, `confirm_rheed_gain` |
+| `rheed_emission` | says when the RHEED emission has saturated, from the filament-vs-emission table | `rheed_emission_step_up` (one 50 mA step, only when they say up), `finish_rheed_on` (at the step they name) |
 | `pixel_check` | checks each position on the camera | `resolve_pixel_check` |
 | `fiducial_role` | tags the mask-center marker in the UI | (continues by itself) |
 | `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure` on the real chamber, legacy MI mode only) | `confirm`, then read it back with `get_current_pressure` |
@@ -79,8 +80,19 @@ laser and a running sequence) for a move going wrong; it latches, and only the p
 it (`reset_motors`) and re-homes the axes in `motion.homing_needed`. Under `--use-legacy-mi-mode` neither works: ask
 the person to press STOP on PASCAL.
 
-Also by hand, with no tool: RHEED gun and sample-stage adjustment,
-and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.
+The RHEED gun is switched by `experiment.driver.rheed_on` / `rheed_off` (pld driver
+only): on at the lab's operating values (25 kV, the filament raised from 1800 mA in 50 mA
+steps, focus and deflection), off ramped down. By default the person judges the emission:
+`rheed_on` stops after filament and HV with a `rheed_emission` confirmation. Show them
+the filament-vs-emission table each time, step up only when they say so, and
+`finish_rheed_on` at the step they name. The table says when the first two digits stopped
+changing (the lab's saturation rule), as a hint for them, not a decision for you. Under
+`--use-legacy-mi-mode` the person switches it. Focus and deflection depend on the
+alignment: pass the person's values when they give them. A `rheed_on` that fails says
+what was reached and leaves the gun as it got: tell the person, and do not retry blindly.
+
+Also by hand, with no tool: the RHEED beam position screws, incidence angle and
+sample-stage adjustment, and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.
 The pressure is set by pld-service itself under the default driver. Only under
 `--use-legacy-mi-mode` on the real chamber does `set_pressure` not command the
 controller: it raises a `pressure` confirmation asking the person to set it. Either way,

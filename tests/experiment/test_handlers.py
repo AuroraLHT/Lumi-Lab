@@ -1330,3 +1330,33 @@ async def test_set_pressure_sets_it_directly_in_the_simulator(handler):
     await handler.set_pressure(SetPressure(pressure=0.1))
     assert handler.readout().pending_confirmation is None
     assert handler.sources["chamber_mi"].calls == ["Set Pressure= 1.00E-1\n"]
+
+
+async def test_rheed_on_is_refused_under_legacy_mi_mode(handler):
+    from lumi.contracts.payloads.experiment import RheedOn
+    with pytest.raises(RuntimeError, match="needs pld-service"):
+        await handler.rheed_on(RheedOn())
+
+
+async def test_rheed_on_by_person_is_a_pending_confirmation_until_finished(handler):
+    from lumi.contracts.payloads.experiment import FinishRheedOn, RheedOn
+    from lumi.experiment.rheed_gun import RheedGun
+    from test_rheed_gun import FAST, FakeGun
+
+    gun = FakeGun()
+    handler.manager.chamber = gun
+    handler.manager.rheed_gun = RheedGun(gun, FAST)  # filament_by_person defaults to true
+    result = await handler.rheed_on(RheedOn())
+    assert result.searching and handler._pending.kind == "rheed_emission"
+    assert "1800 | 30.12" in handler._pending.message
+    with pytest.raises(ValueError, match="no pending 'rheed_gain'"):
+        await handler.confirm_rheed_gain(Empty())
+    await handler.rheed_emission_step_up(Empty())
+    assert "1850 | 35.12" in handler._pending.message
+    result = await handler.finish_rheed_on(FinishRheedOn(filament_ma=1800))
+    assert handler._pending is None and not result.searching and gun.r.filament_set_ma == 1800
+    with pytest.raises(ValueError, match="no pending 'rheed_emission'"):
+        await handler.rheed_emission_step_up(Empty())
+    # The automatic rule, asked for: no confirmation.
+    result = await handler.rheed_on(RheedOn(by_person=False))
+    assert not result.searching and handler._pending is None

@@ -645,3 +645,31 @@ async def _bypass_moves(h):
     # A MoveTo ended by the close switch at its target 0 is a success (af2d57e).
     reply = await h.bypass_move_to(PldBypassStepsRequest(steps=0, wait=True))
     assert reply.ok, reply.message
+
+
+async def test_the_experiment_drivers_rheed_on_and_off(handler):
+    # lumi.experiment.rheed_gun at the lab's operating values, on the twin's gun.
+    from lumi.experiment.rheed_gun import RheedGun, RheedGunSettings
+
+    h = handler
+    assert (await h.rheed_all_off(Empty())).ok  # a known start
+    await until_state(h, lambda s: not (s.rheed.filament_on or s.rheed.hv_on))
+    gun = RheedGun(PldChamber(HandlerBus(h)), RheedGunSettings(emission_settle_s=1.0))
+    # The person's search: two steps up, then stop one step back.
+    result = await gun.on(by_person=True)
+    assert result["searching"] and not (await h.chamber_state(Empty())).rheed.focus_on
+    await gun.step_up()
+    result = await gun.step_up()
+    print(result["message"])
+    steps = result["emission_steps"]
+    assert [s["filament_ma"] for s in steps] == [1800.0, 1850.0, 1900.0]
+    assert all(s["emission_ua"] > 0 for s in steps)
+    result = await gun.finish(1850.0)
+    r = (await h.chamber_state(Empty())).rheed
+    assert r.filament_on and r.hv_on and r.focus_on and r.x_on and r.y_on
+    assert r.filament_set_ma == 1850.0 and r.hv_readback_kv == pytest.approx(25.0, abs=0.5)
+    assert (r.focus_set_ma, r.x_set_ma, r.y_set_ma) == (476.0, -61.0, 223.0)
+
+    result = await gun.off()
+    assert not (result["gun"]["filament_on"] or result["gun"]["hv_on"])
+    assert (await h.rheed_all_off(Empty())).ok  # focus, X and Y off too, for the next test

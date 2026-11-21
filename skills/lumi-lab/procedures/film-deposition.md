@@ -26,7 +26,7 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
 5. Pre-ablation amounts: `list_target_preablation`. For any layer's target material not
    listed, ask the person how many pulses (and the rate; 0 = never pre-ablate it) and
    `set_target_preablation`. Do not pick a number yourself.
-6. A person adjusts the RHEED gun and sample stage. Look at `rheed.camera.image`: is it a
+6. `rheed_on` (SKILL.md §2), then a person adjusts the beam and sample stage. Look at `rheed.camera.image`: is it a
    good substrate pattern (`reference/rheed.md`)? If not, stop and say so. (Skipped
    while the RHEED is down for maintenance.)
 
@@ -58,6 +58,6 @@ and finishing it after the first leaves nothing to grow the next on.
     the right atmosphere (O2 for oxides). Wait until `get_current_temperature` reads
     165 °C or less. **Snapshot: chamber `cooled`.**
 16. `turn_off_heating_laser`, only now (SKILL.md §1).
-17. `finish_substrate`.
+17. `rheed_off`, then `finish_substrate`.
 18. Report: `get_sample` (the layer stack should match the plan), plus what each snapshot
     showed (`list_snapshots` for the sample).
