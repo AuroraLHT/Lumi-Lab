@@ -36,7 +36,9 @@ aligned by `auto_align_center_mask` rather than by a person.
    (Skipped while the RHEED is down for maintenance.)
 10. `perform_preablation` with `move_mask_to_block_position: false` (the mask is already
     over the position), `num_pulse` left out (the target's set amount). Wait.
-11. `start_storage`; it must return `ok`. With the RHEED down, `save_frame`, `save_ai`
+11. RHEED boxes: if there is no specular box (yours or the operator's), draw one with
+    `add_rheed_box`, and a background box (`reference/rheed.md` "Drawing your own
+    boxes"). Then `start_storage`; it must return `ok`. With the RHEED down, `save_frame`, `save_ai`
     and `save_integration` all `false`.
 12. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
     chamber + RHEED `depo_end`.** Stop on anything in SKILL.md §4.

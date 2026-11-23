@@ -85,9 +85,10 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
     # the growth record, which a bare start_recording would not.
     (STORAGE_NODE, {"archive": None}),
     (SIMULATION, {"rheed_sim": None}),
-    # The boxes the operator drew and their live intensity -- the oscillations a
-    # deposition is watched by. Read-only: registering and removing boxes is the
-    # operator's layout, and an agent rearranging it mid-growth helps nobody.
+    # The boxes and their live intensity -- the oscillations a deposition is watched
+    # by. Read-only here: an agent draws its own boxes with experiment.driver's
+    # add_rheed_box / remove_rheed_box, which give them ids of their own (never the
+    # operator's) and refuse a removal mid-recording.
     (RHEED, {"camera": None, "integrator": frozenset({"bboxes", "cache"})}),
     # The driver's operations are whole actions the service vets itself (interlocks,
     # limits, read-only hardware), unlike an MI script. Not control ownership -- an
@@ -473,8 +474,9 @@ Temperatures are the back pyrometer's, and only comparable at the same emissivit
 each growth records it (pyrometer_emissivity; 0.65 before experiment 23, 0.262 since, when
 the old scale read far low -- 650 then was about 794 now). Say so when comparing across it.
 rheed.camera.image and chamber.camera.image show the live pictures;
-rheed.integrator.cache is the live intensity of each box the operator drew (the growth
-oscillations); chamber.log.log the latest chamber readings. chamber.pld.* is the chamber
+rheed.integrator.cache is the live intensity of each box (the growth oscillations): the
+operator's, drawn in the Deck, and yours, drawn with experiment.driver.add_rheed_box (ids
+from 1000; draw them before start_storage); chamber.log.log the latest chamber readings. chamber.pld.* is the chamber
 driver itself (pld-service): chamber_state for everything it reads (read_only=true means
 the service was started on hardware without operations allowed, and every operation will
 be refused), and one tool per operation -- valves, motion, heater, gas, the excimer laser.

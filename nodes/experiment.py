@@ -39,7 +39,7 @@ from lumi.generated.clients.chamber import (
     ChamberLogClient,
     ChamberMiModeClient,
 )
-from lumi.generated.clients.rheed import RheedCameraClient
+from lumi.generated.clients.rheed import RheedCameraClient, RheedIntegratorClient, RheedStftClient
 from lumi.generated.clients.storage import StorageStorageClient
 from lumi.generated.clients.system import SystemRegistryClient
 from lumi.node import EquipmentNode
@@ -191,6 +191,9 @@ async def main(args: argparse.Namespace) -> None:
         "chamber_fiducial": ChamberFiducialClient(channel, chamber_x),
         "chamber_camera": ChamberCameraClient(channel, chamber_x),
         "rheed_camera": RheedCameraClient(channel, rheed_x),
+        # Boxes an agent draws (add_rheed_box); the operator's are the Deck's.
+        "rheed_integrator": RheedIntegratorClient(channel, rheed_x),
+        "rheed_stft": RheedStftClient(channel, rheed_x),
         "storage": StorageStorageClient(channel, storage_x),
     }
     registry = SystemRegistryClient(channel, system_x)

@@ -1406,3 +1406,66 @@ async def test_a_dry_run_start_storage_names_no_recording(handler):
     assert started["ok"] and started["record_uuid"] and started["storage_name"] is None
     assert "nothing recorded" in started["message"] and handler.manager.recording_name is None
     assert "no recording" in (await handler.manager.end_storage(is_dryrun=True))["message"]
+
+
+# --- RHEED integration boxes an agent draws -------------------------------------
+
+
+class FakeIntegrator:
+    """rheed.integrator / rheed.stft: the registered boxes."""
+
+    def __init__(self, boxes=None) -> None:
+        self.boxes = dict(boxes or {})
+
+    async def register(self, req):
+        self.boxes[req.bbox_id] = req.bbox
+        return Ack()
+
+    async def remove(self, req):
+        self.boxes.pop(req.bbox_id, None)
+        return Ack()
+
+    async def bboxes(self):
+        from lumi.contracts.payloads.rheed import BBoxList
+
+        return BBoxList(bboxes=self.boxes)
+
+
+class FramedCamera(FakeRheedCamera):
+    async def image(self):
+        import numpy as np
+
+        return None, np.zeros((540, 720), dtype=np.uint16)
+
+
+async def test_an_agent_draws_its_own_boxes_and_never_the_operators(handler):
+    from lumi.contracts.payloads.experiment import AddRheedBox, EndStorage, RemoveRheedBox, StartStorage
+    from lumi.contracts.payloads.rheed import BBox
+
+    operator = BBox(x=10, y=10, width=20, height=20)
+    integrator, stft = FakeIntegrator({0: operator}), FakeIntegrator()
+    handler.sources.update(rheed_integrator=integrator, rheed_stft=stft, rheed_camera=FramedCamera())
+
+    result = await handler.add_rheed_box(AddRheedBox(x=340, y=200, width=30, height=24,
+                                                     label="specular", stft=True))
+    assert result.bbox_id == 1000 and set(result.bboxes) == {0, 1000}
+    assert result.labels == {1000: "specular"} and 1000 in stft.boxes
+    assert integrator.boxes[0] == operator  # the operator's box is untouched
+    result = await handler.add_rheed_box(AddRheedBox(x=0, y=400, width=40, height=40, label="background"))
+    assert result.bbox_id == 1001 and 1001 not in stft.boxes
+
+    with pytest.raises(ValueError, match="runs past the RHEED frame, 720 x 540"):
+        await handler.add_rheed_box(AddRheedBox(x=700, y=0, width=40, height=10))
+    with pytest.raises(ValueError, match="the operator's"):
+        await handler.remove_rheed_box(RemoveRheedBox(bbox_id=0))
+
+    await handler.start_storage(StartStorage(project_name="demo"))
+    with pytest.raises(RuntimeError, match="would cut its trace"):
+        await handler.remove_rheed_box(RemoveRheedBox(bbox_id=1001))
+    await handler.add_rheed_box(AddRheedBox(x=100, y=100, width=10, height=10, label="rod"))
+    # A box drawn mid-recording is an event in it, so the trace's start is explained.
+    assert [e.kind for e in handler.sources["storage"].events if "rheed_box" in e.kind] == ["rheed_box_added"]
+    await handler.end_storage(EndStorage())
+    result = await handler.remove_rheed_box(RemoveRheedBox(bbox_id=1000))
+    assert set(result.bboxes) == {0, 1001, 1002} and 1000 not in stft.boxes
+    assert result.labels == {1001: "background", 1002: "rod"}

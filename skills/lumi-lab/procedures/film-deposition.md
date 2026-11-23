@@ -40,7 +40,10 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
    excimer from today's laser test; no one reads the meter.
 10. `perform_preablation` with this layer's target, leaving `num_pulse` out (the amount
     set for its material is used; a target set to 0 is refused: skip it). Wait.
-11. `start_storage`; it must return `ok`. One recording per layer. With the RHEED down,
+11. RHEED boxes, once per substrate: if there is no specular box (yours or the
+    operator's), draw one with `add_rheed_box`, and a background box
+    (`reference/rheed.md` "Drawing your own boxes"). Then `start_storage`; it must
+    return `ok`. One recording per layer. With the RHEED down,
     `save_frame`, `save_ai` and `save_integration` all `false`.
 12. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
     chamber + RHEED `depo_end`.** Watch `rheed.integrator.cache`

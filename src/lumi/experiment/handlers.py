@@ -112,7 +112,10 @@ from lumi.contracts.payloads.experiment import (
     MotorFree,
     MoveMask,
     MoveTo,
+    AddRheedBox,
     FinishRheedOn,
+    RemoveRheedBox,
+    RheedBoxResult,
     RheedGunResult,
     RheedSearch,
     RheedOn,
@@ -193,6 +196,11 @@ from lumi.contracts.payloads.experiment import (
 )
 from lumi.experiment.chamber import MiChamber, PldStopped
 from lumi.experiment.rheed_gun import RheedGunSettings, emission_table
+from lumi.contracts.payloads.rheed import BBox, BBoxId, RegisterBBox
+
+#: Boxes an agent draws (add_rheed_box) take ids from here up; the Deck numbers the
+#: operator's from 0, so neither overwrites the other's.
+AGENT_BOX_ID_BASE = 1000
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
@@ -319,6 +327,8 @@ class ExperimentHandler:
 
         self._deps: dict[str, bool] = {name: False for name in DEPENDENCY_EQUIPMENT}
         self._pending: PendingConfirmation | None = None
+        #: Labels of the RHEED boxes an agent drew (add_rheed_box), by bbox id.
+        self._box_labels: dict[int, str] = {}
         self._current_task: CurrentTask | None = None
         # The asyncio task running `_current_task`, so stop_deposition can end it, and
         # why it was stopped once it has been.
@@ -975,6 +985,55 @@ class ExperimentHandler:
                 self._pending = None
             await self._push()
         return result
+
+    # --- RHEED integration boxes an agent draws ------------------------------------
+
+    async def _rheed_boxes(self, message: str, bbox_id: int | None = None) -> RheedBoxResult:
+        listing = await self.sources["rheed_integrator"].bboxes()
+        return RheedBoxResult(
+            message=message, bbox_id=bbox_id,
+            bboxes={i: b.model_dump() for i, b in listing.bboxes.items()},
+            labels={i: label for i, label in self._box_labels.items() if i in listing.bboxes})
+
+    async def add_rheed_box(self, req: AddRheedBox) -> RheedBoxResult:
+        integrator = self.sources.get("rheed_integrator")
+        if integrator is None:
+            raise RuntimeError("no RHEED integrator client: the experiment node runs without the rheed node")
+        _, frame = await self.sources["rheed_camera"].image()
+        height, width = frame.shape[:2]
+        if req.x + req.width > width or req.y + req.height > height:
+            raise ValueError(f"the box ({req.x}, {req.y}, {req.width} x {req.height}) runs past the "
+                             f"RHEED frame, {width} x {height} px")
+        existing = (await integrator.bboxes()).bboxes
+        bbox_id = max([AGENT_BOX_ID_BASE - 1, *existing]) + 1
+        bbox = BBox(x=req.x, y=req.y, width=req.width, height=req.height)
+        await integrator.register(RegisterBBox(bbox_id=bbox_id, bbox=bbox))
+        if req.stft:
+            await self.sources["rheed_stft"].register(RegisterBBox(bbox_id=bbox_id, bbox=bbox))
+        self._box_labels[bbox_id] = req.label
+        what = (f"RHEED box {bbox_id}{f' ({req.label})' if req.label else ''} at x {req.x}, y {req.y}, "
+                f"{req.width} x {req.height} px{', with STFT' if req.stft else ''}")
+        if self.manager is not None:
+            await self.manager.add_recording_event(
+                "rheed_box_added", what, {"bbox_id": bbox_id, "label": req.label, "stft": req.stft,
+                                          **bbox.model_dump()})
+        return await self._rheed_boxes(what, bbox_id)
+
+    async def remove_rheed_box(self, req: RemoveRheedBox) -> RheedBoxResult:
+        if req.bbox_id < AGENT_BOX_ID_BASE:
+            raise ValueError(f"box {req.bbox_id} is the operator's (agent boxes are {AGENT_BOX_ID_BASE} "
+                             "and up): ask them to remove it in the Deck")
+        if self.manager is not None and self.manager.recording_name:
+            raise RuntimeError(f"recording {self.manager.recording_name!r}: removing box "
+                               f"{req.bbox_id} now would cut its trace; remove it after end_storage")
+        integrator = self.sources["rheed_integrator"]
+        if req.bbox_id not in (await integrator.bboxes()).bboxes:
+            raise KeyError(f"box {req.bbox_id} is not on the integrator")
+        if self.sources.get("rheed_stft") is not None:
+            await self.sources["rheed_stft"].remove(BBoxId(bbox_id=req.bbox_id))
+        await integrator.remove(BBoxId(bbox_id=req.bbox_id))
+        self._box_labels.pop(req.bbox_id, None)
+        return await self._rheed_boxes(f"RHEED box {req.bbox_id} removed", req.bbox_id)
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
         async with self._moving("move_rheed_to_position"):

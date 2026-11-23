@@ -18235,6 +18235,159 @@
             "response_codec": "json"
           },
           {
+            "name": "add_rheed_box",
+            "request": {
+              "description": "An integration box on the RHEED image, in pixels of the camera frame.",
+              "properties": {
+                "height": {
+                  "description": "Height, px (4 at least)",
+                  "minimum": 4,
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "label": {
+                  "default": "",
+                  "description": "What the box is on, e.g. 'specular', '(01) rod', 'background'",
+                  "title": "Label",
+                  "type": "string"
+                },
+                "stft": {
+                  "default": false,
+                  "description": "Also run the short-time FT over it (oscillation frequency)",
+                  "title": "Stft",
+                  "type": "boolean"
+                },
+                "width": {
+                  "description": "Width, px (4 at least)",
+                  "minimum": 4,
+                  "title": "Width",
+                  "type": "integer"
+                },
+                "x": {
+                  "description": "Left edge, px",
+                  "minimum": 0,
+                  "title": "X",
+                  "type": "integer"
+                },
+                "y": {
+                  "description": "Top edge, px",
+                  "minimum": 0,
+                  "title": "Y",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "title": "AddRheedBox",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "bbox_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Bbox Id"
+                },
+                "bboxes": {
+                  "additionalProperties": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Bboxes",
+                  "type": "object"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Labels",
+                  "type": "object"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedBoxResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "remove_rheed_box",
+            "request": {
+              "properties": {
+                "bbox_id": {
+                  "description": "An agent box's id (from add_rheed_box); the operator's boxes are not removable here",
+                  "title": "Bbox Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bbox_id"
+              ],
+              "title": "RemoveRheedBox",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "bbox_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Bbox Id"
+                },
+                "bboxes": {
+                  "additionalProperties": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Bboxes",
+                  "type": "object"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Labels",
+                  "type": "object"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedBoxResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "rotate_sample_to",
             "request": {
               "additionalProperties": false,
@@ -22839,6 +22992,7 @@
           "request_pattern": "experiment.driver.req.*",
           "requests": {
             "add_measurement": "experiment.driver.req.add_measurement",
+            "add_rheed_box": "experiment.driver.req.add_rheed_box",
             "anneal": "experiment.driver.req.anneal",
             "approve_sequence": "experiment.driver.req.approve_sequence",
             "attach_measurement_file": "experiment.driver.req.attach_measurement_file",
@@ -22904,6 +23058,7 @@
             "perform_preablation": "experiment.driver.req.perform_preablation",
             "register_project": "experiment.driver.req.register_project",
             "register_substrate": "experiment.driver.req.register_substrate",
+            "remove_rheed_box": "experiment.driver.req.remove_rheed_box",
             "reopen_position": "experiment.driver.req.reopen_position",
             "resolve_pixel_check": "experiment.driver.req.resolve_pixel_check",
             "resume_sequence": "experiment.driver.req.resume_sequence",

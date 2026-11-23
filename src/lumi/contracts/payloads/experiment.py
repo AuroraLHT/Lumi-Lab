@@ -581,6 +581,31 @@ class RheedGunResult(BaseModel):
     judge: str | None = None
 
 
+class AddRheedBox(BaseModel):
+    """An integration box on the RHEED image, in pixels of the camera frame."""
+
+    x: int = Field(..., ge=0, description="Left edge, px")
+    y: int = Field(..., ge=0, description="Top edge, px")
+    width: int = Field(..., ge=4, description="Width, px (4 at least)")
+    height: int = Field(..., ge=4, description="Height, px (4 at least)")
+    label: str = Field("", description="What the box is on, e.g. 'specular', '(01) rod', 'background'")
+    stft: bool = Field(False, description="Also run the short-time FT over it (oscillation frequency)")
+
+
+class RemoveRheedBox(BaseModel):
+    bbox_id: int = Field(..., description="An agent box's id (from add_rheed_box); the operator's boxes are not removable here")
+
+
+class RheedBoxResult(BaseModel):
+    message: str
+    #: The box added or removed.
+    bbox_id: int | None = None
+    #: Every box on the integrator now: bbox_id -> {x, y, width, height}.
+    bboxes: dict[int, dict] = Field(default_factory=dict)
+    #: Labels of the agent boxes, by id.
+    labels: dict[int, str] = Field(default_factory=dict)
+
+
 class MoveMask(MoveTo):
     # For this move only; 0 = pld-service's default (50000 p/s, ACC/DEC 1000).
     speed_mm_s: float = Field(0.0, ge=0, description="Mask speed for this move, mm/s (pld-service caps it at 8.33); 0 = default")

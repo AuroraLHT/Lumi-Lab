@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 4b5667b7b5b3642a
+# contract_hash: 4ea7e8bb29fc9657
 
 """Generated clients for the experiment node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.experiment import DRIVER
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.experiment import AddMeasurement, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CancelTask, CancelTaskResult, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmLaserTest, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, FinishRheedOn, GetSequence, LaserPowerResult, LaserSettings, LaserTest, LaserTestList, ListExperiments, ListLaserTests, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSequences, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveMask, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, RheedGunResult, RheedOn, RunSequence, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SaveSequence, SequenceInfo, SequenceList, SequenceRef, SetLaserEnergy, SetLaserHv, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SetTargetPreablation, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StopDeposition, StopDepositionResult, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TargetPreablation, TargetPreablationList, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
+from lumi.contracts.payloads.experiment import AddMeasurement, AddRheedBox, Anneal, AttachMeasurementFile, AutoAlignMaskCenter, BeginSetLaserPower, CancelTask, CancelTaskResult, CenterMaskPos, CheckLogging, CheckMiMode, ConfirmCenterMask, ConfirmLaserPower, ConfirmLaserTest, ConfirmMaskCenter, ConfirmProceed, CoolDown, CurrentSubstrateResponse, CurrentTarget, EndStorage, ExperimentId, ExperimentInfo, ExperimentList, ExperimentRecordId, ExperimentState, FinishCurrentPixel, FinishExperimentRecord, FinishRheedOn, GetSequence, LaserPowerResult, LaserSettings, LaserTest, LaserTestList, ListExperiments, ListLaserTests, ListMeasurements, ListQuery, ListRecords, ListSamples, ListSequences, ListSnapshots, ListSteps, ListSubstrates, LoggingAlive, LoggingStatus, MaskAlignResult, MaskPosition, MeasurementFileId, MeasurementFileInfo, MeasurementId, MeasurementInfo, MeasurementList, MfcQuery, MfcStatus, MiModeStatus, MotorFree, MoveMask, MoveTo, PendingStatus, PerformDeposition, PerformPreablation, PixelCheckStatus, PixelIndex, PixelMoveResult, PressureReading, ProjectId, ProjectInfo, ProjectList, PumpStatus, RecordId, RecordInfo, RecordList, RegisterProject, RegisterSubstrate, RemoveRheedBox, ReopenPosition, ReopenResult, ResolvePixelCheck, ResumeSubstrate, RetireExperiment, RetireMeasurement, RetireMeasurementFile, RetireProject, RetireRecord, RetireSnapshot, RetireSubstrate, RheedBoxResult, RheedGunResult, RheedOn, RunSequence, SampleAngle, SampleDetail, SampleId, SampleInfo, SampleList, SaveSequence, SequenceInfo, SequenceList, SequenceRef, SetLaserEnergy, SetLaserHv, SetMfcControl, SetMfcFlow, SetPressure, SetPressureControl, SetRheedGain, SetTarget, SetTargetPreablation, SnapshotId, SnapshotInfo, SnapshotList, StartMiLogging, StartStorage, StepList, StopDeposition, StopDepositionResult, StorageResult, SubstrateId, SubstrateInfo, SubstrateList, TakeSnapshot, TargetId, TargetMap, TargetName, TargetPreablation, TargetPreablationList, TaskAck, TaskEvent, TemperatureReading, ToTemperature, TurnOffHeatingLaser, UpdateExperiment, UpdateMeasurement, UpdateProject, UpdateRecord, UpdateSample, UpdateSubstrate, ValveStatus
 
 
 class ExperimentDriverClient(CapabilityClient):
@@ -278,6 +278,14 @@ class ExperimentDriverClient(CapabilityClient):
     async def rheed_off(self) -> RheedGunResult:
         """Switch the RHEED gun's HV and filament off, ramped (pld-service's rheed_all_off_gentle; pld driver only): about two minutes from full. The normal way off at the end of a substrate."""
         return await self.call("rheed_off")  # type: ignore[return-value]
+
+    async def add_rheed_box(self, req: AddRheedBox) -> RheedBoxResult:
+        """Draw an integration box on the RHEED image, as the operator does in the Deck: rheed.integrator then records its intensity every frame (the growth oscillations), and with stft its short-time FT. Pick it from rheed.camera.image (and the simulated spot positions): a box a little larger than the spot, e.g. around the specular spot, a first-order rod, and a dark background patch. The box gets a new id of its own (from 1000), so the operator's boxes are never overwritten; it must lie inside the frame. Draw boxes before start_storage, so the whole growth is recorded."""
+        return await self.call("add_rheed_box", req)  # type: ignore[return-value]
+
+    async def remove_rheed_box(self, req: RemoveRheedBox) -> RheedBoxResult:
+        """Remove an agent box (id from add_rheed_box). The operator's boxes are theirs to remove. Refused while recording: it would cut its trace."""
+        return await self.call("remove_rheed_box", req)  # type: ignore[return-value]
 
     async def rotate_sample_to(self, req: SampleAngle) -> Ack:
         """Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused while the motor holding lock is released (see is_motor_free)."""

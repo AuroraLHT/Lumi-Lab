@@ -22,7 +22,10 @@ from __future__ import annotations
 
 from .payloads.common import Ack, Empty
 from .payloads.experiment import (
+    AddRheedBox,
     FinishRheedOn,
+    RemoveRheedBox,
+    RheedBoxResult,
     RheedGunResult,
     RheedOn,
     ConfirmLaserTest,
@@ -409,6 +412,20 @@ DRIVER = Capability(
                "rheed_all_off_gentle; pld driver only): about two minutes from full. "
                "The normal way off at the end of a substrate.",
            journal=True, timeout_s=360.0),
+        Op("add_rheed_box", AddRheedBox, RheedBoxResult,
+           doc="Draw an integration box on the RHEED image, as the operator does in the "
+               "Deck: rheed.integrator then records its intensity every frame (the growth "
+               "oscillations), and with stft its short-time FT. Pick it from "
+               "rheed.camera.image (and the simulated spot positions): a box a little "
+               "larger than the spot, e.g. around the specular spot, a first-order rod, and "
+               "a dark background patch. The box gets a new id of its own (from 1000), so "
+               "the operator's boxes are never overwritten; it must lie inside the frame. "
+               "Draw boxes before start_storage, so the whole growth is recorded.",
+           journal=True),
+        Op("remove_rheed_box", RemoveRheedBox, RheedBoxResult,
+           doc="Remove an agent box (id from add_rheed_box). The operator's boxes are "
+               "theirs to remove. Refused while recording: it would cut its trace.",
+           journal=True),
         Op("rotate_sample_to", SampleAngle, Ack,
            doc="Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused "
                "while the motor holding lock is released (see is_motor_free).",
