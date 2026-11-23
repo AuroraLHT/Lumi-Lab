@@ -23171,6 +23171,45 @@
               "title": "PendingConfirmation",
               "type": "object"
             },
+            "RheedBoxInfo": {
+              "description": "An integration box an agent drew (add_rheed_box). Its trace is rheed.integrator's.",
+              "properties": {
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "label": {
+                  "default": "",
+                  "title": "Label",
+                  "type": "string"
+                },
+                "stft": {
+                  "default": false,
+                  "title": "Stft",
+                  "type": "boolean"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                },
+                "x": {
+                  "title": "X",
+                  "type": "integer"
+                },
+                "y": {
+                  "title": "Y",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "title": "RheedBoxInfo",
+              "type": "object"
+            },
             "RheedSearch": {
               "description": "rheed_on's open emission search, whoever judges it: what a UI shows with Stop\nhere (finish_rheed_on at a step) and Abort (rheed_off).",
               "properties": {
@@ -23596,6 +23635,13 @@
               "default": null,
               "title": "Recording Name"
             },
+            "rheed_boxes": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RheedBoxInfo"
+              },
+              "title": "Rheed Boxes",
+              "type": "object"
+            },
             "rheed_search": {
               "anyOf": [
                 {
@@ -23697,6 +23743,45 @@
                 "title": "PendingConfirmation",
                 "type": "object"
               },
+              "RheedBoxInfo": {
+                "description": "An integration box an agent drew (add_rheed_box). Its trace is rheed.integrator's.",
+                "properties": {
+                  "height": {
+                    "title": "Height",
+                    "type": "integer"
+                  },
+                  "label": {
+                    "default": "",
+                    "title": "Label",
+                    "type": "string"
+                  },
+                  "stft": {
+                    "default": false,
+                    "title": "Stft",
+                    "type": "boolean"
+                  },
+                  "width": {
+                    "title": "Width",
+                    "type": "integer"
+                  },
+                  "x": {
+                    "title": "X",
+                    "type": "integer"
+                  },
+                  "y": {
+                    "title": "Y",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "title": "RheedBoxInfo",
+                "type": "object"
+              },
               "RheedSearch": {
                 "description": "rheed_on's open emission search, whoever judges it: what a UI shows with Stop\nhere (finish_rheed_on at a step) and Abort (rheed_off).",
                 "properties": {
@@ -23783,6 +23868,13 @@
                   }
                 ],
                 "default": null
+              },
+              "rheed_boxes": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/RheedBoxInfo"
+                },
+                "title": "Rheed Boxes",
+                "type": "object"
               },
               "rheed_search": {
                 "anyOf": [

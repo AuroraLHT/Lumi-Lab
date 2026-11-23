@@ -1469,3 +1469,12 @@ async def test_an_agent_draws_its_own_boxes_and_never_the_operators(handler):
     result = await handler.remove_rheed_box(RemoveRheedBox(bbox_id=1000))
     assert set(result.bboxes) == {0, 1001, 1002} and 1000 not in stft.boxes
     assert result.labels == {1001: "background", 1002: "rod"}
+    boxes = handler.readout().rheed_boxes  # what the Deck subscribes to
+    assert {i: b.label for i, b in boxes.items()} == {1001: "background", 1002: "rod"}
+
+    # A rheed node restart drops every box; the agent's come back, not the operator's.
+    integrator.boxes.clear()
+    stft.boxes.clear()
+    assert await handler.sync_rheed_boxes() == [1001, 1002]
+    assert set(integrator.boxes) == {1001, 1002} and integrator.boxes[1001].width == 40
+    assert await handler.sync_rheed_boxes() == []

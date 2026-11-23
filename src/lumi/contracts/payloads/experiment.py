@@ -78,6 +78,17 @@ class RheedSearch(BaseModel):
     filament_max_ma: float | None = None
 
 
+class RheedBoxInfo(BaseModel):
+    """An integration box an agent drew (add_rheed_box). Its trace is rheed.integrator's."""
+
+    label: str = ""
+    stft: bool = False
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class TaskEvent(BaseModel):
     """Pushed on the update channel whenever pending_confirmation, current_task or
     rheed_search changes -- a client that is already connected does not have to poll state in a
@@ -95,6 +106,8 @@ class TaskEvent(BaseModel):
     #: already None by then.
     finished_task: CurrentTask | None = None
     rheed_search: RheedSearch | None = None
+    #: The RHEED boxes agents drew (ids from 1000): the full set as of this event.
+    rheed_boxes: dict[int, RheedBoxInfo] = Field(default_factory=dict)
 
 
 class TaskAck(BaseModel):
@@ -1158,6 +1171,11 @@ class ExperimentReadout(BaseModel):
     sequence: SequenceRun | None = None
     #: rheed_on's emission search while it is open (judge agent or person), else None.
     rheed_search: RheedSearch | None = None
+    #: The RHEED boxes agents drew (add_rheed_box; ids from 1000), with their labels:
+    #: the experiment node's record, checked against rheed.integrator at every
+    #: add/remove and every few seconds, and re-registered there after a rheed node
+    #: restart.
+    rheed_boxes: dict[int, RheedBoxInfo] = Field(default_factory=dict)
 
 
 class ExperimentState(ExperimentReadout, ServerStateBase):

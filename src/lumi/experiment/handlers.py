@@ -115,6 +115,7 @@ from lumi.contracts.payloads.experiment import (
     AddRheedBox,
     FinishRheedOn,
     RemoveRheedBox,
+    RheedBoxInfo,
     RheedBoxResult,
     RheedGunResult,
     RheedSearch,
@@ -327,8 +328,8 @@ class ExperimentHandler:
 
         self._deps: dict[str, bool] = {name: False for name in DEPENDENCY_EQUIPMENT}
         self._pending: PendingConfirmation | None = None
-        #: Labels of the RHEED boxes an agent drew (add_rheed_box), by bbox id.
-        self._box_labels: dict[int, str] = {}
+        #: The RHEED boxes agents drew (add_rheed_box), by bbox id.
+        self._agent_boxes: dict[int, RheedBoxInfo] = {}
         self._current_task: CurrentTask | None = None
         # The asyncio task running `_current_task`, so stop_deposition can end it, and
         # why it was stopped once it has been.
@@ -420,6 +421,7 @@ class ExperimentHandler:
             center_mask_pos=self.pld_config.center_mask_pos,
             sequence=self._sequence_run,
             rheed_search=self._rheed_search(),
+            rheed_boxes=dict(self._agent_boxes),
         )
 
     async def next_update(self) -> TaskEvent | None:
@@ -435,6 +437,7 @@ class ExperimentHandler:
             pending_confirmation=self._pending, current_task=self._current_task,
             task_result=task_result, finished_task=finished_task,
             rheed_search=self._rheed_search(),
+            rheed_boxes=dict(self._agent_boxes),
         ))
 
     def _rheed_search(self) -> RheedSearch | None:
@@ -990,10 +993,17 @@ class ExperimentHandler:
 
     async def _rheed_boxes(self, message: str, bbox_id: int | None = None) -> RheedBoxResult:
         listing = await self.sources["rheed_integrator"].bboxes()
+        await self._push()  # rheed_boxes in the update channel
         return RheedBoxResult(
             message=message, bbox_id=bbox_id,
             bboxes={i: b.model_dump() for i, b in listing.bboxes.items()},
-            labels={i: label for i, label in self._box_labels.items() if i in listing.bboxes})
+            labels={i: box.label for i, box in self._agent_boxes.items()})
+
+    async def _register_box(self, bbox_id: int, box: RheedBoxInfo) -> None:
+        bbox = BBox(x=box.x, y=box.y, width=box.width, height=box.height)
+        await self.sources["rheed_integrator"].register(RegisterBBox(bbox_id=bbox_id, bbox=bbox))
+        if box.stft:
+            await self.sources["rheed_stft"].register(RegisterBBox(bbox_id=bbox_id, bbox=bbox))
 
     async def add_rheed_box(self, req: AddRheedBox) -> RheedBoxResult:
         integrator = self.sources.get("rheed_integrator")
@@ -1005,18 +1015,16 @@ class ExperimentHandler:
             raise ValueError(f"the box ({req.x}, {req.y}, {req.width} x {req.height}) runs past the "
                              f"RHEED frame, {width} x {height} px")
         existing = (await integrator.bboxes()).bboxes
-        bbox_id = max([AGENT_BOX_ID_BASE - 1, *existing]) + 1
-        bbox = BBox(x=req.x, y=req.y, width=req.width, height=req.height)
-        await integrator.register(RegisterBBox(bbox_id=bbox_id, bbox=bbox))
-        if req.stft:
-            await self.sources["rheed_stft"].register(RegisterBBox(bbox_id=bbox_id, bbox=bbox))
-        self._box_labels[bbox_id] = req.label
+        bbox_id = max([AGENT_BOX_ID_BASE - 1, *existing, *self._agent_boxes]) + 1
+        box = RheedBoxInfo(label=req.label, stft=req.stft, x=req.x, y=req.y,
+                           width=req.width, height=req.height)
+        await self._register_box(bbox_id, box)
+        self._agent_boxes[bbox_id] = box
         what = (f"RHEED box {bbox_id}{f' ({req.label})' if req.label else ''} at x {req.x}, y {req.y}, "
                 f"{req.width} x {req.height} px{', with STFT' if req.stft else ''}")
         if self.manager is not None:
             await self.manager.add_recording_event(
-                "rheed_box_added", what, {"bbox_id": bbox_id, "label": req.label, "stft": req.stft,
-                                          **bbox.model_dump()})
+                "rheed_box_added", what, {"bbox_id": bbox_id, **box.model_dump()})
         return await self._rheed_boxes(what, bbox_id)
 
     async def remove_rheed_box(self, req: RemoveRheedBox) -> RheedBoxResult:
@@ -1027,13 +1035,37 @@ class ExperimentHandler:
             raise RuntimeError(f"recording {self.manager.recording_name!r}: removing box "
                                f"{req.bbox_id} now would cut its trace; remove it after end_storage")
         integrator = self.sources["rheed_integrator"]
-        if req.bbox_id not in (await integrator.bboxes()).bboxes:
+        on_integrator = req.bbox_id in (await integrator.bboxes()).bboxes
+        if not on_integrator and req.bbox_id not in self._agent_boxes:
             raise KeyError(f"box {req.bbox_id} is not on the integrator")
-        if self.sources.get("rheed_stft") is not None:
-            await self.sources["rheed_stft"].remove(BBoxId(bbox_id=req.bbox_id))
-        await integrator.remove(BBoxId(bbox_id=req.bbox_id))
-        self._box_labels.pop(req.bbox_id, None)
+        if on_integrator:
+            if self.sources.get("rheed_stft") is not None:
+                await self.sources["rheed_stft"].remove(BBoxId(bbox_id=req.bbox_id))
+            await integrator.remove(BBoxId(bbox_id=req.bbox_id))
+        self._agent_boxes.pop(req.bbox_id, None)
         return await self._rheed_boxes(f"RHEED box {req.bbox_id} removed", req.bbox_id)
+
+    async def sync_rheed_boxes(self) -> list[int]:
+        """Re-register the agent boxes the integrator no longer has (a rheed node
+        restart drops every box): driven by the node's deps loop. Returns the ids put
+        back; a box whose id now holds other geometry is left to whoever drew it."""
+        integrator = self.sources.get("rheed_integrator")
+        if integrator is None or not self._agent_boxes:
+            return []
+        try:
+            existing = (await integrator.bboxes()).bboxes
+        except Exception:
+            return []  # the rheed node is down: try again next time
+        restored = [i for i in self._agent_boxes if i not in existing]
+        for bbox_id in restored:
+            box = self._agent_boxes[bbox_id]
+            await self._register_box(bbox_id, box)
+            log.warning("RHEED box %d (%s) was gone from the integrator: registered again", bbox_id, box.label)
+            if self.manager is not None:
+                await self.manager.add_recording_event(
+                    "rheed_box_restored", f"RHEED box {bbox_id} registered again (the rheed node "
+                    "had dropped it): its trace has a gap", {"bbox_id": bbox_id, **box.model_dump()})
+        return restored
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
         async with self._moving("move_rheed_to_position"):

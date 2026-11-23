@@ -211,6 +211,11 @@ async def main(args: argparse.Namespace) -> None:
     async def watch_deps() -> None:
         while True:
             await handler.refresh_deps()
+            try:
+                if await handler.sync_rheed_boxes():
+                    await handler._push()
+            except Exception:
+                log.exception("putting the agent RHEED boxes back failed")
             await asyncio.sleep(5.0)
 
     deps_task = asyncio.create_task(watch_deps(), name="experiment-deps")
