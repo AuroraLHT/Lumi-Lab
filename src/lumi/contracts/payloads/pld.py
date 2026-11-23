@@ -83,6 +83,9 @@ class PldMotion(BaseModel):
     homing_needed: list[str] = Field(default_factory=list, description="Axes left without a home "
                                      "reference (the ones moving when the motors were stopped): "
                                      "home_axis before relying on their position")
+    sample_too_low: bool = Field(False, description="The sample is below its height threshold (Z "
+                                 "sensor; set by hand): the PLC will not move Mask1, and pld-service "
+                                 "refuses Mask1 moves and homing until a person raises it")
 
 
 class PldLaser(BaseModel):
@@ -472,7 +475,7 @@ class PldTemperatureRequest(BaseModel):
     celsius: float
     ramp_c_per_min: float = Field(0.0, description="0 = jump")
     wait: bool = Field(False, description="Return once within `tolerance`")
-    tolerance: float = Field(0.0, description="C; 0 = the service default, 5 C")
+    tolerance: float = Field(0.0, description="C; 0 = the service default, 0.5 C")
 
 
 class PldShutterRequest(BaseModel):

@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at 4cc4d04 (PLC watchdog opt-in, Session.valves_locked; identical apart
+// branch decode-program at c7de330 (Motion.sample_too_low, SetTemperature tolerance 0.5 C; identical apart
 // from line endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this
 // header) and run scripts/gen_pld_stubs.sh.
 //
@@ -525,6 +525,9 @@ message Motion {
   // Axes with a homing (TG, Mask1, RHEED gun X) that show no home reference (status nibble bits
   // 0-2 off): the axis that was moving when the motors were stopped (2026-11-17 captures).
   repeated string homing_needed = 13;
+  // The sample is below its height threshold (Z sensor, DM30139 bit 11; set by hand): the PLC
+  // will not move Mask1, and the service refuses Mask1 moves and homing (user, 2026-11-20).
+  bool sample_too_low = 14;
 }
 
 message Pump {
@@ -686,7 +689,7 @@ message TemperatureRequest {
   double celsius = 1;
   double ramp_c_per_min = 2;  // 0 = jump
   bool wait = 3;  // return when within tolerance
-  double tolerance = 4;  // default 5 C
+  double tolerance = 4;  // default 0.5 C (user, 2026-11-20; was 5)
 }
 
 message ShutterRequest {

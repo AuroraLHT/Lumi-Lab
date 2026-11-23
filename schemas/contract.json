@@ -1792,6 +1792,12 @@
                       "default": null,
                       "title": "Sample Angle"
                     },
+                    "sample_too_low": {
+                      "default": false,
+                      "description": "The sample is below its height threshold (Z sensor; set by hand): the PLC will not move Mask1, and pld-service refuses Mask1 moves and homing until a person raises it",
+                      "title": "Sample Too Low",
+                      "type": "boolean"
+                    },
                     "target": {
                       "default": "",
                       "description": "A..F, Clear, or empty between slots",
@@ -3815,7 +3821,7 @@
                 },
                 "tolerance": {
                   "default": 0.0,
-                  "description": "C; 0 = the service default, 5 C",
+                  "description": "C; 0 = the service default, 0.5 C",
                   "title": "Tolerance",
                   "type": "number"
                 },
@@ -6546,6 +6552,12 @@
                     ],
                     "default": null,
                     "title": "Sample Angle"
+                  },
+                  "sample_too_low": {
+                    "default": false,
+                    "description": "The sample is below its height threshold (Z sensor; set by hand): the PLC will not move Mask1, and pld-service refuses Mask1 moves and homing until a person raises it",
+                    "title": "Sample Too Low",
+                    "type": "boolean"
                   },
                   "target": {
                     "default": "",

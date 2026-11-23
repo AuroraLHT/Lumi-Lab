@@ -101,7 +101,9 @@ when they give them. A `rheed_on` that fails says what was reached and leaves th
 it got: tell the person, and do not retry blindly.
 
 Also by hand, with no tool: the RHEED beam position screws, incidence angle and
-sample-stage adjustment, and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.
+sample-stage adjustment, and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released. A
+Mask1 move or homing refused with `chamber_state.motion.sample_too_low` set means the sample
+sits below its height threshold: ask the person to raise it (by hand), do not retry.
 The pressure is set by pld-service itself under the default driver. Only under
 `--use-legacy-mi-mode` on the real chamber does `set_pressure` not command the
 controller: it raises a `pressure` confirmation asking the person to set it. Either way,
