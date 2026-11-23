@@ -59,7 +59,7 @@ being asked, wait, and pass their answer on.
 | `laser_power` | sets the excimer and reads the meter at the view port | `confirm_laser_power` (their measured value) |
 | `mask_center_alignment` / `mask_center_check` | looks at the mask on the camera | `confirm_center_mask` / `confirm_mask_center` |
 | `rheed_gain` | judges the RHEED image | `set_rheed_gain`, `confirm_rheed_gain` |
-| `rheed_emission` | says when the RHEED emission has saturated, from the filament-vs-emission table | `rheed_emission_step_up` (one 50 mA step, only when they say up), `finish_rheed_on` (at the step they name) |
+| `rheed_emission` | (only with `rheed_on` `judge: "person"`) says when the RHEED beam has saturated, from the filament / emission / intensity table | `rheed_emission_step_up` (one 50 mA step, only when they say up), `finish_rheed_on` (at the step they name) |
 | `pixel_check` | checks each position on the camera | `resolve_pixel_check` |
 | `fiducial_role` | tags the mask-center marker in the UI | (continues by itself) |
 | `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure` on the real chamber, legacy MI mode only) | `confirm`, then read it back with `get_current_pressure` |
@@ -82,14 +82,23 @@ the person to press STOP on PASCAL.
 
 The RHEED gun is switched by `experiment.driver.rheed_on` / `rheed_off` (pld driver
 only): on at the lab's operating values (25 kV, the filament raised from 1800 mA in 50 mA
-steps, focus and deflection), off ramped down. By default the person judges the emission:
-`rheed_on` stops after filament and HV with a `rheed_emission` confirmation. Show them
-the filament-vs-emission table each time, step up only when they say so, and
-`finish_rheed_on` at the step they name. The table says when the first two digits stopped
-changing (the lab's saturation rule), as a hint for them, not a decision for you. Under
-`--use-legacy-mi-mode` the person switches it. Focus and deflection depend on the
-alignment: pass the person's values when they give them. A `rheed_on` that fails says
-what was reached and leaves the gun as it got: tell the person, and do not retry blindly.
+steps to 2100 mA at most, focus and deflection), off ramped down. By default you judge
+when the beam has saturated, and no confirmation is asked: `rheed_on` returns after
+filament and HV with the search open (`searching`). Call `rheed_emission_step_up` once per
+step. Each step reads the emission current and the RHEED image's mean intensity, and both
+level off when the beam saturates. Keep stepping while either still rises. When a step
+leaves both flat (the emission's first two digits unchanged, the intensity within about
+3%), call `finish_rheed_on` at the step before it: the filament runs no hotter than it
+needs to. If the two disagree, take one more step. If they still disagree at 2100 mA or
+look wrong (the emission falling, or the image saturated or dark), stop and show the
+person the table. The `saturation` hint sets the two side by side; it is not the
+decision. Keep the camera gain fixed during the search, or the intensities don't
+compare. Show the person the final table either way. If they want to decide themselves,
+pass `judge: "person"`: that raises a `rheed_emission` confirmation, so step up only when
+they say so and finish at the step they name. Under `--use-legacy-mi-mode` the person
+switches the gun. Focus and deflection depend on the alignment: pass the person's values
+when they give them. A `rheed_on` that fails says what was reached and leaves the gun as
+it got: tell the person, and do not retry blindly.
 
 Also by hand, with no tool: the RHEED beam position screws, incidence angle and
 sample-stage adjustment, and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.

@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: ab9a7cfde3e87837
+# contract_hash: 3ca91b4d10c51189
 
 """Generated clients for the experiment node."""
 
@@ -264,15 +264,15 @@ class ExperimentDriverClient(CapabilityClient):
         return await self.call("move_rheed_to_position", req)  # type: ignore[return-value]
 
     async def rheed_on(self, req: RheedOn) -> RheedGunResult:
-        """Switch the RHEED gun on at the lab's operating values (pld driver only): filament on, HV on (25 kV), then the filament raised in 50 mA steps from 1800 mA (2100 mA at most) until the emission's first two digits stop changing; that last step is taken back. With by_person (the lab's default) it stops after filament and HV and raises a `rheed_emission` pending confirmation instead: show the person the table, then rheed_emission_step_up per step until they say stop, then finish_rheed_on. The result's message ends with the filament-vs-emission table, then focus and deflection X/Y. Each value can be overridden for this call; focus and deflection depend on the alignment. Waits for every readback, about 2-4 minutes from off. Fails with what was and was not reached, leaving the gun as it got. Beam position screws, incidence angle and camera gain stay with a person."""
+        """Switch the RHEED gun on at the lab's operating values (pld driver only): filament on at 1800 mA, HV on (25 kV), then the emission search, the filament up in 50 mA steps (2100 mA at most) until the beam saturates. By default (judge agent) rheed_on returns after filament and HV with the search open (searching true) and no confirmation: you judge. Call rheed_emission_step_up per step; each step reads the emission current and the RHEED image's mean intensity, and both level off at saturation. Stop with finish_rheed_on at the last step that still raised them. The hint (saturation) sets the two side by side; it is not the decision. judge person puts the same steps behind a `rheed_emission` pending confirmation for a person to say up or stop; judge rule lets the emission's first two digits decide by themselves (that last step is taken back). The message ends with the filament / emission / RHEED-mean table. Each value can be overridden for this call; focus and deflection depend on the alignment. Waits for every readback, about 1-2 minutes from off to the open search. Fails with what was and was not reached, leaving the gun as it got. Beam position screws, incidence angle and camera gain stay with a person: keep the camera gain fixed during the search."""
         return await self.call("rheed_on", req)  # type: ignore[return-value]
 
     async def rheed_emission_step_up(self) -> RheedGunResult:
-        """During a `rheed_emission` confirmation: the filament up one step (50 mA) and the emission read after it settles. Returns the table so far and whether the first two digits changed. Only when the person says so."""
+        """During rheed_on's open emission search: the filament up one step (50 mA), then the emission current and RHEED intensity read after it settles. Returns the table so far and what the step did to each. With judge person, only when the person says up."""
         return await self.call("rheed_emission_step_up")  # type: ignore[return-value]
 
     async def finish_rheed_on(self, req: FinishRheedOn) -> RheedGunResult:
-        """End a `rheed_emission` confirmation where the person said stop: the filament stays at filament_ma (one of the tried steps; left out, where it is), then focus and deflection as rheed_on would."""
+        """End rheed_on's open emission search: the filament stays at filament_ma (one of the tried steps; left out, where it is), then focus and deflection. With judge person, at the step the person named."""
         return await self.call("finish_rheed_on", req)  # type: ignore[return-value]
 
     async def rheed_off(self) -> RheedGunResult:

@@ -10,7 +10,14 @@ import pytest
 
 from lumi.contracts.payloads.pld import PldChamberState, PldRheed
 from lumi.experiment.chamber import PldRefused
-from lumi.experiment.rheed_gun import RheedGun, RheedGunSettings, emission_table, leading_digits
+from lumi.experiment.rheed_gun import (
+    RheedGun,
+    RheedGunSettings,
+    emission_table,
+    frame_intensity,
+    leading_digits,
+    saturation_hint,
+)
 
 FAST = RheedGunSettings(emission_settle_s=0.0, poll_s=0.0, ramp_timeout_s=0.05)
 
@@ -177,13 +184,13 @@ def test_the_emission_table_lists_current_against_emission():
 async def test_by_person_stops_after_filament_and_hv_and_steps_only_when_asked():
     gun = FakeGun()
     g = RheedGun(gun, FAST)
-    result = await g.on(by_person=True)
+    result = await g.on(judge="person")
     assert result["searching"] and g.searching
     assert gun.ops() == ["rheed_filament_on", "rheed_hv_on"]
     assert result["message"].endswith("filament mA | emission uA\n       1800 | 30.12")
     result = await g.step_up()
     assert [s["filament_ma"] for s in result["emission_steps"]] == [1800, 1850]
-    assert "still rising (30.12 -> 35.12 uA)" in result["message"]
+    assert "still rising (emission still rising (30.12 -> 35.12 uA); no RHEED intensity" in result["message"]
     for _ in range(3):
         result = await g.step_up()  # 1900, 1950, then 2000: past the knee
     assert "did not change (45.12 -> 45.12 uA)" in result["saturation"]
@@ -198,7 +205,7 @@ async def test_by_person_stops_after_filament_and_hv_and_steps_only_when_asked()
 
 async def test_the_person_can_only_finish_at_a_tried_step():
     g = RheedGun(FakeGun(), FAST)
-    await g.on(by_person=True)
+    await g.on(judge="person")
     with pytest.raises(ValueError, match="not one of the tried steps"):
         await g.finish(1825)
     assert g.searching
@@ -206,7 +213,7 @@ async def test_the_person_can_only_finish_at_a_tried_step():
 
 async def test_the_search_stops_at_the_maximum_for_a_person_too():
     g = RheedGun(FakeGun(knee=5000), FAST.with_overrides(filament_max_ma=1850))
-    await g.on(by_person=True)
+    await g.on(judge="person")
     await g.step_up()
     result = await g.step_up()
     assert "at its maximum, 1850 mA" in result["message"] and len(result["emission_steps"]) == 2
@@ -217,15 +224,90 @@ async def test_no_search_no_step_and_off_ends_a_search():
     g = RheedGun(gun, FAST)
     with pytest.raises(RuntimeError, match="no emission search is open"):
         await g.step_up()
-    await g.on(by_person=True)
+    await g.on(judge="person")
     with pytest.raises(RuntimeError, match="already open"):
-        await g.on(by_person=True)
+        await g.on(judge="person")
     await g.off()
     assert not g.searching
 
 
 def test_settings_from_the_toml_section():
-    s = RheedGunSettings.from_settings({"hv_kv": 20, "filament_by_person": False, "emission_digits": 2})
-    assert s.hv_kv == 20.0 and s.filament_by_person is False and s.focus_ma == 476.0
+    s = RheedGunSettings.from_settings({"hv_kv": 20, "filament_judge": "person", "emission_digits": 2})
+    assert s.hv_kv == 20.0 and s.filament_judge == "person" and s.focus_ma == 476.0
+    assert RheedGunSettings().filament_judge == "agent"
+    with pytest.raises(ValueError, match="not one of agent, person, rule"):
+        RheedGunSettings.from_settings({"filament_judge": "nobody"})
     with pytest.raises(RuntimeError, match="unknown keys: hv"):
         RheedGunSettings.from_settings({"hv": 20})
+
+
+class FakeCamera:
+    """The RHEED image's mean follows the beam current, up to `knee` (None: no saturation)."""
+
+    def __init__(self, gun: FakeGun, knee: float | None = None, fail: bool = False) -> None:
+        self.gun, self.knee, self.fail, self.calls = gun, knee, fail, 0
+
+    async def __call__(self, frames: int) -> dict:
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("no new camera frame")
+        e = self.gun.r.emission_ua or 0.0
+        f = self.gun.r.filament_set_ma
+        if self.knee is not None and f is not None:
+            e = (min(f, self.knee) - 1500) / 10.0 + 0.123
+        return {"rheed_mean": round(e * 20, 3), "rheed_p99": round(e * 60, 3), "rheed_clipped": 0.0}
+
+
+async def test_the_agent_judges_without_a_confirmation_from_emission_and_intensity():
+    gun = FakeGun(knee=1950)
+    camera = FakeCamera(gun)
+    g = RheedGun(gun, FAST, intensity=camera)
+    result = await g.on(judge="agent")
+    assert result["searching"] and result["judge"] == "agent" and g.judge == "agent"
+    assert result["emission_steps"][0]["rheed_mean"] == 602.46
+    assert result["message"].endswith(
+        "filament mA | emission uA | RHEED mean\n       1800 | 30.12       | 602.5")
+    result = await g.step_up()
+    assert "still rising" in result["saturation"] and "RHEED intensity rising" in result["saturation"]
+    for _ in range(3):
+        result = await g.step_up()  # to 2000, past the knee: both flat
+    assert result["saturation"].startswith("saturated: stop at 1950 mA?")
+    result = await g.finish(1950)
+    assert "the agent stopped the search at 1950 mA" in result["message"] and not g.searching
+    assert gun.r.filament_set_ma == 1950 and camera.calls == 5
+
+
+async def test_a_camera_that_fails_leaves_the_emission_alone():
+    gun = FakeGun()
+    g = RheedGun(gun, FAST, intensity=FakeCamera(gun, fail=True))
+    result = await g.on(judge="agent")
+    assert result["emission_steps"] == [{"filament_ma": 1800.0, "emission_ua": 30.123}]
+
+
+@pytest.mark.parametrize("emission, mean, clipped, verdict", [
+    ((8.41, 8.47), (500, 505), 0, "saturated: stop at 1800 mA?"),
+    ((8.41, 8.52), (500, 540), 0, "still rising"),
+    ((8.41, 8.47), (500, 560), 0, "the two disagree: one more step, or stop at 1800 mA?"),
+    ((8.41, 8.62), (500, 505), 0, "the two disagree"),
+    ((8.41, 8.47), (None, None), 0, "saturated: stop at 1800 mA?"),   # no camera: the digits
+    ((None, None), (500, 505), 0, "saturated: stop at 1800 mA?"),     # no emission: the image
+    ((None, None), (None, None), 0, "nothing to compare"),
+    ((8.41, 8.52), (4000, 4090), 0.2, "full scale: lower the camera gain"),
+])
+def test_the_hint_sets_emission_and_intensity_side_by_side(emission, mean, clipped, verdict):
+    steps = [{"filament_ma": 1800.0, "emission_ua": emission[0], "rheed_mean": mean[0]},
+             {"filament_ma": 1850.0, "emission_ua": emission[1], "rheed_mean": mean[1],
+              "rheed_clipped": clipped}]
+    assert verdict in saturation_hint(steps, 2, 0.03)
+
+
+def test_frame_intensity_mean_percentile_and_full_scale():
+    import numpy as np
+
+    frame = np.full((10, 10), 100, dtype=np.uint16)
+    frame[0, :5] = 4095
+    out = frame_intensity([frame, frame])
+    assert out["rheed_mean"] == round((95 * 100 + 5 * 4095) / 100, 3)
+    assert out["rheed_clipped"] == 0.05 and out["rheed_p99"] == 4095
+    assert frame_intensity([np.full((4, 4), 300, dtype=np.uint16)])["rheed_clipped"] == 0.0
+    assert frame_intensity([]) is None

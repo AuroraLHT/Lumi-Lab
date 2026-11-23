@@ -43,6 +43,10 @@ class SimCameraConfig(GenericCameraConfig):
     # used by Pascal's chamber camera to draw the sample rotation and the Mask1-driven
     # slit mask over the static asset; nothing else sets it.
     frame_transform : Optional[Callable[[np.ndarray], np.ndarray]] = None
+    # Optional brightness factor on the whole frame, oscillations included, read per
+    # frame: the RHEED sim's beam following the gun (lumi.rheed.hardware.GunBeam; 0 =
+    # no beam). None leaves it at 1.
+    frame_scale : Optional[Callable[[], float]] = None
 
 
 class SimCamera(GenericCamera):
@@ -87,6 +91,9 @@ class SimCamera(GenericCamera):
             frame += np.sin(2* np.pi * self.config.base_oscillation_frequency * time.time()) * self.config.base_oscillation_amplitude
         if self.config.is_feature_oscillation:
             frame[self.config.feature_bbox[1]:self.config.feature_bbox[3], self.config.feature_bbox[0]:self.config.feature_bbox[2]] += np.sin(2* np.pi * self.config.feature_oscillation_frequency * time.time()) * self.config.feature_oscillation_amplitude
+
+        if self.config.frame_scale is not None:
+            frame = frame * self.config.frame_scale()
 
         frame = frame.clip(0, self.config.max_intensity)
         

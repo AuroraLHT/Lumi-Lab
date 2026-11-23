@@ -655,8 +655,8 @@ async def test_the_experiment_drivers_rheed_on_and_off(handler):
     assert (await h.rheed_all_off(Empty())).ok  # a known start
     await until_state(h, lambda s: not (s.rheed.filament_on or s.rheed.hv_on))
     gun = RheedGun(PldChamber(HandlerBus(h)), RheedGunSettings(emission_settle_s=1.0))
-    # The person's search: two steps up, then stop one step back.
-    result = await gun.on(by_person=True)
+    # The agent's search: two steps up, then stop one step back.
+    result = await gun.on(judge="agent")
     assert result["searching"] and not (await h.chamber_state(Empty())).rheed.focus_on
     await gun.step_up()
     result = await gun.step_up()

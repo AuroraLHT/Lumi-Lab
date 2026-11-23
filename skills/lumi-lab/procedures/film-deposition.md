@@ -26,7 +26,7 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
 5. Pre-ablation amounts: `list_target_preablation`. For any layer's target material not
    listed, ask the person how many pulses (and the rate; 0 = never pre-ablate it) and
    `set_target_preablation`. Do not pick a number yourself.
-6. `rheed_on` (SKILL.md §2), then a person adjusts the beam and sample stage. Look at `rheed.camera.image`: is it a
+6. `rheed_on` and its emission search to `finish_rheed_on` (SKILL.md §2), then a person adjusts the beam and sample stage. Look at `rheed.camera.image`: is it a
    good substrate pattern (`reference/rheed.md`)? If not, stop and say so. (Skipped
    while the RHEED is down for maintenance.)
 

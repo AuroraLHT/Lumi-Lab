@@ -59,11 +59,41 @@ def _to_rgb(frame, frame_header=None):
     return add_time_stamp(frame, frame_header)
 
 
-def build_camera(src: str, sim_frame: str | None = None):
+class GunBeam:
+    """The simulated RHEED image's brightness from pld-service's gun, for a twin: no
+    beam (0) with the filament or HV off, otherwise the emission current over
+    `reference_ua`, the emission the sim frame was taken at. The screen's intensity
+    follows the beam current, so it levels off where the emission saturates.
+
+    Until the first reading, and with no RHEED link or no emission reading, the image
+    stays as it is (1), as it was before the sim followed the gun."""
+
+    def __init__(self, reference_ua: float = 8.0) -> None:
+        self.reference_ua = reference_ua
+        self._scale = 1.0
+
+    def update(self, rheed) -> None:
+        """`rheed` is a `PldRheed`, or None for no reading."""
+        if rheed is None or not rheed.present:
+            self._scale = 1.0
+        elif not (rheed.filament_on and rheed.hv_on):
+            self._scale = 0.0
+        elif rheed.emission_ua is None:
+            self._scale = 1.0
+        else:
+            self._scale = max(0.0, rheed.emission_ua / self.reference_ua)
+
+    def scale(self) -> float:
+        return self._scale
+
+
+def build_camera(src: str, sim_frame: str | None = None, frame_scale=None):
     """Returns (camera, frame_processing, height, width).
 
     `sim_frame` (simcam only) picks what the simulated camera shows: a name from
     lumi.rheed.sim_frames ("sto", "ysz") or a path. None takes `rheed.simcam.source`.
+    `frame_scale` (simcam only): `() -> float` on each frame's brightness, e.g.
+    `GunBeam.scale`.
     """
     if src == "pylon":
         # Imported here, not at module scope: only the camera host has pypylon.
@@ -136,6 +166,7 @@ def build_camera(src: str, sim_frame: str | None = None):
             gain=cfg.gain,
             gamma=cfg.gamma,
             max_intensity=cfg.max_intensity,
+            frame_scale=frame_scale,
         ),
         name=cfg.name,
         daemon=True,

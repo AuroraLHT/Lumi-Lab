@@ -67,6 +67,8 @@ class EquipmentNode:
         self._servers: dict[str, CapabilityServer] = {}
         self._threads: list[threading.Thread] = []
         self._on_drain: list = []
+        self._task_fns: list = []
+        self._tasks: list[asyncio.Task] = []
 
         self.connection: AbstractConnection | None = None
         self.channel: AbstractChannel | None = None
@@ -89,6 +91,11 @@ class EquipmentNode:
     def thread(self, t: threading.Thread) -> None:
         """Register a worker thread (camera, compressor, log reader) so drain() joins it."""
         self._threads.append(t)
+
+    def task(self, fn) -> None:
+        """Register `async fn(node)` to run once the node is connected (it may use
+        `node.channel`), cancelled on drain."""
+        self._task_fns.append(fn)
 
     def on_drain(self, fn) -> None:
         """Register a cleanup callback to run during drain, before threads are joined."""
@@ -133,6 +140,9 @@ class EquipmentNode:
             if not t.is_alive():
                 t.start()
 
+        self._tasks = [asyncio.create_task(fn(self), name=getattr(fn, "__name__", "node-task"))
+                       for fn in self._task_fns]
+
         self._heartbeat = HeartbeatPublisher(
             node=self, channel=self.channel, interval=self.heartbeat_interval
         )
@@ -158,6 +168,10 @@ class EquipmentNode:
 
         for server in self._servers.values():
             await server.drain(timeout=self.drain_timeout)
+
+        for task in self._tasks:
+            task.cancel()
+        await asyncio.gather(*self._tasks, return_exceptions=True)
 
         for fn in self._on_drain:
             try:

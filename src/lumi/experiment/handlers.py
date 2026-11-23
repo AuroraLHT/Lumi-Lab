@@ -114,6 +114,7 @@ from lumi.contracts.payloads.experiment import (
     MoveTo,
     FinishRheedOn,
     RheedGunResult,
+    RheedSearch,
     RheedOn,
     PageInfo,
     PendingConfirmation,
@@ -191,7 +192,7 @@ from lumi.contracts.payloads.experiment import (
     ValveStatus,
 )
 from lumi.experiment.chamber import MiChamber, PldStopped
-from lumi.experiment.rheed_gun import RheedGunSettings
+from lumi.experiment.rheed_gun import RheedGunSettings, emission_table
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
@@ -408,6 +409,7 @@ class ExperimentHandler:
             laser_power_real=m._laser_power_real if m else None,
             center_mask_pos=self.pld_config.center_mask_pos,
             sequence=self._sequence_run,
+            rheed_search=self._rheed_search(),
         )
 
     async def next_update(self) -> TaskEvent | None:
@@ -422,7 +424,12 @@ class ExperimentHandler:
         await self._updates.put(TaskEvent(
             pending_confirmation=self._pending, current_task=self._current_task,
             task_result=task_result, finished_task=finished_task,
+            rheed_search=self._rheed_search(),
         ))
+
+    def _rheed_search(self) -> RheedSearch | None:
+        view = self.manager.rheed_gun.search_view() if self.manager is not None else None
+        return RheedSearch(**_jsonable(view)) if view is not None else None
 
     # --- dependency liveness ---------------------------------------------------
 
@@ -935,34 +942,38 @@ class ExperimentHandler:
         return Ack()
 
     async def rheed_on(self, req: RheedOn) -> RheedGunResult:
-        if self._pending is not None and req.by_person is not False:
+        judge = req.judge or self.manager.rheed_gun.settings.filament_judge
+        if self._pending is not None and judge == "person":
             raise RuntimeError(f"a {self._pending.kind!r} confirmation is open: resolve it first")
-        result = RheedGunResult(**_jsonable(await self.manager.rheed_on(**req.model_dump())))
-        if result.searching:
-            await self._set_pending("rheed_emission", self._emission_prompt(result))
-        return result
-
-    @staticmethod
-    def _emission_prompt(result: RheedGunResult) -> str:
-        return ("RHEED emission search: say up for the next 50 mA filament step, or stop (at "
-                f"this step or an earlier one). {result.message}")
+        return await self._rheed_op(self.manager.rheed_on(**req.model_dump()))
 
     async def rheed_emission_step_up(self, req: Empty) -> RheedGunResult:
-        self._require_pending("rheed_emission")
-        result = RheedGunResult(**_jsonable(await self.manager.rheed_step_up()))
-        await self._set_pending("rheed_emission", self._emission_prompt(result))
-        return result
+        return await self._rheed_op(self.manager.rheed_step_up())
 
     async def finish_rheed_on(self, req: FinishRheedOn) -> RheedGunResult:
-        self._require_pending("rheed_emission")
-        result = RheedGunResult(**_jsonable(await self.manager.rheed_finish(req.filament_ma)))
-        await self._clear_pending()
-        return result
+        return await self._rheed_op(self.manager.rheed_finish(req.filament_ma))
 
     async def rheed_off(self, req: Empty) -> RheedGunResult:
-        result = RheedGunResult(**_jsonable(await self.manager.rheed_off()))
-        if self._pending is not None and self._pending.kind == "rheed_emission":
-            await self._clear_pending()
+        return await self._rheed_op(self.manager.rheed_off())
+
+    async def _rheed_op(self, op) -> RheedGunResult:
+        """Run a gun op, then publish where the emission search stands (`rheed_search`,
+        also on a failure): only a person's search is a pending confirmation."""
+        try:
+            result = RheedGunResult(**_jsonable(await op))
+        finally:
+            search = self.manager.rheed_gun.search_view()
+            if search is not None and search["judge"] == "person":
+                table = emission_table(search["steps"])
+                self._pending = PendingConfirmation(
+                    id=self._pending.id if self._pending is not None
+                    and self._pending.kind == "rheed_emission" else uuid.uuid4().hex,
+                    kind="rheed_emission", requested_at=time.time(),
+                    message=("RHEED emission search: say up for the next 50 mA filament step, or "
+                             f"stop (at this step or an earlier one). {search['saturation']}\n{table}"))
+            elif self._pending is not None and self._pending.kind == "rheed_emission":
+                self._pending = None
+            await self._push()
         return result
 
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
@@ -1937,5 +1948,9 @@ class ExperimentHandler:
     async def confirm(self, req: ConfirmProceed) -> Ack:
         if self._pending is None or self._pending.id != req.confirmation_id:
             raise ValueError("no matching pending confirmation")
+        if self._pending.kind == "rheed_emission":
+            # Dismissing would leave the gun on with the search open: it ends by a choice.
+            raise ValueError("the rheed_emission search ends with finish_rheed_on (stop at a step) "
+                             "or rheed_off (abort), not confirm")
         await self._clear_pending()
         return Ack()

@@ -64,13 +64,27 @@ class CurrentTask(BaseModel):
     detail: dict = {}
 
 
+class RheedSearch(BaseModel):
+    """rheed_on's open emission search, whoever judges it: what a UI shows with Stop
+    here (finish_rheed_on at a step) and Abort (rheed_off)."""
+
+    judge: str  # "agent" | "person"
+    started_at: float
+    #: Each step tried: filament_ma, emission_ua, and with a RHEED camera rheed_mean,
+    #: rheed_p99, rheed_clipped.
+    steps: list[dict] = Field(default_factory=list)
+    #: What the last step did to the emission and the intensity (a hint, not the decision).
+    saturation: str | None = None
+    filament_max_ma: float | None = None
+
+
 class TaskEvent(BaseModel):
-    """Pushed on the update channel whenever pending_confirmation or current_task
-    changes -- a client that is already connected does not have to poll state in a
+    """Pushed on the update channel whenever pending_confirmation, current_task or
+    rheed_search changes -- a client that is already connected does not have to poll state in a
     loop to notice a gate opened or a long-running op finished.
 
-    `pending_confirmation` and `current_task` are always a full snapshot of both as
-    of this event, so None means there is none, not "unchanged". `task_result` is
+    `pending_confirmation`, `current_task` and `rheed_search` are always a full
+    snapshot as of this event, so None means there is none, not "unchanged". `task_result` is
     set only on the one event of a long-running op finishing, with `finished_task`
     naming the op."""
 
@@ -80,6 +94,7 @@ class TaskEvent(BaseModel):
     #: The task `task_result` belongs to, set alongside it -- `current_task` is
     #: already None by then.
     finished_task: CurrentTask | None = None
+    rheed_search: RheedSearch | None = None
 
 
 class TaskAck(BaseModel):
@@ -534,10 +549,13 @@ class RheedOn(BaseModel):
     focus_ma: float | None = Field(None, description="Focus current, mA (depends on the alignment)")
     deflection_x_ma: float | None = Field(None, description="Beam deflection X, mA (depends on the alignment)")
     deflection_y_ma: float | None = Field(None, description="Beam deflection Y, mA (depends on the alignment)")
-    by_person: bool | None = Field(
-        None, description="True: stop after filament and HV for the person to say when the emission "
-                          "has saturated (rheed_emission_step_up / finish_rheed_on); false: the "
-                          "first-two-digits rule decides; None = the lab's setting")
+    judge: Literal["agent", "person", "rule"] | None = Field(
+        None, description="Who says when the beam has saturated. agent: stop after filament and "
+                          "HV with the search open, for the calling agent to step "
+                          "(rheed_emission_step_up) and stop (finish_rheed_on) from the emission "
+                          "and the RHEED intensity, no confirmation; person: the same behind a "
+                          "rheed_emission pending confirmation; rule: the emission's first two "
+                          "digits decide by themselves. None = the lab's setting (agent)")
 
 
 class FinishRheedOn(BaseModel):
@@ -549,14 +567,18 @@ class RheedGunResult(BaseModel):
     message: str
     #: The gun's readbacks at the end (filament_ma, hv_kv, emission_ua, focus_ma, x_ma, y_ma, on flags).
     gun: dict = Field(default_factory=dict)
-    #: rheed_on: the filament current it settled on, and each (filament_ma, emission_ua) it tried.
+    #: rheed_on: the filament current it settled on, and each step it tried: filament_ma,
+    #: emission_ua, and with a RHEED camera rheed_mean, rheed_p99, rheed_clipped.
     filament_ma: float | None = None
     emission_steps: list[dict] = Field(default_factory=list)
     saturation: str | None = None
     #: rheed_on: the values it used (the lab's, with this call's overrides).
     settings: dict = Field(default_factory=dict)
-    #: True while the person's emission search is open (pending `rheed_emission`).
+    #: True while the emission search is open (judge agent or person; a person's is
+    #: also the pending `rheed_emission`).
     searching: bool = False
+    #: Who judges (judged) the search: agent, person or rule.
+    judge: str | None = None
 
 
 class MoveMask(MoveTo):
@@ -614,6 +636,7 @@ class SetPressureControl(BaseModel):
 
 class StartStorage(BaseModel):
     project_name: str
+    #: True: nothing is recorded; the result has a record_uuid but no storage_name.
     is_dryrun: bool = False
     # What to record. These map 1:1 onto storage.StorageRequest; the recipe used to
     # hardcode them, which meant a client could not ask for RHEED integrations
@@ -1108,6 +1131,8 @@ class ExperimentReadout(BaseModel):
     center_mask_pos: float | None = None
     #: The last sequence this driver ran, while it runs and after (until the next).
     sequence: SequenceRun | None = None
+    #: rheed_on's emission search while it is open (judge agent or person), else None.
+    rheed_search: RheedSearch | None = None
 
 
 class ExperimentState(ExperimentReadout, ServerStateBase):

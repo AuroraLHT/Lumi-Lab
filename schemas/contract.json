@@ -17781,19 +17781,6 @@
             "request": {
               "description": "rheed_on's values for this call; None = the lab's (`[experiment.rheed]`).",
               "properties": {
-                "by_person": {
-                  "anyOf": [
-                    {
-                      "type": "boolean"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "default": null,
-                  "description": "True: stop after filament and HV for the person to say when the emission has saturated (rheed_emission_step_up / finish_rheed_on); false: the first-two-digits rule decides; None = the lab's setting",
-                  "title": "By Person"
-                },
                 "deflection_x_ma": {
                   "anyOf": [
                     {
@@ -17875,6 +17862,24 @@
                   "default": null,
                   "description": "Beam energy, kV",
                   "title": "Hv Kv"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "agent",
+                        "person",
+                        "rule"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Who says when the beam has saturated. agent: stop after filament and HV with the search open, for the calling agent to step (rheed_emission_step_up) and stop (finish_rheed_on) from the emission and the RHEED intensity, no confirmation; person: the same behind a rheed_emission pending confirmation; rule: the emission's first two digits decide by themselves. None = the lab's setting (agent)",
+                  "title": "Judge"
                 }
               },
               "title": "RheedOn",
@@ -17907,6 +17912,18 @@
                   "additionalProperties": true,
                   "title": "Gun",
                   "type": "object"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Judge"
                 },
                 "message": {
                   "title": "Message",
@@ -17978,6 +17995,18 @@
                   "additionalProperties": true,
                   "title": "Gun",
                   "type": "object"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Judge"
                 },
                 "message": {
                   "title": "Message",
@@ -18063,6 +18092,18 @@
                   "title": "Gun",
                   "type": "object"
                 },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Judge"
+                },
                 "message": {
                   "title": "Message",
                   "type": "string"
@@ -18133,6 +18174,18 @@
                   "additionalProperties": true,
                   "title": "Gun",
                   "type": "object"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Judge"
                 },
                 "message": {
                   "title": "Message",
@@ -22951,6 +23004,57 @@
               "title": "PendingConfirmation",
               "type": "object"
             },
+            "RheedSearch": {
+              "description": "rheed_on's open emission search, whoever judges it: what a UI shows with Stop\nhere (finish_rheed_on at a step) and Abort (rheed_off).",
+              "properties": {
+                "filament_max_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Max Ma"
+                },
+                "judge": {
+                  "title": "Judge",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "started_at": {
+                  "title": "Started At",
+                  "type": "number"
+                },
+                "steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Steps",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "judge",
+                "started_at"
+              ],
+              "title": "RheedSearch",
+              "type": "object"
+            },
             "SequenceLayer": {
               "description": "A layer a run grew: the material in the selected slot, for the pulses fired\nwith the shutter open (fires one after another on the same material merge).",
               "properties": {
@@ -23325,6 +23429,17 @@
               "default": null,
               "title": "Recording Name"
             },
+            "rheed_search": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RheedSearch"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
             "sequence": {
               "anyOf": [
                 {
@@ -23414,9 +23529,60 @@
                 ],
                 "title": "PendingConfirmation",
                 "type": "object"
+              },
+              "RheedSearch": {
+                "description": "rheed_on's open emission search, whoever judges it: what a UI shows with Stop\nhere (finish_rheed_on at a step) and Abort (rheed_off).",
+                "properties": {
+                  "filament_max_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Filament Max Ma"
+                  },
+                  "judge": {
+                    "title": "Judge",
+                    "type": "string"
+                  },
+                  "saturation": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Saturation"
+                  },
+                  "started_at": {
+                    "title": "Started At",
+                    "type": "number"
+                  },
+                  "steps": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "title": "Steps",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "judge",
+                  "started_at"
+                ],
+                "title": "RheedSearch",
+                "type": "object"
               }
             },
-            "description": "Pushed on the update channel whenever pending_confirmation or current_task\nchanges -- a client that is already connected does not have to poll state in a\nloop to notice a gate opened or a long-running op finished.\n\n`pending_confirmation` and `current_task` are always a full snapshot of both as\nof this event, so None means there is none, not \"unchanged\". `task_result` is\nset only on the one event of a long-running op finishing, with `finished_task`\nnaming the op.",
+            "description": "Pushed on the update channel whenever pending_confirmation, current_task or\nrheed_search changes -- a client that is already connected does not have to poll state in a\nloop to notice a gate opened or a long-running op finished.\n\n`pending_confirmation`, `current_task` and `rheed_search` are always a full\nsnapshot as of this event, so None means there is none, not \"unchanged\". `task_result` is\nset only on the one event of a long-running op finishing, with `finished_task`\nnaming the op.",
             "properties": {
               "current_task": {
                 "anyOf": [
@@ -23444,6 +23610,17 @@
                 "anyOf": [
                   {
                     "$ref": "#/$defs/PendingConfirmation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "rheed_search": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RheedSearch"
                   },
                   {
                     "type": "null"

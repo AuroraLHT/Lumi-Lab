@@ -375,27 +375,34 @@ DRIVER = Capability(
         Op("move_rheed_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("rheed_on", RheedOn, RheedGunResult,
            doc="Switch the RHEED gun on at the lab's operating values (pld driver only): "
-               "filament on, HV on (25 kV), then the filament raised in 50 mA steps from "
-               "1800 mA (2100 mA at most) until the emission's first two digits stop "
-               "changing; that last step is taken back. With by_person (the lab's "
-               "default) it stops after filament and HV and raises a `rheed_emission` "
-               "pending confirmation instead: show the person the table, then "
-               "rheed_emission_step_up per step until they say stop, then finish_rheed_on. "
-               "The result's message ends with the filament-vs-emission table, then focus and deflection X/Y. Each "
-               "value can be overridden for this call; focus and deflection depend on the "
-               "alignment. Waits for every readback, about 2-4 minutes from off. Fails "
-               "with what was and was not reached, leaving the gun as it got. Beam "
-               "position screws, incidence angle and camera gain stay with a person.",
+               "filament on at 1800 mA, HV on (25 kV), then the emission search, the "
+               "filament up in 50 mA steps (2100 mA at most) until the beam saturates. "
+               "By default (judge agent) rheed_on returns after filament and HV with the "
+               "search open (searching true) and no confirmation: you judge. Call "
+               "rheed_emission_step_up per step; each step reads the emission current and "
+               "the RHEED image's mean intensity, and both level off at saturation. Stop "
+               "with finish_rheed_on at the last step that still raised them. The hint "
+               "(saturation) sets the two side by side; it is not the decision. judge "
+               "person puts the same steps behind a `rheed_emission` pending confirmation "
+               "for a person to say up or stop; judge rule lets the emission's first two "
+               "digits decide by themselves (that last step is taken back). The message "
+               "ends with the filament / emission / RHEED-mean table. Each value can be "
+               "overridden for this call; focus and deflection depend on the alignment. "
+               "Waits for every readback, about 1-2 minutes from off to the open search. "
+               "Fails with what was and was not reached, leaving the gun as it got. Beam "
+               "position screws, incidence angle and camera gain stay with a person: keep "
+               "the camera gain fixed during the search.",
            journal=True, timeout_s=600.0),
         Op("rheed_emission_step_up", Empty, RheedGunResult,
-           doc="During a `rheed_emission` confirmation: the filament up one step (50 mA) "
-               "and the emission read after it settles. Returns the table so far and "
-               "whether the first two digits changed. Only when the person says so.",
+           doc="During rheed_on's open emission search: the filament up one step (50 mA), "
+               "then the emission current and RHEED intensity read after it settles. "
+               "Returns the table so far and what the step did to each. With judge "
+               "person, only when the person says up.",
            journal=True, timeout_s=300.0),
         Op("finish_rheed_on", FinishRheedOn, RheedGunResult,
-           doc="End a `rheed_emission` confirmation where the person said stop: the "
-               "filament stays at filament_ma (one of the tried steps; left out, where it "
-               "is), then focus and deflection as rheed_on would.",
+           doc="End rheed_on's open emission search: the filament stays at filament_ma "
+               "(one of the tried steps; left out, where it is), then focus and "
+               "deflection. With judge person, at the step the person named.",
            journal=True, timeout_s=300.0),
         Op("rheed_off", Empty, RheedGunResult,
            doc="Switch the RHEED gun's HV and filament off, ramped (pld-service's "

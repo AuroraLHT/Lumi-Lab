@@ -1338,25 +1338,71 @@ async def test_rheed_on_is_refused_under_legacy_mi_mode(handler):
         await handler.rheed_on(RheedOn())
 
 
-async def test_rheed_on_by_person_is_a_pending_confirmation_until_finished(handler):
+async def test_rheed_on_by_a_person_is_a_pending_confirmation_until_finished(handler):
     from lumi.contracts.payloads.experiment import FinishRheedOn, RheedOn
     from lumi.experiment.rheed_gun import RheedGun
     from test_rheed_gun import FAST, FakeGun
 
     gun = FakeGun()
     handler.manager.chamber = gun
-    handler.manager.rheed_gun = RheedGun(gun, FAST)  # filament_by_person defaults to true
-    result = await handler.rheed_on(RheedOn())
+    handler.manager.rheed_gun = RheedGun(gun, FAST)
+    result = await handler.rheed_on(RheedOn(judge="person"))
     assert result.searching and handler._pending.kind == "rheed_emission"
     assert "1800 | 30.12" in handler._pending.message
     with pytest.raises(ValueError, match="no pending 'rheed_gain'"):
         await handler.confirm_rheed_gain(Empty())
+    with pytest.raises(ValueError, match="finish_rheed_on .* or rheed_off"):  # no dismissing it
+        await handler.confirm(ConfirmProceed(confirmation_id=handler._pending.id))
+    assert handler._pending.kind == "rheed_emission" and handler.manager.rheed_gun.searching
+    pending_id = handler._pending.id
     await handler.rheed_emission_step_up(Empty())
-    assert "1850 | 35.12" in handler._pending.message
+    assert "1850 | 35.12" in handler._pending.message and handler._pending.id == pending_id
+    assert handler.readout().rheed_search.judge == "person"
     result = await handler.finish_rheed_on(FinishRheedOn(filament_ma=1800))
     assert handler._pending is None and not result.searching and gun.r.filament_set_ma == 1800
-    with pytest.raises(ValueError, match="no pending 'rheed_emission'"):
+    assert handler.readout().rheed_search is None
+    with pytest.raises(RuntimeError, match="no emission search is open"):
         await handler.rheed_emission_step_up(Empty())
     # The automatic rule, asked for: no confirmation.
-    result = await handler.rheed_on(RheedOn(by_person=False))
+    result = await handler.rheed_on(RheedOn(judge="rule"))
     assert not result.searching and handler._pending is None
+    # A search that fails midway still leaves the stream right.
+    await handler.rheed_on(RheedOn(judge="person"))
+    gun.refuse["set_rheed_focus"] = "focus link down"
+    with pytest.raises(RuntimeError, match="focus step"):
+        await handler.finish_rheed_on(FinishRheedOn())
+    assert handler._pending is None and handler.readout().rheed_search is None
+
+
+async def test_rheed_on_by_the_agent_asks_no_confirmation(handler):
+    from lumi.contracts.payloads.experiment import FinishRheedOn, RheedOn
+    from lumi.experiment.rheed_gun import RheedGun
+    from test_rheed_gun import FAST, FakeCamera, FakeGun
+
+    gun = FakeGun()
+    handler.manager.chamber = gun
+    handler.manager.rheed_gun = RheedGun(gun, FAST, intensity=FakeCamera(gun))  # judge: agent
+    result = await handler.rheed_on(RheedOn())
+    assert result.searching and result.judge == "agent" and handler._pending is None
+    result = await handler.rheed_emission_step_up(Empty())
+    assert handler._pending is None and result.emission_steps[-1]["rheed_mean"] is not None
+    search = handler.readout().rheed_search  # what the Deck shows, Stop here and Abort
+    assert search.judge == "agent" and [s["filament_ma"] for s in search.steps] == [1800, 1850]
+    assert search.steps[-1]["rheed_mean"] is not None and "rising" in search.saturation
+    event = None
+    while (nxt := await handler.next_update()) is not None:
+        event = nxt
+    assert event.rheed_search == search and event.pending_confirmation is None
+    result = await handler.finish_rheed_on(FinishRheedOn())
+    assert not result.searching and gun.r.filament_set_ma == 1850 and handler._pending is None
+    assert handler.readout().rheed_search is None
+    while (nxt := await handler.next_update()) is not None:
+        event = nxt
+    assert event.rheed_search is None
+
+
+async def test_a_dry_run_start_storage_names_no_recording(handler):
+    started = await handler.manager.start_storage("dry", is_dryrun=True)
+    assert started["ok"] and started["record_uuid"] and started["storage_name"] is None
+    assert "nothing recorded" in started["message"] and handler.manager.recording_name is None
+    assert "no recording" in (await handler.manager.end_storage(is_dryrun=True))["message"]

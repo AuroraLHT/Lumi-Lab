@@ -1,6 +1,6 @@
 """The RHEED node: camera, video, integration, STFT.
 
-    python -m nodes.rheed --src simcam [--sim-frame sto|ysz|PATH]
+    python -m nodes.rheed --src simcam [--sim-frame sto|ysz|PATH] [--follow-gun]
 
 Was 354 lines. The hand-wiring is gone (routing keys come from the contract), the
 eight server objects are four capabilities, and the shutdown code that used to sit
@@ -10,21 +10,55 @@ unreachable below `await asyncio.Future()` is now the node's drain path.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
+
+from aio_pika import ExchangeType
 
 from lumi.base.camera.handlers import CameraHandler, VideoHandler
 from lumi.config import settings
+from lumi.contracts.chamber import CHAMBER
 from lumi.contracts.rheed import RHEED
+from lumi.generated.clients.chamber import ChamberPldClient
 from lumi.node import EquipmentNode
 from lumi.rheed.handlers import IntegratorHandler, STFTHandler
-from lumi.rheed.hardware import build_camera, build_compressor, build_integrator, build_stft
+from lumi.rheed.hardware import GunBeam, build_camera, build_compressor, build_integrator, build_stft
 from lumi.rheed.sim_frames import SIM_FRAMES
 
 log = logging.getLogger(__name__)
 
 
+def follow_gun(beam: GunBeam, period_s: float = 1.0):
+    """A node task: the sim image's brightness from pld-service's gun, read off the
+    chamber node every `period_s`. A chamber node that does not answer leaves the
+    last reading."""
+
+    async def follow_gun(node: EquipmentNode) -> None:
+        chamber_x = await node.channel.declare_exchange(
+            CHAMBER.exchange, ExchangeType(CHAMBER.exchange_type), durable=True)
+        pld = ChamberPldClient(node.channel, chamber_x, timeout=5.0)
+        await pld.start()
+        try:
+            while True:
+                try:
+                    beam.update((await pld.chamber_state()).rheed)
+                except Exception as exc:
+                    log.debug("the gun's state not read: %s", exc)
+                await asyncio.sleep(period_s)
+        finally:
+            await pld.stop()
+
+    return follow_gun
+
+
 def build(args: argparse.Namespace) -> EquipmentNode:
-    camera, frame_processing, height, width = build_camera(args.src, sim_frame=args.sim_frame)
+    beam = None
+    if getattr(args, "follow_gun", False):
+        if args.src != "simcam":
+            raise SystemExit("--follow-gun is for --src simcam: a real camera sees the real beam")
+        beam = GunBeam(float(settings.get("rheed.simcam.gun_reference_ua", 8.0)))
+    camera, frame_processing, height, width = build_camera(
+        args.src, sim_frame=args.sim_frame, frame_scale=beam.scale if beam else None)
 
     # Each consumer gets its own fan-out queue from the camera thread. This is the
     # camera's existing in-process pub/sub, and it is why one grab feeds the encoder,
@@ -50,6 +84,8 @@ def build(args: argparse.Namespace) -> EquipmentNode:
 
     for worker in (camera, compressor, integrator, stft):
         node.thread(worker)
+    if beam is not None:
+        node.task(follow_gun(beam))
 
     return node
 
@@ -61,6 +97,10 @@ def cli() -> None:
                         help="with --src simcam: what the camera shows -- "
                              f"{', '.join(SIM_FRAMES)} (real lab frames) or a .npy/image path. "
                              "Default: rheed.simcam.source")
+    parser.add_argument("--follow-gun", action="store_true",
+                        help="with --src simcam: the image's brightness follows pld-service's "
+                             "RHEED gun (dark with it off, with the emission current on), for "
+                             "a twin. Reads the gun off the chamber node")
     parser.add_argument("--host", default=settings.rabbitmq.host)
     parser.add_argument("--user", default="guest")
     parser.add_argument("--password", default="guest")

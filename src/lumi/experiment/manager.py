@@ -46,7 +46,7 @@ from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, ut
 from lumi.experiment.mask_align import locate_slit
 from lumi.experiment import sequence as seqlib
 from lumi.experiment.chamber import ChamberBackend
-from lumi.experiment.rheed_gun import RheedGun, RheedGunSettings
+from lumi.experiment.rheed_gun import RheedGun, RheedGunSettings, frame_intensity
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
@@ -280,7 +280,8 @@ class BaseExperimentManager:
         #: The driver: `PldChamber` (pld-service, the default) or `MiChamber` (legacy MI mode).
         self.chamber = chamber
         #: The RHEED gun at the lab's operating values; pld-service only.
-        self.rheed_gun = RheedGun(chamber, rheed_gun or RheedGunSettings())
+        self.rheed_gun = RheedGun(chamber, rheed_gun or RheedGunSettings(),
+                                  intensity=self._rheed_intensity)
         # Only mask-centre auto-alignment reads it; None leaves everything else working.
         self.chamber_fiducial = chamber_fiducial
         self.chamber_log = chamber_log
@@ -957,18 +958,28 @@ class BaseExperimentManager:
         await self._await_motor_ready()
         await self.chamber.move_rheed_gun(position)
 
-    async def rheed_on(self, by_person: bool | None = None, **overrides) -> dict:
+    async def rheed_on(self, judge: str | None = None, **overrides) -> dict:
         """The RHEED gun on at the lab's operating values (`lumi.experiment.rheed_gun`).
-        `by_person` (None = the setting): stop after filament and HV with the emission
-        search open, for the person to step (`rheed_step_up`) and end (`rheed_finish`)."""
+        `judge` (None = the setting): "agent" or "person" stop after filament and HV with
+        the emission search open, to step (`rheed_step_up`) and end (`rheed_finish`);
+        "rule" searches by the emission's digits by itself."""
         if self.chamber.driver != "pld":
             raise RuntimeError("rheed_on needs pld-service: under --use-legacy-mi-mode the gun "
                                "is switched on its own controller, by hand")
-        if by_person is None:
-            by_person = self.rheed_gun.settings.filament_by_person
-        result = await self.rheed_gun.on(by_person=by_person, **overrides)
+        result = await self.rheed_gun.on(judge=judge or self.rheed_gun.settings.filament_judge,
+                                         **overrides)
         await self.add_recording_event("rheed_on", result["message"], result)
         return result
+
+    async def _rheed_intensity(self, frames: int) -> dict | None:
+        """The RHEED camera's brightness over `frames` frames, for the emission search."""
+        images = []
+        for i in range(max(1, frames)):
+            if i:
+                await asyncio.sleep(0.2)
+            _, frame = await self.rheed_camera.image()
+            images.append(frame)
+        return frame_intensity(images)
 
     async def rheed_step_up(self) -> dict:
         result = await self.rheed_gun.step_up()
@@ -1207,7 +1218,10 @@ class BaseExperimentManager:
         slug = f"{sample_name}_{project_name}" if sample_name else project_name
         storage_name = f"{slug}_{record_uuid}"
         if is_dryrun:
-            return {"ok": True, "record_uuid": record_uuid, "storage_name": storage_name, "path": None, "message": ""}
+            # Nothing is written, so there is no recording to name: a growth record
+            # given this name would point at a file that does not exist.
+            return {"ok": True, "record_uuid": record_uuid, "storage_name": None, "path": None,
+                    "message": f"dry run: nothing recorded (it would have been {storage_name!r})"}
 
         status = await self.storage.start_recording(StorageRequest(
             project_name=storage_name, save_frame=save_frame, save_ai=save_ai, save_log=save_log,
@@ -1225,7 +1239,7 @@ class BaseExperimentManager:
 
     async def end_storage(self, is_dryrun: bool = False) -> dict:
         if is_dryrun:
-            return {"ok": True, "message": ""}
+            return {"ok": True, "message": "dry run: no recording to end"}
         status = await self.storage.stop_recording()
         if status.ok or "not recording" in (status.message or ""):
             self.recording_name = None

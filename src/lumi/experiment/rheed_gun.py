@@ -6,13 +6,23 @@ readbacks got there:
 
 1. filament on at `filament_start_ma`,
 2. HV on at `hv_kv`,
-3. the filament up in `filament_step_ma` steps while the emission current still rises
-   -- by itself, or one step at a time for a person who says when to stop
-   (`by_person`: `on`, then `step_up` per step, then `finish`) --
-   to `filament_max_ma` at most. The emission is saturated when a step leaves its first
-   `emission_digits` significant digits unchanged (the lab's rule: 8.41 -> 8.47 uA is
-   saturated, 8.41 -> 8.52 is not). That step is taken back, so the filament runs no
-   hotter than it needs to,
+3. the filament up in `filament_step_ma` steps, to `filament_max_ma` at most, until the
+   beam has saturated. Who decides is the `judge`:
+
+   - "agent" (the lab's default): the calling agent, from the emission current and the
+     RHEED image's intensity together -- both level off when the beam saturates.
+     `on` opens the search, the agent calls `step_up` per step and `finish` at the step
+     it chooses; no confirmation is asked of anyone.
+   - "person": the same steps, but behind a `rheed_emission` pending confirmation, for
+     a person who reads the table and says up or stop.
+   - "rule": by itself, on the emission alone. Saturated when a step leaves its first
+     `emission_digits` significant digits unchanged (the lab's rule: 8.41 -> 8.47 uA is
+     saturated, 8.41 -> 8.52 is not); that step is taken back, so the filament runs no
+     hotter than it needs to.
+
+   Each step reads the emission and, when there is a RHEED camera, the image's mean and
+   99th-percentile intensity (`frame_intensity`); `saturation_hint` puts the two side by
+   side. The hint is not the decision,
 4. focus, then deflection X and Y.
 
 The values are the lab's (`[experiment.rheed]`), not the gun's remembered set points:
@@ -70,9 +80,12 @@ class RheedGunSettings:
     #: How long one ramp (filament, HV) may take to arrive.
     ramp_timeout_s: float = 240.0
     poll_s: float = 0.5
-    #: rheed_on's default: a person says when the emission has saturated (step_up /
-    #: finish), rather than the digit rule deciding.
-    filament_by_person: bool = True
+    #: rheed_on's default judge of saturation: "agent", "person" or "rule" (see above).
+    filament_judge: str = "agent"
+    #: A step that changes the RHEED mean intensity by less than this fraction leaves it flat.
+    intensity_flat_fraction: float = 0.03
+    #: Frames averaged for one intensity reading.
+    intensity_frames: int = 3
 
     def with_overrides(self, **values) -> "RheedGunSettings":
         return replace(self, **{k: float(v) for k, v in values.items() if v is not None})
@@ -83,8 +96,43 @@ class RheedGunSettings:
         fields = {f.name: f for f in dataclasses.fields(cls)}
         if unknown := sorted(set(values) - set(fields)):
             raise RuntimeError(f"[experiment.rheed] has unknown keys: {', '.join(unknown)}")
-        return cls(**{k: bool(v) if fields[k].type in (bool, "bool") else float(v)
-                      for k, v in values.items()})
+        def cast(k, v):
+            kind = fields[k].type
+            return (bool(v) if kind in (bool, "bool") else str(v) if kind in (str, "str")
+                    else float(v))
+        made = cls(**{k: cast(k, v) for k, v in values.items()})
+        check_judge(made.filament_judge)
+        return made
+
+
+JUDGES = ("agent", "person", "rule")
+
+
+def check_judge(judge: str) -> str:
+    if judge not in JUDGES:
+        raise ValueError(f"judge {judge!r} is not one of {', '.join(JUDGES)}")
+    return judge
+
+
+def frame_intensity(frames: list) -> dict | None:
+    """The RHEED image's brightness over a few frames: mean and 99th percentile, and
+    the fraction of pixels at full scale (a clipped image cannot show saturation)."""
+    import numpy as np
+
+    frames = [np.asarray(f) for f in frames if f is not None and np.size(f)]
+    if not frames:
+        return None
+    stack = np.stack(frames).astype(float)
+    # 8-bit, or 12-bit in uint16 (the Basler and the sim) unless it reads above that.
+    if frames[0].dtype == np.uint8:
+        full = 255.0
+    elif frames[0].dtype == np.uint16:
+        full = 4095.0 if stack.max() <= 4095 else 65535.0
+    else:
+        full = math.inf
+    return {"rheed_mean": round(float(stack.mean()), 3),
+            "rheed_p99": round(float(np.percentile(stack, 99)), 3),
+            "rheed_clipped": round(float((stack >= full).mean()), 5) if math.isfinite(full) else 0.0}
 
 
 def leading_digits(value: float, n: int) -> tuple[int, int]:
@@ -102,25 +150,55 @@ def saturated(before: float | None, after: float | None, digits: int) -> bool:
     return leading_digits(after, digits) <= leading_digits(before, digits)
 
 
-def saturation_hint(steps: list[dict], digits: int) -> str:
-    """For the person deciding: whether the last step saturated, by the lab's rule."""
+def saturation_hint(steps: list[dict], digits: int, flat: float = 0.03) -> str:
+    """For whoever decides: what the last step did to the emission (the lab's digit
+    rule) and to the RHEED intensity (flat within `flat`), side by side."""
     if len(steps) < 2:
-        return "say up for the next step, or stop"
-    a, b = steps[-2]["emission_ua"], steps[-1]["emission_ua"]
+        return "step up for the next step, or stop"
+    prev, last = steps[-2], steps[-1]
+    a, b = prev["emission_ua"], last["emission_ua"]
     if a is None or b is None:
-        return "no emission reading to compare: judge by eye"
-    if saturated(a, b, digits):
-        return (f"the first {digits} digits did not change ({a:.4g} -> {b:.4g} uA): saturated by "
-                f"the lab's rule, stop at {steps[-2]['filament_ma']:g} mA?")
-    return f"still rising ({a:.4g} -> {b:.4g} uA)"
+        e_flat, emission = None, "no emission reading to compare"
+    elif saturated(a, b, digits):
+        e_flat, emission = True, f"emission's first {digits} digits did not change ({a:.4g} -> {b:.4g} uA)"
+    else:
+        e_flat, emission = False, f"emission still rising ({a:.4g} -> {b:.4g} uA)"
+    i, j = prev.get("rheed_mean"), last.get("rheed_mean")
+    if i is None or j is None or i <= 0:
+        i_flat, intensity = None, "no RHEED intensity to compare"
+    else:
+        change = (j - i) / i
+        i_flat = abs(change) < flat
+        intensity = (f"RHEED intensity {'flat' if i_flat else 'rising' if change > 0 else 'falling'} "
+                     f"({i:.4g} -> {j:.4g}, {change:+.1%})")
+    parts = [emission, intensity]
+    if last.get("rheed_clipped"):
+        parts.append(f"{last['rheed_clipped']:.1%} of the image at full scale: lower the camera "
+                     "gain before judging by intensity")
+    stop = f"stop at {prev['filament_ma']:g} mA?"
+    if e_flat and i_flat in (True, None) or i_flat and e_flat is None:
+        verdict = f"saturated: {stop}"
+    elif e_flat or i_flat:
+        verdict = f"the two disagree: one more step, or {stop}"
+    elif e_flat is None and i_flat is None:
+        verdict = "nothing to compare: judge by eye"
+    else:
+        verdict = "still rising"
+    return f"{verdict} ({'; '.join(parts)})"
 
 
 def emission_table(steps: list[dict]) -> str:
-    """The emission search as a table: filament current against emission."""
-    rows = ["filament mA | emission uA"]
+    """The emission search as a table: filament current against emission, and the
+    RHEED mean intensity when there is a camera."""
+    def cell(v):
+        return "-" if v is None else f"{v:.4g}"
+    images = any(step.get("rheed_mean") is not None for step in steps)
+    rows = ["filament mA | emission uA" + (" | RHEED mean" if images else "")]
     for step in steps:
-        e = step["emission_ua"]
-        rows.append(f"{step['filament_ma']:>11g} | {'-' if e is None else f'{e:.4g}'}")
+        row = f"{step['filament_ma']:>11g} | {cell(step['emission_ua'])}"
+        if images:
+            row = f"{row:<25} | {cell(step.get('rheed_mean'))}"
+        rows.append(row)
     return "\n".join(rows)
 
 
@@ -152,11 +230,15 @@ def _close(readback: float | None, target: float, tolerance: float) -> bool:
 class RheedGun:
     """`rheed_on` / `rheed_off` on a `PldChamber`."""
 
-    def __init__(self, chamber, settings: RheedGunSettings) -> None:
+    def __init__(self, chamber, settings: RheedGunSettings, intensity=None) -> None:
         self.chamber = chamber
         self.settings = settings
+        #: async (n_frames) -> `frame_intensity` dict or None: the RHEED camera's
+        #: brightness. None: no camera, the steps carry the emission only.
+        self.intensity = intensity
         self._lock = asyncio.Lock()
-        #: The person-driven emission search in progress: its settings and steps.
+        #: The emission search in progress (judge "agent" or "person"): its settings,
+        #: judge and steps.
         self._search: dict | None = None
 
     async def _rheed(self) -> PldRheed:
@@ -192,8 +274,22 @@ class RheedGun:
 
     @property
     def searching(self) -> bool:
-        """A person-driven emission search is open (`on(by_person=True)` until `finish`)."""
+        """An emission search is open (`on` with judge "agent"/"person" until `finish`)."""
         return self._search is not None
+
+    def search_view(self) -> dict | None:
+        """The open search for a UI (`RheedSearch`), or None."""
+        if self._search is None:
+            return None
+        s, steps = self._search["settings"], self._search["steps"]
+        return {"judge": self._search["judge"], "started_at": self._search["started_at"],
+                "steps": [dict(step) for step in steps], "filament_max_ma": s.filament_max_ma,
+                "saturation": saturation_hint(steps, int(s.emission_digits), s.intensity_flat_fraction)}
+
+    @property
+    def judge(self) -> str | None:
+        """Who judges the open search, or None."""
+        return None if self._search is None else self._search["judge"]
 
     def _check(self, r: PldRheed, s: RheedGunSettings) -> None:
         if (why := self._refuse(r)) is not None:
@@ -228,10 +324,11 @@ class RheedGun:
                     f"rheed_on stopped at the {where['stage']} step: {exc}. The gun is left as it is"
                     + (f": {_brief(now)}" if now is not None else "")) from exc
 
-    async def on(self, by_person: bool = False, **overrides) -> dict:
-        """Filament and HV on, then the emission search: by itself (`by_person` false) to
-        saturation and on to the optics, or one step at a time for a person, who calls
-        `step_up` and then `finish`."""
+    async def on(self, judge: str = "rule", **overrides) -> dict:
+        """Filament and HV on, then the emission search: by itself (judge "rule") to
+        saturation and on to the optics, or one step at a time for an agent or a person
+        (judge "agent"/"person"), who calls `step_up` and then `finish`."""
+        check_judge(judge)
         if self._search is not None:
             raise RuntimeError("an emission search is already open: step_up or finish it")
         s = self.settings.with_overrides(**overrides)
@@ -251,15 +348,17 @@ class RheedGun:
                 and _close(r.hv_readback_kv, s.hv_kv, s.hv_tolerance_kv),
                 s.ramp_timeout_s, s.poll_s)
             where["stage"] = "emission"
-            steps = [{"filament_ma": filament, "emission_ua": await self._emission(s)}]
-            if by_person:
-                self._search = {"settings": s, "steps": steps}
-                return self._search_report("filament and HV on; the emission search waits for the person")
+            steps = [{"filament_ma": filament, **await self._reading(s)}]
+            if judge != "rule":
+                self._search = {"settings": s, "judge": judge, "steps": steps,
+                                "started_at": time.time()}
+                return self._search_report(f"filament and HV on; the emission search waits for the {judge}")
             filament, saturation = await self._saturate(s, steps)
             return await self._optics(where, s, filament, steps, saturation)
 
     async def step_up(self) -> dict:
-        """The person's next step: the filament up one `filament_step_ma`, and its emission."""
+        """The judge's next step: the filament up one `filament_step_ma`, and its
+        emission and RHEED intensity."""
         search = self._require_search()
         s, steps = search["settings"], search["steps"]
         filament = steps[-1]["filament_ma"]
@@ -270,14 +369,14 @@ class RheedGun:
         async with self._stage() as where:
             where["stage"] = "emission"
             await self._filament(s, nxt, True)
-            steps.append({"filament_ma": nxt, "emission_ua": await self._emission(s)})
+            steps.append({"filament_ma": nxt, **await self._reading(s)})
         return self._search_report(f"filament up to {nxt:g} mA")
 
     async def finish(self, filament_ma: float | None = None) -> dict:
-        """End the person's search at `filament_ma` (one of the tried steps; None = where
-        it is now), then focus and deflection."""
+        """End the search at `filament_ma` (one of the tried steps; None = where it is
+        now), then focus and deflection."""
         search = self._require_search()
-        s, steps = search["settings"], search["steps"]
+        s, steps, judge = search["settings"], search["steps"], search["judge"]
         tried = [step["filament_ma"] for step in steps]
         target = tried[-1] if filament_ma is None else float(filament_ma)
         if target not in tried:
@@ -289,25 +388,25 @@ class RheedGun:
                 await self._filament(s, target, True)
             self._search = None
             return await self._optics(where, s, target, steps,
-                                      f"the person stopped the search at {target:g} mA")
+                                      f"the {judge} stopped the search at {target:g} mA", judge)
 
     def cancel_search(self) -> None:
         self._search = None
 
     def _require_search(self) -> dict:
         if self._search is None:
-            raise RuntimeError("no emission search is open: rheed_on with by_person first")
+            raise RuntimeError("no emission search is open: rheed_on (judge agent or person) first")
         return self._search
 
     def _search_report(self, what: str) -> dict:
-        s, steps = self._search["settings"], self._search["steps"]
-        hint = saturation_hint(steps, int(s.emission_digits))
+        s, steps, judge = self._search["settings"], self._search["steps"], self._search["judge"]
+        hint = saturation_hint(steps, int(s.emission_digits), s.intensity_flat_fraction)
         return {"filament_ma": steps[-1]["filament_ma"], "emission_steps": list(steps),
-                "saturation": hint, "settings": asdict(s), "searching": True,
+                "saturation": hint, "settings": asdict(s), "searching": True, "judge": judge,
                 "message": f"{what}. {hint}\n{emission_table(steps)}"}
 
     async def _optics(self, where: dict, s: RheedGunSettings, filament: float,
-                      steps: list[dict], saturation: str) -> dict:
+                      steps: list[dict], saturation: str, judge: str = "rule") -> dict:
         where["stage"] = "focus"
         await self.chamber._call("set_rheed_focus", PldRheedFocusRequest(ma=s.focus_ma))
         where["stage"] = "deflection"
@@ -325,6 +424,7 @@ class RheedGun:
         log.info("RHEED gun on: %s (%s)", _brief(r), saturation)
         return {"gun": gun_summary(r), "filament_ma": filament, "emission_steps": steps,
                 "saturation": saturation, "settings": asdict(s), "searching": False,
+                "judge": judge,
                 "message": f"RHEED gun on: {_brief(r)}; {saturation}\n{emission_table(steps)}"}
 
     async def _safe_rheed(self) -> PldRheed | None:
@@ -346,9 +446,17 @@ class RheedGun:
             s.ramp_timeout_s, s.poll_s)
         return ma
 
-    async def _emission(self, s: RheedGunSettings) -> float | None:
+    async def _reading(self, s: RheedGunSettings) -> dict:
+        """One step's reading after the settle time: the emission, and the RHEED
+        intensity when there is a camera (a camera that fails leaves it out)."""
         await asyncio.sleep(s.emission_settle_s)
-        return (await self._rheed()).emission_ua
+        reading = {"emission_ua": (await self._rheed()).emission_ua}
+        if self.intensity is not None:
+            try:
+                reading.update(await self.intensity(int(s.intensity_frames)) or {})
+            except Exception as exc:  # the camera is a second opinion, not a step
+                log.warning("RHEED intensity not read: %s", exc)
+        return reading
 
     async def _saturate(self, s: RheedGunSettings, steps: list[dict]) -> tuple[float, str]:
         """Raise the filament while the emission's leading digits still change; take back
@@ -363,8 +471,8 @@ class RheedGun:
                 return filament, (f"filament at its maximum, {filament:g} mA, emission "
                                   f"{emission:.4g} uA, still rising")
             await self._filament(s, nxt, True)
-            after = await self._emission(s)
-            steps.append({"filament_ma": nxt, "emission_ua": after})
+            steps.append({"filament_ma": nxt, **await self._reading(s)})
+            after = steps[-1]["emission_ua"]
             if after is None or after <= 0 or saturated(emission, after, int(s.emission_digits)):
                 await self._filament(s, filament, True)
                 return filament, (f"emission saturated at {emission:.4g} uA: filament "

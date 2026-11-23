@@ -690,18 +690,23 @@ heating_laser_off_max_temperature = 165.0
 # The filament starts at filament_start_ma and goes up in filament_step_ma steps while
 # the emission current still rises, to filament_max_ma at most. It is saturated when a
 # step leaves the emission's first emission_digits significant digits unchanged (8.41 ->
-# 8.47 uA); that step is taken back. With filament_by_person (the default) a person
-# decides instead: rheed_on stops after filament and HV, and the agent steps the
-# filament up one step at a time, showing the filament-vs-emission table, until the
-# person says stop. Focus and deflection depend on the
-# alignment: rheed_on takes per-call overrides.
+# 8.47 uA). filament_judge says who decides that:
+#   "agent"  (the default) rheed_on stops after filament and HV with the search open, and
+#            the agent steps the filament up and stops it, judging the emission current
+#            and the RHEED image's mean intensity together (both level off at
+#            saturation; a step that moves the intensity less than
+#            intensity_flat_fraction leaves it flat). No confirmation is asked.
+#   "person" the same steps behind a rheed_emission confirmation: a person says up or stop.
+#   "rule"   the emission digits decide by themselves; the saturating step is taken back.
+# Focus and deflection depend on the alignment: rheed_on takes per-call overrides.
 [experiment.rheed]
 hv_kv = 25.0
 filament_start_ma = 1800.0
 filament_max_ma = 2100.0
 filament_step_ma = 50.0
 emission_digits = 2
-filament_by_person = true
+filament_judge = "agent"
+intensity_flat_fraction = 0.03
 emission_settle_s = 3.0
 focus_ma = 476.0
 deflection_x_ma = -61.0

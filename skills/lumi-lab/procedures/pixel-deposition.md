@@ -28,7 +28,7 @@ aligned by `auto_align_center_mask` rather than by a person.
    (SKILL.md §3). Poll the temperature until it is within tolerance. **Snapshot: chamber `heated`.** If the temperature
    changed, align the mask again (thermal expansion moves the holder), then
    `to_current_pixel`.
-9. A person sets the excimer to ON. `rheed_on` if the gun is off
+9. A person sets the excimer to ON. `rheed_on` and its emission search if the gun is off
    (`chamber.pld.chamber_state` `rheed.filament_on`; SKILL.md §2), then the person adjusts
    the beam and stage.
    `begin_adjust_rheed_gain` → the person sets and confirms the gain. Look at
