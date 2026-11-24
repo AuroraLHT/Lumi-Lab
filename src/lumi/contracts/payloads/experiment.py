@@ -673,6 +673,8 @@ class SetPressureControl(BaseModel):
 
 
 class StartStorage(BaseModel):
+    #: The project the recording belongs to. It becomes the driver's project, as
+    #: register_project would make it (registered if new), unless this is a dry run.
     project_name: str
     #: True: nothing is recorded; the result has a record_uuid but no storage_name.
     is_dryrun: bool = False

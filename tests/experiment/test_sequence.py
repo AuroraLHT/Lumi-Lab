@@ -466,6 +466,19 @@ async def test_a_run_needs_a_substrate_and_project_unless_rehearsed(seq):
         await handler.run_sequence(RunSequence(name="wedge", version=1))
 
 
+async def test_a_recorded_run_takes_its_project_from_the_recording(seq):
+    handler, client = seq
+    await save(handler)
+    await handler.approve_sequence(SequenceRef(name="wedge", version=1))
+    await handler.register_substrate(RegisterSubstrate(materials="SrTiO3", orientation="(001)", width=5,
+                                                       positions=[0.0], substrate_name="S1"))
+    client.script = [(finished("wedge v1", 1, 1), [])]
+    await handler.run_sequence(RunSequence(name="wedge", version=1,
+                                           record=SequenceRecording(project_name="wedges")))
+    assert (await wait_task(handler))["ok"]
+    assert handler.manager.project_name == "wedges" and handler.manager.project_id is not None
+
+
 async def test_a_move_during_a_pause_is_journaled(loaded):
     handler, client = loaded
     journaled = []

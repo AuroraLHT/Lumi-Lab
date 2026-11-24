@@ -650,6 +650,23 @@ async def test_a_recording_carries_the_experiment_and_hears_about_its_tasks(hand
     assert len(storage.events) == 2  # nothing recording: nothing sent
 
 
+async def test_start_storage_registers_its_project(handler):
+    """A recording names its project, so that is the driver's project: in the file's
+    context, and for the growth records after it, with no register_project first."""
+    from lumi.contracts.payloads.experiment import StartStorage
+
+    await handler.start_storage(StartStorage(project_name="demo"))
+    assert handler.manager.project_name == "demo" and handler.manager.project_id is not None
+    first = handler.manager.project_id
+    assert handler.manager.storage.requests[-1].context["project_id"] == first
+    await handler.start_storage(StartStorage(project_name="other"))
+    assert handler.manager.project_name == "other" and handler.manager.project_id != first
+    await handler.start_storage(StartStorage(project_name="demo"))
+    assert handler.manager.project_id == first  # the same project, not a second one
+    await handler.manager.start_storage("dry", is_dryrun=True)
+    assert handler.manager.project_name == "demo"  # a dry run writes nothing
+
+
 async def test_start_storage_falls_back_to_project_name_with_no_sample_loaded(handler):
     from lumi.contracts.payloads.experiment import StartStorage
 

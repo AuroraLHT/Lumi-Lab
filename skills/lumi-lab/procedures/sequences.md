@@ -41,8 +41,8 @@ Wedge pattern: `mask` with `wait: false` and a speed, then a waited `fire_laser`
 
 ## Running one
 
-1. Before: everything a deposition needs that the list does not do itself: the project
-   and substrate loaded (and the pixel moved to, `to_pixel`: one run is one pixel),
+1. Before: everything a deposition needs that the list does not do itself: the
+   substrate loaded (the project is `record`'s `project_name`) (and the pixel moved to, `to_pixel`: one run is one pixel),
    temperature, pressure, the laser test if it has `meter_energy`, pre-ablation if the
    list does not do it. A run without a substrate is refused; `no_sample: true` is for a
    rehearsal on a dummy only, and records no layers.

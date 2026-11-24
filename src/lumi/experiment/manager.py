@@ -1232,6 +1232,10 @@ class BaseExperimentManager:
             # given this name would point at a file that does not exist.
             return {"ok": True, "record_uuid": record_uuid, "storage_name": None, "path": None,
                     "message": f"dry run: nothing recorded (it would have been {storage_name!r})"}
+        # The recording names its project, so that is the project now: its context
+        # and the growth records after it (run_sequence wants one) carry its id.
+        if self.project_id is None or self.project_name != project_name:
+            await self.register_project(project_name)
 
         status = await self.storage.start_recording(StorageRequest(
             project_name=storage_name, save_frame=save_frame, save_ai=save_ai, save_log=save_log,

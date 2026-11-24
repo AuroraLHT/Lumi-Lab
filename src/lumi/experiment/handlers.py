@@ -1721,8 +1721,14 @@ class ExperimentHandler:
         if not req.no_sample and (substrate is None or substrate.db_id is None):
             raise RuntimeError("no substrate loaded: register_substrate or resume_substrate first, so "
                                "the layers it grows have a sample (no_sample=true for a rehearsal)")
+        if not req.no_sample and req.record is not None:
+            # Its recording names the project, and starting it would make that the
+            # project anyway (start_storage): the growth records need it from step 1.
+            if m.project_name != req.record.project_name or m.project_id is None:
+                await m.register_project(req.record.project_name)
         if not req.no_sample and m.project_id is None:
-            raise RuntimeError("no project: register_project first, so the run's growth records have one "
+            raise RuntimeError("no project: register_project first, or run it with record (its "
+                               "project_name), so the run's growth records have one "
                                "(no_sample=true for a rehearsal)")
         run = SequenceRun(
             run_id=uuid.uuid4().hex, name=row["name"], version=row["version"],

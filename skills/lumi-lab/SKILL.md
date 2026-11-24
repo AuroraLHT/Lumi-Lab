@@ -158,7 +158,9 @@ What applies to both:
 - **[hard]** Sequences (`procedures/sequences.md`): a person reviews and approves each
   version once, in the Deck; you never approve one, and you run only the version and hash
   they approved. Run it with `record` (a recording around the whole run); it needs the
-  substrate and project loaded, and records its own layers and growth records.
+  substrate loaded, and records its own layers and growth records. The project is the
+  recording's `project_name` (`start_storage` and `record` register it, so
+  `register_project` is needed only to name one without recording).
 - **[thumb]** Anneal and cool down in O2 for oxides.
 
 ### Snapshots
