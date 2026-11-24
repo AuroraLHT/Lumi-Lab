@@ -150,6 +150,14 @@ feature_bbox = [100, 100, 620, 300]
 feature_oscillation_frequency = 0.03
 feature_oscillation_amplitude = 200
 max_intensity = 4095
+# With `nodes/rheed.py --follow-growth` (a twin): RHEED oscillations from the
+# deposition instead of the clock-driven ones above. Each pulse fired with the
+# sample shutter open grows 1/pulses_per_monolayer of a monolayer; the feature_bbox
+# region dips by oscillation_depth once per monolayer, damped over
+# oscillation_decay_ml monolayers.
+pulses_per_monolayer = 40
+oscillation_depth = 0.4
+oscillation_decay_ml = 10
 
 [rheed.video_compressor]
 fps = 60

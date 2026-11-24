@@ -47,6 +47,9 @@ class SimCameraConfig(GenericCameraConfig):
     # frame: the RHEED sim's beam following the gun (lumi.rheed.hardware.GunBeam; 0 =
     # no beam). None leaves it at 1.
     frame_scale : Optional[Callable[[], float]] = None
+    # Optional brightness factor on the feature_bbox region, read per frame: the RHEED
+    # sim's growth oscillations (lumi.rheed.hardware.GrowthClock). None leaves it at 1.
+    feature_scale : Optional[Callable[[], float]] = None
 
 
 class SimCamera(GenericCamera):
@@ -92,6 +95,10 @@ class SimCamera(GenericCamera):
         if self.config.is_feature_oscillation:
             frame[self.config.feature_bbox[1]:self.config.feature_bbox[3], self.config.feature_bbox[0]:self.config.feature_bbox[2]] += np.sin(2* np.pi * self.config.feature_oscillation_frequency * time.time()) * self.config.feature_oscillation_amplitude
 
+        if self.config.feature_scale is not None:
+            x0, y0, x1, y1 = self.config.feature_bbox
+            frame = frame.astype(np.float64, copy=False)
+            frame[y0:y1, x0:x1] *= self.config.feature_scale()
         if self.config.frame_scale is not None:
             frame = frame * self.config.frame_scale()
 

@@ -11,6 +11,8 @@ should not need pypylon installed to import this module.
 from __future__ import annotations
 
 import logging
+import math
+import time
 
 import cv2
 
@@ -87,13 +89,71 @@ class GunBeam:
         return self._scale
 
 
-def build_camera(src: str, sim_frame: str | None = None, frame_scale=None):
+class GrowthClock:
+    """RHEED oscillations on the simulated image from pld-service's deposition, for a
+    twin: every pulse fired with the sample shutter open grows 1/`pulses_per_monolayer`
+    of a monolayer, and the specular region dims and recovers once per monolayer, the
+    dip `depth` deep at first and damped over `decay_ml` monolayers. With no deposition
+    the image holds still.
+
+    pld-service is read about once a second; between readings a firing train is
+    counted on at its rate, so the trace is smooth rather than a step per poll."""
+
+    def __init__(self, pulses_per_monolayer: float = 40.0, depth: float = 0.4,
+                 decay_ml: float = 10.0, clock=time.monotonic) -> None:
+        self.pulses_per_monolayer = pulses_per_monolayer
+        self.depth = depth
+        self.decay_ml = decay_ml
+        self._clock = clock
+        self._grown = 0.0  # pulses deposited before the present reading
+        self._last_fired: int | None = None
+        self._open = False
+        self._firing = False
+        self._rate = 0.0
+        self._cap = 0.0  # pulses the present train can still add
+        self._at = clock()
+
+    def update(self, state) -> None:
+        """`state` is a `PldChamberState`, or None for no reading."""
+        if state is None:
+            self._firing = False
+            return
+        laser = state.laser
+        fired = laser.pulses_fired
+        if self._last_fired is not None and self._open:
+            # A count lower than the last one is a new train, counted from 0.
+            self._grown += fired - self._last_fired if fired >= self._last_fired else fired
+        self._last_fired = fired
+        self._open = bool(state.sample_shutter_away)
+        self._firing = laser.status == "firing" and laser.rate_hz > 0
+        self._rate = laser.rate_hz
+        self._cap = max(0.0, laser.pulses_requested - fired) if laser.pulses_requested else float("inf")
+        self._at = self._clock()
+
+    def monolayers(self) -> float:
+        pulses = self._grown
+        if self._open and self._firing:
+            pulses += min(self._cap, self._rate * (self._clock() - self._at))
+        return pulses / self.pulses_per_monolayer
+
+    def scale(self) -> float:
+        ml = self.monolayers()
+        if ml <= 0:
+            return 1.0
+        dip = 0.5 * (1.0 - math.cos(2.0 * math.pi * ml))
+        return 1.0 - self.depth * math.exp(-ml / self.decay_ml) * dip
+
+
+def build_camera(src: str, sim_frame: str | None = None, frame_scale=None,
+                 feature_scale=None):
     """Returns (camera, frame_processing, height, width).
 
     `sim_frame` (simcam only) picks what the simulated camera shows: a name from
     lumi.rheed.sim_frames ("sto", "ysz") or a path. None takes `rheed.simcam.source`.
     `frame_scale` (simcam only): `() -> float` on each frame's brightness, e.g.
-    `GunBeam.scale`.
+    `GunBeam.scale`. `feature_scale` (simcam only): `() -> float` on the feature
+    region's (`rheed.simcam.feature_bbox`), e.g. `GrowthClock.scale`; it replaces the
+    clock-driven base and feature oscillations, so the image changes only with it.
     """
     if src == "pylon":
         # Imported here, not at module scope: only the camera host has pypylon.
@@ -155,10 +215,10 @@ def build_camera(src: str, sim_frame: str | None = None, frame_scale=None):
             fps=cfg.fps,
             queue_size=cfg.queue_size,
             idle_time=cfg.idle_time,
-            is_base_oscillation=cfg.is_base_oscillation,
+            is_base_oscillation=cfg.is_base_oscillation and feature_scale is None,
             base_oscillation_frequency=cfg.base_oscillation_frequency,
             base_oscillation_amplitude=cfg.base_oscillation_amplitude,
-            is_feature_oscillation=cfg.is_feature_oscillation,
+            is_feature_oscillation=cfg.is_feature_oscillation and feature_scale is None,
             feature_bbox=cfg.feature_bbox,
             feature_oscillation_frequency=cfg.feature_oscillation_frequency,
             feature_oscillation_amplitude=cfg.feature_oscillation_amplitude,
@@ -167,6 +227,7 @@ def build_camera(src: str, sim_frame: str | None = None, frame_scale=None):
             gamma=cfg.gamma,
             max_intensity=cfg.max_intensity,
             frame_scale=frame_scale,
+            feature_scale=feature_scale,
         ),
         name=cfg.name,
         daemon=True,
