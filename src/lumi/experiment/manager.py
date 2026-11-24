@@ -72,6 +72,35 @@ class SequenceLost(RuntimeError):
 LASER_TEST_KV = 21.0
 LASER_TEST_PULSES = 100
 LASER_TEST_RATE_HZ = 1.0
+#: How often fire_laser_test reads the excimer's energy while the train runs, s.
+LASER_TEST_POLL_S = 1.0
+#: Fewer readings than this, or readings that never move by more than
+#: LASER_TEST_FLAT_MJ, are not taken as the source energy (see `source_from_readings`).
+LASER_TEST_MIN_READINGS = 3
+LASER_TEST_FLAT_MJ = 0.05
+#: A meter reading this far above the source is a mistyped or swapped number: the
+#: beam only loses energy between the laser and the meter.
+LASER_TEST_MAX_RATIO = 1.1
+
+
+def source_from_readings(readings: list[tuple[float, float | None]]) -> tuple[float | None, str]:
+    """The source energy from the excimer's (energy, energy setpoint) readings during
+    the test train, and why, if it is None.
+
+    A real excimer's energy moves from pulse to pulse. Readings that do not move at all
+    are not a measurement: a laser (or a twin) answering with its setpoint, or a stale
+    value. Then the person reads the laser's display and passes source_mj."""
+    if len(readings) < LASER_TEST_MIN_READINGS:
+        return None, (f"the excimer reported its energy {len(readings)} time(s) while firing, "
+                      f"fewer than {LASER_TEST_MIN_READINGS}")
+    energies = [e for e, _ in readings]
+    if max(energies) - min(energies) < LASER_TEST_FLAT_MJ:
+        setpoints = {s for _, s in readings}
+        echo = (len(setpoints) == 1 and None not in setpoints
+                and abs(energies[0] - setpoints.pop()) < LASER_TEST_FLAT_MJ)
+        return None, (f"the excimer's energy stayed at {energies[0]:.2f} mJ for all {len(readings)} "
+                      f"readings{', its energy setpoint' if echo else ''}: that is not a measurement")
+    return sum(energies) / len(energies), ""
 
 
 def _projection(base_xs, base_ys, target_ys, source_x=0.0, source_y=0.0):
@@ -982,14 +1011,15 @@ class BaseExperimentManager:
         return result
 
     async def _rheed_intensity(self, frames: int) -> dict | None:
-        """The RHEED camera's brightness over `frames` frames, for the emission search."""
-        images = []
+        """The RHEED image's pixel statistics over `frames` frames, for the emission search."""
+        images, full_scale = [], None
         for i in range(max(1, frames)):
             if i:
                 await asyncio.sleep(0.2)
-            _, frame = await self.rheed_camera.image()
+            meta, frame = await self.rheed_camera.image()
             images.append(frame)
-        return frame_intensity(images)
+            full_scale = getattr(meta, "full_scale", None) or full_scale
+        return frame_intensity(images, full_scale)
 
     async def rheed_step_up(self) -> dict:
         result = await self.rheed_gun.step_up()
@@ -1542,44 +1572,83 @@ class BaseExperimentManager:
         await self._await_motor_ready()  # SelectTarget revolves the carousel
         await self.chamber.select_target(pcmd.Targets.Clear)
         await self.set_laser_hv(LASER_TEST_KV)
-        self._laser_test = {"fired_by": "person", "readings": []}
+        self._laser_test = {"fired_by": "person"}
 
     async def fire_laser_test(self) -> dict:
         """Fire the test train into the meter, reading the excimer's energy while it
-        runs. Returns its average as source_mj (None if the laser reported none)."""
+        runs. Returns its average as source_mj, or None with `source_note` saying why
+        the readings were not taken (see `source_from_readings`).
+
+        Refused unless the excimer is still at LASER_TEST_KV in HV mode, as
+        begin_laser_test left it; fails if the train did not fire all its pulses."""
         if self._laser_test is None:
             raise RuntimeError("no laser test is open: call begin_laser_test first")
-        readings: list[float] = []
+        excimer = (await self.chamber.state()).excimer
+        if not excimer.mode.upper().startswith("HV") or excimer.hv is None \
+                or abs(excimer.hv - LASER_TEST_KV) > 0.05:
+            raise RuntimeError(
+                f"the excimer is not at {LASER_TEST_KV:g} kV in HV mode (mode {excimer.mode or '?'}, "
+                f"HV {excimer.hv if excimer.hv is not None else '?'} kV): call begin_laser_test again")
+        readings: list[tuple[float, float | None]] = []  # (energy, energy setpoint)
         fire = asyncio.create_task(self.chamber.fire(LASER_TEST_PULSES, LASER_TEST_RATE_HZ))
         while not fire.done():
-            await asyncio.wait({fire}, timeout=1.0)
+            await asyncio.wait({fire}, timeout=LASER_TEST_POLL_S)
             try:
-                energy = (await self.chamber.state()).excimer.energy
+                state = await self.chamber.state()
             except Exception as exc:
                 log.warning("laser test: could not read the excimer energy: %s", exc)
                 continue
-            if energy and energy > 0:
-                readings.append(float(energy))
+            # Only while this train is firing: before its first pulse the reading is
+            # the last train's, or nothing.
+            energy = state.excimer.energy
+            if state.laser.status == "firing" and state.laser.pulses_fired > 0 and energy and energy > 0:
+                readings.append((float(energy), state.excimer.energy_set))
         await fire
-        self._laser_test = {"fired_by": "lumi", "readings": readings}
-        return {"source_mj": sum(readings) / len(readings) if readings else None,
-                "readings": len(readings)}
+        fired = (await self.chamber.state()).laser.pulses_fired
+        if fired < LASER_TEST_PULSES:
+            self._laser_test = {"fired_by": "lumi", "cut_short": fired}
+            raise RuntimeError(f"the test train fired {fired} of {LASER_TEST_PULSES} pulses: the meter's "
+                               "average is not over the test; fire_laser_test again")
+        source, note = source_from_readings(readings)
+        self._laser_test = {"fired_by": "lumi", "source_mj": source, "source_note": note}
+        result = {"source_mj": source, "readings": len(readings), "pulses_fired": fired}
+        if note:
+            result["source_note"] = f"{note}; pass source_mj, read off the laser's display, to confirm_laser_test"
+        return result
 
     async def confirm_laser_test(self, meter_mj: float, source_mj: float | None = None,
                                  actor: str | None = None) -> dict:
         """Record the test: the meter's average from the person, the source energy
         from what the excimer reported while firing (or `source_mj`, read off the
-        laser by the person)."""
+        laser by the person). Refused for a test train cut short, a source energy that
+        is not a measurement, or a meter reading above the source."""
         test = self._laser_test
         if test is None:
             raise RuntimeError("no laser test is open: call begin_laser_test first")
-        if source_mj is None and test["readings"]:
-            source_mj = sum(test["readings"]) / len(test["readings"])
+        if "cut_short" in test:
+            raise RuntimeError(f"the last test train fired only {test['cut_short']} of {LASER_TEST_PULSES} "
+                               "pulses: fire_laser_test again (or begin_laser_test again to fire it by hand)")
+        note = ""
+        if source_mj is None and test["fired_by"] == "lumi":
+            source_mj, note = test["source_mj"], test["source_note"]
+        elif source_mj is None:
+            # The person fired it: one reading, after the train, so only the setpoint
+            # echo can be told from a measurement.
+            excimer = (await self.chamber.state()).excimer
+            energy, setpoint = excimer.energy, excimer.energy_set
+            if not energy or energy <= 0:
+                note = "the excimer reported no energy"
+            elif setpoint is not None and abs(energy - setpoint) < LASER_TEST_FLAT_MJ:
+                note = f"the excimer shows {energy:.2f} mJ, its energy setpoint: that is not a measurement"
+            else:
+                source_mj = float(energy)
         if source_mj is None:
-            energy = (await self.chamber.state()).excimer.energy  # the person fired it
-            source_mj = float(energy) if energy and energy > 0 else None
-        if source_mj is None:
-            raise ValueError("the excimer reported no energy: pass source_mj, the energy the laser showed")
+            raise ValueError(f"{note}: pass source_mj, the energy the laser's display showed")
+        if meter_mj / source_mj > LASER_TEST_MAX_RATIO:
+            raise ValueError(
+                f"the meter ({meter_mj:.1f} mJ) reads {meter_mj / source_mj:.2f} times the source "
+                f"({source_mj:.1f} mJ): the beam only loses energy on its way to the meter, so one "
+                "number is wrong (swapped, or a typo); check both and confirm again")
         lumi_fired = test["fired_by"] == "lumi"
         row = await self.growth_db.add_laser_test(
             tested_at=time.time(), hv_kv=LASER_TEST_KV,

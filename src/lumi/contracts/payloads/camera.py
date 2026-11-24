@@ -32,6 +32,9 @@ class ImageMeta(FrameHeader):
 
     dtype: str | None = None
     shape: list[int] | None = None
+    #: The largest value a pixel can take on this camera as set up (2**bits - 1, e.g.
+    #: 4095 for Mono12). None: the camera does not say.
+    full_scale: int | None = None
 
 
 class JpegMeta(FrameHeader):

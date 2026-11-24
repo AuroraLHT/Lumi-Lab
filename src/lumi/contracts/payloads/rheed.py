@@ -7,7 +7,7 @@ integrator's wire payload happened to be an IntegrationResult and nothing said s
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .common import ServerStateBase
 
@@ -28,6 +28,20 @@ class RegisterBBox(BaseModel):
 
 class BBoxId(BaseModel):
     bbox_id: int
+
+
+class IntegrationCacheQuery(BBoxId):
+    """The integrator keeps the last 1000 frames per box; ask for less."""
+
+    #: Only the newest this many samples (None = all kept).
+    max_points: int | None = Field(default=None, ge=1)
+    #: Only samples from frames after this time, Unix seconds (None = all kept).
+    since: float | None = None
+
+
+class STFTCacheQuery(BBoxId):
+    #: Only the newest this many spectra (None = all kept).
+    max_points: int | None = Field(default=None, ge=1)
 
 
 class BBoxList(BaseModel):

@@ -60,6 +60,13 @@ class MultiBoxIntegrator(threading.Thread):
         if bbox_id in self.bboxes_integration_cache:
             self.bboxes_integration_cache.pop(bbox_id)
         
+    def drop_queued_frames(self) -> None:
+        while True:
+            try:
+                self.camera_queue.get_nowait()
+            except queue.Empty:
+                return
+
     def get_image(self, timeout=None):
         # extract camera frame
         # print(f"is queue full {self.camera_queue.full()} ")
@@ -93,7 +100,11 @@ class MultiBoxIntegrator(threading.Thread):
         logging.info("start bbox integration")
 
         while True:
-            if not self.camera_queue.empty() and len(self.bboxes) > 0:
+            if not self.bboxes:
+                # Nothing to integrate: keep the queue fresh, or the first box would be
+                # handed the frames left in it since the last box went (or since start).
+                self.drop_queued_frames()
+            elif not self.camera_queue.empty():
                 integrations : IntegrationCollection = {}
                 cv_frame, cv_frame_header = self.get_image(timeout=60)
                 bboxes = copy.deepcopy(self.bboxes) # bbox might change when iterating the bbox items

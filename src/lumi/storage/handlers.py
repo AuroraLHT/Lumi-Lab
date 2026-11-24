@@ -32,7 +32,7 @@ import numpy as np
 
 from lumi.config import settings
 from lumi.contracts.payloads.common import Empty
-from lumi.contracts.payloads.pld import PldEventQuery
+from lumi.contracts.payloads.pld import PldActivityQuery, PldEventQuery
 from lumi.contracts.payloads.storage import (
     ArchiveReadout,
     ListRecordings,
@@ -327,7 +327,13 @@ class StorageHandler:
         frame_shape = None
         log_schema = None
         detection = None
-        meta: dict = {"request": req.model_dump(exclude={"context"})}
+        # The request's project_name is the recording's name (the file is <it>.hdf5):
+        # the experiment driver passes "<sample>_<project>_<uuid>" there. Kept under
+        # that meaning, with the project itself beside it when the context has one.
+        request = req.model_dump(exclude={"context", "project_name"})
+        request["recording_name"] = req.project_name
+        request["project_name"] = (req.context or {}).get("project_name") or req.project_name
+        meta: dict = {"request": request}
         if req.context:
             meta["experiment"] = req.context
 
@@ -431,6 +437,9 @@ class StorageHandler:
                 "crop": (meta.get("detection") or {}).get("crop"),
                 "bboxes": (meta.get("integrator") or {}).get("bboxes"),
                 "rheed_gun_x": (chamber.get("motion") or {}).get("rheed_gun_x"),
+                "laser": ((chamber.get("laser") or {}).get("status"),
+                          (chamber.get("laser") or {}).get("pulses_fired")),
+                "shutter_open": chamber.get("sample_shutter_away"),
                 "since": self._started_at}
 
     async def _watch_loop(self, meta: dict) -> None:
@@ -471,6 +480,11 @@ class StorageHandler:
                 self._write(writer.add_event, state.time or time.time(), "rheed_gun_x",
                             f"RHEED gun X {x:g} mm", {"before": last["rheed_gun_x"], "after": x})
                 last["rheed_gun_x"] = x
+            if state is not None:
+                shutter_move = None
+                if last.get("shutter_open") is not None and state.sample_shutter_away != last["shutter_open"]:
+                    shutter_move = await self._shutter_move(state.sample_shutter_away, last)
+                self._watch_laser(writer, state, last, shutter_move)
         for key, source, op, kind in (("camera", "camera", "get_camera_config", "camera_config"),
                                       ("bboxes", "integrator", "bboxes", "integration_boxes")):
             if key == "camera" and "camera" not in meta:
@@ -489,6 +503,62 @@ class StorageHandler:
                 self._write(writer.add_event, time.time(), "detection_crop", "detection crop changed",
                             {"before": last["crop"], "after": crop})
                 last["crop"] = crop
+
+    async def _shutter_move(self, away: bool, last: dict):
+        """The set_sample_shutter that moved the shutter to `away` since the last look,
+        from pld-service's activity log, or None: a shutter moved from the REA GUI or
+        by a sequence step is not in it."""
+        activity = await self._ask("pld", "recent_activity", PldActivityQuery(limit=50))
+        if activity is None:
+            return None
+        since = last.get("looked_at") or self._started_at or 0.0
+        moves = [a for a in activity.entries
+                 if a.op == "set_sample_shutter" and a.ok and a.params.get("in_front") is (not away)
+                 and a.time + (a.duration_s or 0.0) >= since]
+        return moves[-1] if moves else None
+
+    def _watch_laser(self, writer, state, last: dict, shutter_move=None) -> None:
+        """A laser train starting and the sample shutter moving, which pld emits no
+        event for (only laser_done), so a trace can be lined up with the pulses. A
+        train's start is put back to where its count says it began (pulses fired over
+        the rate), not at this look; a train begun and done between two looks still
+        gets one."""
+        now = state.time or time.time()
+        laser = state.laser
+        status, fired = laser.status, laser.pulses_fired
+        last_status, last_fired = last.get("laser") or (None, None)
+        firing = status == "firing"
+        new_train = (
+            (firing and last_status != "firing")
+            or (last_fired is not None and fired < last_fired)
+            or (not firing and last_status != "firing" and last_fired is not None
+                and fired != last_fired and fired > 0))
+        if new_train:
+            rate = laser.rate_hz
+            began = now - fired / rate if rate > 0 else now
+            self._write(writer.add_event, began, "laser_started",
+                        f"laser train: {laser.pulses_requested} pulses at {rate:g} Hz, sample "
+                        f"shutter {'open' if state.sample_shutter_away else 'in front'}",
+                        {"pulses_requested": laser.pulses_requested, "rate_hz": rate,
+                         "pulses_fired_at_look": fired, "shutter_open": state.sample_shutter_away,
+                         "time_from": "pulse count" if rate > 0 else "look"})
+        last["laser"] = (status, fired)
+        shutter = state.sample_shutter_away
+        if last.get("shutter_open") is not None and shutter != last["shutter_open"]:
+            detail = {"before": last["shutter_open"], "after": shutter}
+            if shutter_move is not None:
+                # When the move finished, as pld-service logged the command, not this look.
+                at = shutter_move.time + (shutter_move.duration_s or 0.0)
+                detail.update(time_from="pld activity", commanded_at=shutter_move.time,
+                              actor=shutter_move.actor)
+            else:
+                at = now
+                detail.update(time_from="look", within_s=WATCH_EVERY_S)
+            self._write(writer.add_event, at, "sample_shutter",
+                        "sample shutter open (deposition)" if shutter else "sample shutter in front",
+                        detail)
+        last["shutter_open"] = shutter
+        last["looked_at"] = now
 
     # --- subscriptions ------------------------------------------------------
 

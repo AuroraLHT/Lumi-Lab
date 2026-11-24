@@ -563,7 +563,7 @@ async def test_a_second_run_is_refused_and_leaves_the_first_ones_status(seq):
     client.hold = True
     await handler.run_sequence(RunSequence(name="wedge", version=1, no_sample=True))
     first = handler.readout().sequence.run_id
-    with pytest.raises(RuntimeError, match="still moving"):
+    with pytest.raises(RuntimeError, match="run_sequence .* is still running"):
         await handler.run_sequence(RunSequence(name="wedge", version=1, no_sample=True))
     assert handler.readout().sequence.run_id == first
     await handler.stop_deposition(StopDeposition(reason="test"))

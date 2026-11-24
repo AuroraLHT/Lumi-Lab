@@ -20,9 +20,9 @@ readbacks got there:
      saturated, 8.41 -> 8.52 is not); that step is taken back, so the filament runs no
      hotter than it needs to.
 
-   Each step reads the emission and, when there is a RHEED camera, the image's mean and
-   99th-percentile intensity (`frame_intensity`); `saturation_hint` puts the two side by
-   side. The hint is not the decision,
+   Each step reads the emission and, when there is a RHEED camera, the image's pixel
+   statistics (`frame_intensity`: the signal of its brightest pixels above background,
+   its noise, how near full scale it is); `saturation_hint` puts the two side by side. The hint is not the decision,
 4. focus, then deflection X and Y.
 
 The values are the lab's (`[experiment.rheed]`), not the gun's remembered set points:
@@ -82,10 +82,11 @@ class RheedGunSettings:
     poll_s: float = 0.5
     #: rheed_on's default judge of saturation: "agent", "person" or "rule" (see above).
     filament_judge: str = "agent"
-    #: A step that changes the RHEED mean intensity by less than this fraction leaves it flat.
+    #: A step that changes the RHEED signal by less than this fraction (or than twice its
+    #: frame-to-frame noise, if larger) leaves it flat.
     intensity_flat_fraction: float = 0.03
-    #: Frames averaged for one intensity reading.
-    intensity_frames: int = 3
+    #: Frames read for one intensity reading: their mean, and their scatter as the noise.
+    intensity_frames: int = 5
 
     def with_overrides(self, **values) -> "RheedGunSettings":
         return replace(self, **{k: float(v) for k, v in values.items() if v is not None})
@@ -114,25 +115,57 @@ def check_judge(judge: str) -> str:
     return judge
 
 
-def frame_intensity(frames: list) -> dict | None:
-    """The RHEED image's brightness over a few frames: mean and 99th percentile, and
-    the fraction of pixels at full scale (a clipped image cannot show saturation)."""
+#: The brightest share of an image's pixels whose mean is its signal (see frame_intensity).
+BRIGHT_FRACTION = 0.01
+
+
+def frame_intensity(frames: list, full_scale: int | None = None) -> dict | None:
+    """Pixel statistics of the RHEED image over a few frames, for any pattern: nothing
+    here knows where the spots are, only how the pixel values are spread.
+
+    - rheed_background: the median pixel, the screen between the features.
+    - rheed_signal: the mean of the brightest BRIGHT_FRACTION of pixels, less the
+      background. Whatever the pattern, its spots and streaks are those pixels; this is
+      what the emission search compares.
+    - rheed_noise: the signal's frame-to-frame spread over its mean (None from one
+      frame). A change smaller than about twice this is not a change.
+    - rheed_p999, rheed_max: the top of the image.
+    - rheed_full_scale: the largest value a pixel can take (the camera's, else from the
+      dtype: 255 for uint8, None for anything wider it does not report).
+    - rheed_headroom: rheed_max over full scale (1 = the top is at full scale).
+    - rheed_clipped_px: pixels at full scale per frame. A short exposure may never
+      reach it; then this is 0 and only the headroom says how close it is.
+    - rheed_mean: the whole image's mean, for comparison with older records.
+    """
     import numpy as np
 
     frames = [np.asarray(f) for f in frames if f is not None and np.size(f)]
     if not frames:
         return None
-    stack = np.stack(frames).astype(float)
-    # 8-bit, or 12-bit in uint16 (the Basler and the sim) unless it reads above that.
-    if frames[0].dtype == np.uint8:
-        full = 255.0
-    elif frames[0].dtype == np.uint16:
-        full = 4095.0 if stack.max() <= 4095 else 65535.0
-    else:
-        full = math.inf
-    return {"rheed_mean": round(float(stack.mean()), 3),
-            "rheed_p99": round(float(np.percentile(stack, 99)), 3),
-            "rheed_clipped": round(float((stack >= full).mean()), 5) if math.isfinite(full) else 0.0}
+    if full_scale is None and frames[0].dtype == np.uint8:
+        full_scale = 255
+    stack = np.stack(frames).astype(float).reshape(len(frames), -1)
+    n_bright = max(1, int(round(stack.shape[1] * BRIGHT_FRACTION)))
+    background = np.median(stack, axis=1)
+    bright = np.partition(stack, -n_bright, axis=1)[:, -n_bright:].mean(axis=1)
+    signal = bright - background
+    mean_signal = float(signal.mean())
+    noise = (float(signal.std(ddof=1)) / mean_signal
+             if len(frames) > 1 and mean_signal > 0 else None)
+    peak = float(stack.max())
+    out = {
+        "rheed_background": round(float(background.mean()), 3),
+        "rheed_signal": round(mean_signal, 3),
+        "rheed_noise": None if noise is None else round(noise, 5),
+        "rheed_p999": round(float(np.percentile(stack, 99.9)), 3),
+        "rheed_max": round(peak, 3),
+        "rheed_full_scale": full_scale,
+        "rheed_headroom": round(peak / full_scale, 4) if full_scale else None,
+        "rheed_clipped_px": (int(round(float((stack >= full_scale).sum()) / len(frames)))
+                             if full_scale else None),
+        "rheed_mean": round(float(stack.mean()), 3),
+    }
+    return out
 
 
 def leading_digits(value: float, n: int) -> tuple[int, int]:
@@ -163,18 +196,29 @@ def saturation_hint(steps: list[dict], digits: int, flat: float = 0.03) -> str:
         e_flat, emission = True, f"emission's first {digits} digits did not change ({a:.4g} -> {b:.4g} uA)"
     else:
         e_flat, emission = False, f"emission still rising ({a:.4g} -> {b:.4g} uA)"
-    i, j = prev.get("rheed_mean"), last.get("rheed_mean")
+    i, j = prev.get("rheed_signal"), last.get("rheed_signal")
     if i is None or j is None or i <= 0:
-        i_flat, intensity = None, "no RHEED intensity to compare"
+        i_flat, intensity = None, "no RHEED signal to compare"
     else:
         change = (j - i) / i
-        i_flat = abs(change) < flat
-        intensity = (f"RHEED intensity {'flat' if i_flat else 'rising' if change > 0 else 'falling'} "
-                     f"({i:.4g} -> {j:.4g}, {change:+.1%})")
+        # Flat within `flat`, or within the frames' own scatter when that is larger: a
+        # dim, fast image can scatter by more than `flat` with nothing changing.
+        noise = max(prev.get("rheed_noise") or 0.0, last.get("rheed_noise") or 0.0)
+        band = max(flat, 2 * noise)
+        i_flat = abs(change) < band
+        within = f"within {band:.1%}" + (" (2x the frame-to-frame noise)" if band > flat else "")
+        intensity = (f"RHEED signal {'flat' if i_flat else 'rising' if change > 0 else 'falling'} "
+                     f"({i:.4g} -> {j:.4g} above background, {change:+.1%}; flat is {within})")
     parts = [emission, intensity]
-    if last.get("rheed_clipped"):
-        parts.append(f"{last['rheed_clipped']:.1%} of the image at full scale: lower the camera "
-                     "gain before judging by intensity")
+    if last.get("rheed_headroom") is not None:
+        parts.append(f"image peak at {last['rheed_headroom']:.0%} of full scale")
+    if last.get("rheed_clipped_px"):
+        # The gain is a person's call (rheed_gain), whoever judges the search: say what
+        # the clipping means for the judgement and who can change it, not "lower it".
+        parts.append(f"{last['rheed_clipped_px']} pixels at full scale: where they are, the "
+                     "image cannot rise, so the signal under-reads a rise; lean on the "
+                     "emission; if it matters, a person can lower the gain or exposure "
+                     "(begin_adjust_rheed_gain asks them)")
     stop = f"stop at {prev['filament_ma']:g} mA?"
     if e_flat and i_flat in (True, None) or i_flat and e_flat is None:
         verdict = f"saturated: {stop}"
@@ -188,16 +232,21 @@ def saturation_hint(steps: list[dict], digits: int, flat: float = 0.03) -> str:
 
 
 def emission_table(steps: list[dict]) -> str:
-    """The emission search as a table: filament current against emission, and the
-    RHEED mean intensity when there is a camera."""
-    def cell(v):
-        return "-" if v is None else f"{v:.4g}"
-    images = any(step.get("rheed_mean") is not None for step in steps)
-    rows = ["filament mA | emission uA" + (" | RHEED mean" if images else "")]
+    """The emission search as a table: filament current against emission, and with a
+    camera the RHEED signal above background, its noise and the peak's share of full
+    scale."""
+    def cell(v, fmt="{:.4g}"):
+        return "-" if v is None else fmt.format(v)
+    images = any(step.get("rheed_signal") is not None for step in steps)
+    head = "filament mA | emission uA"
+    if images:
+        head += " | RHEED signal | noise | peak/full"
+    rows = [head]
     for step in steps:
         row = f"{step['filament_ma']:>11g} | {cell(step['emission_ua'])}"
         if images:
-            row = f"{row:<25} | {cell(step.get('rheed_mean'))}"
+            row = f"{row:<25}" + (f" | {cell(step.get('rheed_signal')):>12} | {cell(step.get('rheed_noise'), '{:.1%}'):>5}"
+                    f" | {cell(step.get('rheed_headroom'), '{:.0%}'):>9}")
         rows.append(row)
     return "\n".join(rows)
 
@@ -233,8 +282,8 @@ class RheedGun:
     def __init__(self, chamber, settings: RheedGunSettings, intensity=None) -> None:
         self.chamber = chamber
         self.settings = settings
-        #: async (n_frames) -> `frame_intensity` dict or None: the RHEED camera's
-        #: brightness. None: no camera, the steps carry the emission only.
+        #: async (n_frames) -> `frame_intensity` dict or None: the RHEED image's pixel
+        #: statistics. None: no camera, the steps carry the emission only.
         self.intensity = intensity
         self._lock = asyncio.Lock()
         #: The emission search in progress (judge "agent" or "person"): its settings,

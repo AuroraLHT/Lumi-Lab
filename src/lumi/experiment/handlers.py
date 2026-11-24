@@ -335,6 +335,7 @@ class ExperimentHandler:
         # why it was stopped once it has been.
         self._task_handle: asyncio.Task | None = None
         self._stop_reason: str | None = None
+        self._finishing: set[asyncio.Task] = set()
         self._sequence_run: SequenceRun | None = None
         self._updates: asyncio.Queue[TaskEvent] = asyncio.Queue()
         # The op currently moving a motor, if any. Requests are not serialised (the
@@ -489,12 +490,17 @@ class ExperimentHandler:
         """`_start_task` for a task that moves a motor: holds the motion claim until
         the task ends, so nothing else moves under a deposition or an alignment."""
         try:
+            self._refuse_if_running(kind)
             self._claim_motion(kind)
         except RuntimeError:
             coro.close()
             raise
 
+        entered = False
+
         async def moving():
+            nonlocal entered
+            entered = True
             try:
                 return await coro
             finally:
@@ -502,16 +508,41 @@ class ExperimentHandler:
 
         wrapped = moving()
         try:
-            return await self._start_task(kind, wrapped, detail)
+            ack = await self._start_task(kind, wrapped, detail)
         except BaseException:
             wrapped.close()
             coro.close()
             self._release_motion()
             raise
 
+        def cancelled_before_start(_) -> None:
+            # `moving` never ran, so neither did its finally: the claim is released here.
+            if not entered:
+                coro.close()
+                self._release_motion()
+
+        self._task_handle.add_done_callback(cancelled_before_start)
+        return ack
+
     # --- long-running ops: fire-and-return, tracked via current_task -------------
 
+    def _refuse_if_running(self, kind: str) -> None:
+        running = self._current_task
+        if running is not None:
+            raise RuntimeError(
+                f"{running.kind} (task {running.id}) is still running: wait for its task_result, "
+                f"or end it with cancel_task, before starting {kind}")
+
     async def _start_task(self, kind: str, coro, detail: dict | None = None) -> TaskAck:
+        """Run `coro` as the one current task. One at a time: a second start is
+        refused, not run alongside, since the first would go on with nothing tracking
+        it (stop_deposition and cancel_task end only `_current_task`). Replacing a
+        task takes an explicit cancel_task first."""
+        try:
+            self._refuse_if_running(kind)
+        except RuntimeError:
+            coro.close()
+            raise
         task_id = uuid.uuid4().hex
         started_at = time.time()
         task = CurrentTask(id=task_id, kind=kind, started_at=started_at, detail=detail or {})
@@ -533,25 +564,9 @@ class ExperimentHandler:
                 source=current_source.get() or "experiment.driver",
             )
 
-        async def runner() -> None:
-            cancelled = None
-            try:
-                result = await coro
-                task_result = {"ok": True, **_jsonable(result)}
-            except asyncio.CancelledError as exc:
-                # stop_deposition's, an abort like any other; anything else (the node
-                # shutting down) is recorded and then let through.
-                if self._stop_reason is None:
-                    cancelled = exc
-                reason = self._stop_reason or "the experiment node is shutting down"
-                task_result = {"ok": False, "aborted": True, "error": f"stopped by request: {reason}"}
-            except Exception as exc:
-                log.exception("experiment task %s (%s) failed", kind, task_id)
-                task_result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-                if isinstance(exc, PldStopped):  # StopFire from the REA GUI or any client
-                    task_result["aborted"] = True
-                    if self._stop_reason is not None:  # ours: stop_deposition's StopFire
-                        task_result["error"] = f"stopped by request: {self._stop_reason}"
+        started = False
+
+        async def finish(task_result: dict) -> None:
             self._current_task = None
             self._task_handle = None
             self._stop_reason = None
@@ -566,10 +581,49 @@ class ExperimentHandler:
                     "task_finished", f"{kind}: {'ok' if task_result.get('ok') else task_result.get('error', 'failed')}",
                     {"task_id": task_id, "kind": kind, "result": task_result,
                      "duration_s": time.time() - started_at})
+
+        def stopped() -> dict:
+            reason = self._stop_reason or "the experiment node is shutting down"
+            return {"ok": False, "aborted": True, "error": f"stopped by request: {reason}"}
+
+        async def runner() -> None:
+            nonlocal started
+            started = True
+            cancelled = None
+            try:
+                result = await coro
+                task_result = {"ok": True, **_jsonable(result)}
+            except asyncio.CancelledError as exc:
+                # stop_deposition's, an abort like any other; anything else (the node
+                # shutting down) is recorded and then let through.
+                if self._stop_reason is None:
+                    cancelled = exc
+                task_result = stopped()
+            except Exception as exc:
+                log.exception("experiment task %s (%s) failed", kind, task_id)
+                task_result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                if isinstance(exc, PldStopped):  # StopFire from the REA GUI or any client
+                    task_result["aborted"] = True
+                    if self._stop_reason is not None:  # ours: stop_deposition's StopFire
+                        task_result["error"] = f"stopped by request: {self._stop_reason}"
+            await finish(task_result)
             if cancelled is not None:
                 raise cancelled
 
+        def cancelled_before_start(_) -> None:
+            # Cancelled before its first step, runner never ran: nothing would clear
+            # the task, and it would refuse every task after it. Cleared here, before
+            # the canceller's wait returns; the journal and the update follow.
+            if not started:
+                coro.close()
+                result = stopped()
+                self._current_task = self._task_handle = self._stop_reason = None
+                done = asyncio.get_running_loop().create_task(finish(result))
+                self._finishing.add(done)  # held until it ends: the loop keeps only weak refs
+                done.add_done_callback(self._finishing.discard)
+
         self._task_handle = asyncio.create_task(runner(), name=f"experiment-task-{kind}")
+        self._task_handle.add_done_callback(cancelled_before_start)
         return TaskAck(task_id=task_id)
 
     #: The tasks that fire the laser, which stop_deposition ends.
@@ -1630,6 +1684,9 @@ class ExperimentHandler:
 
     async def confirm_laser_test(self, req: ConfirmLaserTest) -> LaserTest:
         self._require_pending("laser_test")
+        if self._current_task is not None and self._current_task.kind == "fire_laser_test":
+            raise RuntimeError("the test train is still firing: confirm after fire_laser_test's "
+                               "task_result, with the meter's average over the whole train")
         row = await self.manager.confirm_laser_test(req.meter_mj, req.source_mj, actor=current_actor.get())
         await self._clear_pending()
         return LaserTest(**row, today=True)

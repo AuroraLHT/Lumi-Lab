@@ -70,8 +70,8 @@ class RheedSearch(BaseModel):
 
     judge: str  # "agent" | "person"
     started_at: float
-    #: Each step tried: filament_ma, emission_ua, and with a RHEED camera rheed_mean,
-    #: rheed_p99, rheed_clipped.
+    #: Each step tried: filament_ma, emission_ua, and with a RHEED camera the image's
+    #: pixel statistics (rheed_signal, rheed_noise, rheed_headroom, ...: frame_intensity).
     steps: list[dict] = Field(default_factory=list)
     #: What the last step did to the emission and the intensity (a hint, not the decision).
     saturation: str | None = None
@@ -581,7 +581,7 @@ class RheedGunResult(BaseModel):
     #: The gun's readbacks at the end (filament_ma, hv_kv, emission_ua, focus_ma, x_ma, y_ma, on flags).
     gun: dict = Field(default_factory=dict)
     #: rheed_on: the filament current it settled on, and each step it tried: filament_ma,
-    #: emission_ua, and with a RHEED camera rheed_mean, rheed_p99, rheed_clipped.
+    #: emission_ua, and with a RHEED camera the image's pixel statistics (frame_intensity).
     filament_ma: float | None = None
     emission_steps: list[dict] = Field(default_factory=list)
     saturation: str | None = None

@@ -1402,10 +1402,10 @@ async def test_rheed_on_by_the_agent_asks_no_confirmation(handler):
     result = await handler.rheed_on(RheedOn())
     assert result.searching and result.judge == "agent" and handler._pending is None
     result = await handler.rheed_emission_step_up(Empty())
-    assert handler._pending is None and result.emission_steps[-1]["rheed_mean"] is not None
+    assert handler._pending is None and result.emission_steps[-1]["rheed_signal"] is not None
     search = handler.readout().rheed_search  # what the Deck shows, Stop here and Abort
     assert search.judge == "agent" and [s["filament_ma"] for s in search.steps] == [1800, 1850]
-    assert search.steps[-1]["rheed_mean"] is not None and "rising" in search.saturation
+    assert search.steps[-1]["rheed_signal"] is not None and "rising" in search.saturation
     event = None
     while (nxt := await handler.next_update()) is not None:
         event = nxt

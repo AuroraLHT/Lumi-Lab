@@ -17,10 +17,12 @@ from .payloads.rheed import (
     BBoxId,
     BBoxList,
     IntegrationCache,
+    IntegrationCacheQuery,
     IntegrationSample,
     IntegratorState,
     RegisterBBox,
     STFTCache,
+    STFTCacheQuery,
     STFTSample,
     STFTState,
 )
@@ -63,7 +65,9 @@ INTEGRATOR = Capability(
         Op("register", RegisterBBox, Ack),
         Op("remove", BBoxId, Ack),
         Op("bboxes", Empty, BBoxList),
-        Op("cache", BBoxId, IntegrationCache),
+        Op("cache", IntegrationCacheQuery, IntegrationCache,
+           doc="The box's retained samples (up to 1000 frames), oldest first; max_points "
+               "and since ask for fewer."),
     ),
     stream=StreamSpec("integration", IntegrationSample),
 )
@@ -78,7 +82,8 @@ STFT = Capability(
         Op("register", RegisterBBox, Ack),
         Op("remove", BBoxId, Ack),
         Op("bboxes", Empty, BBoxList),
-        Op("cache", BBoxId, STFTCache),
+        Op("cache", STFTCacheQuery, STFTCache,
+           doc="The box's retained spectra, oldest first; max_points asks for fewer."),
     ),
     stream=StreamSpec("stft", STFTSample),
 )

@@ -2,7 +2,7 @@
 #
 # Start the instrument-side half of the production stack on ONE machine:
 #
-#   pascal   the PLD chamber -- growth log, PLDconfig.ini, the chamber driver, chamber webcam
+#   pascal   the PLD chamber -- growth log, the chamber driver (pld-service), chamber webcam
 #   rheed    RHEED camera acquisition (Basler/Pylon)
 #
 # The server-side half (monitor, storage, detection, api) runs on the other machine

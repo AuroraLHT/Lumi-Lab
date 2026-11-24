@@ -82,6 +82,8 @@ class CameraHandler:
             time_stamp=str(header.get("time_stamp", "")),
             dtype=str(frame.dtype),
             shape=list(frame.shape),
+            # A camera without it (not a GenericCamera) does not say.
+            full_scale=getattr(self.camera, "full_scale", lambda: None)(),
         )
 
     def readout(self) -> CameraReadout:

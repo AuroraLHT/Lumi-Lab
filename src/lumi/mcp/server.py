@@ -474,7 +474,8 @@ Temperatures are the back pyrometer's, and only comparable at the same emissivit
 each growth records it (pyrometer_emissivity; 0.65 before experiment 23, 0.262 since, when
 the old scale read far low -- 650 then was about 794 now). Say so when comparing across it.
 rheed.camera.image and chamber.camera.image show the live pictures;
-rheed.integrator.cache is the live intensity of each box (the growth oscillations): the
+rheed.integrator.cache is the live intensity of each box (the growth oscillations; max_points
+or since for less than its 1000 frames): the
 operator's, drawn in the Deck, and yours, drawn with experiment.driver.add_rheed_box (ids
 from 1000; draw them before start_storage); chamber.log.log the latest chamber readings. chamber.pld.* is the chamber
 driver itself (pld-service): chamber_state for everything it reads (read_only=true means

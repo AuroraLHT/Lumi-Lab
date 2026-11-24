@@ -15,9 +15,15 @@ Once a day, before the first deposition (`list_laser_tests`: is one marked `toda
 3. The person either says yes, and you call `fire_laser_test` (100 pulses at 1 Hz, about
    100 s; wait for its task, whose result carries `source_mj`), or fires the laser
    themselves.
-4. The person reads the meter's average. `confirm_laser_test` with `meter_mj`. If they
-   fired by hand and the laser reported no energy, they also read the laser's display:
-   pass it as `source_mj`.
+   `fire_laser_test` is refused if the excimer is no longer at 21 kV in HV mode, and
+   fails if the train fires fewer than 100 pulses (fire it again).
+4. The person reads the meter's average, after the train has ended (`confirm_laser_test`
+   is refused while it fires). `confirm_laser_test` with `meter_mj`. Pass `source_mj`,
+   read off the laser's display, when the task result has a `source_note`, or when the
+   person fired by hand and the confirm asks for it. The driver does not take the
+   laser's readings as the source energy when they never move or equal its energy
+   setpoint: that is the setpoint echoed, not a measurement. A meter reading above 1.1
+   times the source is refused as a wrong number.
 
 The driver records the test (source, meter, ratio = meter / source, who fired, who
 confirmed) in growth.db, in the step journal and in the recording if one is running.

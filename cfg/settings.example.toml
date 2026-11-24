@@ -150,14 +150,28 @@ feature_bbox = [100, 100, 620, 300]
 feature_oscillation_frequency = 0.03
 feature_oscillation_amplitude = 200
 max_intensity = 4095
+# With `nodes/rheed.py --follow-gun` (a twin): the image's brightness is the gun's
+# emission over gun_reference_ua. The lab's gun saturates at about 8.67 uA; with
+# the emission at or below it the brightest pixels stay under max_intensity, so the
+# specular can still show a dip (above it, they clip and hold still).
+gun_reference_ua = 8.7
 # With `nodes/rheed.py --follow-growth` (a twin): RHEED oscillations from the
 # deposition instead of the clock-driven ones above. Each pulse fired with the
-# sample shutter open grows 1/pulses_per_monolayer of a monolayer; the feature_bbox
-# region dips by oscillation_depth once per monolayer, damped over
-# oscillation_decay_ml monolayers.
+# sample shutter open grows 1/pulses_per_monolayer of a monolayer; the image's spots
+# and streaks (a soft mask of the frame's bright features) dip by oscillation_depth
+# once per monolayer, damped over oscillation_decay_ml monolayers. When the laser
+# stops, oscillation_recovery of the dip relaxes away over ~oscillation_recovery_s.
 pulses_per_monolayer = 40
 oscillation_depth = 0.4
 oscillation_decay_ml = 10
+oscillation_recovery = 0.6
+oscillation_recovery_s = 20
+# Camera noise on every simulated frame: read noise (rms counts), shot noise
+# (variance = noise_shot x signal) and a beam flicker (relative rms of the frame).
+# 0 everywhere = bit-identical frames.
+noise_read = 3
+noise_shot = 1
+noise_flicker = 0.005
 
 [rheed.video_compressor]
 fps = 60
@@ -701,9 +715,11 @@ heating_laser_off_max_temperature = 165.0
 # 8.47 uA). filament_judge says who decides that:
 #   "agent"  (the default) rheed_on stops after filament and HV with the search open, and
 #            the agent steps the filament up and stops it, judging the emission current
-#            and the RHEED image's mean intensity together (both level off at
-#            saturation; a step that moves the intensity less than
-#            intensity_flat_fraction leaves it flat). No confirmation is asked.
+#            and the RHEED image together (both level off at saturation). The image
+#            is judged by its pixel statistics, for any pattern: the signal of its
+#            brightest 1% of pixels above the median, read over intensity_frames
+#            frames. A step that moves it less than intensity_flat_fraction, or than
+#            twice its frame-to-frame noise, leaves it flat. No confirmation is asked.
 #   "person" the same steps behind a rheed_emission confirmation: a person says up or stop.
 #   "rule"   the emission digits decide by themselves; the saturating step is taken back.
 # Focus and deflection depend on the alignment: rheed_on takes per-call overrides.
@@ -715,6 +731,7 @@ filament_step_ma = 50.0
 emission_digits = 2
 filament_judge = "agent"
 intensity_flat_fraction = 0.03
+intensity_frames = 5
 emission_settle_s = 3.0
 focus_ma = 476.0
 deflection_x_ma = -61.0

@@ -47,9 +47,17 @@ class SimCameraConfig(GenericCameraConfig):
     # frame: the RHEED sim's beam following the gun (lumi.rheed.hardware.GunBeam; 0 =
     # no beam). None leaves it at 1.
     frame_scale : Optional[Callable[[], float]] = None
-    # Optional brightness factor on the feature_bbox region, read per frame: the RHEED
-    # sim's growth oscillations (lumi.rheed.hardware.GrowthClock). None leaves it at 1.
+    # Optional brightness factor on the image's diffraction features, read per frame:
+    # the RHEED sim's growth oscillations (lumi.rheed.hardware.GrowthClock). It is
+    # weighted by a soft mask of the source image's own bright spots and streaks, so
+    # the background between them stays put. None leaves it at 1.
     feature_scale : Optional[Callable[[], float]] = None
+    # Camera noise on each frame, after the brightness: read noise (rms, counts),
+    # shot noise (variance = noise_shot x signal) and a beam flicker (relative rms of
+    # the whole frame). 0 = none, every frame identical.
+    noise_read : float = 0.0
+    noise_shot : float = 0.0
+    noise_flicker : float = 0.0
 
 
 class SimCamera(GenericCamera):
@@ -96,11 +104,12 @@ class SimCamera(GenericCamera):
             frame[self.config.feature_bbox[1]:self.config.feature_bbox[3], self.config.feature_bbox[0]:self.config.feature_bbox[2]] += np.sin(2* np.pi * self.config.feature_oscillation_frequency * time.time()) * self.config.feature_oscillation_amplitude
 
         if self.config.feature_scale is not None:
-            x0, y0, x1, y1 = self.config.feature_bbox
-            frame = frame.astype(np.float64, copy=False)
-            frame[y0:y1, x0:x1] *= self.config.feature_scale()
+            dim = 1.0 - self.config.feature_scale()
+            if dim:
+                frame = frame * (1.0 - dim * self.feature_mask())
         if self.config.frame_scale is not None:
             frame = frame * self.config.frame_scale()
+        frame = self.add_noise(frame)
 
         frame = frame.clip(0, self.config.max_intensity)
         
@@ -110,6 +119,40 @@ class SimCamera(GenericCamera):
         content = (frame, frame_header)
         return content
     
+    def full_scale(self) -> int | None:
+        return int(self.config.max_intensity)
+
+    def feature_mask(self) -> np.ndarray:
+        """0 on the background, 1 on the brightest spots, soft-edged: the source image
+        above its median, over its top, blurred. Made once, from the source image."""
+        mask = getattr(self, "_feature_mask", None)
+        if mask is None:
+            src = self.source_img.astype(np.float32)
+            gray = src.mean(axis=-1) if src.ndim == 3 else src
+            low, high = np.median(gray), np.percentile(gray, 99.5)
+            mask = np.clip((gray - low) / max(float(high - low), 1e-6), 0.0, 1.0)
+            mask = cv2.GaussianBlur(mask, (0, 0), sigmaX=4.0)
+            mask /= max(float(mask.max()), 1e-6)
+            if src.ndim == 3:
+                mask = mask[..., None]
+            self._feature_mask = mask
+        return mask
+
+    def add_noise(self, frame: np.ndarray) -> np.ndarray:
+        cfg = self.config
+        if not (cfg.noise_read or cfg.noise_shot or cfg.noise_flicker):
+            return frame
+        rng = getattr(self, "_rng", None)
+        if rng is None:
+            rng = self._rng = np.random.default_rng()
+        frame = frame.astype(np.float32, copy=False)
+        if cfg.noise_flicker:
+            frame = frame * float(1.0 + cfg.noise_flicker * rng.standard_normal())
+        if cfg.noise_read or cfg.noise_shot:
+            sigma = np.sqrt(cfg.noise_read ** 2 + cfg.noise_shot * np.maximum(frame, 0.0))
+            frame = frame + sigma * rng.standard_normal(frame.shape, dtype=np.float32)
+        return frame
+
     def on_stop(self):
         pass
 

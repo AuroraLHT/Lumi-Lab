@@ -105,20 +105,63 @@ def test_only_pulses_with_the_shutter_open_grow_the_film():
     assert growth.monolayers() == 0.5
 
 
-def test_the_sim_camera_dims_the_feature_region_only():
+def sim_camera(**config) -> SimCamera:
+    base = dict(frame_dims=(540, 720), source=str(SIM_FRAMES["sto"].path), fps=1, queue_size=1,
+                idle_time=0.0, is_base_oscillation=False, base_oscillation_frequency=0.1,
+                base_oscillation_amplitude=100, is_feature_oscillation=False,
+                feature_bbox=(100, 100, 620, 300), feature_oscillation_frequency=0.0,
+                feature_oscillation_amplitude=0.0, exposure_time=60000, gain=200, gamma=1.0,
+                max_intensity=4095)
+    return SimCamera(config=SimCameraConfig(**{**base, **config}), name="test", daemon=True)
+
+
+SPECULAR = (slice(253, 289), slice(357, 393))  # the agent's box on the sto frame
+BACKGROUND = (slice(160, 200), slice(30, 70))
+
+
+def test_the_spots_dip_and_the_background_between_them_does_not():
     clock = Clock()
     growth = GrowthClock(pulses_per_monolayer=40, depth=0.4, decay_ml=1e9, clock=clock)
-    camera = SimCamera(config=SimCameraConfig(
-        frame_dims=(540, 720), source=str(SIM_FRAMES["sto"].path), fps=1, queue_size=1,
-        idle_time=0.0, is_base_oscillation=False, base_oscillation_frequency=0.1,
-        base_oscillation_amplitude=100, is_feature_oscillation=False,
-        feature_bbox=(100, 100, 620, 300), feature_oscillation_frequency=0.0,
-        feature_oscillation_amplitude=0.0, exposure_time=60000, gain=200, gamma=1.0,
-        max_intensity=4095, feature_scale=growth.scale), name="test", daemon=True)
+    camera = sim_camera(feature_scale=growth.scale)
     before = camera.on_grab()[0].astype(float)
     growth.update(chamber(0))
     growth.update(chamber(20))  # half a monolayer: the deepest dip
     after = camera.on_grab()[0].astype(float)
-    assert (after[:100] == before[:100]).all()  # outside the region: untouched
-    inside = after[100:300, 100:620].sum() / before[100:300, 100:620].sum()
-    assert abs(inside - 0.6) < 0.01
+    assert after[BACKGROUND].mean() / before[BACKGROUND].mean() > 0.995  # flat, to a count
+    ratio = after[SPECULAR].sum() / before[SPECULAR].sum()
+    assert 0.6 < ratio < 0.65  # the whole dip, nearly: the mask is ~1 on the specular spot
+    # No hard edge: the mask falls off over pixels, not at a rectangle.
+    mask = camera.feature_mask()
+    assert mask.max() == 1.0 and mask[BACKGROUND].max() < 0.05
+    assert 0.0 < float(np.median(np.abs(np.diff(mask, axis=1))[mask[:, 1:] > 0.05])) < 0.1
+
+
+def test_the_surface_recovers_partly_when_the_laser_stops():
+    clock = Clock()
+    growth = GrowthClock(pulses_per_monolayer=40, depth=0.4, decay_ml=1e9, recovery=0.6,
+                         recovery_s=20.0, resume_s=2.0, clock=clock)
+    growth.update(chamber(0, firing=True, rate=10.0))
+    clock.t = 2.0
+    growth.update(chamber(20, firing=True, rate=10.0))  # half a monolayer in
+    growth.update(chamber(20))  # stopped mid-dip
+    stopped = growth.scale()
+    assert abs(stopped - 0.6) < 1e-9
+    clock.t = 2.0 + 20.0
+    assert abs(growth.scale() - (1 - 0.4 * (0.4 + 0.6 * np.exp(-1)))) < 1e-9
+    clock.t = 1000.0
+    assert abs(growth.scale() - (1 - 0.4 * 0.4)) < 1e-6  # 60 % of the dip gone, no more
+    assert growth.monolayers() == 0.5  # nothing grown meanwhile
+    growth.update(chamber(0, firing=True, rate=10.0))  # firing again: the dip comes back
+    clock.t = 1000.0 + 10 * 2.0
+    assert abs(growth.shown() - 1.0) < 1e-3
+
+
+def test_noise_makes_each_frame_differ_by_about_the_shot_noise():
+    camera = sim_camera(noise_read=3.0, noise_shot=1.0)
+    a, b = (camera.on_grab()[0].astype(float) for _ in range(2))
+    assert (a != b).any()
+    spot = sim_camera().on_grab()[0].astype(float)[SPECULAR]
+    expected = np.sqrt(9.0 + spot[spot < 4000].mean())  # unclipped pixels
+    measured = np.std((a - b)[SPECULAR][spot < 4000]) / np.sqrt(2)
+    assert 0.8 * expected < measured < 1.2 * expected
+    assert (sim_camera().on_grab()[0] == sim_camera().on_grab()[0]).all()  # none by default

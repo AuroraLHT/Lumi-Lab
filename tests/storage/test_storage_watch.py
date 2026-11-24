@@ -10,7 +10,8 @@ import time
 
 from lumi.contracts.payloads.chamber import LogEntry
 from lumi.contracts.payloads.common import Empty
-from lumi.contracts.payloads.pld import PldChamberState, PldEvent, PldEventList, PldMotion, PldRheed
+from lumi.contracts.payloads.pld import (PldActivity, PldActivityList, PldChamberState, PldEvent,
+                                       PldEventList, PldLaser, PldMotion, PldRheed)
 from lumi.contracts.payloads.storage import StorageRequest
 from lumi.storage import handlers
 from lumi.storage.handlers import StorageHandler
@@ -28,6 +29,15 @@ class FakePld:
 
     async def recent_events(self, query):
         return PldEventList(events=self.events[-query.limit:])
+
+
+class FakePldWithActivity(FakePld):
+    def __init__(self) -> None:
+        super().__init__()
+        self.activity: list[PldActivity] = []
+
+    async def recent_activity(self, query):
+        return PldActivityList(entries=self.activity[-query.limit:])
 
 
 class FakeLog:
@@ -106,3 +116,71 @@ async def test_log_rows_from_before_the_start_are_not_kept(tmp_path):
     assert (await handler.stop_recording(Empty())).ok
     with open_recording(tmp_path / "w.hdf5") as rec:
         assert list(rec.log()["HT Temp moni"]) == [2.0, 3.0]
+
+
+async def test_a_laser_train_and_the_shutter_are_events_at_their_start(tmp_path):
+    """pld says laser_done at a train's end and nothing at its start or at the shutter,
+    so a RHEED trace could not be lined up with the pulses."""
+    pld = FakePld()
+    handler = await record(tmp_path, pld, save_log=False)
+    meta, last = handler._watch_meta, handler._watch_start(handler._watch_meta)
+    t = time.time()
+    pld.state = pld.state.model_copy(update={"time": t, "sample_shutter_away": True})
+    pld.state.laser = PldLaser(status="firing", pulses_fired=20, rate_hz=5.0, pulses_requested=300)
+    await handler._watch_once(meta, last)
+    await handler._watch_once(meta, last)  # still the same train: no second event
+    # A short train begun and done between two looks, the shutter back in front.
+    pld.state = pld.state.model_copy(update={"time": t + 60, "sample_shutter_away": False})
+    pld.state.laser = PldLaser(status="finished", pulses_fired=10, rate_hz=10.0, pulses_requested=10)
+    await handler._watch_once(meta, last)
+    handler._watch_last = last
+    assert (await handler.stop_recording(Empty())).ok
+
+    with open_recording(tmp_path / "w.hdf5") as rec:
+        ev = rec.events()
+        rows = [(k, round(tm - t, 3), m) for k, tm, m in zip(ev.kind, ev.time, ev.message)
+                if k in ("laser_started", "sample_shutter")]
+        assert sorted(rows, key=lambda r: r[1]) == [
+            ("laser_started", -4.0, "laser train: 300 pulses at 5 Hz, sample shutter open"),
+            ("sample_shutter", 0.0, "sample shutter open (deposition)"),
+            ("laser_started", 59.0, "laser train: 10 pulses at 10 Hz, sample shutter in front"),
+            ("sample_shutter", 60.0, "sample shutter in front"),
+        ]
+
+
+async def test_the_shutter_event_is_when_pld_logged_the_move_not_the_look(tmp_path):
+    pld = FakePldWithActivity()
+    handler = await record(tmp_path, pld, save_log=False)
+    meta, last = handler._watch_meta, handler._watch_start(handler._watch_meta)
+    t = time.time()
+    await handler._watch_once(meta, last)
+    # Opened by the agent 1.7 s before the look; the move took 0.4 s. An older open
+    # from before the last look is not this one.
+    pld.activity = [
+        PldActivity(seq=1, time=t - 600, op="set_sample_shutter", params={"in_front": False}, ok=True),
+        PldActivity(seq=2, time=t + 0.3, op="set_sample_shutter", params={"in_front": False}, ok=True,
+                    duration_s=0.4, actor="mcp:agent"),
+    ]
+    pld.state = pld.state.model_copy(update={"time": t + 2.0, "sample_shutter_away": True})
+    await handler._watch_once(meta, last)
+    # Closed from the REA GUI: not in Lumi's activity, so the look's time.
+    pld.state = pld.state.model_copy(update={"time": t + 10.0, "sample_shutter_away": False})
+    await handler._watch_once(meta, last)
+    handler._watch_last = last
+    assert (await handler.stop_recording(Empty())).ok
+
+    with open_recording(tmp_path / "w.hdf5") as rec:
+        ev = rec.events()
+        rows = [(round(tm - t, 3), d) for k, tm, d in zip(ev.kind, ev.time, ev.detail) if k == "sample_shutter"]
+        assert [r[0] for r in rows] == [0.7, 10.0]
+        assert (rows[0][1]["time_from"], rows[0][1]["actor"]) == ("pld activity", "mcp:agent")
+        assert (rows[1][1]["time_from"], rows[1][1]["within_s"]) == ("look", handlers.WATCH_EVERY_S)
+
+
+async def test_the_file_names_its_recording_and_its_project_apart(tmp_path):
+    handler = await record(tmp_path, FakePld(), save_log=False,
+                           context={"project_name": "HZO-dryrun"})
+    assert (await handler.stop_recording(Empty())).ok
+    with open_recording(tmp_path / "w.hdf5") as rec:
+        request = rec.meta["request"]
+        assert (request["recording_name"], request["project_name"]) == ("w", "HZO-dryrun")

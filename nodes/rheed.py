@@ -65,7 +65,7 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     if getattr(args, "follow_gun", False):
         if args.src != "simcam":
             raise SystemExit("--follow-gun is for --src simcam: a real camera sees the real beam")
-        beam = GunBeam(float(settings.get("rheed.simcam.gun_reference_ua", 8.0)))
+        beam = GunBeam(float(settings.get("rheed.simcam.gun_reference_ua", 8.7)))
     growth = None
     if getattr(args, "follow_growth", False):
         if args.src != "simcam":
@@ -73,7 +73,9 @@ def build(args: argparse.Namespace) -> EquipmentNode:
         growth = GrowthClock(
             pulses_per_monolayer=float(settings.get("rheed.simcam.pulses_per_monolayer", 40.0)),
             depth=float(settings.get("rheed.simcam.oscillation_depth", 0.4)),
-            decay_ml=float(settings.get("rheed.simcam.oscillation_decay_ml", 10.0)))
+            decay_ml=float(settings.get("rheed.simcam.oscillation_decay_ml", 10.0)),
+            recovery=float(settings.get("rheed.simcam.oscillation_recovery", 0.6)),
+            recovery_s=float(settings.get("rheed.simcam.oscillation_recovery_s", 20.0)))
     camera, frame_processing, height, width = build_camera(
         args.src, sim_frame=args.sim_frame, frame_scale=beam.scale if beam else None,
         feature_scale=growth.scale if growth else None)

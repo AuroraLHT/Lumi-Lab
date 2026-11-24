@@ -245,6 +245,10 @@ class GenericCamera(threading.Thread):
         """
         pass
 
+    def full_scale(self) -> int | None:
+        """The largest pixel value this camera gives, or None if it cannot say."""
+        return None
+
     @property
     def frame_dims(self):
         return self.config.frame_dims

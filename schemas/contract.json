@@ -7699,6 +7699,18 @@
                   "default": null,
                   "title": "Frame Idx"
                 },
+                "full_scale": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Full Scale"
+                },
                 "shape": {
                   "anyOf": [
                     {
@@ -24030,6 +24042,18 @@
                   "default": null,
                   "title": "Frame Idx"
                 },
+                "full_scale": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Full Scale"
+                },
                 "shape": {
                   "anyOf": [
                     {
@@ -24462,6 +24486,18 @@
                 ],
                 "default": null,
                 "title": "Frame Idx"
+              },
+              "full_scale": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Full Scale"
               },
               "shape": {
                 "anyOf": [
@@ -24909,16 +24945,42 @@
           {
             "name": "cache",
             "request": {
+              "description": "The integrator keeps the last 1000 frames per box; ask for less.",
               "properties": {
                 "bbox_id": {
                   "title": "Bbox Id",
                   "type": "integer"
+                },
+                "max_points": {
+                  "anyOf": [
+                    {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Max Points"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
                 }
               },
               "required": [
                 "bbox_id"
               ],
-              "title": "BBoxId",
+              "title": "IntegrationCacheQuery",
               "type": "object"
             },
             "request_codec": "json",
@@ -25394,12 +25456,25 @@
                 "bbox_id": {
                   "title": "Bbox Id",
                   "type": "integer"
+                },
+                "max_points": {
+                  "anyOf": [
+                    {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Max Points"
                 }
               },
               "required": [
                 "bbox_id"
               ],
-              "title": "BBoxId",
+              "title": "STFTCacheQuery",
               "type": "object"
             },
             "request_codec": "json",

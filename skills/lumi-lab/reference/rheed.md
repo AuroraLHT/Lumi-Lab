@@ -33,7 +33,8 @@
 ### Which box is the specular spot
 
 `rheed.integrator.bboxes` lists the boxes; `rheed.integrator.cache` gives each one's
-intensity over time. The operator's boxes carry no role, so work it out (yours carry the
+intensity over time (the last 1000 frames: ask for `max_points`, or `since` a time, to
+get less). The operator's boxes carry no role, so work it out (yours carry the
 label you gave them, in `add_rheed_box`'s result):
 
 1. **Look.** Take `rheed.camera.image` and find each box on it. The specular spot is

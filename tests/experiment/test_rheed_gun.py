@@ -190,7 +190,7 @@ async def test_by_person_stops_after_filament_and_hv_and_steps_only_when_asked()
     assert result["message"].endswith("filament mA | emission uA\n       1800 | 30.12")
     result = await g.step_up()
     assert [s["filament_ma"] for s in result["emission_steps"]] == [1800, 1850]
-    assert "still rising (emission still rising (30.12 -> 35.12 uA); no RHEED intensity" in result["message"]
+    assert "still rising (emission still rising (30.12 -> 35.12 uA); no RHEED signal" in result["message"]
     for _ in range(3):
         result = await g.step_up()  # 1900, 1950, then 2000: past the knee
     assert "did not change (45.12 -> 45.12 uA)" in result["saturation"]
@@ -255,7 +255,8 @@ class FakeCamera:
         f = self.gun.r.filament_set_ma
         if self.knee is not None and f is not None:
             e = (min(f, self.knee) - 1500) / 10.0 + 0.123
-        return {"rheed_mean": round(e * 20, 3), "rheed_p99": round(e * 60, 3), "rheed_clipped": 0.0}
+        return {"rheed_signal": round(e * 20, 3), "rheed_noise": 0.001, "rheed_headroom": 0.25,
+                "rheed_clipped_px": 0}
 
 
 async def test_the_agent_judges_without_a_confirmation_from_emission_and_intensity():
@@ -264,11 +265,13 @@ async def test_the_agent_judges_without_a_confirmation_from_emission_and_intensi
     g = RheedGun(gun, FAST, intensity=camera)
     result = await g.on(judge="agent")
     assert result["searching"] and result["judge"] == "agent" and g.judge == "agent"
-    assert result["emission_steps"][0]["rheed_mean"] == 602.46
+    assert result["emission_steps"][0]["rheed_signal"] == 602.46
     assert result["message"].endswith(
-        "filament mA | emission uA | RHEED mean\n       1800 | 30.12       | 602.5")
+        "filament mA | emission uA | RHEED signal | noise | peak/full\n"
+        "       1800 | 30.12       |        602.5 |  0.1% |       25%")
     result = await g.step_up()
-    assert "still rising" in result["saturation"] and "RHEED intensity rising" in result["saturation"]
+    assert "still rising" in result["saturation"] and "RHEED signal rising" in result["saturation"]
+    assert "image peak at 25% of full scale" in result["saturation"]
     for _ in range(3):
         result = await g.step_up()  # to 2000, past the knee: both flat
     assert result["saturation"].startswith("saturated: stop at 1950 mA?")
@@ -284,30 +287,58 @@ async def test_a_camera_that_fails_leaves_the_emission_alone():
     assert result["emission_steps"] == [{"filament_ma": 1800.0, "emission_ua": 30.123}]
 
 
-@pytest.mark.parametrize("emission, mean, clipped, verdict", [
-    ((8.41, 8.47), (500, 505), 0, "saturated: stop at 1800 mA?"),
-    ((8.41, 8.52), (500, 540), 0, "still rising"),
-    ((8.41, 8.47), (500, 560), 0, "the two disagree: one more step, or stop at 1800 mA?"),
-    ((8.41, 8.62), (500, 505), 0, "the two disagree"),
-    ((8.41, 8.47), (None, None), 0, "saturated: stop at 1800 mA?"),   # no camera: the digits
-    ((None, None), (500, 505), 0, "saturated: stop at 1800 mA?"),     # no emission: the image
-    ((None, None), (None, None), 0, "nothing to compare"),
-    ((8.41, 8.52), (4000, 4090), 0.2, "full scale: lower the camera gain"),
+@pytest.mark.parametrize("emission, signal, noise, clipped, verdict", [
+    ((8.41, 8.47), (500, 505), 0.0, 0, "saturated: stop at 1800 mA?"),
+    ((8.41, 8.52), (500, 540), 0.0, 0, "still rising"),
+    ((8.41, 8.47), (500, 560), 0.0, 0, "the two disagree: one more step, or stop at 1800 mA?"),
+    ((8.41, 8.62), (500, 505), 0.0, 0, "the two disagree"),
+    ((8.41, 8.47), (None, None), 0.0, 0, "saturated: stop at 1800 mA?"),   # no camera: the digits
+    ((None, None), (500, 505), 0.0, 0, "saturated: stop at 1800 mA?"),     # no emission: the image
+    ((None, None), (None, None), 0.0, 0, "nothing to compare"),
+    ((8.41, 8.52), (4000, 4090), 0.0, 35, "35 pixels at full scale"),
+    # A dim, fast image: +8% inside twice its 5% scatter is flat, not a rise.
+    ((8.41, 8.47), (50, 54), 0.05, 0, "saturated: stop at 1800 mA?"),
+    ((8.41, 8.47), (50, 54), 0.05, 0, "flat is within 10.0% (2x the frame-to-frame noise)"),
 ])
-def test_the_hint_sets_emission_and_intensity_side_by_side(emission, mean, clipped, verdict):
-    steps = [{"filament_ma": 1800.0, "emission_ua": emission[0], "rheed_mean": mean[0]},
-             {"filament_ma": 1850.0, "emission_ua": emission[1], "rheed_mean": mean[1],
-              "rheed_clipped": clipped}]
-    assert verdict in saturation_hint(steps, 2, 0.03)
+def test_the_hint_sets_emission_and_intensity_side_by_side(emission, signal, noise, clipped, verdict):
+    steps = [{"filament_ma": 1800.0, "emission_ua": emission[0], "rheed_signal": signal[0],
+              "rheed_noise": noise},
+             {"filament_ma": 1850.0, "emission_ua": emission[1], "rheed_signal": signal[1],
+              "rheed_noise": noise, "rheed_clipped_px": clipped}]
+    hint = saturation_hint(steps, 2, 0.03)
+    assert verdict in hint
+    assert ("full scale:" in hint) == bool(clipped)
 
 
-def test_frame_intensity_mean_percentile_and_full_scale():
+def test_frame_intensity_from_the_pixel_spread_alone():
     import numpy as np
 
-    frame = np.full((10, 10), 100, dtype=np.uint16)
-    frame[0, :5] = 4095
-    out = frame_intensity([frame, frame])
-    assert out["rheed_mean"] == round((95 * 100 + 5 * 4095) / 100, 3)
-    assert out["rheed_clipped"] == 0.05 and out["rheed_p99"] == 4095
-    assert frame_intensity([np.full((4, 4), 300, dtype=np.uint16)])["rheed_clipped"] == 0.0
+    rng = np.random.default_rng(0)
+    # Any pattern: 1% of the pixels bright, wherever they are, on a background of 100.
+    frames = []
+    for gain in (1.0, 1.02, 0.98):
+        frame = np.full((100, 100), 100.0)
+        frame.flat[rng.choice(frame.size, 100, replace=False)] = 100 + 900 * gain
+        frames.append(frame.astype(np.uint16))
+    out = frame_intensity(frames, full_scale=4095)
+    assert out["rheed_background"] == 100 and out["rheed_signal"] == pytest.approx(900, rel=1e-3)
+    assert out["rheed_noise"] == pytest.approx(0.02, rel=0.01)
+    assert (out["rheed_full_scale"], out["rheed_clipped_px"]) == (4095, 0)
+    assert out["rheed_headroom"] == round(1018 / 4095, 4)
+
+    # Moved somewhere else: the same numbers. No mask, no positions.
+    moved = [np.roll(f, (37, 11), axis=(0, 1)) for f in frames]
+    assert frame_intensity(moved, full_scale=4095) == out
+
+    clipped = np.full((10, 10), 100, dtype=np.uint16)
+    clipped[0, :5] = 4095
+    out = frame_intensity([clipped], full_scale=4095)
+    assert (out["rheed_clipped_px"], out["rheed_headroom"], out["rheed_noise"]) == (5, 1.0, None)
+    # Short exposure: the image never comes near full scale, and says how near it is.
+    dim = frame_intensity([np.full((4, 4), 300, dtype=np.uint16)], full_scale=4095)
+    assert (dim["rheed_clipped_px"], dim["rheed_headroom"]) == (0, round(300 / 4095, 4))
+    # A camera that does not say: uint8 is 255; wider is unknown, not guessed.
+    assert frame_intensity([np.full((4, 4), 255, dtype=np.uint8)])["rheed_clipped_px"] == 16
+    unknown = frame_intensity([np.full((4, 4), 300, dtype=np.uint16)])
+    assert (unknown["rheed_full_scale"], unknown["rheed_headroom"], unknown["rheed_clipped_px"]) == (None, None, None)
     assert frame_intensity([]) is None

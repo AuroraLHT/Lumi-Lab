@@ -37,6 +37,7 @@ from lumi.contracts.payloads.experiment import (
     SetTarget,
     StartMiLogging,
     CancelTask,
+    CoolDown,
     StopDeposition,
     ToTemperature,
 )
@@ -305,6 +306,29 @@ async def test_laser_power_needs_a_laser_test_today(fake):
     assert client.calls == []
 
 
+async def fire_test_train(handler, client, energies, *, setpoint=215.5, pulses=100) -> dict:
+    """fire_laser_test with the excimer reporting `energies` in turn while the train
+    fires, and `pulses` fired by the end."""
+    client.state.excimer = PldExcimer(control=True, mode="HV PGR", hv=21.0, energy_set=setpoint)
+    client.blocking.add("fire_laser")
+    client.release.clear()
+    await handler.fire_laser_test(Empty())
+    client.state.laser = PldLaser(status="firing", pulses_requested=100, pulses_fired=1)
+    for energy in energies:
+        client.state.excimer.energy = energy
+        await asyncio.sleep(0.015)  # read once or twice, at LASER_TEST_POLL_S = 0.01
+    client.state.laser = PldLaser(status="done", pulses_requested=100, pulses_fired=pulses)
+    client.release.set()
+    return await wait_task(handler)
+
+
+@pytest.fixture(autouse=True)
+def fast_laser_test(monkeypatch):
+    import lumi.experiment.manager as manager
+
+    monkeypatch.setattr(manager, "LASER_TEST_POLL_S", 0.01)
+
+
 async def test_laser_test_then_energy_mode_at_the_meter_energy_over_the_ratio(fake):
     handler, client = fake
     client.state.excimer = PldExcimer(control=True, energy=200.0)
@@ -313,10 +337,11 @@ async def test_laser_test_then_energy_mode_at_the_meter_energy_over_the_ratio(fa
     assert handler._pending.kind == "laser_test"
 
     client.calls.clear()
-    await handler.fire_laser_test(Empty())
-    result = await wait_task(handler)
-    assert result["ok"] and result["source_mj"] == 200.0
+    result = await fire_test_train(handler, client, [199.0, 201.0, 200.0])
+    assert result["ok"] and result["source_mj"] == pytest.approx(200.0)
+    assert (result["pulses_fired"], "source_note" in result) == (100, False)
     assert client.calls == [("fire_laser", {"pulses": 100, "rate_hz": 1.0, "wait": True})]
+    client.state.laser = PldLaser()
 
     test = await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0))
     assert (test.source_mj, test.meter_mj, test.ratio, test.fired_by, test.today) == (200.0, 150.0, 0.75, "lumi", True)
@@ -351,6 +376,91 @@ async def test_laser_test_fired_by_hand_takes_the_lasers_reading(fake):
     assert (test.ratio, test.fired_by, test.pulses) == (0.5, "person", None)
     listed = (await handler.list_laser_tests(ListLaserTests())).tests
     assert [(t.test_id, t.today) for t in listed] == [(test.test_id, True)]
+
+
+async def test_laser_test_refuses_the_setpoint_as_the_source_energy(fake):
+    # REA's twin answers EGY? with the setpoint in HV mode too: not a measurement.
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    result = await fire_test_train(handler, client, [215.5, 215.5, 215.5, 215.5])
+    assert result["ok"] and result["source_mj"] is None
+    assert "its energy setpoint" in result["source_note"]
+    with pytest.raises(ValueError, match="not a measurement: pass source_mj"):
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0))
+    test = await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0, source_mj=200.0))
+    assert (test.source_mj, test.ratio, test.fired_by) == (200.0, 0.75, "lumi")
+
+
+async def test_laser_test_refuses_too_few_or_flat_readings(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    result = await fire_test_train(handler, client, [190.0])
+    assert result["source_mj"] is None and "fewer than 3" in result["source_note"]
+    result = await fire_test_train(handler, client, [190.0, 190.0, 190.0], setpoint=None)
+    assert result["source_mj"] is None and "stayed at 190.00 mJ" in result["source_note"]
+    assert "setpoint" not in result["source_note"]
+
+
+async def test_laser_test_refuses_a_train_cut_short(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    result = await fire_test_train(handler, client, [199.0, 201.0, 200.0], pulses=60)
+    assert not result["ok"] and "fired 60 of 100" in result["error"]
+    with pytest.raises(RuntimeError, match="only 60 of 100"):
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0, source_mj=200.0))
+    result = await fire_test_train(handler, client, [199.0, 201.0, 200.0])
+    assert result["ok"]
+    await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0))
+
+
+async def test_laser_test_refuses_an_excimer_moved_off_the_test_hv(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    client.state.excimer = PldExcimer(control=True, mode="EGY PGR", hv=21.0)
+    await handler.fire_laser_test(Empty())
+    result = await wait_task(handler)
+    assert not result["ok"] and "not at 21 kV in HV mode (mode EGY PGR" in result["error"]
+    assert "fire_laser" not in ops(client)
+
+
+async def test_laser_test_confirm_waits_for_the_train(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    client.state.excimer = PldExcimer(control=True, mode="HV PGR", hv=21.0)
+    client.blocking.add("fire_laser")
+    await handler.fire_laser_test(Empty())
+    with pytest.raises(RuntimeError, match="still firing"):
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0, source_mj=200.0))
+    with pytest.raises(RuntimeError, match="fire_laser_test .* is still running"):
+        await handler.fire_laser_test(Empty())
+    await handler.cancel_task(CancelTask())  # before its runner took a step
+    assert (handler._current_task, handler._motion) == (None, None)
+
+
+async def test_laser_test_refuses_a_meter_above_the_source(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    with pytest.raises(ValueError, match="1.50 times the source"):
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=300.0, source_mj=200.0))
+    assert handler._pending.kind == "laser_test"  # still open, to confirm again
+
+
+async def test_a_second_task_is_refused_until_the_first_is_cancelled(fake):
+    handler, client = fake
+    client.blocking.add("set_temperature")
+    first = await handler.cool_down(CoolDown(ramp_rate=10.0))
+    with pytest.raises(RuntimeError, match=r"cool_down \(task \w+\) is still running.*cancel_task"):
+        await handler.cool_down(CoolDown(ramp_rate=20.0))
+    assert handler._current_task.id == first.task_id
+    # Cancelled before its runner took a step: still cleared, and still reported.
+    await handler.cancel_task(CancelTask(reason="wrong rate"))
+    assert handler._current_task is None
+    result = await wait_task(handler)
+    assert result == {"ok": False, "aborted": True, "error": "stopped by request: wrong rate"}
+    client.blocking.clear()
+    client.release.set()
+    second = await handler.cool_down(CoolDown(ramp_rate=20.0))
+    assert handler._current_task.id == second.task_id
 
 
 async def test_fire_laser_test_needs_the_test_open(fake):

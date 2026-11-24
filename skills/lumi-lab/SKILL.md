@@ -58,7 +58,7 @@ being asked, wait, and pass their answer on.
 | --- | --- | --- |
 | `laser_power` | sets the excimer and reads the meter at the view port | `confirm_laser_power` (their measured value) |
 | `mask_center_alignment` / `mask_center_check` | looks at the mask on the camera | `confirm_center_mask` / `confirm_mask_center` |
-| `rheed_gain` | judges the RHEED image | `set_rheed_gain`, `confirm_rheed_gain` |
+| `rheed_gain` (you raise it with `begin_adjust_rheed_gain`, e.g. when `rheed_on`'s search says pixels are at full scale; the gain is theirs, never set it yourself) | judges the RHEED image | `set_rheed_gain`, `confirm_rheed_gain` |
 | `rheed_emission` | (only with `rheed_on` `judge: "person"`) says when the RHEED beam has saturated, from the filament / emission / intensity table | `rheed_emission_step_up` (one 50 mA step, only when they say up), `finish_rheed_on` (at the step they name) |
 | `pixel_check` | checks each position on the camera | `resolve_pixel_check` |
 | `fiducial_role` | tags the mask-center marker in the UI | (continues by itself) |
@@ -131,6 +131,8 @@ What applies to both:
   `perform_deposition`, `anneal`, `auto_align_center_mask`) return at once with a
   `task_id`. Poll until `current_task` clears, then check the step **succeeded**: read the
   temperature or pressure back. The recipes do not stop on a failed step, so you must.
+  One task at a time: starting another while one runs is refused. To replace a task,
+  `cancel_task` it first, on purpose; never cancel just to get your next step in.
 - **[thumb]** Heating takes a long time, and while `to_temperature` waits for the
   substrate PASCAL runs no other command. Pass `wait: false` so its task ends once the
   ramp is under way, do other set-up meanwhile (registering the substrate, setting the
