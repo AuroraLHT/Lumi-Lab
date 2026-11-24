@@ -16,6 +16,7 @@ from lumi.experiment.rheed_gun import (
     emission_table,
     frame_intensity,
     leading_digits,
+    plateau_estimate,
     saturation_hint,
 )
 
@@ -190,10 +191,10 @@ async def test_by_person_stops_after_filament_and_hv_and_steps_only_when_asked()
     assert result["message"].endswith("filament mA | emission uA\n       1800 | 30.12")
     result = await g.step_up()
     assert [s["filament_ma"] for s in result["emission_steps"]] == [1800, 1850]
-    assert "still rising (emission still rising (30.12 -> 35.12 uA); no RHEED signal" in result["message"]
+    assert "still rising (emission rising (30.12 -> 35.12 uA, +16.6%; no plateau estimate yet" in result["message"]
     for _ in range(3):
         result = await g.step_up()  # 1900, 1950, then 2000: past the knee
-    assert "did not change (45.12 -> 45.12 uA)" in result["saturation"]
+    assert "emission flat (45.12 -> 45.12 uA, +0.0%" in result["saturation"]
     assert "stop at 1950 mA?" in result["saturation"]
     assert "set_rheed_focus" not in gun.ops()  # nothing past the search until the person says stop
 
@@ -295,19 +296,76 @@ async def test_a_camera_that_fails_leaves_the_emission_alone():
     ((8.41, 8.47), (None, None), 0.0, 0, "saturated: stop at 1800 mA?"),   # no camera: the digits
     ((None, None), (500, 505), 0.0, 0, "saturated: stop at 1800 mA?"),     # no emission: the image
     ((None, None), (None, None), 0.0, 0, "nothing to compare"),
-    ((8.41, 8.52), (4000, 4090), 0.0, 35, "35 pixels at full scale"),
+    # Clipped: the image is not judged, the emission decides.
+    ((8.41, 8.52), (4000, 4090), 0.0, 35, "still rising (emission rising"),
+    ((8.41, 8.52), (4000, 4090), 0.0, 35, "RHEED image not judged: 35 pixels at full scale"),
     # A dim, fast image: +8% inside twice its 5% scatter is flat, not a rise.
     ((8.41, 8.47), (50, 54), 0.05, 0, "saturated: stop at 1800 mA?"),
-    ((8.41, 8.47), (50, 54), 0.05, 0, "flat is within 10.0% (2x the frame-to-frame noise)"),
+    ((8.41, 8.47), (50, 54), 0.05, 0, "a step under 10.0% (2x the frame-to-frame noise) is flat"),
 ])
 def test_the_hint_sets_emission_and_intensity_side_by_side(emission, signal, noise, clipped, verdict):
     steps = [{"filament_ma": 1800.0, "emission_ua": emission[0], "rheed_signal": signal[0],
               "rheed_noise": noise},
              {"filament_ma": 1850.0, "emission_ua": emission[1], "rheed_signal": signal[1],
               "rheed_noise": noise, "rheed_clipped_px": clipped}]
-    hint = saturation_hint(steps, 2, 0.03)
+    hint = saturation_hint(steps, RheedGunSettings())
     assert verdict in hint
-    assert ("full scale:" in hint) == bool(clipped)
+    assert ("not judged" in hint) == bool(clipped)
+
+
+@pytest.mark.parametrize("emission, signal, verdict", [
+    # DRY-STO-10 at 2100 mA: no "one more step" at the cap.
+    ((8.404, 8.665), (2878, 2952), "at the filament cap (2100 mA), no step left: the two disagree; "
+                                   "stop at 2100 mA, or back at 2050 mA?"),
+    ((8.404, 8.665), (2878, 3200), "at the filament cap (2100 mA), no step left: still rising; stop at 2100"),
+    ((None, None), (None, None), "at the filament cap (2100 mA), no step left: nothing to compare"),
+    ((8.41, 8.47), (2878, 2900), "saturated: stop at 2050 mA?"),
+])
+def test_the_hint_offers_no_step_past_the_filament_cap(emission, signal, verdict):
+    steps = [{"filament_ma": 2050.0, "emission_ua": emission[0], "rheed_signal": signal[0]},
+             {"filament_ma": 2100.0, "emission_ua": emission[1], "rheed_signal": signal[1]}]
+    hint = saturation_hint(steps, RheedGunSettings(filament_max_ma=2100.0))
+    assert hint.startswith(verdict) and "one more step" not in hint
+
+
+def saturating(k, plateau=10.0, r=0.5):
+    """A reading levelling off exponentially: each step adds r times the one before."""
+    return plateau * (1 - 0.6 * r ** k)
+
+
+def test_plateau_estimate_finds_where_an_exponential_levels_off():
+    values = [saturating(k) for k in range(5)]
+    plateau, reached = plateau_estimate(values)
+    assert plateau == pytest.approx(10.0, rel=1e-3) and reached == pytest.approx(values[-1] / 10.0, rel=1e-3)
+    assert plateau_estimate(values[:2]) is None                       # too few steps
+    assert plateau_estimate([1.0, 2.0, 3.0, 4.0, 5.0]) is None        # rising steadily
+    assert plateau_estimate([100.0, 100.5, 100.8], noise=0.05) is None  # within the scatter
+
+
+def test_the_hint_stops_at_the_first_step_within_the_plateau_fraction():
+    s = RheedGunSettings(filament_max_ma=2300.0)
+    steps = [{"filament_ma": 1800.0 + 50 * k, "emission_ua": saturating(k),
+              "rheed_signal": 300 * saturating(k)} for k in range(6)]
+    hint = saturation_hint(steps, s)
+    # 10 * (1 - 0.6 * 0.5**k): 4, 7, 8.5, 9.25, 9.63, 9.81 -- 90% of 10 first at k = 3, 1950 mA.
+    assert hint.startswith("saturated: stop at 1950 mA?")
+    assert "emission at 98% of its plateau (~10 uA); within 10% of it" in hint
+    hint = saturation_hint(steps[:3], s)  # k = 2: 85%
+    assert hint.startswith("still rising") and "not yet within 10%" in hint
+    # The fraction is a setting: within 2% needs k = 5 (9.81).
+    assert saturation_hint(steps, RheedGunSettings(filament_max_ma=2300.0, plateau_fraction=0.02)
+                           ).startswith("saturated: stop at 2050 mA?")
+
+
+def test_the_hint_on_dry_sto_10s_twin_gun_says_not_yet_at_the_cap():
+    emission = [6.311, 6.899, 7.357, 7.75, 8.142, 8.404, 8.665]
+    signal = [2161, 2370, 2516, 2638, 2776, 2878, 2952]
+    clipped = [0, 0, 0, 0, 0, 19, 461]
+    steps = [{"filament_ma": 1800.0 + 50 * k, "emission_ua": e, "rheed_signal": i, "rheed_noise": 0.004,
+              "rheed_clipped_px": c} for k, (e, i, c) in enumerate(zip(emission, signal, clipped))]
+    hint = saturation_hint(steps, RheedGunSettings())
+    assert hint.startswith("at the filament cap (2100 mA), no step left: still rising")
+    assert "not yet within 10%" in hint and "RHEED image not judged: 461 pixels" in hint
 
 
 def test_frame_intensity_from_the_pixel_spread_alone():

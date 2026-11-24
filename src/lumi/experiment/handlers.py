@@ -714,6 +714,7 @@ class ExperimentHandler:
             )
 
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
+        self._refuse_if_running("to_temperature")  # first: a busy node is the reason to give
         await self._require_heating_laser(req.temperature)
         return await self._start_task(
             "to_temperature", self.manager.to_temperature(req.temperature, req.ramp_rate, req.wait),
@@ -1675,7 +1676,9 @@ class ExperimentHandler:
             "laser_test",
             f"Daily laser test: the excimer is at {LASER_TEST_KV:g} kV (HV mode) on Clear, shutter "
             f"closed. Say yes and Lumi fires {LASER_TEST_PULSES} pulses at {LASER_TEST_RATE_HZ:g} Hz, "
-            "or fire the laser yourself; then enter the energy meter's average")
+            "or fire the laser yourself; then enter the energy meter's average. Read the laser's "
+            "own energy display while it fires too: it is asked for if the laser does not report "
+            "a measured energy")
         return Ack()
 
     async def fire_laser_test(self, req: Empty) -> TaskAck:

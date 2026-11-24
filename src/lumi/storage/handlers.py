@@ -481,10 +481,16 @@ class StorageHandler:
                             f"RHEED gun X {x:g} mm", {"before": last["rheed_gun_x"], "after": x})
                 last["rheed_gun_x"] = x
             if state is not None:
-                shutter_move = None
+                shutter_move = fire = None
                 if last.get("shutter_open") is not None and state.sample_shutter_away != last["shutter_open"]:
-                    shutter_move = await self._shutter_move(state.sample_shutter_away, last)
-                self._watch_laser(writer, state, last, shutter_move)
+                    away = state.sample_shutter_away
+                    shutter_move = await self._activity(
+                        "set_sample_shutter", last, lambda a: a.params.get("in_front") is (not away))
+                if self._new_train(state, last):
+                    requested = state.laser.pulses_requested
+                    fire = await self._activity(
+                        "fire_laser", last, lambda a: not requested or a.params.get("pulses") == requested)
+                self._watch_laser(writer, state, last, shutter_move, fire)
         for key, source, op, kind in (("camera", "camera", "get_camera_config", "camera_config"),
                                       ("bboxes", "integrator", "bboxes", "integration_boxes")):
             if key == "camera" and "camera" not in meta:
@@ -504,20 +510,32 @@ class StorageHandler:
                             {"before": last["crop"], "after": crop})
                 last["crop"] = crop
 
-    async def _shutter_move(self, away: bool, last: dict):
-        """The set_sample_shutter that moved the shutter to `away` since the last look,
-        from pld-service's activity log, or None: a shutter moved from the REA GUI or
-        by a sequence step is not in it."""
+    async def _activity(self, op: str, last: dict, match):
+        """The newest `op` since the last look that `match`es, from pld-service's
+        activity log (ops sent through Lumi's chamber.pld), or None: a shutter moved from
+        the REA GUI or a train a sequence step fired is not in it."""
         activity = await self._ask("pld", "recent_activity", PldActivityQuery(limit=50))
         if activity is None:
             return None
         since = last.get("looked_at") or self._started_at or 0.0
-        moves = [a for a in activity.entries
-                 if a.op == "set_sample_shutter" and a.ok and a.params.get("in_front") is (not away)
+        found = [a for a in activity.entries
+                 if a.op == op and a.ok is not False and match(a)
                  and a.time + (a.duration_s or 0.0) >= since]
-        return moves[-1] if moves else None
+        return found[-1] if found else None
 
-    def _watch_laser(self, writer, state, last: dict, shutter_move=None) -> None:
+    @staticmethod
+    def _new_train(state, last: dict) -> bool:
+        """A laser train begun since the last look: firing now and not then, a count
+        that went back (a new train), or one begun and done in between."""
+        status, fired = state.laser.status, state.laser.pulses_fired
+        last_status, last_fired = last.get("laser") or (None, None)
+        firing = status == "firing"
+        return ((firing and last_status != "firing")
+                or (last_fired is not None and fired < last_fired)
+                or (not firing and last_status != "firing" and last_fired is not None
+                    and fired != last_fired and fired > 0))
+
+    def _watch_laser(self, writer, state, last: dict, shutter_move=None, fire=None) -> None:
         """A laser train starting and the sample shutter moving, which pld emits no
         event for (only laser_done), so a trace can be lined up with the pulses. A
         train's start is put back to where its count says it began (pulses fired over
@@ -526,22 +544,20 @@ class StorageHandler:
         now = state.time or time.time()
         laser = state.laser
         status, fired = laser.status, laser.pulses_fired
-        last_status, last_fired = last.get("laser") or (None, None)
-        firing = status == "firing"
-        new_train = (
-            (firing and last_status != "firing")
-            or (last_fired is not None and fired < last_fired)
-            or (not firing and last_status != "firing" and last_fired is not None
-                and fired != last_fired and fired > 0))
-        if new_train:
+        if self._new_train(state, last):
             rate = laser.rate_hz
-            began = now - fired / rate if rate > 0 else now
+            detail = {"pulses_requested": laser.pulses_requested, "rate_hz": rate,
+                      "pulses_fired_at_look": fired, "shutter_open": state.sample_shutter_away}
+            if fire is not None:
+                # When pld-service took the fire command, not counted back from this look.
+                began = fire.time
+                detail.update(time_from="pld activity", actor=fire.actor)
+            else:
+                began = now - fired / rate if rate > 0 else now
+                detail["time_from"] = "pulse count" if rate > 0 else "look"
             self._write(writer.add_event, began, "laser_started",
                         f"laser train: {laser.pulses_requested} pulses at {rate:g} Hz, sample "
-                        f"shutter {'open' if state.sample_shutter_away else 'in front'}",
-                        {"pulses_requested": laser.pulses_requested, "rate_hz": rate,
-                         "pulses_fired_at_look": fired, "shutter_open": state.sample_shutter_away,
-                         "time_from": "pulse count" if rate > 0 else "look"})
+                        f"shutter {'open' if state.sample_shutter_away else 'in front'}", detail)
         last["laser"] = (status, fired)
         shutter = state.sample_shutter_away
         if last.get("shutter_open") is not None and shutter != last["shutter_open"]:

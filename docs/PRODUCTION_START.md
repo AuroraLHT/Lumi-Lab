@@ -49,6 +49,13 @@ publishes into.
      workstation's address as the lab PC reaches it, or pass `-BrokerHost`. Port
      5672 must be open from the lab PC to the workstation.
 
+6. **Both clocks on NTP.** A recording mixes the two machines' clocks: chamber
+   events, the shutter and laser times (pld-service) and the RHEED frames (the rheed
+   node) are stamped on the lab PC, while the experiment node's task events are
+   stamped on the workstation. If the two
+   clocks differ by a second, so does every comparison between those events. Check
+   with `w32tm /query /status` on the lab PC and `timedatectl` on the workstation.
+
 ## Workstation (server host)
 
 ```bash

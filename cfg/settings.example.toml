@@ -710,18 +710,23 @@ heating_laser_off_max_temperature = 165.0
 # The RHEED gun's operating values, for rheed_on (pld-service only). The lab's own, not
 # the gun's remembered set points: those are whatever the last person or test left.
 # The filament starts at filament_start_ma and goes up in filament_step_ma steps while
-# the emission current still rises, to filament_max_ma at most. It is saturated when a
-# step leaves the emission's first emission_digits significant digits unchanged (8.41 ->
-# 8.47 uA). filament_judge says who decides that:
+# the emission current still rises, to filament_max_ma at most, until it saturates.
+# filament_judge says who decides that, and how:
 #   "agent"  (the default) rheed_on stops after filament and HV with the search open, and
 #            the agent steps the filament up and stops it, judging the emission current
-#            and the RHEED image together (both level off at saturation). The image
-#            is judged by its pixel statistics, for any pattern: the signal of its
-#            brightest 1% of pixels above the median, read over intensity_frames
-#            frames. A step that moves it less than intensity_flat_fraction, or than
-#            twice its frame-to-frame noise, leaves it flat. No confirmation is asked.
+#            and the RHEED image together. Both level off exponentially (each step adds
+#            a fixed share of what the step before added); Lumi fits that to the steps
+#            so far and says how near each is to its plateau. Saturated when both are
+#            within plateau_fraction of it (0.1 = 90%: the last 10% of brightness is not
+#            worth the filament). Before a plateau can be fitted (3 steps, levelling off),
+#            or when a step adds nothing, a step under emission_flat_fraction /
+#            intensity_flat_fraction (or twice the image's frame-to-frame noise) is flat.
+#            The image is the signal of its brightest 1% of pixels above the median,
+#            over intensity_frames frames, for any pattern; a clipped image is not
+#            judged and the emission decides. No confirmation is asked.
 #   "person" the same steps behind a rheed_emission confirmation: a person says up or stop.
-#   "rule"   the emission digits decide by themselves; the saturating step is taken back.
+#   "rule"   the emission alone, by the lab's digit rule: a step that leaves its first
+#            emission_digits digits unchanged is saturated, and is taken back.
 # Focus and deflection depend on the alignment: rheed_on takes per-call overrides.
 [experiment.rheed]
 hv_kv = 25.0
@@ -730,6 +735,8 @@ filament_max_ma = 2100.0
 filament_step_ma = 50.0
 emission_digits = 2
 filament_judge = "agent"
+plateau_fraction = 0.1
+emission_flat_fraction = 0.01
 intensity_flat_fraction = 0.03
 intensity_frames = 5
 emission_settle_s = 3.0

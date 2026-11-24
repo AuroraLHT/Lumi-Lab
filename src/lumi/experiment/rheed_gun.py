@@ -67,7 +67,8 @@ class RheedGunSettings:
     filament_start_ma: float = 1800.0
     filament_max_ma: float = 2100.0
     filament_step_ma: float = 50.0
-    #: Saturated when a step leaves this many leading digits of the emission unchanged.
+    #: judge "rule": saturated when a step leaves this many leading digits of the
+    #: emission unchanged (the lab's rule; the hint for agent and person uses the plateau).
     emission_digits: int = 2
     #: Seconds after a filament step before the emission is read.
     emission_settle_s: float = 3.0
@@ -82,8 +83,14 @@ class RheedGunSettings:
     poll_s: float = 0.5
     #: rheed_on's default judge of saturation: "agent", "person" or "rule" (see above).
     filament_judge: str = "agent"
-    #: A step that changes the RHEED signal by less than this fraction (or than twice its
-    #: frame-to-frame noise, if larger) leaves it flat.
+    #: Saturated when the emission and the RHEED signal are each within this fraction of
+    #: the plateau their steps level off to (`plateau_estimate`): 0.1 stops at 90% of it,
+    #: the last 10% of brightness not being worth the filament.
+    plateau_fraction: float = 0.10
+    #: While a plateau cannot be estimated yet (fewer than 3 steps, not levelling off):
+    #: a step that changes the emission by less than this fraction leaves it flat.
+    emission_flat_fraction: float = 0.01
+    #: The same for the RHEED signal (or twice its frame-to-frame noise, if larger).
     intensity_flat_fraction: float = 0.03
     #: Frames read for one intensity reading: their mean, and their scatter as the noise.
     intensity_frames: int = 5
@@ -183,45 +190,123 @@ def saturated(before: float | None, after: float | None, digits: int) -> bool:
     return leading_digits(after, digits) <= leading_digits(before, digits)
 
 
-def saturation_hint(steps: list[dict], digits: int, flat: float = 0.03) -> str:
-    """For whoever decides: what the last step did to the emission (the lab's digit
-    rule) and to the RHEED intensity (flat within `flat`), side by side."""
+#: Shrink ratios tried when fitting a plateau: one step's rise over the step before's.
+_RATIOS = tuple(i / 200 for i in range(2, 196))
+
+
+def plateau_estimate(values: list[float], noise: float = 0.0) -> tuple[float, float] | None:
+    """(plateau, last value over it) for readings that level off exponentially, one per
+    filament step, or None while they do not (yet).
+
+    A saturating reading y = P - B r^k, k the step: each step adds r times what the step
+    before added. Fitted over every step (r on a grid, P and B by least squares for
+    each), so one noisy step does not decide it. None with fewer than 3 steps, a best r
+    near 1 (rising steadily, no plateau in sight), or a total rise within `noise`
+    (relative, the readings' own scatter) of the last value."""
+    import numpy as np
+
+    y = np.asarray(values, dtype=float)
+    if len(y) < 3 or not np.all(np.isfinite(y)) or y[-1] <= 0:
+        return None
+    if y[-1] - y[0] <= 2 * noise * y[-1]:
+        return None
+    k = np.arange(len(y), dtype=float)
+    best = None
+    for r in _RATIOS:
+        design = np.column_stack([np.ones_like(k), -(r ** k)])
+        (p, b), *_ = np.linalg.lstsq(design, y, rcond=None)
+        sse = float(np.sum((design @ (p, b) - y) ** 2))
+        if b > 0 and (best is None or sse < best[0]):
+            best = (sse, r, float(p))
+    if best is None or best[1] >= _RATIOS[-1] or best[2] <= 0:
+        return None
+    plateau = max(best[2], float(y[-1]))
+    return plateau, float(y[-1]) / plateau
+
+
+def _judge(name: str, values: list, unit: str, plateau_fraction: float, step_fraction: float,
+           noise: float = 0.0) -> tuple[bool | None, str, int | None]:
+    """One reading's verdict, from its plateau if one can be estimated, else from the
+    last step's change: (flat, why, first) with `first` the index of the first step
+    already within `plateau_fraction` of the plateau (None without one). flat None:
+    nothing to judge."""
+    if len(values) < 2 or values[-1] is None or values[-2] is None or values[-2] <= 0:
+        return None, f"no {name} to compare", None
+    known = []
+    for v in reversed(values):  # the run of readings up to the last one
+        if v is None:
+            break
+        known.append(v)
+    known.reverse()
+    a, b = values[-2], values[-1]
+    change = (b - a) / a
+    band = max(step_fraction, 2 * noise)
+    step_flat = abs(change) < band
+    within = f"{band:.1%}" + (" (2x the frame-to-frame noise)" if band > step_fraction else "")
+    step = f"{a:.4g} -> {b:.4g}{unit}, {change:+.1%}"
+    estimate = plateau_estimate(known, noise)
+    if estimate is not None:
+        plateau, reached = estimate
+        if reached >= 1 - plateau_fraction:
+            offset = len(values) - len(known)
+            first = next(offset + i for i, v in enumerate(known) if v >= (1 - plateau_fraction) * plateau)
+            return True, (f"{name} at {reached:.0%} of its plateau (~{plateau:.4g}{unit}); within "
+                          f"{plateau_fraction:.0%} of it"), first
+        if step_flat:
+            # A step that added nothing is flat, whatever the fit says is still to come:
+            # the readings need not be an exponential.
+            return True, (f"{name} flat ({step}, under {within}), though the fit puts it at "
+                          f"{reached:.0%} of a plateau of ~{plateau:.4g}{unit}"), len(values) - 2
+        return False, (f"{name} at {reached:.0%} of its plateau (~{plateau:.4g}{unit}); not yet "
+                       f"within {plateau_fraction:.0%} of it ({step})"), None
+    return step_flat, (f"{name} {'flat' if step_flat else 'rising' if change > 0 else 'falling'} "
+                       f"({step}; no plateau estimate yet, so a step under {within} is flat)"), \
+        (len(values) - 2 if step_flat else None)
+
+
+def saturation_hint(steps: list[dict], s: "RheedGunSettings") -> str:
+    """For whoever decides: how near the emission and the RHEED signal are to the
+    plateau each levels off to (within `plateau_fraction` of it is saturated), or,
+    before a plateau can be estimated, what the last step changed. Both must agree.
+
+    A clipped image is not judged: pixels at full scale cannot rise, so its signal
+    levels off before the beam does. At `filament_max_ma` there is no step left to
+    offer, only where to stop."""
     if len(steps) < 2:
         return "step up for the next step, or stop"
     prev, last = steps[-2], steps[-1]
-    a, b = prev["emission_ua"], last["emission_ua"]
-    if a is None or b is None:
-        e_flat, emission = None, "no emission reading to compare"
-    elif saturated(a, b, digits):
-        e_flat, emission = True, f"emission's first {digits} digits did not change ({a:.4g} -> {b:.4g} uA)"
-    else:
-        e_flat, emission = False, f"emission still rising ({a:.4g} -> {b:.4g} uA)"
-    i, j = prev.get("rheed_signal"), last.get("rheed_signal")
-    if i is None or j is None or i <= 0:
-        i_flat, intensity = None, "no RHEED signal to compare"
-    else:
-        change = (j - i) / i
-        # Flat within `flat`, or within the frames' own scatter when that is larger: a
-        # dim, fast image can scatter by more than `flat` with nothing changing.
-        noise = max(prev.get("rheed_noise") or 0.0, last.get("rheed_noise") or 0.0)
-        band = max(flat, 2 * noise)
-        i_flat = abs(change) < band
-        within = f"within {band:.1%}" + (" (2x the frame-to-frame noise)" if band > flat else "")
-        intensity = (f"RHEED signal {'flat' if i_flat else 'rising' if change > 0 else 'falling'} "
-                     f"({i:.4g} -> {j:.4g} above background, {change:+.1%}; flat is {within})")
-    parts = [emission, intensity]
-    if last.get("rheed_headroom") is not None:
-        parts.append(f"image peak at {last['rheed_headroom']:.0%} of full scale")
+    e_flat, emission, e_first = _judge("emission", [st.get("emission_ua") for st in steps], " uA",
+                              s.plateau_fraction, s.emission_flat_fraction)
+    parts = [emission]
     if last.get("rheed_clipped_px"):
         # The gain is a person's call (rheed_gain), whoever judges the search: say what
-        # the clipping means for the judgement and who can change it, not "lower it".
-        parts.append(f"{last['rheed_clipped_px']} pixels at full scale: where they are, the "
-                     "image cannot rise, so the signal under-reads a rise; lean on the "
-                     "emission; if it matters, a person can lower the gain or exposure "
+        # the clipping means and who can change it, not "lower it".
+        i_flat, i_first = None, None
+        parts.append(f"RHEED image not judged: {last['rheed_clipped_px']} pixels at full scale "
+                     "cannot rise, so its signal levels off before the beam does; the emission "
+                     "decides. If the image matters, a person can lower the gain or exposure "
                      "(begin_adjust_rheed_gain asks them)")
-    stop = f"stop at {prev['filament_ma']:g} mA?"
+    else:
+        noise = max(prev.get("rheed_noise") or 0.0, last.get("rheed_noise") or 0.0)
+        i_flat, intensity, i_first = _judge("RHEED signal", [st.get("rheed_signal") for st in steps], "",
+                                   s.plateau_fraction, s.intensity_flat_fraction, noise)
+        parts.append(intensity)
+    if last.get("rheed_headroom") is not None:
+        parts.append(f"image peak at {last['rheed_headroom']:.0%} of full scale")
+    # The lowest step that already has both within the fraction (by the step rule: the
+    # step before the flat one).
+    firsts = [f for f in (e_first, i_first) if f is not None]
+    at = steps[max(firsts)] if firsts else prev
+    stop = f"stop at {at['filament_ma']:g} mA?"
     if e_flat and i_flat in (True, None) or i_flat and e_flat is None:
         verdict = f"saturated: {stop}"
+    elif s.filament_max_ma is not None and last["filament_ma"] >= s.filament_max_ma:
+        here = f"at the filament cap ({s.filament_max_ma:g} mA), no step left"
+        if e_flat is None and i_flat is None:
+            verdict = f"{here}: nothing to compare, stop here and judge by eye"
+        else:
+            verdict = (f"{here}: {'the two disagree' if e_flat or i_flat else 'still rising'}; stop at "
+                       f"{last['filament_ma']:g} mA, or back at {prev['filament_ma']:g} mA?")
     elif e_flat or i_flat:
         verdict = f"the two disagree: one more step, or {stop}"
     elif e_flat is None and i_flat is None:
@@ -333,7 +418,7 @@ class RheedGun:
         s, steps = self._search["settings"], self._search["steps"]
         return {"judge": self._search["judge"], "started_at": self._search["started_at"],
                 "steps": [dict(step) for step in steps], "filament_max_ma": s.filament_max_ma,
-                "saturation": saturation_hint(steps, int(s.emission_digits), s.intensity_flat_fraction)}
+                "saturation": saturation_hint(steps, s)}
 
     @property
     def judge(self) -> str | None:
@@ -449,7 +534,7 @@ class RheedGun:
 
     def _search_report(self, what: str) -> dict:
         s, steps, judge = self._search["settings"], self._search["steps"], self._search["judge"]
-        hint = saturation_hint(steps, int(s.emission_digits), s.intensity_flat_fraction)
+        hint = saturation_hint(steps, s)
         return {"filament_ma": steps[-1]["filament_ma"], "emission_steps": list(steps),
                 "saturation": hint, "settings": asdict(s), "searching": True, "judge": judge,
                 "message": f"{what}. {hint}\n{emission_table(steps)}"}

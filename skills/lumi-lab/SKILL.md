@@ -85,14 +85,17 @@ only): on at the lab's operating values (25 kV, the filament raised from 1800 mA
 steps to 2100 mA at most, focus and deflection), off ramped down. By default you judge
 when the beam has saturated, and no confirmation is asked: `rheed_on` returns after
 filament and HV with the search open (`searching`). Call `rheed_emission_step_up` once per
-step. Each step reads the emission current and the RHEED image's mean intensity, and both
-level off when the beam saturates. Keep stepping while either still rises. When a step
-leaves both flat (the emission's first two digits unchanged, the intensity within about
-3%), call `finish_rheed_on` at the step before it: the filament runs no hotter than it
-needs to. If the two disagree, take one more step. If they still disagree at 2100 mA or
-look wrong (the emission falling, or the image saturated or dark), stop and show the
-person the table. The `saturation` hint sets the two side by side; it is not the
-decision. Keep the camera gain fixed during the search, or the intensities don't
+step. Each step reads the emission current and the RHEED image's signal (its brightest
+pixels above background), and both level off exponentially as the beam saturates. From
+3 steps on, the `saturation` hint fits that and says how near each is to its plateau.
+Saturated is both within 10% of it (`plateau_fraction`): the last 10% of brightness is
+not worth the filament. Call `finish_rheed_on` at the step the hint names, the first
+that had both there, so the filament runs no hotter than it needs to. Before a plateau
+can be fitted, or when a step adds nothing, a step under about 1% (emission) or 3%
+(image) is flat. If the two disagree, take one more step; at 2100 mA there is none, so
+choose between the steps it offers. A clipped image is not judged (the emission
+decides). If the readings look wrong (the emission falling, the image dark), stop and
+show the person the table. The hint sets the two side by side; it is not the decision. Keep the camera gain fixed during the search, or the intensities don't
 compare. Show the person the final table either way. If they want to decide themselves,
 pass `judge: "person"`: that raises a `rheed_emission` confirmation, so step up only when
 they say so and finish at the step they name. Under `--use-legacy-mi-mode` the person
@@ -133,6 +136,10 @@ What applies to both:
   temperature or pressure back. The recipes do not stop on a failed step, so you must.
   One task at a time: starting another while one runs is refused. To replace a task,
   `cancel_task` it first, on purpose; never cancel just to get your next step in.
+  Cancelling leaves the chamber as it is, not as it was: a cancelled `to_temperature`,
+  `cool_down` or `anneal` switches PID off and holds the LD at its present current (the
+  substrate stays near where it got to); a cancelled deposition stops the laser and
+  leaves shutter, mask and target as they are.
 - **[thumb]** Heating takes a long time, and while `to_temperature` waits for the
   substrate PASCAL runs no other command. Pass `wait: false` so its task ends once the
   ramp is under way, do other set-up meanwhile (registering the substrate, setting the

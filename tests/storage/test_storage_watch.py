@@ -177,6 +177,34 @@ async def test_the_shutter_event_is_when_pld_logged_the_move_not_the_look(tmp_pa
         assert (rows[1][1]["time_from"], rows[1][1]["within_s"]) == ("look", handlers.WATCH_EVERY_S)
 
 
+async def test_a_train_lumi_fired_starts_when_pld_took_the_command(tmp_path):
+    pld = FakePldWithActivity()
+    handler = await record(tmp_path, pld, save_log=False)
+    meta, last = handler._watch_meta, handler._watch_start(handler._watch_meta)
+    t = time.time()
+    await handler._watch_once(meta, last)
+    pld.activity = [PldActivity(seq=3, time=t + 0.5, op="fire_laser", params={"pulses": 300, "rate_hz": 5.0},
+                                running=True, actor="mcp:agent")]
+    pld.state = pld.state.model_copy(update={"time": t + 2.0})
+    pld.state.laser = PldLaser(status="firing", pulses_fired=7, rate_hz=5.0, pulses_requested=300)
+    await handler._watch_once(meta, last)
+    # One from a sequence step: not in Lumi's activity, so counted back as before.
+    pld.state = pld.state.model_copy(update={"time": t + 120.0})
+    pld.state.laser = PldLaser(status="firing", pulses_fired=10, rate_hz=10.0, pulses_requested=50)
+    pld.activity = []
+    last["laser"] = ("finished", 300)
+    await handler._watch_once(meta, last)
+    handler._watch_last = last
+    assert (await handler.stop_recording(Empty())).ok
+
+    with open_recording(tmp_path / "w.hdf5") as rec:
+        ev = rec.events()
+        rows = [(round(tm - t, 3), d) for k, tm, d in zip(ev.kind, ev.time, ev.detail) if k == "laser_started"]
+        assert [r[0] for r in rows] == [0.5, 119.0]
+        assert (rows[0][1]["time_from"], rows[0][1]["actor"]) == ("pld activity", "mcp:agent")
+        assert rows[1][1]["time_from"] == "pulse count"
+
+
 async def test_the_file_names_its_recording_and_its_project_apart(tmp_path):
     handler = await record(tmp_path, FakePld(), save_log=False,
                            context={"project_name": "HZO-dryrun"})
