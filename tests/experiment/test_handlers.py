@@ -440,6 +440,10 @@ async def test_long_running_task_tracked_and_cleared(handler):
         pytest.fail("task never reported completion")
 
     assert handler.readout().current_task is None
+    # And the outcome stays readable for a client that only polls state (MCP).
+    last = handler.readout().last_task
+    assert last.task.id == ack.task_id and last.task.kind == "to_temperature"
+    assert last.result == event.task_result
 
 
 async def test_to_temperature_refuses_with_the_heating_laser_off(handler):

@@ -115,6 +115,9 @@ async def wait_task(handler) -> dict:
     for _ in range(2000):
         event = await handler.next_update()
         if event is not None and event.task_result is not None:
+            # Every outcome is also the readout's last_task, for a client that polls.
+            last = handler.readout().last_task
+            assert last.task.id == event.finished_task.id and last.result == event.task_result
             return event.task_result
         await asyncio.sleep(0.01)
     pytest.fail("task never reported completion")
@@ -455,12 +458,18 @@ async def test_a_second_task_is_refused_until_the_first_is_cancelled(fake):
     # Cancelled before its runner took a step: still cleared, and still reported.
     await handler.cancel_task(CancelTask(reason="wrong rate"))
     assert handler._current_task is None
+    # The outcome is already in the readout, before the update reaches the channel.
+    stopped = {"ok": False, "aborted": True, "error": "stopped by request: wrong rate"}
+    assert handler.readout().last_task.task.id == first.task_id
+    assert handler.readout().last_task.result == stopped
     result = await wait_task(handler)
-    assert result == {"ok": False, "aborted": True, "error": "stopped by request: wrong rate"}
+    assert result == stopped
     client.blocking.clear()
     client.release.set()
     second = await handler.cool_down(CoolDown(ramp_rate=20.0))
     assert handler._current_task.id == second.task_id
+    # A new task starting leaves the last one's outcome until it finishes itself.
+    assert handler.readout().last_task.task.id == first.task_id
 
 
 async def test_fire_laser_test_needs_the_test_open(fake):

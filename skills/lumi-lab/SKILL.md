@@ -132,8 +132,10 @@ What applies to both:
   GUI holds control, or another MI script is running); check again once they finish.
 - **[hard]** Long-running ops (`to_temperature`, `cool_down`, `perform_preablation`,
   `perform_deposition`, `anneal`, `auto_align_center_mask`) return at once with a
-  `task_id`. Poll until `current_task` clears, then check the step **succeeded**: read the
-  temperature or pressure back. The recipes do not stop on a failed step, so you must.
+  `task_id`. Poll until `current_task` clears, then read `last_task`: check its
+  `task.id` is your `task_id`, and that `result.ok` is true (if not, `result.error` says
+  why, and `result.aborted` that it was stopped). Then check the step **succeeded** in
+  the chamber too: read the temperature or pressure back. The recipes do not stop on a failed step, so you must.
   One task at a time: starting another while one runs is refused. To replace a task,
   `cancel_task` it first, on purpose; never cancel just to get your next step in.
   Cancelling leaves the chamber as it is, not as it was: a cancelled `to_temperature`,
@@ -148,7 +150,7 @@ What applies to both:
   From cold the task first raises the heating current by hand, open-loop, until PID can
   take over (about 220 °C); a fire or move meanwhile does not hold it up. If the
   warm-up fails, the task ends `ok: false` with the current set back to where it
-  started; read `current_task`'s result.
+  started; read `last_task.result`.
 - Targets: the carousel slots are A–F plus Clear and Monitor. The chamber log's `TG No.`
   counts from 0: 0 = A, 1 = B, 2 = C, 3 = D, 4 = E, 5 = F, 6 = Clear, 7 = Monitor.
   `get_current_target` does the conversion and names what is loaded there.

@@ -79,6 +79,7 @@ from lumi.contracts.payloads.experiment import (
     CoolDown,
     CurrentSubstrateResponse,
     CurrentTask,
+    FinishedTask,
     EndStorage,
     ExperimentId,
     ExperimentInfo,
@@ -331,6 +332,7 @@ class ExperimentHandler:
         #: The RHEED boxes agents drew (add_rheed_box), by bbox id.
         self._agent_boxes: dict[int, RheedBoxInfo] = {}
         self._current_task: CurrentTask | None = None
+        self._last_task: FinishedTask | None = None
         # The asyncio task running `_current_task`, so stop_deposition can end it, and
         # why it was stopped once it has been.
         self._task_handle: asyncio.Task | None = None
@@ -416,6 +418,7 @@ class ExperimentHandler:
             recording_name=m.recording_name if m else None,
             pending_confirmation=self._pending,
             current_task=self._current_task,
+            last_task=self._last_task,
             deps_available=dict(self._deps),
             laser_power_set=m._laser_power_set if m else None,
             laser_power_real=m._laser_power_real if m else None,
@@ -530,7 +533,7 @@ class ExperimentHandler:
         running = self._current_task
         if running is not None:
             raise RuntimeError(
-                f"{running.kind} (task {running.id}) is still running: wait for its task_result, "
+                f"{running.kind} (task {running.id}) is still running: wait for it to finish (state.last_task), "
                 f"or end it with cancel_task, before starting {kind}")
 
     async def _start_task(self, kind: str, coro, detail: dict | None = None) -> TaskAck:
@@ -567,6 +570,7 @@ class ExperimentHandler:
         started = False
 
         async def finish(task_result: dict) -> None:
+            self._last_task = FinishedTask(task=task, result=task_result, finished_at=time.time())
             self._current_task = None
             self._task_handle = None
             self._stop_reason = None
@@ -617,6 +621,8 @@ class ExperimentHandler:
             if not started:
                 coro.close()
                 result = stopped()
+                # last_task with it: no poll sees the task gone and its result not yet in.
+                self._last_task = FinishedTask(task=task, result=result, finished_at=time.time())
                 self._current_task = self._task_handle = self._stop_reason = None
                 done = asyncio.get_running_loop().create_task(finish(result))
                 self._finishing.add(done)  # held until it ends: the loop keeps only weak refs
@@ -1688,8 +1694,8 @@ class ExperimentHandler:
     async def confirm_laser_test(self, req: ConfirmLaserTest) -> LaserTest:
         self._require_pending("laser_test")
         if self._current_task is not None and self._current_task.kind == "fire_laser_test":
-            raise RuntimeError("the test train is still firing: confirm after fire_laser_test's "
-                               "task_result, with the meter's average over the whole train")
+            raise RuntimeError("the test train is still firing: confirm once fire_laser_test has finished "
+                               "(state.last_task), with the meter's average over the whole train")
         row = await self.manager.confirm_laser_test(req.meter_mj, req.source_mj, actor=current_actor.get())
         await self._clear_pending()
         return LaserTest(**row, today=True)

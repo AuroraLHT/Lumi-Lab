@@ -19140,7 +19140,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -19175,7 +19175,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -19250,7 +19250,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -19305,7 +19305,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -19370,7 +19370,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -19610,7 +19610,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -20629,7 +20629,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -21253,7 +21253,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -23231,6 +23231,30 @@
               "title": "CurrentTask",
               "type": "object"
             },
+            "FinishedTask": {
+              "description": "The last long-running op to finish, and how: TaskEvent's `finished_task` and\n`task_result`, kept in the readout for a client that polls state rather than\nreading the update channel (an MCP agent).",
+              "properties": {
+                "finished_at": {
+                  "title": "Finished At",
+                  "type": "number"
+                },
+                "result": {
+                  "additionalProperties": true,
+                  "title": "Result",
+                  "type": "object"
+                },
+                "task": {
+                  "$ref": "#/$defs/CurrentTask"
+                }
+              },
+              "required": [
+                "task",
+                "result",
+                "finished_at"
+              ],
+              "title": "FinishedTask",
+              "type": "object"
+            },
             "PendingConfirmation": {
               "properties": {
                 "id": {
@@ -23658,6 +23682,17 @@
               "default": null,
               "description": "Pulse energy last checked for, mJ",
               "title": "Laser Power Set"
+            },
+            "last_task": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FinishedTask"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "mode": {
               "default": "idle",

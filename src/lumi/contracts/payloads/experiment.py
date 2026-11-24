@@ -64,6 +64,18 @@ class CurrentTask(BaseModel):
     detail: dict = {}
 
 
+class FinishedTask(BaseModel):
+    """The last long-running op to finish, and how: TaskEvent's `finished_task` and
+    `task_result`, kept in the readout for a client that polls state rather than
+    reading the update channel (an MCP agent)."""
+
+    task: CurrentTask
+    #: `ok`, and `error` / `aborted` when not ok; otherwise the op's own result
+    #: (fire_laser_test's meter average and source_mj, ...).
+    result: dict
+    finished_at: float
+
+
 class RheedSearch(BaseModel):
     """rheed_on's open emission search, whoever judges it: what a UI shows with Stop
     here (finish_rheed_on at a step) and Abort (rheed_off)."""
@@ -112,7 +124,8 @@ class TaskEvent(BaseModel):
 
 class TaskAck(BaseModel):
     """Acknowledges a long-running op was started. Its completion is observed via
-    state.current_task clearing, or a TaskEvent with task_result set."""
+    state.current_task clearing (the outcome is then state.last_task, with this id),
+    or a TaskEvent with task_result set."""
 
     ok: bool = True
     task_id: str
@@ -1159,6 +1172,9 @@ class ExperimentReadout(BaseModel):
     recording_name: str | None = None
     pending_confirmation: PendingConfirmation | None = None
     current_task: CurrentTask | None = None
+    #: The last task to finish and its result, until the next one finishes (a new
+    #: task starting leaves it). Check `last_task.task.id` against the TaskAck's.
+    last_task: FinishedTask | None = None
     # Experiment is a consumer of chamber/rheed/storage, so it can be up but unable
     # to drive anything because a source is down. Surface that rather than failing
     # opaquely mid-growth -- same reasoning as StorageReadout.deps_available.
