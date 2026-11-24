@@ -681,41 +681,51 @@ class BaseExperimentManager:
             log.info("unloaded substrate %s", dropped.db_id)
         return self.current_substrate
 
-    async def get_target_name_by_id(self, target_id: str) -> str:
-        field = self.target_mapper.get(target_id)
-        if field is None:
-            raise ValueError(f"target {target_id!r} not in target_mapper: {sorted(self.target_mapper)}")
+    async def target_names(self) -> dict[str, str]:
+        """The material in each carousel slot (A..F, Clear, Monitor), "" for an empty
+        slot. Under the pld driver it is pld-service's own `[target_names]`
+        (GetSettings), the live list the PLD GUI edits; only legacy MI mode still reads
+        PLD Controller's PLDconfig.ini (TGsettings) through chamber.config."""
+        if self.chamber.driver == "pld":
+            names = (await self.chamber.client.get_settings()).target_names()
+            names.update({"Clear": "Clear", "Monitor": "Monitor"})
+            return {slot: names.get(slot, "") for slot in self.target_mapper}
         section = await self.chamber_config.get_configs_by_section(SectionQuery(section="TGsettings"))
-        return section.values[field]
+        return {slot: section.values.get(field) or "" for slot, field in self.target_mapper.items()}
+
+    async def get_target_name_by_id(self, target_id: str) -> str:
+        if target_id not in self.target_mapper:
+            raise ValueError(f"target {target_id!r} not in target_mapper: {sorted(self.target_mapper)}")
+        name = (await self.target_names()).get(target_id, "")
+        if not name:
+            raise ValueError(f"slot {target_id} holds no target (pld-service's target_names)")
+        return name
 
     async def get_target_id_by_name(self, target_name: str) -> str:
-        section = await self.chamber_config.get_configs_by_section(SectionQuery(section="TGsettings"))
-        rev = {v: k for k, v in self.target_mapper.items()}
-        for field in self.target_mapper.values():
-            if section.values.get(field) == target_name:
-                return rev[field]
-        valid = [section.values.get(f) for f in self.target_mapper.values()]
-        raise ValueError(f"target {target_name!r} not found; valid targets: {valid}")
+        names = await self.target_names()
+        for slot, name in names.items():
+            if name and name.strip().casefold() == target_name.strip().casefold():
+                return slot
+        loaded = {slot: name for slot, name in names.items() if name and slot not in ("Clear", "Monitor")}
+        raise ValueError(f"no target {target_name!r} in the chamber; loaded: {loaded}")
 
     async def get_current_target(self) -> tuple[int, str | None, str | None]:
         """The carousel position the chamber log reports, as (TG No., slot, name).
 
         `TG No.` counts from 0 in slot order: 0 is A (TG1name), 6 is Clear (TG7name),
         7 is Monitor (TG8name). The slot is None for a number no `target_mapper`
-        entry maps to; the name is the material PLDconfig.ini gives that slot."""
+        entry maps to; the name is the material in that slot (`target_names`)."""
         number = int(float((await self._log_values())["TG No."]))
         slot = next(
             (s for s, field in self.target_mapper.items()
              if str(field).removeprefix("TG").removesuffix("name") == str(number + 1)),
             None,
         )
-        name = await self.get_target_name_by_id(slot) if slot is not None else None
+        name = (await self.target_names()).get(slot) or None if slot is not None else None
         return number, slot, name
 
     async def show_available_targets(self) -> dict[str, str]:
-        section = await self.chamber_config.get_configs_by_section(SectionQuery(section="TGsettings"))
-        rev = {v: k for k, v in self.target_mapper.items()}
-        return {rev[f]: section.values.get(f) for f in self.target_mapper.values()}
+        return await self.target_names()
 
     # --- chamber reads ---------------------------------------------------------
 

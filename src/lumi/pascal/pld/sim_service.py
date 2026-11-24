@@ -40,11 +40,17 @@ from concurrent import futures
 
 import grpc
 
+from lumi.config import settings
 from lumi.pascal.pld.proto import pld_pb2 as pb
 from lumi.pascal.pld.proto import pld_pb2_grpc as pb_grpc
 from lumi.pascal.sim.model import ChamberModel
 
 log = logging.getLogger(__name__)
+
+#: The chamber's targets, as pld-service ships its `[target_names]` (REA 5352040, from
+#: PLD Controller's PLDconfig.ini on 2026-11-20).
+SIM_TARGET_NAMES = {"A": "SpotSizeCrys", "B": "TbFeO3", "C": "La0.7Sr0.3MnO3",
+                    "D": "Sm2Mo2O7+x", "E": "SrRuO3", "F": "Hf0.5Zr0.5O2"}
 
 NAN = float("nan")
 LOW_REGIME_MAX = 2e-4
@@ -260,6 +266,15 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
 
     def GetState(self, request, context):
         return self._state()
+
+    def GetSettings(self, request, context):
+        """The one setting Lumi reads: `[target_names]`, the material in each slot
+        (`pascal.sim.target_names`, defaulting to the chamber's own, as pld-service ships
+        them)."""
+        names = {**SIM_TARGET_NAMES, **dict(settings.get("pascal.sim.target_names", {}) or {})}
+        return pb.SettingsReply(file="(Lumi simulator)", settings=[
+            pb.Setting(section="target_names", key=slot, value=str(names.get(slot, "")), live=True,
+                       help=f"Material in slot {slot}") for slot in "ABCDEF"])
 
     def WatchState(self, request, context):
         period = 1.0 / request.rate_hz if request.rate_hz > 0 else 0.1

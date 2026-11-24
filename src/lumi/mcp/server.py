@@ -98,7 +98,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
     # the load lock or the pumps (auto_vent, auto_vac, cancel_load_lock, set_pump):
     # venting and pumping down are a person's, with the hatch and GV1 in front of them.
     (CHAMBER, {"log": None, "camera": None, "pld": frozenset({
-        "chamber_state", "recent_events", "recent_activity", "set_valve", "select_target",
+        "chamber_state", "get_settings", "recent_events", "recent_activity", "set_valve", "select_target",
         "set_mask_position", "set_sample_position", "set_rheed_gun_x", "home_axis",
         "set_target_spin", "set_target_twist", "set_target_auto_motion",
         # The master motor stop, as stop_fire: anyone may stop. Not reset_motors: a stop

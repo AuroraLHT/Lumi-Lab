@@ -72,6 +72,7 @@ READ_ONLY_OPS = frozenset({
     "list_execution",
     # The chamber driver's readings (chamber.pld); every other pld op operates it.
     "chamber_state",
+    "get_settings",
     "recent_events",
     "list_nodes",
     "get_node",

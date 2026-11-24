@@ -387,6 +387,35 @@ class PldEventList(BaseModel):
     events: list[PldEvent] = Field(default_factory=list)
 
 
+#: Slots that hold a target, in pld-service's `[target_names]`.
+TARGET_SLOTS = ("A", "B", "C", "D", "E", "F")
+
+
+class PldSetting(BaseModel):
+    """One of pld-service's settings (its .ini), as the service has it in effect."""
+
+    section: str
+    key: str
+    value: str = ""
+    unit: str = ""
+    help: str = ""
+    #: Takes effect at once when set; otherwise at the next service start.
+    live: bool = False
+    #: A value set that waits for the next start, if any.
+    pending: str = ""
+
+
+class PldSettings(BaseModel):
+    settings: list[PldSetting] = Field(default_factory=list)
+    #: The settings file the service reads and writes.
+    file: str = ""
+
+    def target_names(self) -> dict[str, str]:
+        """The material in each slot A-F (`[target_names]`); "" for an empty slot."""
+        names = {s.key: s.value for s in self.settings if s.section == "target_names"}
+        return {slot: names.get(slot, "") for slot in TARGET_SLOTS}
+
+
 class PldReadout(BaseModel):
     """What the chamber node knows about its driver connection."""
 

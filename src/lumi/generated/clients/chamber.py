@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: a2acdade7f246ee6
+# contract_hash: 9a186eb0645f849f
 
 """Generated clients for the chamber node."""
 
@@ -21,7 +21,7 @@ from lumi.contracts.payloads.camera import CameraConfig, CameraState, ImageMeta,
 from lumi.contracts.payloads.chamber import AllConfigs, ChamberConfigState, ChamberLogState, ConfigEntry, ConfigQuery, ConfigSection, ConfigSections, ListLogFiles, LogBatch, LogEntry, LogFileList, LogSeries, LogWindowQuery, MICommands, MIExecution, MIExecutionList, MIModeState, SectionQuery
 from lumi.contracts.payloads.common import Ack, Empty
 from lumi.contracts.payloads.fiducial import FiducialMarker, FiducialState, MarkerHistory, MarkerHistoryQuery, MarkerId, MarkerList, MarkerStatsSample, RoleAssignment, RoleMap, RoleQuery
-from lumi.contracts.payloads.pld import PldActivityList, PldActivityQuery, PldAutoMotionRequest, PldAxisRequest, PldBypassMoveRequest, PldBypassSpeedRequest, PldBypassStepsRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldSequenceRequest, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
+from lumi.contracts.payloads.pld import PldActivityList, PldActivityQuery, PldAutoMotionRequest, PldAxisRequest, PldBypassMoveRequest, PldBypassSpeedRequest, PldBypassStepsRequest, PldChamberState, PldControlReply, PldControlRequest, PldCurrentLimitsRequest, PldCurrentRequest, PldEventList, PldEventQuery, PldFireRequest, PldFlowLimitsRequest, PldFlowRequest, PldIonGaugeRequest, PldLaserEnergyRequest, PldLaserHvRequest, PldLaserModeRequest, PldLaserOnRequest, PldLoggingRequest, PldPositionRequest, PldPressureRequest, PldPumpRequest, PldReply, PldRheedDeflectionRequest, PldRheedFilamentOnRequest, PldRheedFilamentRequest, PldRheedFocusRequest, PldRheedHvOnRequest, PldRheedHvRequest, PldSequenceRequest, PldSettings, PldShutterRequest, PldState, PldSwitchRequest, PldTargetRequest, PldTemperatureRequest, PldValveRequest
 
 
 class ChamberLogClient(CapabilityClient):
@@ -129,6 +129,10 @@ class ChamberPldClient(CapabilityClient):
     async def chamber_state(self) -> PldChamberState:
         """The latest poll of the chamber: valves, pressures, heater, motion, the laser trigger train, gas and pressure control, interlocks, the excimer. `read_only` true means the service was started on hardware without --allow-operations: every operation will be refused."""
         return await self.call("chamber_state")  # type: ignore[return-value]
+
+    async def get_settings(self) -> PldSettings:
+        """pld-service's settings as in effect (its .ini): section, key, value, unit, help, live. `target_names` A-F is the material in each carousel slot, the one source for what is loaded."""
+        return await self.call("get_settings")  # type: ignore[return-value]
 
     async def recent_events(self, req: PldEventQuery) -> PldEventList:
         """The service's latest discrete events (valve_changed, move_done, interlock, laser_done, error, control), oldest first."""

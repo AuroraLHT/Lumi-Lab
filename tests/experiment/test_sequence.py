@@ -188,6 +188,37 @@ async def test_an_unapproved_version_does_not_run(seq):
     assert "run_sequence" not in [op for op, _ in client.calls]
 
 
+async def test_a_run_expecting_a_material_the_slot_does_not_hold_is_refused(seq):
+    # REA-Chamber, 2026-11-23: a combi script for TbFeO3 on B and SmFeO3 on E; E holds
+    # SrRuO3 now. The step says what it expects, and the run is refused before anything moves.
+    handler, client = seq
+    client.target_names = {"B": "TbFeO3", "E": "SrRuO3"}
+    handler.manager.target_mapper.update({"B": "TG2name", "E": "TG5name"})
+    steps = [{"select_target": {"target": "B", "wait": True}, "expect_material": "TbFeO3"},
+             {"fire_laser": {"pulses": 10, "rate_hz": 5, "wait": True}},
+             {"select_target": {"target": "E", "wait": True}, "expect_material": "SmFeO3"},
+             {"fire_laser": {"pulses": 10, "rate_hz": 5, "wait": True}}]
+    await save(handler, steps, name="combi")
+    await handler.approve_sequence(SequenceRef(name="combi", version=1))
+    with pytest.raises(ValueError, match=r"step 3: slot E holds 'SrRuO3', not 'SmFeO3'"):
+        await handler.run_sequence(RunSequence(name="combi", version=1, no_sample=True))
+    assert "run_sequence" not in [op for op, _ in client.calls]
+
+    steps[2]["expect_material"] = "srruo3"
+    await save(handler, steps, name="combi")
+    await handler.approve_sequence(SequenceRef(name="combi", version=2))
+    client.script = [(finished("combi v2", 4, 4), [])]
+    await handler.run_sequence(RunSequence(name="combi", version=2, no_sample=True))
+    assert (await wait_task(handler))["ok"]
+    sent = next(req for op, req in client.calls if op == "run_sequence")
+    assert all("expect_material" not in step for step in sent["steps"])  # Lumi's key, not the service's
+
+
+def test_expect_material_belongs_beside_a_select_target():
+    with pytest.raises(ValueError, match="expect_material is a material name, beside a select_target"):
+        seqlib.check([{"wait_s": 1, "expect_material": "SrRuO3"}])
+
+
 async def test_a_run_is_followed_to_the_end_and_journaled(seq):
     handler, client = seq
     info = await save(handler)
@@ -334,7 +365,7 @@ async def test_pause_and_resume_go_to_pld_service(seq):
 async def loaded(seq):
     """A project and a single-position substrate loaded; slots A = SRO, B = STO."""
     handler, client = seq
-    handler.sources["chamber_config"].tg_values.update({"TG1name": "SRO", "TG2name": "STO"})
+    client.target_names = {"A": "SRO", "B": "STO"}  # pld-service's target_names
     handler.manager.target_mapper["B"] = "TG2name"
     await handler.register_project(RegisterProject(project_name="superlattice"))
     await handler.register_substrate(RegisterSubstrate(

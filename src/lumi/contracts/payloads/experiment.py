@@ -461,7 +461,7 @@ class CurrentTarget(BaseModel):
     tg_no: int
     #: The slot letter (A-F, Clear, Monitor); None if no target_mapper entry maps tg_no.
     target_id: str | None = None
-    #: What PLDconfig.ini says is loaded in that slot.
+    #: The material in that slot (pld-service's target_names; PLDconfig.ini under legacy MI mode).
     target_name: str | None = None
 
 

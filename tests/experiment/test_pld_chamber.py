@@ -82,6 +82,14 @@ class FakePldClient:
         #: Ops that block, as a real fire or carousel move does, until `release` is set.
         self.blocking: set[str] = set()
         self.release = asyncio.Event()
+        #: pld-service's [target_names], slot -> material.
+        self.target_names = {"A": "SRO"}
+
+    async def get_settings(self):
+        from lumi.contracts.payloads.pld import PldSetting, PldSettings
+
+        return PldSettings(settings=[PldSetting(section="target_names", key=k, value=v)
+                                     for k, v in self.target_names.items()])
 
     async def call(self, op, req=None, *, actor=None):
         self.actors.append(actor)
@@ -720,9 +728,7 @@ async def test_the_current_target_counts_from_zero_like_the_log(fake, target, nu
     # The twin dry run: TG No. was one-based under pld-service, so A read as B.
     handler, client = fake
     handler.manager.target_mapper = {"A": "TG1name", "C": "TG3name", "Clear": "TG7name"}
-    async def material(slot):
-        return {"A": "SRO", "C": "LSMO", "Clear": None}[slot]
-    handler.manager.get_target_name_by_id = material
+    client.target_names = {"A": "SRO", "C": "LSMO"}
     client.state.motion.target = target
     got_number, got_slot, _ = await handler.manager.get_current_target()
     assert (got_number, got_slot) == (number, slot)
@@ -742,6 +748,9 @@ class HandlerBus:
 
     async def chamber_state(self):
         return await self.pld.chamber_state(Empty())
+
+    async def get_settings(self):
+        return await self.pld.get_settings(Empty())
 
 
 @pytest_asyncio.fixture
@@ -844,3 +853,19 @@ async def test_cancel_task_holds_the_ld_current_on_the_sim(sim):
     await asyncio.sleep(0.5)
     heater = (await handler.manager.chamber.state()).heater
     assert not heater.pid_on and heater.current_set == held.current_set
+
+
+async def test_target_names_come_from_pld_service_not_pldconfig(fake):
+    # REA-Chamber, 2026-11-23: a dry run named E SmFeO3 from the leftover PLDconfig.ini;
+    # E holds SrRuO3. Under the pld driver the names are pld-service's target_names.
+    handler, client = fake
+    handler.manager.target_mapper = {"A": "TG1name", "B": "TG2name", "E": "TG5name", "Clear": "TG7name"}
+    client.target_names = {"A": "SpotSizeCrys", "B": "TbFeO3", "E": "SrRuO3"}
+    assert await handler.manager.show_available_targets() == {
+        "A": "SpotSizeCrys", "B": "TbFeO3", "E": "SrRuO3", "Clear": "Clear"}
+    assert await handler.manager.get_target_id_by_name("srruo3") == "E"
+    with pytest.raises(ValueError, match="no target 'SmFeO3' in the chamber; loaded: .*'E': 'SrRuO3'"):
+        await handler.manager.get_target_id_by_name("SmFeO3")
+    client.target_names["B"] = ""
+    with pytest.raises(ValueError, match="slot B holds no target"):
+        await handler.manager.get_target_name_by_id("B")

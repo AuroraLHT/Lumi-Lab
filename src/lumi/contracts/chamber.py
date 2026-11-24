@@ -51,6 +51,7 @@ from .payloads.pld import (
     PldActivityList,
     PldActivityQuery,
     PldEventList,
+    PldSettings,
     PldEventQuery,
     PldFireRequest,
     PldFlowLimitsRequest,
@@ -160,6 +161,10 @@ PLD = Capability(
                "laser trigger train, gas and pressure control, interlocks, the excimer. "
                "`read_only` true means the service was started on hardware without "
                "--allow-operations: every operation will be refused."),
+        Op("get_settings", Empty, PldSettings,
+           doc="pld-service's settings as in effect (its .ini): section, key, value, unit, "
+               "help, live. `target_names` A-F is the material in each carousel slot, the "
+               "one source for what is loaded."),
         Op("recent_events", PldEventQuery, PldEventList,
            doc="The service's latest discrete events (valve_changed, move_done, "
                "interlock, laser_done, error, control), oldest first."),

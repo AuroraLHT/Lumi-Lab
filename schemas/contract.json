@@ -2564,6 +2564,81 @@
             "response_codec": "json"
           },
           {
+            "name": "get_settings",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PldSetting": {
+                  "description": "One of pld-service's settings (its .ini), as the service has it in effect.",
+                  "properties": {
+                    "help": {
+                      "default": "",
+                      "title": "Help",
+                      "type": "string"
+                    },
+                    "key": {
+                      "title": "Key",
+                      "type": "string"
+                    },
+                    "live": {
+                      "default": false,
+                      "title": "Live",
+                      "type": "boolean"
+                    },
+                    "pending": {
+                      "default": "",
+                      "title": "Pending",
+                      "type": "string"
+                    },
+                    "section": {
+                      "title": "Section",
+                      "type": "string"
+                    },
+                    "unit": {
+                      "default": "",
+                      "title": "Unit",
+                      "type": "string"
+                    },
+                    "value": {
+                      "default": "",
+                      "title": "Value",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "key"
+                  ],
+                  "title": "PldSetting",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "file": {
+                  "default": "",
+                  "title": "File",
+                  "type": "string"
+                },
+                "settings": {
+                  "items": {
+                    "$ref": "#/$defs/PldSetting"
+                  },
+                  "title": "Settings",
+                  "type": "array"
+                }
+              },
+              "title": "PldSettings",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "recent_events",
             "request": {
               "properties": {
@@ -5331,6 +5406,7 @@
             "cancel_sequence": "chamber.pld.req.cancel_sequence",
             "chamber_state": "chamber.pld.req.chamber_state",
             "fire_laser": "chamber.pld.req.fire_laser",
+            "get_settings": "chamber.pld.req.get_settings",
             "home_axis": "chamber.pld.req.home_axis",
             "laser_off": "chamber.pld.req.laser_off",
             "laser_on": "chamber.pld.req.laser_on",

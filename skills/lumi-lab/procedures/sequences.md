@@ -13,11 +13,15 @@ driver refuses the agent's `mcp:` calls): show the person `get_sequence` and ask
 
 ## Steps
 
-A step is one operation, in pld.proto's names, with an optional `label`:
+A step is one operation, in pld.proto's names, with an optional `label`. Before
+writing select_target steps, read what is loaded: `show_available_targets` (pld-service's
+own `target_names`, the one source; slot letters, not the material you remember). Write
+the material beside each select_target as `expect_material`, so the sequence cannot
+fire on a target that has since been swapped. Name the sequence after what is loaded.
 
 | step | what it does |
 |---|---|
-| `{"select_target": {"target": "A", "wait": true}}` | carousel to a slot |
+| `{"select_target": {"target": "E", "wait": true}, "expect_material": "SrRuO3"}` | carousel to a slot; `expect_material` (always add it) is the material the step grows from, and the run is refused if the slot holds anything else |
 | `{"mask": {"position": 20, "wait": false, "speed_mm_s": 0.5, "accel_mm_s_per_ms": 0.18}}` | Mask1; speed/accel optional (cap 8.33 mm/s) |
 | `{"sample": {...}}`, `{"rheed_gun_x": {...}}` | the other axes (no speed) |
 | `{"sample_shutter": {"in_front": false}}` | false = open for deposition |

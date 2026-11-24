@@ -225,16 +225,21 @@ if [[ $WITH_PASCAL -eq 1 ]]; then
             fi
         fi
 
-        # PLDconfig.ini gives the carousel geometry, so `Select Target C` resolves to an
-        # angle. Its default is a Windows path that will not exist on a Linux host.
-        RESOLVED_PLD="${PLD_CONFIG:-$("$PYTHON" -c 'from lumi.config import settings; print(settings.pascal.config_reader.config_path)' 2>/dev/null || true)}"
-        if [[ -z "$RESOLVED_PLD" ]]; then
-            fail "could not resolve the PLDconfig.ini path"
-        elif [[ ! -r "$RESOLVED_PLD" ]]; then
-            fail "PLDconfig.ini not readable: $RESOLVED_PLD"
-            echo "        Pass --pld-config <file>, or fix [pascal.config_reader] in cfg/settings.toml." >&2
+        # PLD Controller's PLDconfig.ini is legacy MI mode's (chamber.config). pld-service
+        # keeps its own settings, the target names among them, so the pld driver needs none.
+        if [[ $LEGACY_MI -eq 1 ]]; then
+            # Its default is a Windows path that will not exist on a Linux host.
+            RESOLVED_PLD="${PLD_CONFIG:-$("$PYTHON" -c 'from lumi.config import settings; print(settings.pascal.config_reader.config_path)' 2>/dev/null || true)}"
+            if [[ -z "$RESOLVED_PLD" ]]; then
+                fail "could not resolve the PLDconfig.ini path"
+            elif [[ ! -r "$RESOLVED_PLD" ]]; then
+                fail "PLDconfig.ini not readable: $RESOLVED_PLD"
+                echo "        Pass --pld-config <file>, or fix [pascal.config_reader] in cfg/settings.toml." >&2
+            else
+                ok "PLDconfig.ini $RESOLVED_PLD"
+            fi
         else
-            ok "PLDconfig.ini $RESOLVED_PLD"
+            ok "PLDconfig.ini not needed: pld-service keeps the target names (chamber.pld.get_settings)"
         fi
     else
         warn "--src $CHAMBER_SRC: this is NOT the real chamber (use --src path on the instrument)"
