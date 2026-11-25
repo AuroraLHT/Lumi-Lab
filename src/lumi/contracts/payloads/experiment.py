@@ -677,12 +677,37 @@ class SetMfcControl(BaseModel):
     enabled: bool
 
 
-class SetPressure(BaseModel):
+class SetPressureSetpoint(BaseModel):
+    #: Torr. pld-service picks the regime from it (<= 2e-4 low, 3e-3..1 high).
     pressure: float
+    #: Return only once control regulates within `tolerance` of it (a regime switch and
+    #: the settling can take minutes), else as soon as pld-service has taken it.
+    wait: bool = False
+    #: Fraction of the setpoint the reading must come within, for `wait`.
+    tolerance: float = 0.1
+    #: How long `wait` waits before it gives up (the pressure is left as it is).
+    wait_timeout_s: float = 480.0
 
 
 class SetPressureControl(BaseModel):
     on: bool
+
+
+class PressureControlResult(BaseModel):
+    """Pressure control after set_pressure_control or set_pressure_setpoint, from
+    pld-service's state read after its reply."""
+
+    #: off, armed, switching or regulating (PldGas.pressure_control_state).
+    state: str
+    #: Torr; None with none set (off, armed).
+    setpoint: float | None = None
+    gauge: str = ""
+    #: pld-service's pressure_mode, e.g. "switching to high" or "high (PID)".
+    mode: str = ""
+    #: The control gauge's reading, Torr.
+    reading: float | None = None
+    #: pld-service's reply: what it did, e.g. the regime switch's plan.
+    message: str = ""
 
 
 class StartStorage(BaseModel):
@@ -1628,7 +1653,8 @@ __all__ = [
     "SampleList",
     "SetMfcControl",
     "SetMfcFlow",
-    "SetPressure",
+    "SetPressureSetpoint",
+    "PressureControlResult",
     "SetPressureControl",
     "SetRheedGain",
     "SetTarget",

@@ -19,7 +19,9 @@ aligned by `auto_align_center_mask` rather than by a person.
 
 4. `current_substrate`: which position is next. None left → the substrate is done.
 5. Align the mask (below), then `to_current_pixel`: mask and RHEED to the position.
-6. `set_pressure` (the person sets it on the real chamber, then `confirm`); read it back
+6. Pressure (SKILL.md §2): `set_pressure_control(on: true)` unless the state is already
+   `regulating`, then `set_pressure_setpoint` with `wait: true` (the person sets it on the
+   real chamber, then `confirm`); read it back
    and wait until it is within tolerance.
 7. `begin_set_laser_power` with the energy at the meter: set from today's laser test, no
    meter reading (skipped by the driver if already set).

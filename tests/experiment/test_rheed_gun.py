@@ -6,6 +6,8 @@ current rises with the filament up to a saturation point.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from lumi.contracts.payloads.pld import PldChamberState, PldRheed
@@ -248,8 +250,9 @@ class FakeCamera:
     def __init__(self, gun: FakeGun, knee: float | None = None, fail: bool = False) -> None:
         self.gun, self.knee, self.fail, self.calls = gun, knee, fail, 0
 
-    async def __call__(self, frames: int) -> dict:
+    async def __call__(self, frames: int, bright_fraction: float = 0.1) -> dict:
         self.calls += 1
+        self.bright_fraction = bright_fraction
         if self.fail:
             raise RuntimeError("no new camera frame")
         e = self.gun.r.emission_ua or 0.0
@@ -279,6 +282,11 @@ async def test_the_agent_judges_without_a_confirmation_from_emission_and_intensi
     result = await g.finish(1950)
     assert "the agent stopped the search at 1950 mA" in result["message"] and not g.searching
     assert gun.r.filament_set_ma == 1950 and camera.calls == 5
+    # The signal's share of pixels is the settings', so it can be tuned on real data.
+    assert camera.bright_fraction == FAST.bright_fraction == 0.1
+    await RheedGun(gun, replace(FAST, bright_fraction=0.03), intensity=camera)._reading(
+        replace(FAST, bright_fraction=0.03, emission_settle_s=0))
+    assert camera.bright_fraction == 0.03
 
 
 async def test_a_camera_that_fails_leaves_the_emission_alone():
@@ -378,7 +386,7 @@ def test_frame_intensity_from_the_pixel_spread_alone():
         frame = np.full((100, 100), 100.0)
         frame.flat[rng.choice(frame.size, 100, replace=False)] = 100 + 900 * gain
         frames.append(frame.astype(np.uint16))
-    out = frame_intensity(frames, full_scale=4095)
+    out = frame_intensity(frames, full_scale=4095, bright_fraction=0.01)
     assert out["rheed_background"] == 100 and out["rheed_signal"] == pytest.approx(900, rel=1e-3)
     assert out["rheed_noise"] == pytest.approx(0.02, rel=0.01)
     assert (out["rheed_full_scale"], out["rheed_clipped_px"]) == (4095, 0)
@@ -386,12 +394,21 @@ def test_frame_intensity_from_the_pixel_spread_alone():
 
     # Moved somewhere else: the same numbers. No mask, no positions.
     moved = [np.roll(f, (37, 11), axis=(0, 1)) for f in frames]
-    assert frame_intensity(moved, full_scale=4095) == out
+    assert frame_intensity(moved, full_scale=4095, bright_fraction=0.01) == out
+    # The default takes the brightest 10%: here the 1% of spots and 9% of background.
+    wide = frame_intensity(frames, full_scale=4095)
+    assert wide["rheed_bright_fraction"] == 0.1
+    assert wide["rheed_signal"] == pytest.approx(90, rel=1e-3)
 
     clipped = np.full((10, 10), 100, dtype=np.uint16)
     clipped[0, :5] = 4095
     out = frame_intensity([clipped], full_scale=4095)
     assert (out["rheed_clipped_px"], out["rheed_headroom"], out["rheed_noise"]) == (5, 1.0, None)
+    # One pixel clipped in one frame of five still counts: the search must not judge it.
+    frames = [np.full((10, 10), 100, dtype=np.uint16) for _ in range(5)]
+    frames[2][3, 3] = 4095
+    out = frame_intensity(frames, full_scale=4095)
+    assert (out["rheed_clipped_px"], out["rheed_headroom"]) == (1, 1.0)
     # Short exposure: the image never comes near full scale, and says how near it is.
     dim = frame_intensity([np.full((4, 4), 300, dtype=np.uint16)], full_scale=4095)
     assert (dim["rheed_clipped_px"], dim["rheed_headroom"]) == (0, round(300 / 4095, 4))

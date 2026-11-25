@@ -33,7 +33,8 @@ from lumi.contracts.payloads.experiment import (
     SetLaserEnergy,
     SetLaserHv,
     SetMfcControl,
-    SetPressure,
+    SetPressureControl,
+    SetPressureSetpoint,
     SetTarget,
     StartMiLogging,
     CancelTask,
@@ -44,6 +45,7 @@ from lumi.contracts.payloads.experiment import (
 from lumi.contracts.payloads.pld import (
     PldChamberState,
     PldExcimer,
+    PldGas,
     PldHeater,
     PldLaser,
     PldMotion,
@@ -766,9 +768,92 @@ async def test_the_excimer_is_refused_under_legacy_mi(fake):
 async def test_pressure_goes_to_the_service_even_when_set_by_hand_under_mi(fake):
     handler, client = fake
     assert handler.pressure_by_hand  # the setting is for legacy MI mode only
-    await handler.set_pressure(SetPressure(pressure=0.01))
+    client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.01, pressure_gauge="CDG10",
+                              pressure_mode="high (PID)")
+    client.answers["set_pressure"] = "pressure setpoint 1.000e-2 Torr on CDG10, high regime (control on)"
+    result = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.01))
     assert handler.readout().pending_confirmation is None
     assert client.calls == [("set_pressure", {"torr": 0.01, "gauge": "", "wait": False, "tolerance": 0.0})]
+    assert (result.state, result.setpoint, result.gauge) == ("regulating", 0.01, "CDG10")
+    assert result.message.endswith("(control on)")
+
+
+async def test_pressure_control_first_then_the_setpoint(fake):
+    # DRY-STO-11: a setpoint with control off returned ok and regulated nothing. Now
+    # pld-service refuses it, and every reply says where control is.
+    handler, client = fake
+    client.state.gas = PldGas(pressure_mode="off")
+    client.refuse["set_pressure"] = ("pressure setpoint refused: pressure control is off "
+                                     "(SetPressureControl on first, then SetPressure)")
+    with pytest.raises(PldRefused, match="SetPressureControl on first"):
+        await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
+
+    client.state.gas = PldGas(pressure_mode="armed", pressure_setpoint=float("nan"))
+    armed = await handler.set_pressure_control(SetPressureControl(on=True))
+    assert (armed.state, armed.setpoint) == ("armed", None)  # NaN from the service is none
+
+    del client.refuse["set_pressure"]
+    client.state.gas = PldGas(pressure_setpoint=0.1, pressure_gauge="CDG10",
+                              pressure_mode="switching to high", pressure_switch_step="IG1 off")
+    switching = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
+    assert (switching.state, switching.mode) == ("switching", "switching to high")
+
+    client.state.gas = PldGas(pressure_mode="off")
+    off = await handler.set_pressure_control(SetPressureControl(on=False))
+    assert (off.state, off.setpoint) == ("off", None)
+    assert ops(client) == ["set_pressure", "set_pressure_control", "set_pressure", "set_pressure_control"]
+
+
+async def test_an_older_service_naming_the_regime_with_control_off_reads_off(fake):
+    handler, client = fake
+    client.state.gas = PldGas(pressure_setpoint=0.1, pressure_mode="high (PID)")  # control off
+    result = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
+    assert result.state == "off"
+
+
+async def test_the_setpoint_waits_until_control_regulates_there(fake, monkeypatch):
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "PRESSURE_POLL_S", 0.01)
+    handler, client = fake
+    client.state.gas = PldGas(pressure_setpoint=0.1, pressure_gauge="CDG10", pressure_mode="switching to high")
+    client.state.pressures = PldPressures(cdg10=0.0015)
+
+    async def chamber():
+        await asyncio.sleep(0.05)  # the switch ends, control starts and the pressure rises
+        client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.1,
+                                  pressure_gauge="CDG10", pressure_mode="high (PID)")
+        for torr in (0.04, 0.085, 0.097):
+            await asyncio.sleep(0.03)
+            client.state.pressures = PldPressures(cdg10=torr)
+
+    rise = asyncio.create_task(chamber())
+    result = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1, wait=True))
+    await rise
+    assert (result.state, result.reading) == ("regulating", 0.097)
+
+
+async def test_the_wait_fails_when_control_stops(fake, monkeypatch):
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "PRESSURE_POLL_S", 0.01)
+    handler, client = fake
+    client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.1,
+                              pressure_gauge="CDG10", pressure_mode="high (PID)")
+    client.state.pressures = PldPressures(cdg10=0.002)
+
+    async def interlock():
+        await asyncio.sleep(0.05)
+        client.state.gas = PldGas(pressure_mode="off")  # an interlock: off, setpoint cleared
+
+    trip = asyncio.create_task(interlock())
+    with pytest.raises(RuntimeError, match=r"pressure control stopped \(off\)"):
+        await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1, wait=True))
+    await trip
+
+    client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.1,
+                              pressure_gauge="CDG10", pressure_mode="high (PID)")
+    with pytest.raises(RuntimeError, match="not within 10% of 0.1 Torr after 0.05 s"):
+        await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1, wait=True,
+                                                                wait_timeout_s=0.05))
 
 
 async def test_mfc_gate_and_logging(fake):

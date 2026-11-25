@@ -93,6 +93,8 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self.controller = ""
         self.valves = {"MV10": True, "MV11": True, "FV1": True, "MV3": False, "FV3": True, "RV3": False}
         self.ig1_on = True
+        # Pressure control enabled with no setpoint yet: "armed", nothing moved.
+        self.pressure_armed = False
         self.ig3_on = True
         self.threshold_on = False
         self.auto_spin, self.auto_twist = True, True  # pld-service's default from 2026-11-06
@@ -219,7 +221,8 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
                     pressure_control=m.pressure_control,
                     pressure_setpoint=m.pressure_setpoint if m.pressure_setpoint > 0 else NAN,
                     pressure_gauge=m.pressure_gauge,
-                    pressure_mode=("high (PID)" if high else "low (table)") if m.pressure_setpoint > 0 else "",
+                    pressure_mode=(("high (PID)" if high else "low (table)") if m.pressure_control
+                                   else "armed" if self.pressure_armed else "off"),
                     flow_min=self.flow_limits[0], flow_max=self.flow_limits[1],
                 ),
                 sample_shutter_away=m.shutter_open,
@@ -611,6 +614,8 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         self.valves["MV11"] = True
 
     def SetPressure(self, request, context):
+        # pld-service's order: control first (armed), then the setpoint, which switches
+        # the valves to its regime and starts control. The switch is instant here.
         self._require_control(context)
         torr = request.torr
         if LOW_REGIME_MAX < torr < HIGH_REGIME_MIN:
@@ -619,25 +624,46 @@ class SimChamberServicer(pb_grpc.ChamberServicer):
         if torr > 1.0:
             return self._no("above 1 Torr")
         m = self.model
+        if not (m.pressure_control or self.pressure_armed):
+            return self._no("pressure setpoint refused: pressure control is off "
+                            "(SetPressureControl on first, then SetPressure)")
         if request.gauge:
             m.select_pressure_gauge(request.gauge)
+        regime = "high" if torr >= HIGH_REGIME_MIN else "low"
+        retarget = m.pressure_control and (m.pressure_setpoint >= HIGH_REGIME_MIN) == (regime == "high")
         m.set_pressure(torr)
-        if m.pressure_control:
-            self._apply_regime(torr)
+        self._apply_regime(torr)
+        m.set_mfc_control(True)
+        m.set_pressure_control(True)
+        self.pressure_armed = False
         if request.wait:
             tolerance = request.tolerance or 0.1
             if not self._wait(lambda: abs(m.true_pressure - torr) <= tolerance * torr):
                 return self._no(f"pressure did not settle at {torr:.2e} Torr in time")
-        return self._ok()
+        gauge = m.pressure_gauge
+        if retarget:
+            return self._ok(f"pressure setpoint {torr:.3e} Torr on {gauge}, {regime} regime (control on)")
+        return self._ok(f"pressure setpoint {torr:.3e} Torr on {gauge}, {regime} regime: "
+                        f"pressure control on, {regime} regime: {torr:.3e} Torr on {gauge}")
 
     def SetPressureControl(self, request, context):
         self._require_control(context)
         m = self.model
         if request.on:
-            self._apply_regime(m.pressure_setpoint)
-            m.set_mfc_control(True)
-        m.set_pressure_control(request.on)
-        return self._ok()
+            if m.pressure_control:
+                return self._ok(f"pressure control already on: regulating to "
+                                f"{m.pressure_setpoint:.3e} Torr on {m.pressure_gauge}")
+            if self.pressure_armed:
+                return self._ok("pressure control already armed: SetPressure starts it")
+            self.pressure_armed = True
+            return self._ok(f"pressure control armed, nothing moved (MFC1 left at "
+                            f"{m.mfc_set[1]:.2f} sccm): SetPressure starts the regime switch or control")
+        if not (m.pressure_control or self.pressure_armed):
+            return self._ok("pressure control already off")
+        m.set_pressure_control(False)
+        m.set_pressure(0.0)  # cleared: the next control needs a setpoint again
+        self.pressure_armed = False
+        return self._ok(f"pressure control off, setpoint cleared; MFC1 left at {m.mfc_set[1]:.2f} sccm")
 
     def SetPressureFlowLimits(self, request, context):
         self._require_control(context)

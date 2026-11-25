@@ -129,6 +129,7 @@ from lumi.contracts.payloads.experiment import (
     PixelCheckStatus,
     PixelIndex,
     PixelMoveResult,
+    PressureControlResult,
     PixelPosition,
     PressureReading,
     ProjectId,
@@ -160,8 +161,8 @@ from lumi.contracts.payloads.experiment import (
     SetLaserHv,
     SetMfcControl,
     SetMfcFlow,
-    SetPressure,
     SetPressureControl,
+    SetPressureSetpoint,
     SetRheedGain,
     SetTarget,
     SnapshotId,
@@ -298,7 +299,7 @@ class ExperimentHandler:
         #: The RHEED gun's operating values (`[experiment.rheed]`).
         self.rheed_gun = rheed_gun
         #: Under legacy MI mode the real chamber's pressure is set by a person at the
-        #: gauge: set_pressure asks them (a `pressure` pending confirmation) instead of
+        #: gauge: set_pressure_setpoint asks them (a `pressure` pending confirmation) instead of
         #: commanding the controller; the simulator sets it directly. pld-service runs
         #: the pressure control itself, so under it this is ignored.
         self.pressure_by_hand = pressure_by_hand
@@ -1170,19 +1171,16 @@ class ExperimentHandler:
         await self.manager.set_mfc_control(req.enabled)
         return Ack()
 
-    async def set_pressure(self, req: SetPressure) -> Ack:
+    async def set_pressure_setpoint(self, req: SetPressureSetpoint) -> PressureControlResult:
         if self.pressure_by_hand and self.manager.chamber.driver == "legacy-mi":
-            await self._set_pending(
-                "pressure",
-                f"Set the chamber pressure to {req.pressure:.3g} Torr by hand, then confirm",
-            )
-            return Ack()
-        await self.manager.set_pressure(req.pressure)
-        return Ack()
+            message = f"Set the chamber pressure to {req.pressure:.3g} Torr by hand, then confirm"
+            await self._set_pending("pressure", message)
+            return PressureControlResult(state="unknown", setpoint=req.pressure, message=message)
+        return PressureControlResult(**await self.manager.set_pressure_setpoint(
+            req.pressure, wait=req.wait, tolerance=req.tolerance, wait_timeout_s=req.wait_timeout_s))
 
-    async def set_pressure_control(self, req: SetPressureControl) -> Ack:
-        await self.manager.set_pressure_control(req.on)
-        return Ack()
+    async def set_pressure_control(self, req: SetPressureControl) -> PressureControlResult:
+        return PressureControlResult(**await self.manager.set_pressure_control(req.on))
 
     async def initiate_heating_laser(self, req: Empty) -> Ack:
         await self.manager.initiate_heating_laser()

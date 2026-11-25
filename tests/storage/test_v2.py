@@ -472,3 +472,18 @@ def test_meta_is_plain_json(tmp_path):
     RecordingWriter(path, meta={"request": {"a": 1}, "skip": None}).close()
     with h5py.File(path, "r") as f:
         assert json.loads(f["meta/request"][()]) == {"a": 1} and "skip" not in f["meta"]
+
+
+async def test_events_are_listed_by_time_not_by_arrival(tmp_path):
+    # Storage writes the shutter event once pld-service's activity says when it opened,
+    # after the laser start it came before (DRY-STO-11).
+    w = RecordingWriter(tmp_path / "s_order_0001.hdf5", frame_shape=(H, W))
+    w.add_event(T0 + 2.0, "laser_started", "fire")
+    w.add_event(T0 + 1.9, "sample_shutter", "open")
+    w.add_event(T0 + 2.0, "task_started", "same time: kept in arrival order")
+    w.close()
+    handler = ArchiveHandler(RecordingArchive(tmp_path))
+    ev = await handler.recording_events(RecordingEventsQuery(name="s_order_0001"))
+    assert [e.kind for e in ev.events] == ["sample_shutter", "laser_started", "task_started"]
+    last = await handler.recording_events(RecordingEventsQuery(name="s_order_0001", limit=1))
+    assert [e.kind for e in last.events] == ["task_started"]  # the latest, by time

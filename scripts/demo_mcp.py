@@ -96,7 +96,7 @@ REQUIRED = [
     "experiment.driver.get_mfc_status",
     "experiment.driver.set_mfc_flow",
     "experiment.driver.set_mfc_control",
-    "experiment.driver.set_pressure",
+    "experiment.driver.set_pressure_setpoint",
     "experiment.driver.set_pressure_control",
     "experiment.driver.initiate_heating_laser",
     "experiment.driver.turn_off_heating_laser",
@@ -332,8 +332,9 @@ async def gas(mcp: Mcp, checks: Checks, args: argparse.Namespace) -> None:
 
     phase("6. gas: closed loop holds a pressure setpoint")
     target = args.pressure
-    await mcp.expect("experiment.driver.set_pressure", pressure=target)
+    # Control first, then the setpoint (pld-service refuses a setpoint while it is off).
     await mcp.expect("experiment.driver.set_pressure_control", on=True)
+    await mcp.expect("experiment.driver.set_pressure_setpoint", pressure=target)
 
     # Two claims at once, and both have to hold together: the pressure is at the
     # setpoint, and the *controller* is what is holding it there. Checking only the

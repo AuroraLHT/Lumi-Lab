@@ -721,8 +721,8 @@ heating_laser_off_max_temperature = 165.0
 #            worth the filament). Before a plateau can be fitted (3 steps, levelling off),
 #            or when a step adds nothing, a step under emission_flat_fraction /
 #            intensity_flat_fraction (or twice the image's frame-to-frame noise) is flat.
-#            The image is the signal of its brightest 1% of pixels above the median,
-#            over intensity_frames frames, for any pattern; a clipped image is not
+#            The image is the signal of its brightest bright_fraction of pixels (0.1 =
+#            10%) above the median, over intensity_frames frames, for any pattern; a clipped image is not
 #            judged and the emission decides. No confirmation is asked.
 #   "person" the same steps behind a rheed_emission confirmation: a person says up or stop.
 #   "rule"   the emission alone, by the lab's digit rule: a step that leaves its first
@@ -739,6 +739,7 @@ plateau_fraction = 0.1
 emission_flat_fraction = 0.01
 intensity_flat_fraction = 0.03
 intensity_frames = 5
+bright_fraction = 0.1
 emission_settle_s = 3.0
 focus_ma = 476.0
 deflection_x_ma = -61.0

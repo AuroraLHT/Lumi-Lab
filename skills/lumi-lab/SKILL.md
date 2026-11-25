@@ -62,7 +62,7 @@ being asked, wait, and pass their answer on.
 | `rheed_emission` | (only with `rheed_on` `judge: "person"`) says when the RHEED beam has saturated, from the filament / emission / intensity table | `rheed_emission_step_up` (one 50 mA step, only when they say up), `finish_rheed_on` (at the step they name) |
 | `pixel_check` | checks each position on the camera | `resolve_pixel_check` |
 | `fiducial_role` | tags the mask-center marker in the UI | (continues by itself) |
-| `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure` on the real chamber, legacy MI mode only) | `confirm`, then read it back with `get_current_pressure` |
+| `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure_setpoint` on the real chamber, legacy MI mode only) | `confirm`, then read it back with `get_current_pressure` |
 | `proceed` | a plain go/no-go | `confirm` |
 
 The excimer can be switched (`chamber.pld.laser_on` / `laser_standby` / `laser_off`, mode,
@@ -86,15 +86,15 @@ steps to 2100 mA at most, focus and deflection), off ramped down. By default you
 when the beam has saturated, and no confirmation is asked: `rheed_on` returns after
 filament and HV with the search open (`searching`). Call `rheed_emission_step_up` once per
 step. Each step reads the emission current and the RHEED image's signal (its brightest
-pixels above background), and both level off exponentially as the beam saturates. From
+10% of pixels above background, `bright_fraction`), and both level off exponentially as the beam saturates. From
 3 steps on, the `saturation` hint fits that and says how near each is to its plateau.
 Saturated is both within 10% of it (`plateau_fraction`): the last 10% of brightness is
 not worth the filament. Call `finish_rheed_on` at the step the hint names, the first
 that had both there, so the filament runs no hotter than it needs to. Before a plateau
 can be fitted, or when a step adds nothing, a step under about 1% (emission) or 3%
 (image) is flat. If the two disagree, take one more step; at 2100 mA there is none, so
-choose between the steps it offers. A clipped image is not judged (the emission
-decides). If the readings look wrong (the emission falling, the image dark), stop and
+choose between the steps it offers. A clipped image (any pixel at full scale in any of
+the frames, `rheed_clipped_px`) is not judged (the emission decides). If the readings look wrong (the emission falling, the image dark), stop and
 show the person the table. The hint sets the two side by side; it is not the decision. Keep the camera gain fixed during the search, or the intensities don't
 compare. Show the person the final table either way. If they want to decide themselves,
 pass `judge: "person"`: that raises a `rheed_emission` confirmation, so step up only when
@@ -107,10 +107,23 @@ Also by hand, with no tool: the RHEED beam position screws, incidence angle and
 sample-stage adjustment, and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released. A
 Mask1 move or homing refused with `chamber_state.motion.sample_too_low` set means the sample
 sits below its height threshold: ask the person to raise it (by hand), do not retry.
-The pressure is set by pld-service itself under the default driver. Only under
-`--use-legacy-mi-mode` on the real chamber does `set_pressure` not command the
-controller: it raises a `pressure` confirmation asking the person to set it. Either way,
-read it back with `get_current_pressure` before going on.
+The pressure is set by pld-service itself under the default driver, control first, then
+the setpoint:
+1. `set_pressure_control(on: true)` arms control and moves nothing (state `armed`).
+2. `set_pressure_setpoint` with `wait: true`. In another regime pld-service first
+   switches the valves and gauges (MV10/MV11 opened or closed, IG1 switched, MFC1 to 0,
+   CV301 opened if closed; minutes for the high regime), then regulates. It returns
+   once the reading is within `tolerance` (10%), and fails if control stops meanwhile.
+   A setpoint while control is off is refused: do step 1, never retry it as it is.
+3. Read it back with `get_current_pressure` before going on.
+
+The result of both is control's state: `off`, `armed`, `switching` or `regulating`
+(also `chamber_state.gas.pressure_control_state`). Only `regulating` means the pressure
+is being held; never judge it from `pressure_mode`. `set_pressure_control(on: false)`,
+and any interlock, stops control and clears the setpoint, so the next control needs both
+steps again. Only under `--use-legacy-mi-mode` on the real chamber does
+`set_pressure_setpoint` not command the controller: it raises a `pressure` confirmation
+asking the person to set it (state `unknown`).
 
 ## 3. Growing
 

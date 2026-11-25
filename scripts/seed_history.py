@@ -658,7 +658,7 @@ class Seeder:
         def run():
             m.set_pressure(pressure)
             self.chamber.advance(self.rng.uniform(90, 150))  # the chamber takes ~2 min to settle
-        await self.step("set_pressure", {"pressure": pressure}, run=run)
+        await self.step("set_pressure_setpoint", {"pressure": pressure}, run=run)
 
     async def _to_temperature(self, temperature: float) -> None:
         await self.step("to_temperature", {"temperature": temperature, "ramp_rate": 20.0},

@@ -58,6 +58,12 @@ from lumi.contracts.payloads.pld import (
 log = logging.getLogger(__name__)
 
 
+#: The brightest share of an image's pixels whose mean is its signal (see frame_intensity).
+#: 10%, not 1%: on the twin's STO frame a third of the brightest 1% already sits at full
+#: scale, so that mean stops rising with the beam; of the brightest 10%, 3.5% does.
+BRIGHT_FRACTION = 0.10
+
+
 @dataclass(frozen=True)
 class RheedGunSettings:
     """The gun's operating values (`settings.experiment.rheed`), and how close a
@@ -94,6 +100,8 @@ class RheedGunSettings:
     intensity_flat_fraction: float = 0.03
     #: Frames read for one intensity reading: their mean, and their scatter as the noise.
     intensity_frames: int = 5
+    #: The brightest share of the image's pixels whose mean is the RHEED signal.
+    bright_fraction: float = BRIGHT_FRACTION
 
     def with_overrides(self, **values) -> "RheedGunSettings":
         return replace(self, **{k: float(v) for k, v in values.items() if v is not None})
@@ -122,16 +130,13 @@ def check_judge(judge: str) -> str:
     return judge
 
 
-#: The brightest share of an image's pixels whose mean is its signal (see frame_intensity).
-BRIGHT_FRACTION = 0.01
-
-
-def frame_intensity(frames: list, full_scale: int | None = None) -> dict | None:
+def frame_intensity(frames: list, full_scale: int | None = None,
+                    bright_fraction: float = BRIGHT_FRACTION) -> dict | None:
     """Pixel statistics of the RHEED image over a few frames, for any pattern: nothing
     here knows where the spots are, only how the pixel values are spread.
 
     - rheed_background: the median pixel, the screen between the features.
-    - rheed_signal: the mean of the brightest BRIGHT_FRACTION of pixels, less the
+    - rheed_signal: the mean of the brightest `bright_fraction` of pixels, less the
       background. Whatever the pattern, its spots and streaks are those pixels; this is
       what the emission search compares.
     - rheed_noise: the signal's frame-to-frame spread over its mean (None from one
@@ -140,8 +145,11 @@ def frame_intensity(frames: list, full_scale: int | None = None) -> dict | None:
     - rheed_full_scale: the largest value a pixel can take (the camera's, else from the
       dtype: 255 for uint8, None for anything wider it does not report).
     - rheed_headroom: rheed_max over full scale (1 = the top is at full scale).
-    - rheed_clipped_px: pixels at full scale per frame. A short exposure may never
-      reach it; then this is 0 and only the headroom says how close it is.
+    - rheed_clipped_px: pixels at full scale in any of the frames, so one clipped pixel
+      in one frame counts (an average over the frames rounded a few away to 0). A short
+      exposure may never reach it; then this is 0 and only the headroom says how close
+      it is.
+    - rheed_bright_fraction: the `bright_fraction` the signal was taken over.
     - rheed_mean: the whole image's mean, for comparison with older records.
     """
     import numpy as np
@@ -152,7 +160,7 @@ def frame_intensity(frames: list, full_scale: int | None = None) -> dict | None:
     if full_scale is None and frames[0].dtype == np.uint8:
         full_scale = 255
     stack = np.stack(frames).astype(float).reshape(len(frames), -1)
-    n_bright = max(1, int(round(stack.shape[1] * BRIGHT_FRACTION)))
+    n_bright = max(1, int(round(stack.shape[1] * bright_fraction)))
     background = np.median(stack, axis=1)
     bright = np.partition(stack, -n_bright, axis=1)[:, -n_bright:].mean(axis=1)
     signal = bright - background
@@ -168,8 +176,9 @@ def frame_intensity(frames: list, full_scale: int | None = None) -> dict | None:
         "rheed_max": round(peak, 3),
         "rheed_full_scale": full_scale,
         "rheed_headroom": round(peak / full_scale, 4) if full_scale else None,
-        "rheed_clipped_px": (int(round(float((stack >= full_scale).sum()) / len(frames)))
+        "rheed_clipped_px": (int((stack >= full_scale).any(axis=0).sum())
                              if full_scale else None),
+        "rheed_bright_fraction": bright_fraction,
         "rheed_mean": round(float(stack.mean()), 3),
     }
     return out
@@ -587,7 +596,8 @@ class RheedGun:
         reading = {"emission_ua": (await self._rheed()).emission_ua}
         if self.intensity is not None:
             try:
-                reading.update(await self.intensity(int(s.intensity_frames)) or {})
+                reading.update(await self.intensity(int(s.intensity_frames),
+                                                    bright_fraction=s.bright_fraction) or {})
             except Exception as exc:  # the camera is a second opinion, not a step
                 log.warning("RHEED intensity not read: %s", exc)
         return reading

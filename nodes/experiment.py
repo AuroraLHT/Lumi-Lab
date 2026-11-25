@@ -109,7 +109,7 @@ async def main(args: argparse.Namespace) -> None:
     if settings.experiment.get("pressure_by_hand") is None:
         raise RuntimeError(
             "cfg/settings.toml [experiment] is missing pressure_by_hand (true on the real "
-            "chamber under --use-legacy-mi-mode: set_pressure asks a person; pld-service "
+            "chamber under --use-legacy-mi-mode: set_pressure_setpoint asks a person; pld-service "
             "sets it itself). Copy it from cfg/settings.example.toml."
         )
     handler = ExperimentHandler(

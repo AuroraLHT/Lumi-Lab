@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 import uuid
 from dataclasses import dataclass
@@ -46,7 +47,7 @@ from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, ut
 from lumi.experiment.mask_align import locate_slit
 from lumi.experiment import sequence as seqlib
 from lumi.experiment.chamber import ChamberBackend
-from lumi.experiment.rheed_gun import RheedGun, RheedGunSettings, frame_intensity
+from lumi.experiment.rheed_gun import BRIGHT_FRACTION, RheedGun, RheedGunSettings, frame_intensity
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
@@ -74,6 +75,8 @@ LASER_TEST_PULSES = 100
 LASER_TEST_RATE_HZ = 1.0
 #: How often fire_laser_test reads the excimer's energy while the train runs, s.
 LASER_TEST_POLL_S = 1.0
+#: How often set_pressure_setpoint's wait reads the pressure.
+PRESSURE_POLL_S = 1.0
 #: Fewer readings than this, or readings that never move by more than
 #: LASER_TEST_FLAT_MJ, are not taken as the source energy (see `source_from_readings`).
 LASER_TEST_MIN_READINGS = 3
@@ -862,11 +865,56 @@ class BaseExperimentManager:
         is one switch for the whole gas line."""
         await self.chamber.set_mfc_control(enabled)
 
-    async def set_pressure(self, pressure: float) -> None:
-        await self.chamber.set_pressure(pressure)
+    async def set_pressure_setpoint(self, pressure: float, wait: bool = False,
+                                    tolerance: float = 0.1, wait_timeout_s: float = 480.0) -> dict:
+        """The setpoint, then (`wait`) until control regulates within `tolerance` of it.
+        pld-service refuses it while control is off: control first, then the setpoint."""
+        message = await self.chamber.set_pressure(pressure)
+        result = await self._pressure_result(message)
+        await self.add_recording_event("pressure_setpoint", f"{pressure:.3g} Torr: {message}", result)
+        if wait and self.chamber.driver == "pld":
+            result = await self._wait_for_pressure(pressure, tolerance, wait_timeout_s, message)
+        return result
 
-    async def set_pressure_control(self, on: bool) -> None:
-        await self.chamber.set_pressure_control(on)
+    async def set_pressure_control(self, on: bool) -> dict:
+        message = await self.chamber.set_pressure_control(on)
+        result = await self._pressure_result(message)
+        await self.add_recording_event("pressure_control", message, result)
+        return result
+
+    async def _pressure_result(self, message: str) -> dict:
+        """Pressure control as pld-service's state has it now (it publishes the state
+        before it replies). Under legacy MI mode there is no such state: "unknown"."""
+        if self.chamber.driver != "pld":
+            return {"state": "unknown", "message": message}
+        state = await self.chamber.state()
+        gas, p = state.gas, state.pressures
+        reading = {"IG1": p.ig1, "CDG11": p.cdg11}.get(gas.pressure_gauge, p.cdg10)
+        setpoint = gas.pressure_setpoint
+        if setpoint is not None and not math.isfinite(setpoint):
+            setpoint = None
+        return {"state": gas.pressure_control_state, "setpoint": setpoint,
+                "gauge": gas.pressure_gauge, "mode": gas.pressure_mode,
+                "reading": reading, "message": message}
+
+    async def _wait_for_pressure(self, torr: float, tolerance: float, timeout_s: float,
+                                 message: str) -> dict:
+        deadline = time.monotonic() + timeout_s
+        while True:
+            result = await self._pressure_result(message)
+            state, setpoint, reading = result["state"], result["setpoint"], result["reading"]
+            if state in ("off", "armed"):
+                raise RuntimeError(f"pressure control stopped ({state}) before reaching "
+                                   f"{torr:.3g} Torr: the reading is {reading}")
+            if setpoint is None or not math.isclose(setpoint, torr, rel_tol=1e-6):
+                raise RuntimeError(f"the setpoint changed to {setpoint} while waiting for {torr:.3g} Torr")
+            if state == "regulating" and reading and abs(reading / torr - 1) <= tolerance:
+                return result
+            if time.monotonic() > deadline:
+                raise RuntimeError(
+                    f"pressure not within {tolerance:.0%} of {torr:.3g} Torr after {timeout_s:g} s "
+                    f"({state}, {result['mode']}, reading {reading}); control is left as it is")
+            await asyncio.sleep(PRESSURE_POLL_S)
 
     async def start_mi_logging(self, interval_s: int = 1, file_name: str | None = None) -> tuple[str, int]:
         """Start PASCAL's data logging at a fixed row interval (default every 1s).
@@ -1010,7 +1058,7 @@ class BaseExperimentManager:
         await self.add_recording_event("rheed_on", result["message"], result)
         return result
 
-    async def _rheed_intensity(self, frames: int) -> dict | None:
+    async def _rheed_intensity(self, frames: int, bright_fraction: float = BRIGHT_FRACTION) -> dict | None:
         """The RHEED image's pixel statistics over `frames` frames, for the emission search."""
         images, full_scale = [], None
         for i in range(max(1, frames)):
@@ -1019,7 +1067,7 @@ class BaseExperimentManager:
             meta, frame = await self.rheed_camera.image()
             images.append(frame)
             full_scale = getattr(meta, "full_scale", None) or full_scale
-        return frame_intensity(images, full_scale)
+        return frame_intensity(images, full_scale, bright_fraction)
 
     async def rheed_step_up(self) -> dict:
         result = await self.rheed_gun.step_up()
@@ -1354,6 +1402,8 @@ class BaseExperimentManager:
             laser_source_energy=self._laser_source_energy, laser_meter_ratio=self._laser_meter_ratio,
             **self.take_preablation(target_material),
         )
+        # A single deposition writes no pixel_location but grows on position 0.
+        await self.growth_db.mark_sample_active(substrate_id, 0 if pixel_index is None else pixel_index)
         if storage_name is not None:
             await self.growth_db.add_recording(
                 experiment_id=experiment_id, record_name=storage_name, record_uuid=record_uuid or "",
@@ -1449,6 +1499,7 @@ class BaseExperimentManager:
             **(_preablation_fields(layer["preablation"]) if layer.get("preablation")
                else self.take_preablation(layer.get("target_material"))),
         )
+        await self.growth_db.mark_sample_active(substrate.db_id, substrate.current_position_id)
         if storage_name is not None:
             await self.growth_db.add_recording(
                 experiment_id=experiment_id, record_name=storage_name, record_uuid=record_uuid or "")

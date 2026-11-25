@@ -97,6 +97,7 @@ from .payloads.experiment import (
     PixelCheckStatus,
     PixelIndex,
     PixelMoveResult,
+    PressureControlResult,
     PressureReading,
     ProjectId,
     ProjectInfo,
@@ -127,8 +128,8 @@ from .payloads.experiment import (
     SetLaserHv,
     SetMfcControl,
     SetMfcFlow,
-    SetPressure,
     SetPressureControl,
+    SetPressureSetpoint,
     SetRheedGain,
     SetTarget,
     SnapshotId,
@@ -455,19 +456,29 @@ DRIVER = Capability(
                "which drives the control MFC itself. pld-service has no gate: closing "
                "it sets MFC1 to zero, opening it does nothing (set_mfc_flow flows at "
                "once).", journal=True),
-        Op("set_pressure", SetPressure, Ack,
-           doc="Set the chamber pressure in Torr. Under pld-service (the default) it "
-               "sets the service's pressure-control setpoint, which picks its regime "
-               "(<= 2e-4 low, >= 3e-3 high; between is refused) and takes effect once "
-               "set_pressure_control(on=True) is on. Under --use-legacy-mi-mode on the "
-               "real chamber a person sets it by hand: this raises a `pressure` pending "
-               "confirmation for them, resolved with confirm once they have; in the "
-               "simulator it sets the setpoint directly. Read it back with "
-               "get_current_pressure.", journal=True),
-        Op("set_pressure_control", SetPressureControl, Ack,
-           doc="Turn closed-loop pressure control on or off. On: the controller owns "
-               "the control MFC and holds set_pressure's setpoint. Off: flow reverts "
-               "to whatever set_mfc_flow last set, gated by set_mfc_control.", journal=True),
+        Op("set_pressure_control", SetPressureControl, PressureControlResult,
+           doc="Pressure control on or off, under pld-service. Control first, then the "
+               "setpoint: on arms control and moves nothing (state `armed`); "
+               "set_pressure_setpoint then starts it. Off stops it and clears the "
+               "setpoint (MFC1 left as it is, a running regime switch cancelled with "
+               "valves and IG1 as they are), as every interlock stop does: the next "
+               "control needs a setpoint again. The result is control's state after it "
+               "(off, armed, switching, regulating) and pld-service's reply.", journal=True),
+        Op("set_pressure_setpoint", SetPressureSetpoint, PressureControlResult,
+           doc="The chamber pressure in Torr. Under pld-service it is refused while "
+               "pressure control is off: set_pressure_control(on=True) first. The "
+               "setpoint picks the regime (<= 2e-4 low, 3e-3..1 high; between is "
+               "refused). In the regime control is in, it retargets at once. Otherwise "
+               "pld-service switches to the regime first, skipping any step already "
+               "done: MV11 open; to high: MFC1 0, IG1 off, 10 s, MV10 closed; to low: "
+               "MFC1 0, CDG10 below 3e-3, MV10 open, 10 s, IG1 on (if safe); a closed "
+               "CV301 is opened first. Control then regulates (state `switching`, then "
+               "`regulating`). wait=true returns once regulating within `tolerance` of "
+               "it, and fails if control stops or the setpoint changes meanwhile. "
+               "Under --use-legacy-mi-mode on the real chamber a person sets it by "
+               "hand: a `pressure` pending confirmation, resolved with confirm. Read "
+               "it back with get_current_pressure before heating or growing.",
+           journal=True, timeout_s=600.0),
         Op("initiate_heating_laser", Empty, Ack, journal=True),
         Op("turn_off_heating_laser", TurnOffHeatingLaser, Ack,
            doc="Turn the heating laser off. Refused while the substrate reads above "

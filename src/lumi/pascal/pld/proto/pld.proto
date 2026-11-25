@@ -1,5 +1,5 @@
 // VENDORED from the REA repo on the PLD PC (ENMAWDREN033081), control/proto/pld.proto,
-// branch decode-program at c7de330 (Motion.sample_too_low, SetTemperature tolerance 0.5 C; identical apart
+// branch decode-program at 98146c6 (pressure control first, then the setpoint; identical apart
 // from line endings). That file is the source of truth: when pld-service changes, copy it over this one (keeping this
 // header) and run scripts/gen_pld_stubs.sh.
 //
@@ -115,14 +115,19 @@ service Chamber {
   // PC-side pressure control with MFC1: setpoint, gauge, on/off. The setpoint picks the regime:
   // low (<= 2e-4 Torr: MV10 and MV11 open, IG1, flow from the recorded table, small trims) or
   // high (3e-3..1 Torr: MV10 closed, MV11 open, IG1 off, CDG10/CDG11, PID). Between them: refused.
-  // When the valves or IG1 are not in the regime's state, control on (or a new setpoint in the other
-  // regime while on) first switches them, one step per poll cycle: to high, flow 0, IG1 off, 10 s, MV10 closed;
-  // to low, flow 0, wait for CDG10 < 3e-3, MV10 open, 10 s, IG1 on. Control starts at the end.
+  // Control first, then the setpoint (2026-11-25): SetPressureControl(on) arms control and moves
+  // nothing; SetPressure is refused while control is off. In the armed state (or heading for the
+  // other regime) SetPressure starts control, after switching the valves and IG1 when they are not
+  // in the regime's state, one step per poll cycle: MV11 opened if closed; to high, flow 0, IG1 off,
+  // 10 s, MV10 closed; to low, flow 0, wait for CDG10 < 3e-3, MV10 open, 10 s, IG1 on. Control
+  // starts at the end. In the same regime it retargets at once. SetPressureControl(off), and every
+  // interlock stop, ends control and clears the setpoint: an accepted setpoint always means
+  // switching to it or regulating to it.
   rpc SetPressure(PressureRequest) returns (OperationReply);
   rpc SetPressureControl(SwitchRequest) returns (OperationReply);
   // Flow limits for every pressure-control write (both regimes).
   rpc SetPressureFlowLimits(FlowLimitsRequest) returns (OperationReply);
-  // Relay auto-tune of the high-regime PID (on: start, switching control on if needed; off: cancel).
+  // Relay auto-tune of the high-regime PID (on: start, while regulating in the high regime; off: cancel).
   // The tuned gains apply until the service restarts; copy them into [pressure] kp/ki/kd to keep them.
   rpc TunePressure(SwitchRequest) returns (OperationReply);
 
@@ -218,7 +223,7 @@ service Chamber {
   // Every setting with its value, unit and help. Watching needs nothing.
   rpc GetSettings(Empty) returns (SettingsReply);
   // Change settings (needs control). Checked together, as the config file is; on success they are
-  // saved to the config file (the service's --config file, or pld-service.ini in the log folder).
+  // saved to the config file (the service's --config file, or pld-service.ini in the settings folder next to its exe).
   // Settings with live = false (the RHEED caps) are saved but take effect at the next start.
   rpc SetSettings(SetSettingsRequest) returns (OperationReply);
 
@@ -592,10 +597,11 @@ message Gas {
   double mfc1_setpoint = 1;
   double mfc1_flow = 2;
   string pumping = 3;  // full, throttled, closed (from MV10 / MV11)
-  bool pressure_control = 4;
-  double pressure_setpoint = 5;  // Torr; NaN when not set
+  bool pressure_control = 4;  // regulating (not while armed or switching)
+  double pressure_setpoint = 5;  // Torr; NaN when not set (off or armed)
   string pressure_gauge = 6;  // IG1, CDG10 or CDG11
-  // "low (table)", "high (PID)", "auto-tune", "switching to low|high"; empty without a setpoint
+  // "off", "armed" (control on, no setpoint yet), "switching to low|high", then while regulating
+  // "low (table)", "high (PID)" or "auto-tune"
   string pressure_mode = 7;
   double flow_min = 8;  // pressure-control flow limits, sccm
   double flow_max = 9;

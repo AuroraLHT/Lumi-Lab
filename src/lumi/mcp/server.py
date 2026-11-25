@@ -110,7 +110,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
         "set_heater_key", "set_heater_start", "set_heater_threshold",
         "set_heating_current", "set_heater_current_limits", "set_temperature",
         "set_temperature_control", "set_sample_shutter", "fire_laser", "stop_fire", "set_mfc_flow",
-        "set_pressure", "set_pressure_control", "set_pressure_flow_limits",
+        "set_pressure_setpoint", "set_pressure_control", "set_pressure_flow_limits",
         "tune_pressure", "set_ion_gauge", "tune_heater", "take_laser_control", "laser_on",
         "laser_standby", "laser_off", "set_laser_mode", "set_laser_hv", "set_laser_energy",
         "release_laser",

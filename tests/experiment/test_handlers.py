@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 
 import pydantic
 import pytest
@@ -55,8 +56,8 @@ from lumi.contracts.payloads.experiment import (
     SampleAngle,
     SetMfcControl,
     SetMfcFlow,
-    SetPressure,
     SetPressureControl,
+    SetPressureSetpoint,
     SetTarget,
     StartMiLogging,
     ToTemperature,
@@ -387,13 +388,14 @@ async def test_set_mfc_control_opens_and_closes_the_master_gate(handler):
 
 
 async def test_set_pressure_and_pressure_control_are_separate(handler):
-    handler.pressure_by_hand = False  # the simulator: set_pressure commands the controller
-    await handler.set_pressure(SetPressure(pressure=20.0e-3))
-    await handler.set_pressure_control(SetPressureControl(on=True))
+    handler.pressure_by_hand = False  # the simulator: set_pressure_setpoint commands the controller
+    on = await handler.set_pressure_control(SetPressureControl(on=True))
+    await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=20.0e-3))
     await handler.set_pressure_control(SetPressureControl(on=False))
     assert handler.sources["chamber_mi"].calls == [
-        "Set Pressure= 2.00E-2\n", "Pressure Control ON\n", "Pressure Control OFF\n",
+        "Pressure Control ON\n", "Set Pressure= 2.00E-2\n", "Pressure Control OFF\n",
     ]
+    assert on.state == "unknown"  # PASCAL reports no control state
 
 
 # --- pending-confirmation gate --------------------------------------------------
@@ -576,6 +578,29 @@ async def test_finishing_a_pixel_marks_its_sample_grown(handler):
     still_planned = await handler.growth_db.find_sample(info.substrate_id, 1)
     assert grown[8] == "grown"
     assert still_planned[8] == "planned"
+
+
+async def test_a_sample_is_active_from_its_first_growth_until_finished(handler):
+    # DRY-FULL-01: a two-layer sample still read "planned" until finish_substrate.
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    project = await handler.manager.register_project("p")
+    for _ in range(2):  # two layers on pixel 0
+        await handler.manager.finish_experiment_record(
+            substrate_id=info.substrate_id, project_id=project, experiment_uuid=uuid.uuid4().hex,
+            temperature=600, pressure=0.1, laser_power=120, laser_repetition_rate=5,
+            target_material="SrTiO3", num_pulse=100, is_pixel=True, pixel_index=0)
+        assert (await handler.growth_db.find_sample(info.substrate_id, 0))[8] == "active"
+    assert (await handler.growth_db.find_sample(info.substrate_id, 1))[8] == "planned"
+    await handler.finish_current_pixel(FinishCurrentPixel())
+    assert (await handler.growth_db.find_sample(info.substrate_id, 0))[8] == "grown"
+    # A late record on a finished sample leaves it grown.
+    await handler.manager.finish_experiment_record(
+        substrate_id=info.substrate_id, project_id=project, experiment_uuid=uuid.uuid4().hex,
+        temperature=600, pressure=0.1, laser_power=120, laser_repetition_rate=5,
+        target_material="SrTiO3", num_pulse=100, is_pixel=True, pixel_index=0)
+    assert (await handler.growth_db.find_sample(info.substrate_id, 0))[8] == "grown"
 
 
 async def test_deposition_records_the_material_not_just_the_slot(handler):
@@ -1332,9 +1357,9 @@ async def test_nothing_else_moves_while_a_deposition_runs(handler):
 # --- pressure: by hand on the real chamber, direct in the simulator ----------------
 
 
-async def test_set_pressure_asks_a_person_on_the_real_chamber(handler):
+async def test_set_pressure_setpoint_asks_a_person_on_the_real_chamber(handler):
     assert handler.pressure_by_hand  # the default: a real chamber
-    await handler.set_pressure(SetPressure(pressure=0.1))
+    await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
 
     pending = handler.readout().pending_confirmation
     assert pending is not None and pending.kind == "pressure"
@@ -1346,9 +1371,9 @@ async def test_set_pressure_asks_a_person_on_the_real_chamber(handler):
     assert handler.readout().pending_confirmation is None
 
 
-async def test_set_pressure_sets_it_directly_in_the_simulator(handler):
+async def test_set_pressure_setpoint_sets_it_directly_in_the_simulator(handler):
     handler.pressure_by_hand = False
-    await handler.set_pressure(SetPressure(pressure=0.1))
+    await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
     assert handler.readout().pending_confirmation is None
     assert handler.sources["chamber_mi"].calls == ["Set Pressure= 1.00E-1\n"]
 

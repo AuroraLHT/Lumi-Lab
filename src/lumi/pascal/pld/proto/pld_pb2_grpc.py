@@ -635,9 +635,14 @@ class ChamberServicer:
         """PC-side pressure control with MFC1: setpoint, gauge, on/off. The setpoint picks the regime:
         low (<= 2e-4 Torr: MV10 and MV11 open, IG1, flow from the recorded table, small trims) or
         high (3e-3..1 Torr: MV10 closed, MV11 open, IG1 off, CDG10/CDG11, PID). Between them: refused.
-        When the valves or IG1 are not in the regime's state, control on (or a new setpoint in the other
-        regime while on) first switches them, one step per poll cycle: to high, flow 0, IG1 off, 10 s, MV10 closed;
-        to low, flow 0, wait for CDG10 < 3e-3, MV10 open, 10 s, IG1 on. Control starts at the end.
+        Control first, then the setpoint (2026-11-25): SetPressureControl(on) arms control and moves
+        nothing; SetPressure is refused while control is off. In the armed state (or heading for the
+        other regime) SetPressure starts control, after switching the valves and IG1 when they are not
+        in the regime's state, one step per poll cycle: MV11 opened if closed; to high, flow 0, IG1 off,
+        10 s, MV10 closed; to low, flow 0, wait for CDG10 < 3e-3, MV10 open, 10 s, IG1 on. Control
+        starts at the end. In the same regime it retargets at once. SetPressureControl(off), and every
+        interlock stop, ends control and clears the setpoint: an accepted setpoint always means
+        switching to it or regulating to it.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -657,7 +662,7 @@ class ChamberServicer:
         raise NotImplementedError('Method not implemented!')
 
     def TunePressure(self, request, context):
-        """Relay auto-tune of the high-regime PID (on: start, switching control on if needed; off: cancel).
+        """Relay auto-tune of the high-regime PID (on: start, while regulating in the high regime; off: cancel).
         The tuned gains apply until the service restarts; copy them into [pressure] kp/ki/kd to keep them.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -899,7 +904,7 @@ class ChamberServicer:
 
     def SetSettings(self, request, context):
         """Change settings (needs control). Checked together, as the config file is; on success they are
-        saved to the config file (the service's --config file, or pld-service.ini in the log folder).
+        saved to the config file (the service's --config file, or pld-service.ini in the settings folder next to its exe).
         Settings with live = false (the RHEED caps) are saved but take effect at the next start.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)

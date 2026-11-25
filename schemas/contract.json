@@ -1243,8 +1243,15 @@
                     },
                     "pressure_control": {
                       "default": false,
+                      "description": "regulating (not while armed or switching)",
                       "title": "Pressure Control",
                       "type": "boolean"
+                    },
+                    "pressure_control_state": {
+                      "default": "off",
+                      "description": "off, armed, switching or regulating",
+                      "title": "Pressure Control State",
+                      "type": "string"
                     },
                     "pressure_gauge": {
                       "default": "",
@@ -1290,7 +1297,7 @@
                     },
                     "pressure_mode": {
                       "default": "",
-                      "description": "low (table), high (PID), auto-tune, switching to low|high",
+                      "description": "off, armed, switching to low|high, then low (table), high (PID) or auto-tune",
                       "title": "Pressure Mode",
                       "type": "string"
                     },
@@ -1304,7 +1311,7 @@
                         }
                       ],
                       "default": null,
-                      "description": "Torr; None when not set",
+                      "description": "Torr; None when not set (off or armed)",
                       "title": "Pressure Setpoint"
                     },
                     "pressure_switch_step": {
@@ -6080,8 +6087,15 @@
                   },
                   "pressure_control": {
                     "default": false,
+                    "description": "regulating (not while armed or switching)",
                     "title": "Pressure Control",
                     "type": "boolean"
+                  },
+                  "pressure_control_state": {
+                    "default": "off",
+                    "description": "off, armed, switching or regulating",
+                    "title": "Pressure Control State",
+                    "type": "string"
                   },
                   "pressure_gauge": {
                     "default": "",
@@ -6127,7 +6141,7 @@
                   },
                   "pressure_mode": {
                     "default": "",
-                    "description": "low (table), high (PID), auto-tune, switching to low|high",
+                    "description": "off, armed, switching to low|high, then low (table), high (PID) or auto-tune",
                     "title": "Pressure Mode",
                     "type": "string"
                   },
@@ -6141,7 +6155,7 @@
                       }
                     ],
                     "default": null,
-                    "description": "Torr; None when not set",
+                    "description": "Torr; None when not set (off or armed)",
                     "title": "Pressure Setpoint"
                   },
                   "pressure_switch_step": {
@@ -18678,36 +18692,6 @@
             "response_codec": "json"
           },
           {
-            "name": "set_pressure",
-            "request": {
-              "properties": {
-                "pressure": {
-                  "title": "Pressure",
-                  "type": "number"
-                }
-              },
-              "required": [
-                "pressure"
-              ],
-              "title": "SetPressure",
-              "type": "object"
-            },
-            "request_codec": "json",
-            "response": {
-              "description": "A bare success acknowledgement.",
-              "properties": {
-                "ok": {
-                  "default": true,
-                  "title": "Ok",
-                  "type": "boolean"
-                }
-              },
-              "title": "Ack",
-              "type": "object"
-            },
-            "response_codec": "json"
-          },
-          {
             "name": "set_pressure_control",
             "request": {
               "properties": {
@@ -18724,15 +18708,142 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "A bare success acknowledgement.",
+              "description": "Pressure control after set_pressure_control or set_pressure_setpoint, from\npld-service's state read after its reply.",
               "properties": {
-                "ok": {
-                  "default": true,
-                  "title": "Ok",
-                  "type": "boolean"
+                "gauge": {
+                  "default": "",
+                  "title": "Gauge",
+                  "type": "string"
+                },
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "mode": {
+                  "default": "",
+                  "title": "Mode",
+                  "type": "string"
+                },
+                "reading": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Reading"
+                },
+                "setpoint": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Setpoint"
+                },
+                "state": {
+                  "title": "State",
+                  "type": "string"
                 }
               },
-              "title": "Ack",
+              "required": [
+                "state"
+              ],
+              "title": "PressureControlResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pressure_setpoint",
+            "request": {
+              "properties": {
+                "pressure": {
+                  "title": "Pressure",
+                  "type": "number"
+                },
+                "tolerance": {
+                  "default": 0.1,
+                  "title": "Tolerance",
+                  "type": "number"
+                },
+                "wait": {
+                  "default": false,
+                  "title": "Wait",
+                  "type": "boolean"
+                },
+                "wait_timeout_s": {
+                  "default": 480.0,
+                  "title": "Wait Timeout S",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "pressure"
+              ],
+              "title": "SetPressureSetpoint",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Pressure control after set_pressure_control or set_pressure_setpoint, from\npld-service's state read after its reply.",
+              "properties": {
+                "gauge": {
+                  "default": "",
+                  "title": "Gauge",
+                  "type": "string"
+                },
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "mode": {
+                  "default": "",
+                  "title": "Mode",
+                  "type": "string"
+                },
+                "reading": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Reading"
+                },
+                "setpoint": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Setpoint"
+                },
+                "state": {
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "title": "PressureControlResult",
               "type": "object"
             },
             "response_codec": "json"
@@ -23171,8 +23282,8 @@
             "set_laser_hv": "experiment.driver.req.set_laser_hv",
             "set_mfc_control": "experiment.driver.req.set_mfc_control",
             "set_mfc_flow": "experiment.driver.req.set_mfc_flow",
-            "set_pressure": "experiment.driver.req.set_pressure",
             "set_pressure_control": "experiment.driver.req.set_pressure_control",
+            "set_pressure_setpoint": "experiment.driver.req.set_pressure_setpoint",
             "set_rheed_gain": "experiment.driver.req.set_rheed_gain",
             "set_target": "experiment.driver.req.set_target",
             "set_target_preablation": "experiment.driver.req.set_target_preablation",

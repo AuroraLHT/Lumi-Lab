@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .common import ServerStateBase
 
@@ -144,10 +144,15 @@ class PldGas(BaseModel):
     mfc1_setpoint: float | None = None
     mfc1_flow: float | None = None
     pumping: str = Field("", description="full, throttled, closed (from MV10 / MV11)")
-    pressure_control: bool = False
-    pressure_setpoint: float | None = Field(None, description="Torr; None when not set")
+    pressure_control: bool = Field(False, description="regulating (not while armed or switching)")
+    pressure_setpoint: float | None = Field(None, description="Torr; None when not set (off or armed)")
     pressure_gauge: str = Field("", description="IG1, CDG10 or CDG11")
-    pressure_mode: str = Field("", description="low (table), high (PID), auto-tune, switching to low|high")
+    pressure_mode: str = Field("", description="off, armed, switching to low|high, then low (table), "
+                                                "high (PID) or auto-tune")
+    #: off, armed, switching or regulating: Lumi's reading of the three fields above.
+    #: Never take it from pressure_mode alone: an older pld-service names the setpoint's
+    #: regime there ("high (PID)") with control off.
+    pressure_control_state: str = Field("off", description="off, armed, switching or regulating")
     flow_min: float | None = None
     flow_max: float | None = None
     pressure_kp: float | None = None
@@ -155,6 +160,25 @@ class PldGas(BaseModel):
     pressure_kd: float | None = None
     pressure_table: list[PldFlowPoint] = Field(default_factory=list)
     pressure_switch_step: str = ""
+
+    @model_validator(mode="after")
+    def _control_state(self) -> "PldGas":
+        self.pressure_control_state = pressure_control_state(
+            self.pressure_control, self.pressure_mode)
+        return self
+
+
+def pressure_control_state(control: bool, mode: str) -> str:
+    """Pressure control's state from pld-service's gas fields: enabled first ("armed",
+    nothing moved), then a setpoint switches the valves and IG1 to its regime
+    ("switching") and control regulates to it."""
+    if control:
+        return "regulating"
+    if mode.startswith("switching"):
+        return "switching"
+    if mode == "armed":
+        return "armed"
+    return "off"
 
 
 class PldPump(BaseModel):

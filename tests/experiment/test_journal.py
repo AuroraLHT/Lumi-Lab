@@ -42,7 +42,7 @@ def test_world_changing_ops_are_journaled():
     for name in (
         "initiate_heating_laser",   # "when do I start heating up"
         "set_mfc_flow",             # "putting gas in"
-        "set_pressure",
+        "set_pressure_setpoint",
         "to_temperature",
         "perform_deposition",
         "move_rheed_to_position",   # alignment, not deposition

@@ -119,12 +119,34 @@ async def test_wait_blocks_until_the_chamber_arrives(driver):
     assert state.heater.pid_on and abs(state.heater.temperature - 400) < 10
 
 
+async def test_pressure_control_is_armed_first_and_off_clears_the_setpoint(driver):
+    handler, _, _ = driver
+    refused = await handler.set_pressure(PldPressureRequest(torr=0.1))
+    assert not refused.ok and "SetPressureControl on first" in refused.message
+    armed = await handler.set_pressure_control(PldSwitchRequest(on=True))
+    assert armed.ok and "armed, nothing moved" in armed.message
+    state = await handler.chamber_state(Empty())
+    assert (state.gas.pressure_control_state, state.gas.pressure_setpoint) == ("armed", None)
+    started = await handler.set_pressure(PldPressureRequest(torr=0.1))
+    assert started.ok and "high regime" in started.message
+    state = await handler.chamber_state(Empty())
+    assert (state.gas.pressure_control_state, state.gas.pressure_setpoint) == ("regulating", 0.1)
+    off = await handler.set_pressure_control(PldSwitchRequest(on=False))
+    assert off.ok and "setpoint cleared" in off.message
+    state = await handler.chamber_state(Empty())
+    assert (state.gas.pressure_control_state, state.gas.pressure_setpoint, state.gas.pressure_mode) == (
+        "off", None, "off")
+    # The next control needs a setpoint again.
+    assert not (await handler.set_pressure(PldPressureRequest(torr=0.1))).ok
+
+
 async def test_the_growth_log_parses_like_pld_controllers(driver):
     handler, _, _ = driver
     await handler.select_target(PldTargetRequest(target="C"))
     await handler.set_mask_position(PldPositionRequest(position=12.5))
-    await handler.set_pressure(PldPressureRequest(torr=1e-2))
-    await handler.set_pressure_control(PldSwitchRequest(on=True))
+    # Control first (armed), then the setpoint, as pld-service has it.
+    assert (await handler.set_pressure_control(PldSwitchRequest(on=True))).ok
+    assert (await handler.set_pressure(PldPressureRequest(torr=1e-2))).ok
     await asyncio.sleep(1.5)  # a row after the moves
 
     path = handler.growth_log.path

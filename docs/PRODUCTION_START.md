@@ -17,15 +17,19 @@ publishes into.
 1. **The same code on both machines.** The RHEED gun, agent boxes and pld target
    names are on `rheed-ops` (PR #38, on top of #36 and #37), not yet on `main`.
    Merge them, or check out the same commit on both machines. Both launchers
-   print the contract hash; the two must match (now `0818aa0703a780ea`).
+   print the contract hash; the two must match (now `30cea694a4240715`).
 2. **The Deck built for the same contract.** The browser client is generated
    from the contract. A mismatch gives wrong or refused ops at runtime, not a
    startup error.
 3. **pld-service on the lab PC:**
-   - It must be new enough to have `GetSettings` and `Motion.sample_too_low`
-     (Lumi vendors REA's proto at c7de330). On an older one, target lookups
-     (`show_available_targets`, `get_current_target`, and each layer's material)
-     fail.
+   - It must be at REA's 98146c6 or later (Lumi vendors REA's proto at that
+     commit):
+     - Before c7de330 it lacks `GetSettings` and `Motion.sample_too_low`, and
+       target lookups (`show_available_targets`, `get_current_target`, and each
+       layer's material) fail.
+     - Before 98146c6 it still takes the setpoint before control. The order
+       Lumi documents (`set_pressure_control` on, then `set_pressure_setpoint`)
+       is then refused at the first step.
    - Its `target_names` section must list what is really in slots A–F. Lumi
      names every layer from it, and PLDconfig.ini is no longer read.
    - Its `[rheed]` caps (filament 2200 mA, HV 28 kV) take effect at its next
