@@ -375,13 +375,21 @@ def build_jpeg_encoder(camera, camera_queue) -> JpegEncoder:
     )
 
 
-def build_fiducials(camera_queue, store_path: str | None = None):
+def build_fiducials(camera_queue, store_path: str | None = None, simulated: bool = False):
     """The chamber camera's fiducial markers. Returns (store, stats_worker).
+
+    A simulated camera keeps its own file (`sim_store_path`): a marker drawn on the
+    twin's image means nothing on the real webcam's, and a production start must not
+    pick one up (DRY-FULL-02's mask-center was drawn on the twin).
 
     `.get(..., default)` rather than attribute access, so a machine-local settings.toml
     that predates this section keeps working.
     """
-    path = _resolve(store_path or settings.get("pascal.fiducials.store_path", "cfg/chamber_fiducials.json"))
+    if store_path is None:
+        store_path = (settings.get("pascal.fiducials.sim_store_path", "cfg/chamber_fiducials.sim.json")
+                      if simulated else settings.get("pascal.fiducials.store_path", "cfg/chamber_fiducials.json"))
+    path = _resolve(store_path)
+    log.info("chamber fiducial markers: %s (%s camera)", path, "simulated" if simulated else "real")
     store = FiducialStore(path)
     worker = FiducialStatsWorker(
         store,

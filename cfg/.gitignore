@@ -41,6 +41,10 @@ measurement_files/
 chamber_fiducials.json
 chamber_fiducials.json.tmp
 chamber_fiducials.json.corrupt
+# ...and the simulated camera's (`pascal.fiducials.sim_store_path`).
+chamber_fiducials.sim.json
+chamber_fiducials.sim.json.tmp
+chamber_fiducials.sim.json.corrupt
 
 # Structures saved through the simulation node (`simulation.rheed.structures_path`):
 # whatever CIFs this lab uploaded, local like the rest of this folder's data.

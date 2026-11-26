@@ -103,7 +103,8 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     if model is None and pld_handler is not None and args.camera == "sim":
         # A pld-service twin with no webcam: the sim camera's overlay follows the service.
         model = PldSceneSource(pld_handler.state_monitor)
-    camera, _, _ = build_camera(args.src, model=model, kind=args.camera)
+    camera_kind = args.camera or ("webcam" if args.src == "path" else "sim")  # as build_camera picks
+    camera, _, _ = build_camera(args.src, model=model, kind=camera_kind)
 
     # The camera's in-process fan-out: one grab feeds every consumer. The stream is
     # served from the encoder's output, not from a camera queue directly, so `frames`
@@ -112,7 +113,8 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     jpeg_encoder = build_jpeg_encoder(camera, frames_q)
     # A second consumer of the same grab: the marker statistics are measured on the
     # camera's own pixels, not on the JPEG the browser is shown.
-    fiducial_store, fiducial_stats = build_fiducials(camera.register_queue("fiducials"))
+    fiducial_store, fiducial_stats = build_fiducials(camera.register_queue("fiducials"),
+                                                     simulated=camera_kind == "sim")
 
     node = EquipmentNode(
         CHAMBER,

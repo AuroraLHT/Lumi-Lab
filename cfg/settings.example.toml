@@ -490,6 +490,9 @@ name = "JPEG Encoder"
 # node restart; that file is machine-local (git-ignored).
 [pascal.fiducials]
 store_path = "cfg/chamber_fiducials.json"
+# The simulated camera's markers (a twin's or the sim's): kept apart, so a production
+# start on the webcam never reads a marker drawn on the simulated image.
+sim_store_path = "cfg/chamber_fiducials.sim.json"
 # Samples of intensity trace kept per marker, for `marker_history`. 5000 is a little
 # over three minutes at 25 fps. The `stats` stream carries every sample regardless.
 history = 5000
