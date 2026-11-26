@@ -159,6 +159,19 @@ def _count(steps) -> int:
     return total
 
 
+def check_ramps(steps: list[dict], limit: float, why: str) -> None:
+    """Refuse a temperature step ramping faster than the substrate's `limit` (°C/min,
+    `ExperimentManager.ramp_limit`): a sequence ramps the substrate as to_temperature
+    does. A ramp of 0 is pld-service's jump, the fastest of all."""
+    for i, step in enumerate(steps, 1):
+        if "temperature" in step:
+            ramp = float((step["temperature"] or {}).get("ramp_c_per_min") or 0.0)
+            if ramp <= 0 or ramp > limit:
+                what = f"{ramp:g} °C/min" if ramp > 0 else "0 (a jump)"
+                raise ValueError(f"step {i}: temperature ramp {what} is over the {limit:g} °C/min "
+                                 f"limit ({why}): save a version within it")
+
+
 def resolve(steps: list[dict], ratio: float | None) -> list[dict]:
     """The steps pld-service runs: each meter_energy becomes laser_energy at mj / ratio."""
     out = []

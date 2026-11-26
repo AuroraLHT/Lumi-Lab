@@ -214,6 +214,23 @@ async def test_a_run_expecting_a_material_the_slot_does_not_hold_is_refused(seq)
     assert all("expect_material" not in step for step in sent["steps"])  # Lumi's key, not the service's
 
 
+@pytest.mark.parametrize("ramp, refused", [(10.0, None), (20.0, "20 °C/min"), (0.0, r"0 \(a jump\)")])
+async def test_a_temperature_step_faster_than_the_substrates_limit_is_refused(seq, ramp, refused):
+    # The driver's ramp limit holds inside a sequence too; with no substrate, 10 °C/min.
+    handler, client = seq
+    await save(handler, [{"temperature": {"celsius": 500, "ramp_c_per_min": ramp, "wait": True}}], name="heat")
+    await handler.approve_sequence(SequenceRef(name="heat", version=1))
+    run = handler.run_sequence(RunSequence(name="heat", version=1, no_sample=True))
+    if refused is None:
+        client.script = [(finished("heat v1", 1, 1), [])]
+        await run
+        assert (await wait_task(handler))["ok"]
+        return
+    with pytest.raises(ValueError, match=f"step 1: temperature ramp {refused} is over the 10 °C/min limit"):
+        await run
+    assert "run_sequence" not in [op for op, _ in client.calls]
+
+
 def test_expect_material_belongs_beside_a_select_target():
     with pytest.raises(ValueError, match="expect_material is a material name, beside a select_target"):
         seqlib.check([{"wait_s": 1, "expect_material": "SrRuO3"}])

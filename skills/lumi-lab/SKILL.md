@@ -25,6 +25,8 @@ following it.
   10 °C/min for ≥ 75 mm², 20 °C/min for ≥ 50 mm², 30 °C/min for < 50 mm².
   The same for cooling. `to_temperature`, `cool_down` and `anneal` refuse a faster
   `ramp_rate`; leave `ramp_rate` out and they use the current substrate's limit.
+  `run_sequence` refuses a version with a temperature step over it (a ramp of 0 is a
+  jump, and is refused too).
   With no substrate registered the limit is 10, so register the substrate before
   heating. Slower is always allowed.
   From a cold chamber (below 220 °C) the ramp rate does not apply at first. PID only

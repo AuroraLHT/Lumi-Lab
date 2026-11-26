@@ -1780,6 +1780,7 @@ class ExperimentHandler:
                 "(approve_sequence, in the Deck) before it runs")
         if seqlib.expected_materials(json.loads(row["steps_json"])):
             seqlib.check_materials(json.loads(row["steps_json"]), await m.target_names())
+        seqlib.check_ramps(json.loads(row["steps_json"]), *m.ramp_limit())
         if seqlib.METER_ENERGY in row["steps_json"] and await m.todays_laser_test() is None:
             raise RuntimeError("no laser test today: run the daily test (begin_laser_test) first; "
                                "this sequence sets the energy at the meter")
