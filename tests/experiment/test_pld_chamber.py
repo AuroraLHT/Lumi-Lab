@@ -832,6 +832,29 @@ async def test_the_setpoint_waits_until_control_regulates_there(fake, monkeypatc
     assert (result.state, result.reading) == ("regulating", 0.097)
 
 
+async def test_a_setpoint_needing_no_switch_waits_out_a_stale_armed_state(fake, monkeypatch):
+    # DRY-FULL-02: armed with the valves already in the high regime, pld-service starts
+    # control at once but publishes it at its next poll cycle; the wait read "armed" and
+    # failed though control was regulating seconds later.
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "PRESSURE_POLL_S", 0.01)
+    handler, client = fake
+    client.state.gas = PldGas(pressure_mode="armed", pressure_setpoint=float("nan"))
+    client.state.pressures = PldPressures(cdg10=0.1024)
+    client.answers["set_pressure"] = ("pressure setpoint 1.000e-1 Torr on CDG10, high regime: "
+                                      "pressure control on, high regime (now 1.024e-1)")
+
+    async def next_cycle():
+        await asyncio.sleep(0.05)
+        client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.1,
+                                  pressure_gauge="CDG10", pressure_mode="high (PID)")
+
+    cycle = asyncio.create_task(next_cycle())
+    result = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1, wait=True))
+    await cycle
+    assert (result.state, result.reading) == ("regulating", 0.1024)
+
+
 async def test_the_wait_fails_when_control_stops(fake, monkeypatch):
     import lumi.experiment.manager as manager_module
     monkeypatch.setattr(manager_module, "PRESSURE_POLL_S", 0.01)

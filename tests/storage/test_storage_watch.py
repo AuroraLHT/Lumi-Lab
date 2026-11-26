@@ -148,6 +148,33 @@ async def test_a_laser_train_and_the_shutter_are_events_at_their_start(tmp_path)
         ]
 
 
+async def test_a_count_zeroed_before_the_train_fires_is_one_train(tmp_path):
+    """DRY-FULL-02: pld-service zeroed the count a look before the status read firing;
+    the pre-ablation's one train was logged twice."""
+    pld = FakePld()
+    pld.state.laser = PldLaser(status="finished", pulses_fired=100, rate_hz=10.0, pulses_requested=100)
+    handler = await record(tmp_path, pld, save_log=False)  # the laser test's train, before
+    meta, last = handler._watch_meta, handler._watch_start(handler._watch_meta)
+    t = time.time()
+    looks = [
+        (1.0, PldLaser(status="ready", pulses_fired=0, rate_hz=10.0, pulses_requested=50)),
+        (2.8, PldLaser(status="firing", pulses_fired=18, rate_hz=10.0, pulses_requested=50)),
+        (6.0, PldLaser(status="finished", pulses_fired=50, rate_hz=10.0, pulses_requested=50)),
+        (20.0, PldLaser(status="firing", pulses_fired=5, rate_hz=5.0, pulses_requested=300)),
+    ]
+    for dt, laser in looks:
+        pld.state = pld.state.model_copy(update={"time": t + dt})
+        pld.state.laser = laser
+        await handler._watch_once(meta, last)
+    handler._watch_last = last
+    assert (await handler.stop_recording(Empty())).ok
+
+    with open_recording(tmp_path / "w.hdf5") as rec:
+        ev = rec.events()
+        starts = sorted(round(tm - t, 3) for k, tm in zip(ev.kind, ev.time) if k == "laser_started")
+        assert starts == [1.0, 19.0]
+
+
 async def test_the_shutter_event_is_when_pld_logged_the_move_not_the_look(tmp_path):
     pld = FakePldWithActivity()
     handler = await record(tmp_path, pld, save_log=False)

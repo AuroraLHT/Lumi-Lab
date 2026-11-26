@@ -530,6 +530,8 @@ class StorageHandler:
         status, fired = state.laser.status, state.laser.pulses_fired
         last_status, last_fired = last.get("laser") or (None, None)
         firing = status == "firing"
+        if firing and last.get("train_due") and (last_fired is None or fired >= last_fired):
+            return False  # the train already counted when its count went back, now firing
         return ((firing and last_status != "firing")
                 or (last_fired is not None and fired < last_fired)
                 or (not firing and last_status != "firing" and last_fired is not None
@@ -544,7 +546,8 @@ class StorageHandler:
         now = state.time or time.time()
         laser = state.laser
         status, fired = laser.status, laser.pulses_fired
-        if self._new_train(state, last):
+        started = self._new_train(state, last)
+        if started:
             rate = laser.rate_hz
             detail = {"pulses_requested": laser.pulses_requested, "rate_hz": rate,
                       "pulses_fired_at_look": fired, "shutter_open": state.sample_shutter_away}
@@ -558,6 +561,11 @@ class StorageHandler:
             self._write(writer.add_event, began, "laser_started",
                         f"laser train: {laser.pulses_requested} pulses at {rate:g} Hz, sample "
                         f"shutter {'open' if state.sample_shutter_away else 'in front'}", detail)
+        # pld-service zeroes the count a look before the status reads firing (DRY-FULL-02):
+        # a train counted on its count going back is due, and the look that then sees it
+        # firing is the same train, not another.
+        last["train_due"] = (status != "firing" and fired < laser.pulses_requested
+                             and bool(started or last.get("train_due")))
         last["laser"] = (status, fired)
         shutter = state.sample_shutter_away
         if last.get("shutter_open") is not None and shutter != last["shutter_open"]:

@@ -77,6 +77,14 @@ LASER_TEST_RATE_HZ = 1.0
 LASER_TEST_POLL_S = 1.0
 #: How often set_pressure_setpoint's wait reads the pressure.
 PRESSURE_POLL_S = 1.0
+# An accepted setpoint that needs no regime switch starts control at once, but the state
+# may still read "armed" until pld-service's next poll cycle publishes it.
+PRESSURE_SETTLE_S = 5.0
+# A camera frame can show the mask where it was before a move: the twin's sim camera
+# draws it from pld-service's state stream (2 Hz, behind pld-service's own poll), and a
+# real webcam buffers frames. Without a wait, the first point of each refining pass,
+# after the long move back to its start, read the bump it had just left (DRY-FULL-02).
+MASK_SETTLE_S = 1.0
 #: Fewer readings than this, or readings that never move by more than
 #: LASER_TEST_FLAT_MJ, are not taken as the source energy (see `source_from_readings`).
 LASER_TEST_MIN_READINGS = 3
@@ -871,6 +879,10 @@ class BaseExperimentManager:
         pld-service refuses it while control is off: control first, then the setpoint."""
         message = await self.chamber.set_pressure(pressure)
         result = await self._pressure_result(message)
+        deadline = time.monotonic() + PRESSURE_SETTLE_S
+        while result["state"] == "armed" and time.monotonic() < deadline:
+            await asyncio.sleep(PRESSURE_POLL_S)
+            result = await self._pressure_result(message)
         await self.add_recording_event("pressure_setpoint", f"{pressure:.3g} Torr: {message}", result)
         if wait and self.chamber.driver == "pld":
             result = await self._wait_for_pressure(pressure, tolerance, wait_timeout_s, message)
@@ -1802,6 +1814,7 @@ class BaseExperimentManager:
             readings = []
             for position in points:
                 await self.move_mask_to_position(position)
+                await asyncio.sleep(MASK_SETTLE_S)
                 readings.append(await self._fresh_marker_reading(marker_id, frames_per_point))
                 samples.append(MaskSweepPoint(pass_index=pass_index, position=position, reading=readings[-1]))
                 log.info("mask scan %d: %.3f mm -> %.1f", pass_index, position, readings[-1])
