@@ -11,6 +11,8 @@ should not need pypylon installed to import this module.
 from __future__ import annotations
 
 import logging
+import math
+import time
 
 import cv2
 
@@ -59,11 +61,126 @@ def _to_rgb(frame, frame_header=None):
     return add_time_stamp(frame, frame_header)
 
 
-def build_camera(src: str, sim_frame: str | None = None):
+class GunBeam:
+    """The simulated RHEED image's brightness from pld-service's gun, for a twin: no
+    beam (0) with the filament or HV off, otherwise the emission current over
+    `reference_ua`, the emission the sim frame was taken at. The screen's intensity
+    follows the beam current, so it levels off where the emission saturates.
+
+    Until the first reading, and with no RHEED link or no emission reading, the image
+    stays as it is (1), as it was before the sim followed the gun."""
+
+    def __init__(self, reference_ua: float = 8.7) -> None:
+        self.reference_ua = reference_ua
+        self._scale = 1.0
+
+    def update(self, rheed) -> None:
+        """`rheed` is a `PldRheed`, or None for no reading."""
+        if rheed is None or not rheed.present:
+            self._scale = 1.0
+        elif not (rheed.filament_on and rheed.hv_on):
+            self._scale = 0.0
+        elif rheed.emission_ua is None:
+            self._scale = 1.0
+        else:
+            self._scale = max(0.0, rheed.emission_ua / self.reference_ua)
+
+    def scale(self) -> float:
+        return self._scale
+
+
+class GrowthClock:
+    """RHEED oscillations on the simulated image from pld-service's deposition, for a
+    twin: every pulse fired with the sample shutter open grows 1/`pulses_per_monolayer`
+    of a monolayer, and the spots dim and recover once per monolayer, the dip `depth`
+    deep at first and damped over `decay_ml` monolayers.
+
+    When the deposition stops the surface smooths: the dip relaxes by `recovery` of
+    itself over about `recovery_s`, and comes back as fast as `resume_s` when it starts
+    again. With nothing deposited the image holds still.
+
+    pld-service is read about once a second; between readings a firing train is
+    counted on at its rate, so the trace is smooth rather than a step per poll."""
+
+    def __init__(self, pulses_per_monolayer: float = 40.0, depth: float = 0.4,
+                 decay_ml: float = 10.0, recovery: float = 0.6, recovery_s: float = 20.0,
+                 resume_s: float = 2.0, clock=time.monotonic) -> None:
+        self.pulses_per_monolayer = pulses_per_monolayer
+        self.depth = depth
+        self.decay_ml = decay_ml
+        self.recovery = recovery
+        self.recovery_s = recovery_s
+        self.resume_s = resume_s
+        self._clock = clock
+        self._grown = 0.0  # pulses deposited before the present reading
+        self._last_fired: int | None = None
+        self._open = False
+        self._firing = False
+        self._rate = 0.0
+        self._cap = 0.0  # pulses the present train can still add
+        self._at = clock()
+        # How much of the dip shows (1 = all, while growing), relaxing towards a target.
+        self._growing = False
+        self._shown_from = 1.0
+        self._shown_since = self._at
+
+    def update(self, state) -> None:
+        """`state` is a `PldChamberState`, or None for no reading."""
+        if state is None:
+            self._firing = False
+            self._set_growing(False)
+            return
+        laser = state.laser
+        fired = laser.pulses_fired
+        if self._last_fired is not None and self._open:
+            # A count lower than the last one is a new train, counted from 0.
+            self._grown += fired - self._last_fired if fired >= self._last_fired else fired
+        self._last_fired = fired
+        self._open = bool(state.sample_shutter_away)
+        self._firing = laser.status == "firing" and laser.rate_hz > 0
+        self._rate = laser.rate_hz
+        self._cap = max(0.0, laser.pulses_requested - fired) if laser.pulses_requested else float("inf")
+        self._at = self._clock()
+        self._set_growing(self._open and self._firing)
+
+    def _set_growing(self, growing: bool) -> None:
+        if growing != self._growing:
+            # Nothing grown yet, nothing to have recovered: the first dip starts whole.
+            self._shown_from = self.shown() if self._grown > 0 else 1.0
+            self._shown_since = self._clock()
+            self._growing = growing
+
+    def shown(self) -> float:
+        """The fraction of the dip on the image now."""
+        target, tau = (1.0, self.resume_s) if self._growing else (1.0 - self.recovery, self.recovery_s)
+        dt = max(0.0, self._clock() - self._shown_since)
+        return target + (self._shown_from - target) * math.exp(-dt / tau if tau > 0 else -math.inf)
+
+    def monolayers(self) -> float:
+        pulses = self._grown
+        if self._open and self._firing:
+            pulses += min(self._cap, self._rate * (self._clock() - self._at))
+        return pulses / self.pulses_per_monolayer
+
+    def scale(self) -> float:
+        ml = self.monolayers()
+        if ml <= 0:
+            return 1.0
+        dip = 0.5 * (1.0 - math.cos(2.0 * math.pi * ml))
+        return 1.0 - self.depth * math.exp(-ml / self.decay_ml) * dip * self.shown()
+
+
+def build_camera(src: str, sim_frame: str | None = None, frame_scale=None,
+                 feature_scale=None):
     """Returns (camera, frame_processing, height, width).
 
     `sim_frame` (simcam only) picks what the simulated camera shows: a name from
     lumi.rheed.sim_frames ("sto", "ysz") or a path. None takes `rheed.simcam.source`.
+    `frame_scale` (simcam only): `() -> float` on each frame's brightness, e.g.
+    `GunBeam.scale`. `feature_scale` (simcam only): `() -> float` on the image's
+    diffraction features (a soft mask of the frame's own bright spots and streaks),
+    e.g. `GrowthClock.scale`; it replaces the clock-driven base and feature
+    oscillations, so the image changes only with it.
     """
     if src == "pylon":
         # Imported here, not at module scope: only the camera host has pypylon.
@@ -125,10 +242,10 @@ def build_camera(src: str, sim_frame: str | None = None):
             fps=cfg.fps,
             queue_size=cfg.queue_size,
             idle_time=cfg.idle_time,
-            is_base_oscillation=cfg.is_base_oscillation,
+            is_base_oscillation=cfg.is_base_oscillation and feature_scale is None,
             base_oscillation_frequency=cfg.base_oscillation_frequency,
             base_oscillation_amplitude=cfg.base_oscillation_amplitude,
-            is_feature_oscillation=cfg.is_feature_oscillation,
+            is_feature_oscillation=cfg.is_feature_oscillation and feature_scale is None,
             feature_bbox=cfg.feature_bbox,
             feature_oscillation_frequency=cfg.feature_oscillation_frequency,
             feature_oscillation_amplitude=cfg.feature_oscillation_amplitude,
@@ -136,6 +253,11 @@ def build_camera(src: str, sim_frame: str | None = None):
             gain=cfg.gain,
             gamma=cfg.gamma,
             max_intensity=cfg.max_intensity,
+            frame_scale=frame_scale,
+            feature_scale=feature_scale,
+            noise_read=float(cfg.get("noise_read", 0.0) or 0.0),
+            noise_shot=float(cfg.get("noise_shot", 0.0) or 0.0),
+            noise_flicker=float(cfg.get("noise_flicker", 0.0) or 0.0),
         ),
         name=cfg.name,
         daemon=True,

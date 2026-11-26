@@ -220,7 +220,7 @@ proposals it made:
   conditions. But `to_temperature` is skipped outright when `is_dryrun` (by
   design — see `notebooks/README.md`), and pressure is *always* a printed
   `"[Manual] Set Pressure..."` instruction with no simulator-side actuation (the
-  contract has a real `set_pressure` op; `recipes.perform_pixel_deposition` never
+  contract has a real `set_pressure_setpoint` op; `recipes.perform_pixel_deposition` never
   calls it — on real hardware a human enacts the printed instruction, in the
   simulator nothing does). So `growth_conditions()` — which is what
   `list_measurements` feeds the GP — records the chamber's undisturbed idle state
@@ -234,7 +234,7 @@ proposals it made:
   This means **the run confirms the loop's mechanics (bookkeeping, gates,
   journaling, GP wiring, convergence check) but not its optimization behaviour**
   — that needs either `DRYRUN = False` (which drives temperature for real; pressure
-  would still need a human, or an `auto_input` hook added to call `set_pressure`
+  would still need a human, or an `auto_input` hook added to call `set_pressure_setpoint`
   for an unattended simulator run) or accepting dryrun's x/y decoupling as
   out of scope for judging the proposals themselves.
 

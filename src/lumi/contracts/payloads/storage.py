@@ -15,6 +15,10 @@ from .common import ServerStateBase
 
 
 class StorageRequest(BaseModel):
+    #: The recording's name: the file is `<project_name>.hdf5`. The experiment driver
+    #: passes "<sample>_<project>_<uuid>" and the project itself in `context`; the
+    #: file's /meta/request keeps this as `recording_name` and the project as
+    #: `project_name`.
     project_name: str
     save_frame: bool = False
     save_ai: bool = False

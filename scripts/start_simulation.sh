@@ -284,7 +284,8 @@ fi
 start_node pascal "${PASCAL_ARGS[@]}"
 # The simulated camera shows a real lab frame (--substrate), and the simulation node
 # is told which, so its default screen puts the shadow edge where that frame has it.
-start_node rheed  --host "$RABBITMQ_HOST" --src simcam --sim-frame "$SUBSTRATE"
+# Its oscillations follow the stand-in's deposition (pulses with the shutter open).
+start_node rheed  --host "$RABBITMQ_HOST" --src simcam --sim-frame "$SUBSTRATE" --follow-growth
 
 # RHEED pattern simulation: no hardware, so it always runs when its extra is there.
 SIMULATION_SKIPPED=""

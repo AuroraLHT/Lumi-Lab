@@ -4,6 +4,7 @@ import threading
 import queue
 import collections
 import logging
+import re
 import time
 import uuid
 import datetime
@@ -83,6 +84,7 @@ class PylonCamera(GenericCamera):
 
     def __init__(self, config:PylonCameraConfig, name:Union[int, str], daemon:bool=True) -> None:
         self._is_running = False
+        self._full_scale: int | None = None
         super().__init__(config=config, name=name, daemon=daemon)
 
         # self.camera_io_lock = threading.Lock()
@@ -133,11 +135,31 @@ class PylonCamera(GenericCamera):
             return False, e
 
 
+    def full_scale(self) -> int | None:
+        return self._full_scale
+
+    def _read_full_scale(self) -> int | None:
+        """From the camera: its dynamic range if it has the node, else the bits in its
+        pixel format (Mono8 -> 255, Mono12 / Mono12p -> 4095)."""
+        try:
+            node = getattr(self.camera, "PixelDynamicRangeMax", None)
+            if node is not None and node.IsReadable():
+                return int(node.Value)
+        except Exception as e:
+            logging.warning(f"[PylonCamera] no PixelDynamicRangeMax: {e}")
+        try:
+            bits = re.search(r"(\d+)", str(self.camera.PixelFormat.Value))
+            return (1 << int(bits.group(1))) - 1 if bits else None
+        except Exception as e:
+            logging.warning(f"[PylonCamera] pixel format not read: {e}")
+            return None
+
     def on_initiate(self, config:PylonCameraConfig):
         try:
             self.camera = get_camera(device=config.device)
             self.camera.Open()
-            logging.info(f"[PylonCamera] open camera object: {self.camera}")
+            self._full_scale = self._read_full_scale()
+            logging.info(f"[PylonCamera] open camera object: {self.camera}, full scale {self._full_scale}")
         except Exception as e:
             logging.error(f"Failed to open camera: {e}")
             self.camera = None

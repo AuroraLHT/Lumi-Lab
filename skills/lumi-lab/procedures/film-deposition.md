@@ -15,7 +15,7 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
    `resume_substrate` if it is already in the database. Never register one twice.
    A new substrate needs a name first: ask the person unless the project's convention
    is known, and pass it as `substrate_name` (`reference/records.md`).
-3. Ask the person: heat in gas or in vacuum? If gas, `set_pressure` first (step 8).
+3. Ask the person: heat in gas or in vacuum? If gas, set the pressure first (step 8).
    `initiate_heating_laser`, then `to_temperature` to the first layer's temperature at
    the substrate's ramp rate (SKILL.md §1), with `wait: false` (SKILL.md §3). Poll the
    temperature until it is within tolerance. **Snapshot: chamber `heated`.**
@@ -26,21 +26,26 @@ with `get_target_name_by_id` now; slots change when targets are swapped.
 5. Pre-ablation amounts: `list_target_preablation`. For any layer's target material not
    listed, ask the person how many pulses (and the rate; 0 = never pre-ablate it) and
    `set_target_preablation`. Do not pick a number yourself.
-6. A person adjusts the RHEED gun and sample stage. Look at `rheed.camera.image`: is it a
+6. `rheed_on` and its emission search to `finish_rheed_on` (SKILL.md §2), then a person adjusts the beam and sample stage. Look at `rheed.camera.image`: is it a
    good substrate pattern (`reference/rheed.md`)? If not, stop and say so. (Skipped
    while the RHEED is down for maintenance.)
 
 ## Each layer
 
 7. If the temperature changes from the last layer, `to_temperature` (wait, read back).
-8. `set_pressure` (the person sets it on the real chamber, then `confirm`); read it back
+8. Pressure (SKILL.md §2): `set_pressure_control(on: true)` unless the state is already
+   `regulating`, then `set_pressure_setpoint` with `wait: true` (the person sets it on the
+   real chamber, then `confirm`); read it back
    with `get_current_pressure` and wait until it
    is within tolerance (SKILL.md §4).
 9. `begin_set_laser_power` with this layer's energy at the meter. The driver sets the
    excimer from today's laser test; no one reads the meter.
 10. `perform_preablation` with this layer's target, leaving `num_pulse` out (the amount
     set for its material is used; a target set to 0 is refused: skip it). Wait.
-11. `start_storage`; it must return `ok`. One recording per layer. With the RHEED down,
+11. RHEED boxes, once per substrate: if there is no specular box (yours or the
+    operator's), draw one with `add_rheed_box`, and a background box
+    (`reference/rheed.md` "Drawing your own boxes"). Then `start_storage`; it must
+    return `ok`. One recording per layer. With the RHEED down,
     `save_frame`, `save_ai` and `save_integration` all `false`.
 12. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
     chamber + RHEED `depo_end`.** Watch `rheed.integrator.cache`
@@ -58,6 +63,6 @@ and finishing it after the first leaves nothing to grow the next on.
     the right atmosphere (O2 for oxides). Wait until `get_current_temperature` reads
     165 °C or less. **Snapshot: chamber `cooled`.**
 16. `turn_off_heating_laser`, only now (SKILL.md §1).
-17. `finish_substrate`.
+17. `rheed_off`, then `finish_substrate`.
 18. Report: `get_sample` (the layer stack should match the plan), plus what each snapshot
     showed (`list_snapshots` for the sample).

@@ -51,7 +51,7 @@ _STRICT = ConfigDict(extra="forbid")
 class PendingConfirmation(BaseModel):
     id: str
     kind: str  # "proceed" | "laser_power" | "mask_center_alignment" | "mask_center_check"
-    # | "rheed_gain" | "pixel_check" | "fiducial_role" | "pressure"
+    # | "rheed_gain" | "rheed_emission" | "pixel_check" | "fiducial_role" | "pressure"
     message: str
     requested_at: float
 
@@ -64,13 +64,50 @@ class CurrentTask(BaseModel):
     detail: dict = {}
 
 
+class FinishedTask(BaseModel):
+    """The last long-running op to finish, and how: TaskEvent's `finished_task` and
+    `task_result`, kept in the readout for a client that polls state rather than
+    reading the update channel (an MCP agent)."""
+
+    task: CurrentTask
+    #: `ok`, and `error` / `aborted` when not ok; otherwise the op's own result
+    #: (fire_laser_test's meter average and source_mj, ...).
+    result: dict
+    finished_at: float
+
+
+class RheedSearch(BaseModel):
+    """rheed_on's open emission search, whoever judges it: what a UI shows with Stop
+    here (finish_rheed_on at a step) and Abort (rheed_off)."""
+
+    judge: str  # "agent" | "person"
+    started_at: float
+    #: Each step tried: filament_ma, emission_ua, and with a RHEED camera the image's
+    #: pixel statistics (rheed_signal, rheed_noise, rheed_headroom, ...: frame_intensity).
+    steps: list[dict] = Field(default_factory=list)
+    #: What the last step did to the emission and the intensity (a hint, not the decision).
+    saturation: str | None = None
+    filament_max_ma: float | None = None
+
+
+class RheedBoxInfo(BaseModel):
+    """An integration box an agent drew (add_rheed_box). Its trace is rheed.integrator's."""
+
+    label: str = ""
+    stft: bool = False
+    x: int
+    y: int
+    width: int
+    height: int
+
+
 class TaskEvent(BaseModel):
-    """Pushed on the update channel whenever pending_confirmation or current_task
-    changes -- a client that is already connected does not have to poll state in a
+    """Pushed on the update channel whenever pending_confirmation, current_task or
+    rheed_search changes -- a client that is already connected does not have to poll state in a
     loop to notice a gate opened or a long-running op finished.
 
-    `pending_confirmation` and `current_task` are always a full snapshot of both as
-    of this event, so None means there is none, not "unchanged". `task_result` is
+    `pending_confirmation`, `current_task` and `rheed_search` are always a full
+    snapshot as of this event, so None means there is none, not "unchanged". `task_result` is
     set only on the one event of a long-running op finishing, with `finished_task`
     naming the op."""
 
@@ -80,11 +117,15 @@ class TaskEvent(BaseModel):
     #: The task `task_result` belongs to, set alongside it -- `current_task` is
     #: already None by then.
     finished_task: CurrentTask | None = None
+    rheed_search: RheedSearch | None = None
+    #: The RHEED boxes agents drew (ids from 1000): the full set as of this event.
+    rheed_boxes: dict[int, RheedBoxInfo] = Field(default_factory=dict)
 
 
 class TaskAck(BaseModel):
     """Acknowledges a long-running op was started. Its completion is observed via
-    state.current_task clearing, or a TaskEvent with task_result set."""
+    state.current_task clearing (the outcome is then state.last_task, with this id),
+    or a TaskEvent with task_result set."""
 
     ok: bool = True
     task_id: str
@@ -433,7 +474,7 @@ class CurrentTarget(BaseModel):
     tg_no: int
     #: The slot letter (A-F, Clear, Monitor); None if no target_mapper entry maps tg_no.
     target_id: str | None = None
-    #: What PLDconfig.ini says is loaded in that slot.
+    #: The material in that slot (pld-service's target_names; PLDconfig.ini under legacy MI mode).
     target_name: str | None = None
 
 
@@ -523,6 +564,74 @@ class MoveTo(BaseModel):
     position: float
 
 
+class RheedOn(BaseModel):
+    """rheed_on's values for this call; None = the lab's (`[experiment.rheed]`)."""
+
+    hv_kv: float | None = Field(None, gt=0, le=30, description="Beam energy, kV")
+    filament_start_ma: float | None = Field(
+        None, gt=0, description="Filament current to start the emission search from, mA")
+    filament_max_ma: float | None = Field(
+        None, gt=0, description="The most the search raises the filament to, mA")
+    focus_ma: float | None = Field(None, description="Focus current, mA (depends on the alignment)")
+    deflection_x_ma: float | None = Field(None, description="Beam deflection X, mA (depends on the alignment)")
+    deflection_y_ma: float | None = Field(None, description="Beam deflection Y, mA (depends on the alignment)")
+    judge: Literal["agent", "person", "rule"] | None = Field(
+        None, description="Who says when the beam has saturated. agent: stop after filament and "
+                          "HV with the search open, for the calling agent to step "
+                          "(rheed_emission_step_up) and stop (finish_rheed_on) from the emission "
+                          "and the RHEED intensity, no confirmation; person: the same behind a "
+                          "rheed_emission pending confirmation; rule: the emission's first two "
+                          "digits decide by themselves. None = the lab's setting (agent)")
+
+
+class FinishRheedOn(BaseModel):
+    filament_ma: float | None = Field(
+        None, description="The filament current to stay at: one of the tried steps; None = where it is")
+
+
+class RheedGunResult(BaseModel):
+    message: str
+    #: The gun's readbacks at the end (filament_ma, hv_kv, emission_ua, focus_ma, x_ma, y_ma, on flags).
+    gun: dict = Field(default_factory=dict)
+    #: rheed_on: the filament current it settled on, and each step it tried: filament_ma,
+    #: emission_ua, and with a RHEED camera the image's pixel statistics (frame_intensity).
+    filament_ma: float | None = None
+    emission_steps: list[dict] = Field(default_factory=list)
+    saturation: str | None = None
+    #: rheed_on: the values it used (the lab's, with this call's overrides).
+    settings: dict = Field(default_factory=dict)
+    #: True while the emission search is open (judge agent or person; a person's is
+    #: also the pending `rheed_emission`).
+    searching: bool = False
+    #: Who judges (judged) the search: agent, person or rule.
+    judge: str | None = None
+
+
+class AddRheedBox(BaseModel):
+    """An integration box on the RHEED image, in pixels of the camera frame."""
+
+    x: int = Field(..., ge=0, description="Left edge, px")
+    y: int = Field(..., ge=0, description="Top edge, px")
+    width: int = Field(..., ge=4, description="Width, px (4 at least)")
+    height: int = Field(..., ge=4, description="Height, px (4 at least)")
+    label: str = Field("", description="What the box is on, e.g. 'specular', '(01) rod', 'background'")
+    stft: bool = Field(False, description="Also run the short-time FT over it (oscillation frequency)")
+
+
+class RemoveRheedBox(BaseModel):
+    bbox_id: int = Field(..., description="An agent box's id (from add_rheed_box); the operator's boxes are not removable here")
+
+
+class RheedBoxResult(BaseModel):
+    message: str
+    #: The box added or removed.
+    bbox_id: int | None = None
+    #: Every box on the integrator now: bbox_id -> {x, y, width, height}.
+    bboxes: dict[int, dict] = Field(default_factory=dict)
+    #: Labels of the agent boxes, by id.
+    labels: dict[int, str] = Field(default_factory=dict)
+
+
 class MoveMask(MoveTo):
     # For this move only; 0 = pld-service's default (50000 p/s, ACC/DEC 1000).
     speed_mm_s: float = Field(0.0, ge=0, description="Mask speed for this move, mm/s (pld-service caps it at 8.33); 0 = default")
@@ -568,16 +677,44 @@ class SetMfcControl(BaseModel):
     enabled: bool
 
 
-class SetPressure(BaseModel):
+class SetPressureSetpoint(BaseModel):
+    #: Torr. pld-service picks the regime from it (<= 2e-4 low, 3e-3..1 high).
     pressure: float
+    #: Return only once control regulates within `tolerance` of it (a regime switch and
+    #: the settling can take minutes), else as soon as pld-service has taken it.
+    wait: bool = False
+    #: Fraction of the setpoint the reading must come within, for `wait`.
+    tolerance: float = 0.1
+    #: How long `wait` waits before it gives up (the pressure is left as it is).
+    wait_timeout_s: float = 480.0
 
 
 class SetPressureControl(BaseModel):
     on: bool
 
 
+class PressureControlResult(BaseModel):
+    """Pressure control after set_pressure_control or set_pressure_setpoint, from
+    pld-service's state read after its reply."""
+
+    #: off, armed, switching or regulating (PldGas.pressure_control_state).
+    state: str
+    #: Torr; None with none set (off, armed).
+    setpoint: float | None = None
+    gauge: str = ""
+    #: pld-service's pressure_mode, e.g. "switching to high" or "high (PID)".
+    mode: str = ""
+    #: The control gauge's reading, Torr.
+    reading: float | None = None
+    #: pld-service's reply: what it did, e.g. the regime switch's plan.
+    message: str = ""
+
+
 class StartStorage(BaseModel):
+    #: The project the recording belongs to. It becomes the driver's project, as
+    #: register_project would make it (registered if new), unless this is a dry run.
     project_name: str
+    #: True: nothing is recorded; the result has a record_uuid but no storage_name.
     is_dryrun: bool = False
     # What to record. These map 1:1 onto storage.StorageRequest; the recipe used to
     # hardcode them, which meant a client could not ask for RHEED integrations
@@ -633,7 +770,7 @@ class ExperimentRecordId(BaseModel):
 
 class ToTemperature(BaseModel):
     temperature: float
-    ramp_rate: float = 20.0
+    ramp_rate: float | None = Field(None, gt=0, description="°C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm², 20 for >= 50 mm², 30 below; 10 with no substrate registered); left out, the limit itself")
     #: True: the task ends when the substrate arrives, and PASCAL takes no other
     #: command until then. False: the task ends once the ramp is set going, leaving
     #: the chamber free for other commands; read the temperature back to know when it
@@ -648,7 +785,7 @@ class TurnOffHeatingLaser(BaseModel):
 
 
 class CoolDown(BaseModel):
-    ramp_rate: float = 20.0
+    ramp_rate: float | None = Field(None, gt=0, description="°C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm², 20 for >= 50 mm², 30 below; 10 with no substrate registered); left out, the limit itself")
 
 
 class PerformPreablation(BaseModel):
@@ -705,7 +842,7 @@ class CancelTaskResult(BaseModel):
 
 class AnnealStep(BaseModel):
     temperature: float
-    ramp_rate: float = 20.0
+    ramp_rate: float | None = Field(None, gt=0, description="°C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm², 20 for >= 50 mm², 30 below; 10 with no substrate registered); left out, the limit itself")
     wait_time: float = 0.0
 
 
@@ -1060,6 +1197,9 @@ class ExperimentReadout(BaseModel):
     recording_name: str | None = None
     pending_confirmation: PendingConfirmation | None = None
     current_task: CurrentTask | None = None
+    #: The last task to finish and its result, until the next one finishes (a new
+    #: task starting leaves it). Check `last_task.task.id` against the TaskAck's.
+    last_task: FinishedTask | None = None
     # Experiment is a consumer of chamber/rheed/storage, so it can be up but unable
     # to drive anything because a source is down. Surface that rather than failing
     # opaquely mid-growth -- same reasoning as StorageReadout.deps_available.
@@ -1072,6 +1212,13 @@ class ExperimentReadout(BaseModel):
     center_mask_pos: float | None = None
     #: The last sequence this driver ran, while it runs and after (until the next).
     sequence: SequenceRun | None = None
+    #: rheed_on's emission search while it is open (judge agent or person), else None.
+    rheed_search: RheedSearch | None = None
+    #: The RHEED boxes agents drew (add_rheed_box; ids from 1000), with their labels:
+    #: the experiment node's record, checked against rheed.integrator at every
+    #: add/remove and every few seconds, and re-registered there after a rheed node
+    #: restart.
+    rheed_boxes: dict[int, RheedBoxInfo] = Field(default_factory=dict)
 
 
 class ExperimentState(ExperimentReadout, ServerStateBase):
@@ -1506,7 +1653,8 @@ __all__ = [
     "SampleList",
     "SetMfcControl",
     "SetMfcFlow",
-    "SetPressure",
+    "SetPressureSetpoint",
+    "PressureControlResult",
     "SetPressureControl",
     "SetRheedGain",
     "SetTarget",

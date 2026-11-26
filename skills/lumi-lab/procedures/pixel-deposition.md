@@ -19,7 +19,9 @@ aligned by `auto_align_center_mask` rather than by a person.
 
 4. `current_substrate`: which position is next. None left → the substrate is done.
 5. Align the mask (below), then `to_current_pixel`: mask and RHEED to the position.
-6. `set_pressure` (the person sets it on the real chamber, then `confirm`); read it back
+6. Pressure (SKILL.md §2): `set_pressure_control(on: true)` unless the state is already
+   `regulating`, then `set_pressure_setpoint` with `wait: true` (the person sets it on the
+   real chamber, then `confirm`); read it back
    and wait until it is within tolerance.
 7. `begin_set_laser_power` with the energy at the meter: set from today's laser test, no
    meter reading (skipped by the driver if already set).
@@ -28,13 +30,17 @@ aligned by `auto_align_center_mask` rather than by a person.
    (SKILL.md §3). Poll the temperature until it is within tolerance. **Snapshot: chamber `heated`.** If the temperature
    changed, align the mask again (thermal expansion moves the holder), then
    `to_current_pixel`.
-9. A person sets the excimer to ON and adjusts the RHEED gun and stage.
+9. A person sets the excimer to ON. `rheed_on` and its emission search if the gun is off
+   (`chamber.pld.chamber_state` `rheed.filament_on`; SKILL.md §2), then the person adjusts
+   the beam and stage.
    `begin_adjust_rheed_gain` → the person sets and confirms the gain. Look at
    `rheed.camera.image`: a good pattern for this position? If not, stop and say so.
    (Skipped while the RHEED is down for maintenance.)
 10. `perform_preablation` with `move_mask_to_block_position: false` (the mask is already
     over the position), `num_pulse` left out (the target's set amount). Wait.
-11. `start_storage`; it must return `ok`. With the RHEED down, `save_frame`, `save_ai`
+11. RHEED boxes: if there is no specular box (yours or the operator's), draw one with
+    `add_rheed_box`, and a background box (`reference/rheed.md` "Drawing your own
+    boxes"). Then `start_storage`; it must return `ok`. With the RHEED down, `save_frame`, `save_ai`
     and `save_integration` all `false`.
 12. `perform_deposition`. **Snapshots: chamber + RHEED `depo_start`, RHEED `depo_mid`,
     chamber + RHEED `depo_end`.** Stop on anything in SKILL.md §4.
@@ -59,6 +65,6 @@ whether to align by hand (`begin_check_mask_center`).
 15. A person sets the excimer to standby.
 16. `cool_down` at the substrate's ramp rate in the right atmosphere. Wait until
     `get_current_temperature` reads 165 °C or less. **Snapshot: chamber `cooled`.**
-17. `turn_off_heating_laser`, only now (SKILL.md §1).
+17. `turn_off_heating_laser`, only now (SKILL.md §1), then `rheed_off`.
 18. Report: `list_samples` with this substrate's `substrate_id` (every grown position
     should say so; left out, it lists every substrate), plus what each snapshot showed.

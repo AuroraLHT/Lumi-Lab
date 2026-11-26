@@ -96,7 +96,7 @@ REQUIRED = [
     "experiment.driver.get_mfc_status",
     "experiment.driver.set_mfc_flow",
     "experiment.driver.set_mfc_control",
-    "experiment.driver.set_pressure",
+    "experiment.driver.set_pressure_setpoint",
     "experiment.driver.set_pressure_control",
     "experiment.driver.initiate_heating_laser",
     "experiment.driver.turn_off_heating_laser",
@@ -271,7 +271,7 @@ async def heater(mcp: Mcp, checks: Checks, args: argparse.Namespace) -> None:
     # to cut the laser above 165 degC. Harmless on the simulator, never on the chamber.
     await mcp.expect("experiment.driver.turn_off_heating_laser", force=True)
     await asyncio.sleep(2.0)  # let the log catch up with the heater going off
-    ok, payload = await mcp.call("experiment.driver.to_temperature", temperature=300.0, ramp_rate=20.0)
+    ok, payload = await mcp.call("experiment.driver.to_temperature", temperature=300.0)
     checks.ok(not ok, "to_temperature is refused while the heating laser is off",
               f"returned success: {payload}")
     checks.ok(not ok and "initiate_heating_laser" in str(payload),
@@ -332,8 +332,9 @@ async def gas(mcp: Mcp, checks: Checks, args: argparse.Namespace) -> None:
 
     phase("6. gas: closed loop holds a pressure setpoint")
     target = args.pressure
-    await mcp.expect("experiment.driver.set_pressure", pressure=target)
+    # Control first, then the setpoint (pld-service refuses a setpoint while it is off).
     await mcp.expect("experiment.driver.set_pressure_control", on=True)
+    await mcp.expect("experiment.driver.set_pressure_setpoint", pressure=target)
 
     # Two claims at once, and both have to hold together: the pressure is at the
     # setpoint, and the *controller* is what is holding it there. Checking only the

@@ -4,7 +4,7 @@
 # Editing this file by hand will be overwritten, and `lumi-codegen --check` (which
 # CI runs) will fail. Change the contract instead.
 #
-# contract_hash: 98ccd27487ab29dc
+# contract_hash: 18fe15180d135bf5
 
 """Generated clients for the rheed node."""
 
@@ -19,7 +19,7 @@ from lumi.base.mq import CapabilityClient
 from lumi.contracts.rheed import CAMERA, INTEGRATOR, STFT, VIDEO
 from lumi.contracts.payloads.camera import CameraConfig, CameraState, FragmentIndex, FragmentsSize, ImageMeta, InitialFragmentsMeta, VideoFragmentMeta, VideoState
 from lumi.contracts.payloads.common import Ack, Empty
-from lumi.contracts.payloads.rheed import BBoxId, BBoxList, IntegrationCache, IntegrationSample, IntegratorState, RegisterBBox, STFTCache, STFTSample, STFTState
+from lumi.contracts.payloads.rheed import BBoxId, BBoxList, IntegrationCache, IntegrationCacheQuery, IntegrationSample, IntegratorState, RegisterBBox, STFTCache, STFTCacheQuery, STFTSample, STFTState
 
 
 class RheedCameraClient(CapabilityClient):
@@ -145,8 +145,8 @@ class RheedIntegratorClient(CapabilityClient):
         """Call integrator.bboxes."""
         return await self.call("bboxes")  # type: ignore[return-value]
 
-    async def cache(self, req: BBoxId) -> IntegrationCache:
-        """Call integrator.cache."""
+    async def cache(self, req: IntegrationCacheQuery) -> IntegrationCache:
+        """The box's retained samples (up to 1000 frames), oldest first; max_points and since ask for fewer."""
         return await self.call("cache", req)  # type: ignore[return-value]
 
     async def on_integration(
@@ -194,8 +194,8 @@ class RheedStftClient(CapabilityClient):
         """Call stft.bboxes."""
         return await self.call("bboxes")  # type: ignore[return-value]
 
-    async def cache(self, req: BBoxId) -> STFTCache:
-        """Call stft.cache."""
+    async def cache(self, req: STFTCacheQuery) -> STFTCache:
+        """The box's retained spectra, oldest first; max_points asks for fewer."""
         return await self.call("cache", req)  # type: ignore[return-value]
 
     async def on_stft(

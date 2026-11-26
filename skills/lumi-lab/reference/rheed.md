@@ -3,7 +3,8 @@
 ## Where to look
 
 - Live: `rheed.camera.image` (the picture), `rheed.integrator.cache` (intensity in each
-  box the operator drew, over time: these are the oscillations).
+  box, over time: these are the oscillations). Boxes 0-999 are the operator's (the
+  Deck); 1000 and up are the ones you drew (`add_rheed_box`).
 - Recorded: `storage.archive.recording_frame_jpeg` for a frame,
   `storage.archive.recording_integration` for the traces.
 - Expected: `simulation.rheed_sim.simulate_rheed_jpeg` / `rheed_spots`.
@@ -31,8 +32,10 @@
 
 ### Which box is the specular spot
 
-`rheed.integrator.bboxes` lists the boxes the operator drew; `rheed.integrator.cache`
-gives each one's intensity over time. The boxes carry no role, so work it out:
+`rheed.integrator.bboxes` lists the boxes; `rheed.integrator.cache` gives each one's
+intensity over time (the last 1000 frames: ask for `max_points`, or `since` a time, to
+get less). The operator's boxes carry no role, so work it out (yours carry the
+label you gave them, in `add_rheed_box`'s result):
 
 1. **Look.** Take `rheed.camera.image` and find each box on it. The specular spot is
    the one on the mirror line of the pattern: on the zeroth Laue circle, centred
@@ -44,6 +47,28 @@ gives each one's intensity over time. The boxes carry no role, so work it out:
    match the pattern's spacing too, not that one point alone.
 3. If the two disagree, or no box covers the specular spot, say so and ask the person
    rather than reading oscillations off the wrong box.
+
+### Drawing your own boxes
+
+Draw them with `experiment.driver.add_rheed_box` before `start_storage`, with the gun on
+and the beam on the sample, so the whole growth is recorded:
+
+1. **Find the spots** as above: `rheed.camera.image` and `rheed_spots`'s `specular_px`
+   (and the first-order rods' positions).
+2. **Specular** (`label: "specular"`, `stft: true`): centred on the specular spot, a
+   little larger than the spot itself (about 1.5x its visible size; 20-40 px on the lab
+   camera), so a small drift of the pattern keeps it inside. This is the oscillation the
+   growth is read by.
+3. **A first-order rod** (`label: "(01) rod"`, optional): the same way, on one side streak.
+4. **Background** (`label: "background"`): a dark patch away from every spot and streak,
+   above the shadow edge's glow, to tell a beam or gain change from growth.
+5. **Check**: take `rheed.camera.image` again and `rheed.integrator.cache` for each box;
+   the specular box must read well above the background. Look at the trace for a few
+   seconds: a steady value, not one at full scale.
+
+Never cover or replace the operator's boxes: add yours beside them. A box that missed:
+`remove_rheed_box` and draw it again, before `start_storage` (removal is refused while
+recording, since it cuts the trace). Say which boxes you drew, with their labels.
 
 ## Using the simulator
 

@@ -1243,8 +1243,15 @@
                     },
                     "pressure_control": {
                       "default": false,
+                      "description": "regulating (not while armed or switching)",
                       "title": "Pressure Control",
                       "type": "boolean"
+                    },
+                    "pressure_control_state": {
+                      "default": "off",
+                      "description": "off, armed, switching or regulating",
+                      "title": "Pressure Control State",
+                      "type": "string"
                     },
                     "pressure_gauge": {
                       "default": "",
@@ -1290,7 +1297,7 @@
                     },
                     "pressure_mode": {
                       "default": "",
-                      "description": "low (table), high (PID), auto-tune, switching to low|high",
+                      "description": "off, armed, switching to low|high, then low (table), high (PID) or auto-tune",
                       "title": "Pressure Mode",
                       "type": "string"
                     },
@@ -1304,7 +1311,7 @@
                         }
                       ],
                       "default": null,
-                      "description": "Torr; None when not set",
+                      "description": "Torr; None when not set (off or armed)",
                       "title": "Pressure Setpoint"
                     },
                     "pressure_switch_step": {
@@ -1791,6 +1798,12 @@
                       ],
                       "default": null,
                       "title": "Sample Angle"
+                    },
+                    "sample_too_low": {
+                      "default": false,
+                      "description": "The sample is below its height threshold (Z sensor; set by hand): the PLC will not move Mask1, and pld-service refuses Mask1 moves and homing until a person raises it",
+                      "title": "Sample Too Low",
+                      "type": "boolean"
                     },
                     "target": {
                       "default": "",
@@ -2553,6 +2566,81 @@
                 }
               },
               "title": "PldChamberState",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "get_settings",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "$defs": {
+                "PldSetting": {
+                  "description": "One of pld-service's settings (its .ini), as the service has it in effect.",
+                  "properties": {
+                    "help": {
+                      "default": "",
+                      "title": "Help",
+                      "type": "string"
+                    },
+                    "key": {
+                      "title": "Key",
+                      "type": "string"
+                    },
+                    "live": {
+                      "default": false,
+                      "title": "Live",
+                      "type": "boolean"
+                    },
+                    "pending": {
+                      "default": "",
+                      "title": "Pending",
+                      "type": "string"
+                    },
+                    "section": {
+                      "title": "Section",
+                      "type": "string"
+                    },
+                    "unit": {
+                      "default": "",
+                      "title": "Unit",
+                      "type": "string"
+                    },
+                    "value": {
+                      "default": "",
+                      "title": "Value",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "section",
+                    "key"
+                  ],
+                  "title": "PldSetting",
+                  "type": "object"
+                }
+              },
+              "properties": {
+                "file": {
+                  "default": "",
+                  "title": "File",
+                  "type": "string"
+                },
+                "settings": {
+                  "items": {
+                    "$ref": "#/$defs/PldSetting"
+                  },
+                  "title": "Settings",
+                  "type": "array"
+                }
+              },
+              "title": "PldSettings",
               "type": "object"
             },
             "response_codec": "json"
@@ -3815,7 +3903,7 @@
                 },
                 "tolerance": {
                   "default": 0.0,
-                  "description": "C; 0 = the service default, 5 C",
+                  "description": "C; 0 = the service default, 0.5 C",
                   "title": "Tolerance",
                   "type": "number"
                 },
@@ -5325,6 +5413,7 @@
             "cancel_sequence": "chamber.pld.req.cancel_sequence",
             "chamber_state": "chamber.pld.req.chamber_state",
             "fire_laser": "chamber.pld.req.fire_laser",
+            "get_settings": "chamber.pld.req.get_settings",
             "home_axis": "chamber.pld.req.home_axis",
             "laser_off": "chamber.pld.req.laser_off",
             "laser_on": "chamber.pld.req.laser_on",
@@ -5998,8 +6087,15 @@
                   },
                   "pressure_control": {
                     "default": false,
+                    "description": "regulating (not while armed or switching)",
                     "title": "Pressure Control",
                     "type": "boolean"
+                  },
+                  "pressure_control_state": {
+                    "default": "off",
+                    "description": "off, armed, switching or regulating",
+                    "title": "Pressure Control State",
+                    "type": "string"
                   },
                   "pressure_gauge": {
                     "default": "",
@@ -6045,7 +6141,7 @@
                   },
                   "pressure_mode": {
                     "default": "",
-                    "description": "low (table), high (PID), auto-tune, switching to low|high",
+                    "description": "off, armed, switching to low|high, then low (table), high (PID) or auto-tune",
                     "title": "Pressure Mode",
                     "type": "string"
                   },
@@ -6059,7 +6155,7 @@
                       }
                     ],
                     "default": null,
-                    "description": "Torr; None when not set",
+                    "description": "Torr; None when not set (off or armed)",
                     "title": "Pressure Setpoint"
                   },
                   "pressure_switch_step": {
@@ -6546,6 +6642,12 @@
                     ],
                     "default": null,
                     "title": "Sample Angle"
+                  },
+                  "sample_too_low": {
+                    "default": false,
+                    "description": "The sample is below its height threshold (Z sensor; set by hand): the PLC will not move Mask1, and pld-service refuses Mask1 moves and homing until a person raises it",
+                    "title": "Sample Too Low",
+                    "type": "boolean"
                   },
                   "target": {
                     "default": "",
@@ -7610,6 +7712,18 @@
                   ],
                   "default": null,
                   "title": "Frame Idx"
+                },
+                "full_scale": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Full Scale"
                 },
                 "shape": {
                   "anyOf": [
@@ -17777,6 +17891,605 @@
             "response_codec": "json"
           },
           {
+            "name": "rheed_on",
+            "request": {
+              "description": "rheed_on's values for this call; None = the lab's (`[experiment.rheed]`).",
+              "properties": {
+                "deflection_x_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Beam deflection X, mA (depends on the alignment)",
+                  "title": "Deflection X Ma"
+                },
+                "deflection_y_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Beam deflection Y, mA (depends on the alignment)",
+                  "title": "Deflection Y Ma"
+                },
+                "filament_max_ma": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The most the search raises the filament to, mA",
+                  "title": "Filament Max Ma"
+                },
+                "filament_start_ma": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Filament current to start the emission search from, mA",
+                  "title": "Filament Start Ma"
+                },
+                "focus_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Focus current, mA (depends on the alignment)",
+                  "title": "Focus Ma"
+                },
+                "hv_kv": {
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "maximum": 30,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Beam energy, kV",
+                  "title": "Hv Kv"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "enum": [
+                        "agent",
+                        "person",
+                        "rule"
+                      ],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "Who says when the beam has saturated. agent: stop after filament and HV with the search open, for the calling agent to step (rheed_emission_step_up) and stop (finish_rheed_on) from the emission and the RHEED intensity, no confirmation; person: the same behind a rheed_emission pending confirmation; rule: the emission's first two digits decide by themselves. None = the lab's setting (agent)",
+                  "title": "Judge"
+                }
+              },
+              "title": "RheedOn",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "emission_steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Emission Steps",
+                  "type": "array"
+                },
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Ma"
+                },
+                "gun": {
+                  "additionalProperties": true,
+                  "title": "Gun",
+                  "type": "object"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Judge"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "searching": {
+                  "default": false,
+                  "title": "Searching",
+                  "type": "boolean"
+                },
+                "settings": {
+                  "additionalProperties": true,
+                  "title": "Settings",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedGunResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_emission_step_up",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "emission_steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Emission Steps",
+                  "type": "array"
+                },
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Ma"
+                },
+                "gun": {
+                  "additionalProperties": true,
+                  "title": "Gun",
+                  "type": "object"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Judge"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "searching": {
+                  "default": false,
+                  "title": "Searching",
+                  "type": "boolean"
+                },
+                "settings": {
+                  "additionalProperties": true,
+                  "title": "Settings",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedGunResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "finish_rheed_on",
+            "request": {
+              "properties": {
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "The filament current to stay at: one of the tried steps; None = where it is",
+                  "title": "Filament Ma"
+                }
+              },
+              "title": "FinishRheedOn",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "emission_steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Emission Steps",
+                  "type": "array"
+                },
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Ma"
+                },
+                "gun": {
+                  "additionalProperties": true,
+                  "title": "Gun",
+                  "type": "object"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Judge"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "searching": {
+                  "default": false,
+                  "title": "Searching",
+                  "type": "boolean"
+                },
+                "settings": {
+                  "additionalProperties": true,
+                  "title": "Settings",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedGunResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "rheed_off",
+            "request": {
+              "description": "No payload. Used for ops that take or return nothing.",
+              "properties": {},
+              "title": "Empty",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "emission_steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Emission Steps",
+                  "type": "array"
+                },
+                "filament_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Ma"
+                },
+                "gun": {
+                  "additionalProperties": true,
+                  "title": "Gun",
+                  "type": "object"
+                },
+                "judge": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Judge"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "searching": {
+                  "default": false,
+                  "title": "Searching",
+                  "type": "boolean"
+                },
+                "settings": {
+                  "additionalProperties": true,
+                  "title": "Settings",
+                  "type": "object"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedGunResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "add_rheed_box",
+            "request": {
+              "description": "An integration box on the RHEED image, in pixels of the camera frame.",
+              "properties": {
+                "height": {
+                  "description": "Height, px (4 at least)",
+                  "minimum": 4,
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "label": {
+                  "default": "",
+                  "description": "What the box is on, e.g. 'specular', '(01) rod', 'background'",
+                  "title": "Label",
+                  "type": "string"
+                },
+                "stft": {
+                  "default": false,
+                  "description": "Also run the short-time FT over it (oscillation frequency)",
+                  "title": "Stft",
+                  "type": "boolean"
+                },
+                "width": {
+                  "description": "Width, px (4 at least)",
+                  "minimum": 4,
+                  "title": "Width",
+                  "type": "integer"
+                },
+                "x": {
+                  "description": "Left edge, px",
+                  "minimum": 0,
+                  "title": "X",
+                  "type": "integer"
+                },
+                "y": {
+                  "description": "Top edge, px",
+                  "minimum": 0,
+                  "title": "Y",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "title": "AddRheedBox",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "bbox_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Bbox Id"
+                },
+                "bboxes": {
+                  "additionalProperties": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Bboxes",
+                  "type": "object"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Labels",
+                  "type": "object"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedBoxResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "remove_rheed_box",
+            "request": {
+              "properties": {
+                "bbox_id": {
+                  "description": "An agent box's id (from add_rheed_box); the operator's boxes are not removable here",
+                  "title": "Bbox Id",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "bbox_id"
+              ],
+              "title": "RemoveRheedBox",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "properties": {
+                "bbox_id": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Bbox Id"
+                },
+                "bboxes": {
+                  "additionalProperties": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Bboxes",
+                  "type": "object"
+                },
+                "labels": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Labels",
+                  "type": "object"
+                },
+                "message": {
+                  "title": "Message",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "message"
+              ],
+              "title": "RheedBoxResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
             "name": "rotate_sample_to",
             "request": {
               "additionalProperties": false,
@@ -17979,36 +18692,6 @@
             "response_codec": "json"
           },
           {
-            "name": "set_pressure",
-            "request": {
-              "properties": {
-                "pressure": {
-                  "title": "Pressure",
-                  "type": "number"
-                }
-              },
-              "required": [
-                "pressure"
-              ],
-              "title": "SetPressure",
-              "type": "object"
-            },
-            "request_codec": "json",
-            "response": {
-              "description": "A bare success acknowledgement.",
-              "properties": {
-                "ok": {
-                  "default": true,
-                  "title": "Ok",
-                  "type": "boolean"
-                }
-              },
-              "title": "Ack",
-              "type": "object"
-            },
-            "response_codec": "json"
-          },
-          {
             "name": "set_pressure_control",
             "request": {
               "properties": {
@@ -18025,15 +18708,142 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "A bare success acknowledgement.",
+              "description": "Pressure control after set_pressure_control or set_pressure_setpoint, from\npld-service's state read after its reply.",
               "properties": {
-                "ok": {
-                  "default": true,
-                  "title": "Ok",
-                  "type": "boolean"
+                "gauge": {
+                  "default": "",
+                  "title": "Gauge",
+                  "type": "string"
+                },
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "mode": {
+                  "default": "",
+                  "title": "Mode",
+                  "type": "string"
+                },
+                "reading": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Reading"
+                },
+                "setpoint": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Setpoint"
+                },
+                "state": {
+                  "title": "State",
+                  "type": "string"
                 }
               },
-              "title": "Ack",
+              "required": [
+                "state"
+              ],
+              "title": "PressureControlResult",
+              "type": "object"
+            },
+            "response_codec": "json"
+          },
+          {
+            "name": "set_pressure_setpoint",
+            "request": {
+              "properties": {
+                "pressure": {
+                  "title": "Pressure",
+                  "type": "number"
+                },
+                "tolerance": {
+                  "default": 0.1,
+                  "title": "Tolerance",
+                  "type": "number"
+                },
+                "wait": {
+                  "default": false,
+                  "title": "Wait",
+                  "type": "boolean"
+                },
+                "wait_timeout_s": {
+                  "default": 480.0,
+                  "title": "Wait Timeout S",
+                  "type": "number"
+                }
+              },
+              "required": [
+                "pressure"
+              ],
+              "title": "SetPressureSetpoint",
+              "type": "object"
+            },
+            "request_codec": "json",
+            "response": {
+              "description": "Pressure control after set_pressure_control or set_pressure_setpoint, from\npld-service's state read after its reply.",
+              "properties": {
+                "gauge": {
+                  "default": "",
+                  "title": "Gauge",
+                  "type": "string"
+                },
+                "message": {
+                  "default": "",
+                  "title": "Message",
+                  "type": "string"
+                },
+                "mode": {
+                  "default": "",
+                  "title": "Mode",
+                  "type": "string"
+                },
+                "reading": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Reading"
+                },
+                "setpoint": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Setpoint"
+                },
+                "state": {
+                  "title": "State",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "title": "PressureControlResult",
               "type": "object"
             },
             "response_codec": "json"
@@ -18419,9 +19229,18 @@
             "request": {
               "properties": {
                 "ramp_rate": {
-                  "default": 20.0,
-                  "title": "Ramp Rate",
-                  "type": "number"
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "\u00b0C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm\u00b2, 20 for >= 50 mm\u00b2, 30 below; 10 with no substrate registered); left out, the limit itself",
+                  "title": "Ramp Rate"
                 },
                 "temperature": {
                   "title": "Temperature",
@@ -18441,7 +19260,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -18466,9 +19285,18 @@
             "request": {
               "properties": {
                 "ramp_rate": {
-                  "default": 20.0,
-                  "title": "Ramp Rate",
-                  "type": "number"
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "\u00b0C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm\u00b2, 20 for >= 50 mm\u00b2, 30 below; 10 with no substrate registered); left out, the limit itself",
+                  "title": "Ramp Rate"
                 }
               },
               "title": "CoolDown",
@@ -18476,7 +19304,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -18551,7 +19379,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -18606,7 +19434,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -18633,9 +19461,18 @@
                 "AnnealStep": {
                   "properties": {
                     "ramp_rate": {
-                      "default": 20.0,
-                      "title": "Ramp Rate",
-                      "type": "number"
+                      "anyOf": [
+                        {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "\u00b0C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm\u00b2, 20 for >= 50 mm\u00b2, 30 below; 10 with no substrate registered); left out, the limit itself",
+                      "title": "Ramp Rate"
                     },
                     "temperature": {
                       "title": "Temperature",
@@ -18671,7 +19508,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -18911,7 +19748,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -19930,7 +20767,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -20554,7 +21391,7 @@
             },
             "request_codec": "json",
             "response": {
-              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing, or a TaskEvent with task_result set.",
+              "description": "Acknowledges a long-running op was started. Its completion is observed via\nstate.current_task clearing (the outcome is then state.last_task, with this id),\nor a TaskEvent with task_result set.",
               "properties": {
                 "ok": {
                   "default": true,
@@ -22381,6 +23218,7 @@
           "request_pattern": "experiment.driver.req.*",
           "requests": {
             "add_measurement": "experiment.driver.req.add_measurement",
+            "add_rheed_box": "experiment.driver.req.add_rheed_box",
             "anneal": "experiment.driver.req.anneal",
             "approve_sequence": "experiment.driver.req.approve_sequence",
             "attach_measurement_file": "experiment.driver.req.attach_measurement_file",
@@ -22406,6 +23244,7 @@
             "end_storage": "experiment.driver.req.end_storage",
             "finish_current_pixel": "experiment.driver.req.finish_current_pixel",
             "finish_experiment_record": "experiment.driver.req.finish_experiment_record",
+            "finish_rheed_on": "experiment.driver.req.finish_rheed_on",
             "finish_substrate": "experiment.driver.req.finish_substrate",
             "fire_laser_test": "experiment.driver.req.fire_laser_test",
             "get_current_log": "experiment.driver.req.get_current_log",
@@ -22445,6 +23284,7 @@
             "perform_preablation": "experiment.driver.req.perform_preablation",
             "register_project": "experiment.driver.req.register_project",
             "register_substrate": "experiment.driver.req.register_substrate",
+            "remove_rheed_box": "experiment.driver.req.remove_rheed_box",
             "reopen_position": "experiment.driver.req.reopen_position",
             "resolve_pixel_check": "experiment.driver.req.resolve_pixel_check",
             "resume_sequence": "experiment.driver.req.resume_sequence",
@@ -22456,6 +23296,9 @@
             "retire_record": "experiment.driver.req.retire_record",
             "retire_snapshot": "experiment.driver.req.retire_snapshot",
             "retire_substrate": "experiment.driver.req.retire_substrate",
+            "rheed_emission_step_up": "experiment.driver.req.rheed_emission_step_up",
+            "rheed_off": "experiment.driver.req.rheed_off",
+            "rheed_on": "experiment.driver.req.rheed_on",
             "rotate_sample_by": "experiment.driver.req.rotate_sample_by",
             "rotate_sample_to": "experiment.driver.req.rotate_sample_to",
             "run_sequence": "experiment.driver.req.run_sequence",
@@ -22466,8 +23309,8 @@
             "set_laser_hv": "experiment.driver.req.set_laser_hv",
             "set_mfc_control": "experiment.driver.req.set_mfc_control",
             "set_mfc_flow": "experiment.driver.req.set_mfc_flow",
-            "set_pressure": "experiment.driver.req.set_pressure",
             "set_pressure_control": "experiment.driver.req.set_pressure_control",
+            "set_pressure_setpoint": "experiment.driver.req.set_pressure_setpoint",
             "set_rheed_gain": "experiment.driver.req.set_rheed_gain",
             "set_target": "experiment.driver.req.set_target",
             "set_target_preablation": "experiment.driver.req.set_target_preablation",
@@ -22526,6 +23369,30 @@
               "title": "CurrentTask",
               "type": "object"
             },
+            "FinishedTask": {
+              "description": "The last long-running op to finish, and how: TaskEvent's `finished_task` and\n`task_result`, kept in the readout for a client that polls state rather than\nreading the update channel (an MCP agent).",
+              "properties": {
+                "finished_at": {
+                  "title": "Finished At",
+                  "type": "number"
+                },
+                "result": {
+                  "additionalProperties": true,
+                  "title": "Result",
+                  "type": "object"
+                },
+                "task": {
+                  "$ref": "#/$defs/CurrentTask"
+                }
+              },
+              "required": [
+                "task",
+                "result",
+                "finished_at"
+              ],
+              "title": "FinishedTask",
+              "type": "object"
+            },
             "PendingConfirmation": {
               "properties": {
                 "id": {
@@ -22552,6 +23419,96 @@
                 "requested_at"
               ],
               "title": "PendingConfirmation",
+              "type": "object"
+            },
+            "RheedBoxInfo": {
+              "description": "An integration box an agent drew (add_rheed_box). Its trace is rheed.integrator's.",
+              "properties": {
+                "height": {
+                  "title": "Height",
+                  "type": "integer"
+                },
+                "label": {
+                  "default": "",
+                  "title": "Label",
+                  "type": "string"
+                },
+                "stft": {
+                  "default": false,
+                  "title": "Stft",
+                  "type": "boolean"
+                },
+                "width": {
+                  "title": "Width",
+                  "type": "integer"
+                },
+                "x": {
+                  "title": "X",
+                  "type": "integer"
+                },
+                "y": {
+                  "title": "Y",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "x",
+                "y",
+                "width",
+                "height"
+              ],
+              "title": "RheedBoxInfo",
+              "type": "object"
+            },
+            "RheedSearch": {
+              "description": "rheed_on's open emission search, whoever judges it: what a UI shows with Stop\nhere (finish_rheed_on at a step) and Abort (rheed_off).",
+              "properties": {
+                "filament_max_ma": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Filament Max Ma"
+                },
+                "judge": {
+                  "title": "Judge",
+                  "type": "string"
+                },
+                "saturation": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Saturation"
+                },
+                "started_at": {
+                  "title": "Started At",
+                  "type": "number"
+                },
+                "steps": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "title": "Steps",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "judge",
+                "started_at"
+              ],
+              "title": "RheedSearch",
               "type": "object"
             },
             "SequenceLayer": {
@@ -22864,6 +23821,17 @@
               "description": "Pulse energy last checked for, mJ",
               "title": "Laser Power Set"
             },
+            "last_task": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FinishedTask"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
             "mode": {
               "default": "idle",
               "title": "Mode",
@@ -22927,6 +23895,24 @@
               ],
               "default": null,
               "title": "Recording Name"
+            },
+            "rheed_boxes": {
+              "additionalProperties": {
+                "$ref": "#/$defs/RheedBoxInfo"
+              },
+              "title": "Rheed Boxes",
+              "type": "object"
+            },
+            "rheed_search": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RheedSearch"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             },
             "sequence": {
               "anyOf": [
@@ -23017,9 +24003,99 @@
                 ],
                 "title": "PendingConfirmation",
                 "type": "object"
+              },
+              "RheedBoxInfo": {
+                "description": "An integration box an agent drew (add_rheed_box). Its trace is rheed.integrator's.",
+                "properties": {
+                  "height": {
+                    "title": "Height",
+                    "type": "integer"
+                  },
+                  "label": {
+                    "default": "",
+                    "title": "Label",
+                    "type": "string"
+                  },
+                  "stft": {
+                    "default": false,
+                    "title": "Stft",
+                    "type": "boolean"
+                  },
+                  "width": {
+                    "title": "Width",
+                    "type": "integer"
+                  },
+                  "x": {
+                    "title": "X",
+                    "type": "integer"
+                  },
+                  "y": {
+                    "title": "Y",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "title": "RheedBoxInfo",
+                "type": "object"
+              },
+              "RheedSearch": {
+                "description": "rheed_on's open emission search, whoever judges it: what a UI shows with Stop\nhere (finish_rheed_on at a step) and Abort (rheed_off).",
+                "properties": {
+                  "filament_max_ma": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Filament Max Ma"
+                  },
+                  "judge": {
+                    "title": "Judge",
+                    "type": "string"
+                  },
+                  "saturation": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "title": "Saturation"
+                  },
+                  "started_at": {
+                    "title": "Started At",
+                    "type": "number"
+                  },
+                  "steps": {
+                    "items": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    },
+                    "title": "Steps",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "judge",
+                  "started_at"
+                ],
+                "title": "RheedSearch",
+                "type": "object"
               }
             },
-            "description": "Pushed on the update channel whenever pending_confirmation or current_task\nchanges -- a client that is already connected does not have to poll state in a\nloop to notice a gate opened or a long-running op finished.\n\n`pending_confirmation` and `current_task` are always a full snapshot of both as\nof this event, so None means there is none, not \"unchanged\". `task_result` is\nset only on the one event of a long-running op finishing, with `finished_task`\nnaming the op.",
+            "description": "Pushed on the update channel whenever pending_confirmation, current_task or\nrheed_search changes -- a client that is already connected does not have to poll state in a\nloop to notice a gate opened or a long-running op finished.\n\n`pending_confirmation`, `current_task` and `rheed_search` are always a full\nsnapshot as of this event, so None means there is none, not \"unchanged\". `task_result` is\nset only on the one event of a long-running op finishing, with `finished_task`\nnaming the op.",
             "properties": {
               "current_task": {
                 "anyOf": [
@@ -23047,6 +24123,24 @@
                 "anyOf": [
                   {
                     "$ref": "#/$defs/PendingConfirmation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "rheed_boxes": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/RheedBoxInfo"
+                },
+                "title": "Rheed Boxes",
+                "type": "object"
+              },
+              "rheed_search": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/RheedSearch"
                   },
                   {
                     "type": "null"
@@ -23120,6 +24214,18 @@
                   ],
                   "default": null,
                   "title": "Frame Idx"
+                },
+                "full_scale": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Full Scale"
                 },
                 "shape": {
                   "anyOf": [
@@ -23553,6 +24659,18 @@
                 ],
                 "default": null,
                 "title": "Frame Idx"
+              },
+              "full_scale": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Full Scale"
               },
               "shape": {
                 "anyOf": [
@@ -24000,16 +25118,42 @@
           {
             "name": "cache",
             "request": {
+              "description": "The integrator keeps the last 1000 frames per box; ask for less.",
               "properties": {
                 "bbox_id": {
                   "title": "Bbox Id",
                   "type": "integer"
+                },
+                "max_points": {
+                  "anyOf": [
+                    {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Max Points"
+                },
+                "since": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Since"
                 }
               },
               "required": [
                 "bbox_id"
               ],
-              "title": "BBoxId",
+              "title": "IntegrationCacheQuery",
               "type": "object"
             },
             "request_codec": "json",
@@ -24485,12 +25629,25 @@
                 "bbox_id": {
                   "title": "Bbox Id",
                   "type": "integer"
+                },
+                "max_points": {
+                  "anyOf": [
+                    {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Max Points"
                 }
               },
               "required": [
                 "bbox_id"
               ],
-              "title": "BBoxId",
+              "title": "STFTCacheQuery",
               "type": "object"
             },
             "request_codec": "json",

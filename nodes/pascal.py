@@ -37,8 +37,8 @@ from lumi.pascal.handlers import (
     FiducialHandler,
     MIModeHandler,
 )
-from lumi.contracts.chamber import MI_MODE, PLD
-from lumi.contracts.payloads.chamber import MIModeReadout
+from lumi.contracts.chamber import CONFIG, MI_MODE, PLD
+from lumi.contracts.payloads.chamber import ChamberConfigReadout, MIModeReadout
 from lumi.contracts.payloads.pld import PldReadout
 from lumi.pascal.hardware import (
     PldSceneSource,
@@ -66,7 +66,9 @@ def build(args: argparse.Namespace) -> EquipmentNode:
             raise SystemExit("--src path needs --log: the folder this node writes the growth log into")
         Path(args.log).mkdir(parents=True, exist_ok=True)
     log_reader = build_log_reader(args.src, args.log)
-    config_reader = build_config_reader(args.src)
+    # PLD Controller's PLDconfig.ini is MI mode's: pld-service keeps its own settings,
+    # target names included (chamber.pld.get_settings), so the pld driver reads none of it.
+    config_reader = build_config_reader(args.src) if args.use_legacy_mi_mode else None
     sim_workers: list = []
     drain_hooks: list = []
     model = None
@@ -101,7 +103,8 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     if model is None and pld_handler is not None and args.camera == "sim":
         # A pld-service twin with no webcam: the sim camera's overlay follows the service.
         model = PldSceneSource(pld_handler.state_monitor)
-    camera, _, _ = build_camera(args.src, model=model, kind=args.camera)
+    camera_kind = args.camera or ("webcam" if args.src == "path" else "sim")  # as build_camera picks
+    camera, _, _ = build_camera(args.src, model=model, kind=camera_kind)
 
     # The camera's in-process fan-out: one grab feeds every consumer. The stream is
     # served from the encoder's output, not from a camera queue directly, so `frames`
@@ -110,7 +113,8 @@ def build(args: argparse.Namespace) -> EquipmentNode:
     jpeg_encoder = build_jpeg_encoder(camera, frames_q)
     # A second consumer of the same grab: the marker statistics are measured on the
     # camera's own pixels, not on the JPEG the browser is shown.
-    fiducial_store, fiducial_stats = build_fiducials(camera.register_queue("fiducials"))
+    fiducial_store, fiducial_stats = build_fiducials(camera.register_queue("fiducials"),
+                                                     simulated=camera_kind == "sim")
 
     node = EquipmentNode(
         CHAMBER,
@@ -126,7 +130,13 @@ def build(args: argparse.Namespace) -> EquipmentNode:
         live_path=lambda: getattr(log_reader, "_log_file_path", None),
     )
     node.mount("log", ChamberLogHandler(log_reader, getattr(log_reader, "queue", None), log_archive))
-    node.mount("config", ChamberConfigHandler(config_reader))
+    if config_reader is not None:
+        node.mount("config", ChamberConfigHandler(config_reader))
+    else:
+        node.mount("config", DisabledCapability(
+            CONFIG, "PLDconfig.ini is legacy MI mode's: under pld-service the chamber's settings, "
+                    "the target names among them, are chamber.pld.get_settings",
+            ChamberConfigReadout()))
     if pld_handler is not None:
         node.mount("pld", pld_handler)
         node.mount("mi_mode", DisabledCapability(
@@ -146,7 +156,9 @@ def build(args: argparse.Namespace) -> EquipmentNode:
 
     # The simulator's writer goes first: it creates the CSV the log reader is waiting
     # for a watchdog event on.
-    workers = [*sim_workers, log_reader, config_reader, camera, jpeg_encoder, fiducial_stats]
+    workers = [*sim_workers, log_reader, camera, jpeg_encoder, fiducial_stats]
+    if config_reader is not None:
+        workers.append(config_reader)
     if mi_server is not None:
         workers.append(mi_server)
     if mi_simulator is not None:

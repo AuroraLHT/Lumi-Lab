@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 
 import pydantic
 import pytest
@@ -21,6 +22,7 @@ from lumi.contracts.payloads.experiment import (
     Anneal,
     AnnealStep,
     BeginSetLaserPower,
+    CoolDown,
     ConfirmLaserPower,
     ConfirmProceed,
     MoveMask,
@@ -55,8 +57,8 @@ from lumi.contracts.payloads.experiment import (
     SampleAngle,
     SetMfcControl,
     SetMfcFlow,
-    SetPressure,
     SetPressureControl,
+    SetPressureSetpoint,
     SetTarget,
     StartMiLogging,
     ToTemperature,
@@ -387,13 +389,14 @@ async def test_set_mfc_control_opens_and_closes_the_master_gate(handler):
 
 
 async def test_set_pressure_and_pressure_control_are_separate(handler):
-    handler.pressure_by_hand = False  # the simulator: set_pressure commands the controller
-    await handler.set_pressure(SetPressure(pressure=20.0e-3))
-    await handler.set_pressure_control(SetPressureControl(on=True))
+    handler.pressure_by_hand = False  # the simulator: set_pressure_setpoint commands the controller
+    on = await handler.set_pressure_control(SetPressureControl(on=True))
+    await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=20.0e-3))
     await handler.set_pressure_control(SetPressureControl(on=False))
     assert handler.sources["chamber_mi"].calls == [
-        "Set Pressure= 2.00E-2\n", "Pressure Control ON\n", "Pressure Control OFF\n",
+        "Pressure Control ON\n", "Set Pressure= 2.00E-2\n", "Pressure Control OFF\n",
     ]
+    assert on.state == "unknown"  # PASCAL reports no control state
 
 
 # --- pending-confirmation gate --------------------------------------------------
@@ -422,11 +425,55 @@ async def test_laser_power_gate_short_circuits_once_already_set(handler):
     assert handler.readout().pending_confirmation is None
 
 
+# --- the substrate's ramp limit --------------------------------------------------
+
+
+@pytest.mark.parametrize("width, height, limit", [
+    (10.0, 10.0, 10.0), (10.0, 0.0, 10.0), (5.0, 10.0, 20.0), (5.0, 5.0, 30.0), (0.0, 0.0, 10.0),
+])
+async def test_the_ramp_limit_is_the_substrates_by_area(handler, width, height, limit):
+    # DRY-FULL-02: cool_down at 20 on a 10 x 10 mm substrate, whose limit is 10. A
+    # height left out is a square; no size at all is the strictest limit.
+    await handler.register_substrate(RegisterSubstrate(materials="STO", width=width, height=height))
+    assert handler.manager.ramp_limit()[0] == limit
+    with pytest.raises(ValueError, match=f"over the {limit:g} °C/min limit"):
+        await handler.cool_down(CoolDown(ramp_rate=limit + 1))
+    assert handler.readout().current_task is None  # refused, no task started
+
+
+async def test_without_a_rate_the_ramp_is_the_limit_and_slower_is_allowed(handler):
+    await handler.register_substrate(RegisterSubstrate(materials="STO", width=5.0, height=10.0))
+    mi = handler.sources["chamber_mi"]
+    await handler.cool_down(CoolDown())
+    assert handler.readout().current_task.detail["ramp_rate"] == 20.0
+    for _ in range(200):
+        if handler.readout().current_task is None:
+            break
+        await asyncio.sleep(0.01)
+    assert "Temperature Ramp 20.0\n" in mi.calls
+    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=2.5))
+    assert handler.readout().current_task.detail["ramp_rate"] == 2.5
+
+
+async def test_an_anneal_with_one_step_too_fast_is_refused_before_it_starts(handler):
+    await handler.register_substrate(RegisterSubstrate(materials="STO", width=5.0, height=10.0))
+    with pytest.raises(ValueError, match="over the 20 °C/min limit"):
+        await handler.anneal(Anneal(steps=[AnnealStep(temperature=700, ramp_rate=10),
+                                           AnnealStep(temperature=600, ramp_rate=25)]))
+    assert handler.readout().current_task is None
+
+
+async def test_with_no_substrate_the_ramp_limit_is_the_strictest(handler):
+    assert handler.manager.ramp_limit() == (10.0, "no substrate registered, so the strictest limit")
+    with pytest.raises(ValueError, match="over the 10 °C/min limit"):
+        await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+
+
 # --- long-running task tracking --------------------------------------------------
 
 
 async def test_long_running_task_tracked_and_cleared(handler):
-    ack = await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+    ack = await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=10))
     assert handler.readout().current_task is not None
     assert handler.readout().current_task.id == ack.task_id
 
@@ -440,6 +487,10 @@ async def test_long_running_task_tracked_and_cleared(handler):
         pytest.fail("task never reported completion")
 
     assert handler.readout().current_task is None
+    # And the outcome stays readable for a client that only polls state (MCP).
+    last = handler.readout().last_task
+    assert last.task.id == ack.task_id and last.task.kind == "to_temperature"
+    assert last.result == event.task_result
 
 
 async def test_to_temperature_refuses_with_the_heating_laser_off(handler):
@@ -448,7 +499,7 @@ async def test_to_temperature_refuses_with_the_heating_laser_off(handler):
     # nowait=False, so the MI command blocks until it times out rather than erroring.
     handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
     with pytest.raises(RuntimeError, match="initiate_heating_laser"):
-        await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20))
+        await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=10))
 
     # Raised by the op, not reported on the update channel: a caller that only has ops
     # (the MCP server) cannot read current_task, so a refusal buried in the task would
@@ -461,7 +512,7 @@ async def test_to_temperature_refuses_with_the_heating_laser_off(handler):
 async def test_anneal_refuses_with_the_heating_laser_off(handler):
     handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
     with pytest.raises(RuntimeError, match="initiate_heating_laser"):
-        await handler.anneal(Anneal(steps=[AnnealStep(temperature=700, ramp_rate=20, wait_time=0)]))
+        await handler.anneal(Anneal(steps=[AnnealStep(temperature=700, ramp_rate=10, wait_time=0)]))
     assert handler.readout().current_task is None
 
 
@@ -470,7 +521,7 @@ async def test_to_temperature_below_the_pid_threshold_skips_the_heating_laser_ch
     # temperature_pid_engage_threshold has no ramp to perform, so it must not refuse --
     # and it must not leave a setpoint on the controller either.
     handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
-    ack = await handler.to_temperature(ToTemperature(temperature=25, ramp_rate=20))
+    ack = await handler.to_temperature(ToTemperature(temperature=25, ramp_rate=10))
 
     for _ in range(200):
         event = await handler.next_update()
@@ -491,7 +542,7 @@ async def test_to_temperature_below_the_pid_threshold_cools_down_when_still_hot(
     # asked for. From 700C, asking for the pyrometer floor means "come down" -- it has
     # to go out as a real setpoint, not return a success that leaves the chamber hot.
     handler.sources["chamber_log"].values["HT Temp moni"] = "700.0"
-    ack = await handler.to_temperature(ToTemperature(temperature=160, ramp_rate=20))
+    ack = await handler.to_temperature(ToTemperature(temperature=160, ramp_rate=10))
 
     for _ in range(200):
         event = await handler.next_update()
@@ -505,7 +556,7 @@ async def test_to_temperature_below_the_pid_threshold_cools_down_when_still_hot(
     # Ramp + setpoint, the way cool_down does it. No `Temperature Control PID`: the
     # controller cannot hold a sub-threshold setpoint, the substrate coasts to it.
     assert handler.sources["chamber_mi"].calls == [
-        "Temperature Ramp 20.0\n",
+        "Temperature Ramp 10.0\n",
         "Temperature Set 160.0\n",
     ]
     assert ack.task_id
@@ -574,6 +625,29 @@ async def test_finishing_a_pixel_marks_its_sample_grown(handler):
     assert still_planned[8] == "planned"
 
 
+async def test_a_sample_is_active_from_its_first_growth_until_finished(handler):
+    # DRY-FULL-01: a two-layer sample still read "planned" until finish_substrate.
+    info = await handler.register_substrate(RegisterSubstrate(
+        materials="SrTiO3", orientation="(001)", width=10, pixel_spacing=2.0,
+    ))
+    project = await handler.manager.register_project("p")
+    for _ in range(2):  # two layers on pixel 0
+        await handler.manager.finish_experiment_record(
+            substrate_id=info.substrate_id, project_id=project, experiment_uuid=uuid.uuid4().hex,
+            temperature=600, pressure=0.1, laser_power=120, laser_repetition_rate=5,
+            target_material="SrTiO3", num_pulse=100, is_pixel=True, pixel_index=0)
+        assert (await handler.growth_db.find_sample(info.substrate_id, 0))[8] == "active"
+    assert (await handler.growth_db.find_sample(info.substrate_id, 1))[8] == "planned"
+    await handler.finish_current_pixel(FinishCurrentPixel())
+    assert (await handler.growth_db.find_sample(info.substrate_id, 0))[8] == "grown"
+    # A late record on a finished sample leaves it grown.
+    await handler.manager.finish_experiment_record(
+        substrate_id=info.substrate_id, project_id=project, experiment_uuid=uuid.uuid4().hex,
+        temperature=600, pressure=0.1, laser_power=120, laser_repetition_rate=5,
+        target_material="SrTiO3", num_pulse=100, is_pixel=True, pixel_index=0)
+    assert (await handler.growth_db.find_sample(info.substrate_id, 0))[8] == "grown"
+
+
 async def test_deposition_records_the_material_not_just_the_slot(handler):
     """The carousel's slot-to-material map is chamber config and changes when targets
     are swapped, so a step that recorded only `target_id: "A"` names a different
@@ -634,7 +708,7 @@ async def test_a_recording_carries_the_experiment_and_hears_about_its_tasks(hand
     assert req.context["pixel_index"] == 0 and "laser_pulse_energy_set_mj" in req.context
     assert handler.readout().is_recording and handler.readout().recording_name == result.storage_name
 
-    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=10))
     for _ in range(200):
         if any(e.kind == "task_finished" for e in storage.events):
             break
@@ -645,9 +719,26 @@ async def test_a_recording_carries_the_experiment_and_hears_about_its_tasks(hand
 
     await handler.end_storage(EndStorage())
     assert not handler.readout().is_recording
-    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=10))
     await asyncio.sleep(0.05)
     assert len(storage.events) == 2  # nothing recording: nothing sent
+
+
+async def test_start_storage_registers_its_project(handler):
+    """A recording names its project, so that is the driver's project: in the file's
+    context, and for the growth records after it, with no register_project first."""
+    from lumi.contracts.payloads.experiment import StartStorage
+
+    await handler.start_storage(StartStorage(project_name="demo"))
+    assert handler.manager.project_name == "demo" and handler.manager.project_id is not None
+    first = handler.manager.project_id
+    assert handler.manager.storage.requests[-1].context["project_id"] == first
+    await handler.start_storage(StartStorage(project_name="other"))
+    assert handler.manager.project_name == "other" and handler.manager.project_id != first
+    await handler.start_storage(StartStorage(project_name="demo"))
+    assert handler.manager.project_id == first  # the same project, not a second one
+    await handler.manager.start_storage("dry", is_dryrun=True)
+    assert handler.manager.project_name == "demo"  # a dry run writes nothing
 
 
 async def test_start_storage_falls_back_to_project_name_with_no_sample_loaded(handler):
@@ -1151,11 +1242,11 @@ async def test_to_temperature_without_wait_leaves_pascal_free(handler):
     # wait=false drops the trailing blocking `Temperature Set`, the command that holds
     # PASCAL's queue until the substrate arrives.
     handler.sources["chamber_log"].values["HT Temp moni"] = "300.0"
-    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20, wait=False))
+    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=10, wait=False))
     assert (await _task_result(handler))["ok"] is True
     assert handler.sources["chamber_mi"].calls == [
         "Temperature Set 700.0 (Nowait)\n",
-        "Temperature Ramp 20.0\n",
+        "Temperature Ramp 10.0\n",
         "Temperature Control PID\n",
     ]
 
@@ -1237,7 +1328,7 @@ async def test_to_temperature_sets_the_target_before_engaging_pid(handler):
     # Target, ramp rate, then PID on: engaged first, PID would chase whatever setpoint
     # the controller still holds (after the warm-up, the cold 160).
     handler.sources["chamber_log"].values["HT Temp moni"] = "300.0"
-    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=10))
 
     for _ in range(200):
         event = await handler.next_update()
@@ -1250,7 +1341,7 @@ async def test_to_temperature_sets_the_target_before_engaging_pid(handler):
 
     assert handler.sources["chamber_mi"].calls == [
         "Temperature Set 700.0 (Nowait)\n",
-        "Temperature Ramp 20.0\n",
+        "Temperature Ramp 10.0\n",
         "Temperature Control PID\n",
         "Temperature Set 700.0\n",
     ]
@@ -1311,9 +1402,9 @@ async def test_nothing_else_moves_while_a_deposition_runs(handler):
 # --- pressure: by hand on the real chamber, direct in the simulator ----------------
 
 
-async def test_set_pressure_asks_a_person_on_the_real_chamber(handler):
+async def test_set_pressure_setpoint_asks_a_person_on_the_real_chamber(handler):
     assert handler.pressure_by_hand  # the default: a real chamber
-    await handler.set_pressure(SetPressure(pressure=0.1))
+    await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
 
     pending = handler.readout().pending_confirmation
     assert pending is not None and pending.kind == "pressure"
@@ -1325,8 +1416,156 @@ async def test_set_pressure_asks_a_person_on_the_real_chamber(handler):
     assert handler.readout().pending_confirmation is None
 
 
-async def test_set_pressure_sets_it_directly_in_the_simulator(handler):
+async def test_set_pressure_setpoint_sets_it_directly_in_the_simulator(handler):
     handler.pressure_by_hand = False
-    await handler.set_pressure(SetPressure(pressure=0.1))
+    await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
     assert handler.readout().pending_confirmation is None
     assert handler.sources["chamber_mi"].calls == ["Set Pressure= 1.00E-1\n"]
+
+
+async def test_rheed_on_is_refused_under_legacy_mi_mode(handler):
+    from lumi.contracts.payloads.experiment import RheedOn
+    with pytest.raises(RuntimeError, match="needs pld-service"):
+        await handler.rheed_on(RheedOn())
+
+
+async def test_rheed_on_by_a_person_is_a_pending_confirmation_until_finished(handler):
+    from lumi.contracts.payloads.experiment import FinishRheedOn, RheedOn
+    from lumi.experiment.rheed_gun import RheedGun
+    from test_rheed_gun import FAST, FakeGun
+
+    gun = FakeGun()
+    handler.manager.chamber = gun
+    handler.manager.rheed_gun = RheedGun(gun, FAST)
+    result = await handler.rheed_on(RheedOn(judge="person"))
+    assert result.searching and handler._pending.kind == "rheed_emission"
+    assert "1800 | 30.12" in handler._pending.message
+    with pytest.raises(ValueError, match="no pending 'rheed_gain'"):
+        await handler.confirm_rheed_gain(Empty())
+    with pytest.raises(ValueError, match="finish_rheed_on .* or rheed_off"):  # no dismissing it
+        await handler.confirm(ConfirmProceed(confirmation_id=handler._pending.id))
+    assert handler._pending.kind == "rheed_emission" and handler.manager.rheed_gun.searching
+    pending_id = handler._pending.id
+    await handler.rheed_emission_step_up(Empty())
+    assert "1850 | 35.12" in handler._pending.message and handler._pending.id == pending_id
+    assert handler.readout().rheed_search.judge == "person"
+    result = await handler.finish_rheed_on(FinishRheedOn(filament_ma=1800))
+    assert handler._pending is None and not result.searching and gun.r.filament_set_ma == 1800
+    assert handler.readout().rheed_search is None
+    with pytest.raises(RuntimeError, match="no emission search is open"):
+        await handler.rheed_emission_step_up(Empty())
+    # The automatic rule, asked for: no confirmation.
+    result = await handler.rheed_on(RheedOn(judge="rule"))
+    assert not result.searching and handler._pending is None
+    # A search that fails midway still leaves the stream right.
+    await handler.rheed_on(RheedOn(judge="person"))
+    gun.refuse["set_rheed_focus"] = "focus link down"
+    with pytest.raises(RuntimeError, match="focus step"):
+        await handler.finish_rheed_on(FinishRheedOn())
+    assert handler._pending is None and handler.readout().rheed_search is None
+
+
+async def test_rheed_on_by_the_agent_asks_no_confirmation(handler):
+    from lumi.contracts.payloads.experiment import FinishRheedOn, RheedOn
+    from lumi.experiment.rheed_gun import RheedGun
+    from test_rheed_gun import FAST, FakeCamera, FakeGun
+
+    gun = FakeGun()
+    handler.manager.chamber = gun
+    handler.manager.rheed_gun = RheedGun(gun, FAST, intensity=FakeCamera(gun))  # judge: agent
+    result = await handler.rheed_on(RheedOn())
+    assert result.searching and result.judge == "agent" and handler._pending is None
+    result = await handler.rheed_emission_step_up(Empty())
+    assert handler._pending is None and result.emission_steps[-1]["rheed_signal"] is not None
+    search = handler.readout().rheed_search  # what the Deck shows, Stop here and Abort
+    assert search.judge == "agent" and [s["filament_ma"] for s in search.steps] == [1800, 1850]
+    assert search.steps[-1]["rheed_signal"] is not None and "rising" in search.saturation
+    event = None
+    while (nxt := await handler.next_update()) is not None:
+        event = nxt
+    assert event.rheed_search == search and event.pending_confirmation is None
+    result = await handler.finish_rheed_on(FinishRheedOn())
+    assert not result.searching and gun.r.filament_set_ma == 1850 and handler._pending is None
+    assert handler.readout().rheed_search is None
+    while (nxt := await handler.next_update()) is not None:
+        event = nxt
+    assert event.rheed_search is None
+
+
+async def test_a_dry_run_start_storage_names_no_recording(handler):
+    started = await handler.manager.start_storage("dry", is_dryrun=True)
+    assert started["ok"] and started["record_uuid"] and started["storage_name"] is None
+    assert "nothing recorded" in started["message"] and handler.manager.recording_name is None
+    assert "no recording" in (await handler.manager.end_storage(is_dryrun=True))["message"]
+
+
+# --- RHEED integration boxes an agent draws -------------------------------------
+
+
+class FakeIntegrator:
+    """rheed.integrator / rheed.stft: the registered boxes."""
+
+    def __init__(self, boxes=None) -> None:
+        self.boxes = dict(boxes or {})
+
+    async def register(self, req):
+        self.boxes[req.bbox_id] = req.bbox
+        return Ack()
+
+    async def remove(self, req):
+        self.boxes.pop(req.bbox_id, None)
+        return Ack()
+
+    async def bboxes(self):
+        from lumi.contracts.payloads.rheed import BBoxList
+
+        return BBoxList(bboxes=self.boxes)
+
+
+class FramedCamera(FakeRheedCamera):
+    async def image(self):
+        import numpy as np
+
+        return None, np.zeros((540, 720), dtype=np.uint16)
+
+
+async def test_an_agent_draws_its_own_boxes_and_never_the_operators(handler):
+    from lumi.contracts.payloads.experiment import AddRheedBox, EndStorage, RemoveRheedBox, StartStorage
+    from lumi.contracts.payloads.rheed import BBox
+
+    operator = BBox(x=10, y=10, width=20, height=20)
+    integrator, stft = FakeIntegrator({0: operator}), FakeIntegrator()
+    handler.sources.update(rheed_integrator=integrator, rheed_stft=stft, rheed_camera=FramedCamera())
+
+    result = await handler.add_rheed_box(AddRheedBox(x=340, y=200, width=30, height=24,
+                                                     label="specular", stft=True))
+    assert result.bbox_id == 1000 and set(result.bboxes) == {0, 1000}
+    assert result.labels == {1000: "specular"} and 1000 in stft.boxes
+    assert integrator.boxes[0] == operator  # the operator's box is untouched
+    result = await handler.add_rheed_box(AddRheedBox(x=0, y=400, width=40, height=40, label="background"))
+    assert result.bbox_id == 1001 and 1001 not in stft.boxes
+
+    with pytest.raises(ValueError, match="runs past the RHEED frame, 720 x 540"):
+        await handler.add_rheed_box(AddRheedBox(x=700, y=0, width=40, height=10))
+    with pytest.raises(ValueError, match="the operator's"):
+        await handler.remove_rheed_box(RemoveRheedBox(bbox_id=0))
+
+    await handler.start_storage(StartStorage(project_name="demo"))
+    with pytest.raises(RuntimeError, match="would cut its trace"):
+        await handler.remove_rheed_box(RemoveRheedBox(bbox_id=1001))
+    await handler.add_rheed_box(AddRheedBox(x=100, y=100, width=10, height=10, label="rod"))
+    # A box drawn mid-recording is an event in it, so the trace's start is explained.
+    assert [e.kind for e in handler.sources["storage"].events if "rheed_box" in e.kind] == ["rheed_box_added"]
+    await handler.end_storage(EndStorage())
+    result = await handler.remove_rheed_box(RemoveRheedBox(bbox_id=1000))
+    assert set(result.bboxes) == {0, 1001, 1002} and 1000 not in stft.boxes
+    assert result.labels == {1001: "background", 1002: "rod"}
+    boxes = handler.readout().rheed_boxes  # what the Deck subscribes to
+    assert {i: b.label for i, b in boxes.items()} == {1001: "background", 1002: "rod"}
+
+    # A rheed node restart drops every box; the agent's come back, not the operator's.
+    integrator.boxes.clear()
+    stft.boxes.clear()
+    assert await handler.sync_rheed_boxes() == [1001, 1002]
+    assert set(integrator.boxes) == {1001, 1002} and integrator.boxes[1001].width == 40
+    assert await handler.sync_rheed_boxes() == []

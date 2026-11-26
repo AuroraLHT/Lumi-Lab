@@ -30,6 +30,7 @@ from lumi.experiment.journal import StepJournal
 from lumi.experiment.manager import ExperimentBounds, PLDChamberConfiguration
 from lumi.experiment.chamber import MiChamber, PldChamber
 from lumi.experiment.mi import MiCommandRunner
+from lumi.experiment.rheed_gun import RheedGunSettings
 from lumi.generated.clients.chamber import (
     ChamberPldClient,
     ChamberCameraClient,
@@ -38,7 +39,7 @@ from lumi.generated.clients.chamber import (
     ChamberLogClient,
     ChamberMiModeClient,
 )
-from lumi.generated.clients.rheed import RheedCameraClient
+from lumi.generated.clients.rheed import RheedCameraClient, RheedIntegratorClient, RheedStftClient
 from lumi.generated.clients.storage import StorageStorageClient
 from lumi.generated.clients.system import SystemRegistryClient
 from lumi.node import EquipmentNode
@@ -82,6 +83,11 @@ def _bounds() -> ExperimentBounds:
     )
 
 
+def _rheed_gun() -> RheedGunSettings:
+    """[experiment.rheed]; a key left out keeps RheedGunSettings' default."""
+    return RheedGunSettings.from_settings(dict(settings.experiment.get("rheed", {}) or {}))
+
+
 async def main(args: argparse.Namespace) -> None:
     node = EquipmentNode(
         EXPERIMENT,
@@ -103,11 +109,12 @@ async def main(args: argparse.Namespace) -> None:
     if settings.experiment.get("pressure_by_hand") is None:
         raise RuntimeError(
             "cfg/settings.toml [experiment] is missing pressure_by_hand (true on the real "
-            "chamber under --use-legacy-mi-mode: set_pressure asks a person; pld-service "
+            "chamber under --use-legacy-mi-mode: set_pressure_setpoint asks a person; pld-service "
             "sets it itself). Copy it from cfg/settings.example.toml."
         )
     handler = ExperimentHandler(
         sources={}, growth_db=growth_db, pld_config=_pld_config(), bounds=_bounds(),
+        rheed_gun=_rheed_gun(),
         target_mapper=dict(settings.experiment.target_mapper), registry_client=None,
         file_store=MeasurementFileStore(
             files_root,
@@ -184,6 +191,9 @@ async def main(args: argparse.Namespace) -> None:
         "chamber_fiducial": ChamberFiducialClient(channel, chamber_x),
         "chamber_camera": ChamberCameraClient(channel, chamber_x),
         "rheed_camera": RheedCameraClient(channel, rheed_x),
+        # Boxes an agent draws (add_rheed_box); the operator's are the Deck's.
+        "rheed_integrator": RheedIntegratorClient(channel, rheed_x),
+        "rheed_stft": RheedStftClient(channel, rheed_x),
         "storage": StorageStorageClient(channel, storage_x),
     }
     registry = SystemRegistryClient(channel, system_x)
@@ -201,6 +211,11 @@ async def main(args: argparse.Namespace) -> None:
     async def watch_deps() -> None:
         while True:
             await handler.refresh_deps()
+            try:
+                if await handler.sync_rheed_boxes():
+                    await handler._push()
+            except Exception:
+                log.exception("putting the agent RHEED boxes back failed")
             await asyncio.sleep(5.0)
 
     deps_task = asyncio.create_task(watch_deps(), name="experiment-deps")

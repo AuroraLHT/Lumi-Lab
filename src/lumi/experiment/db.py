@@ -953,6 +953,15 @@ class GrowthDB:
         async with self.conn.execute(sql, args) as cursor:
             return await cursor.fetchone()
 
+    async def mark_sample_active(self, substrate_id: int, pixel_index: int) -> None:
+        """A position's sample is being grown on: "planned" becomes "active". One that
+        is already active or grown keeps its state."""
+        await self.conn.execute(
+            "UPDATE sample SET state = 'active' WHERE substrate_id = ? AND pixel_index = ? "
+            "AND kind = 'position' AND state = 'planned'", (substrate_id, pixel_index)
+        )
+        await self.conn.commit()
+
     async def set_sample_state(self, sample_id: int, state: str) -> None:
         await self.conn.execute(
             "UPDATE sample SET state = ? WHERE sample_id = ?", (state, sample_id)

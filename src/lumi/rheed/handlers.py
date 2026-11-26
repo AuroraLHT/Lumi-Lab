@@ -22,12 +22,14 @@ from lumi.contracts.payloads.rheed import (
     BBoxList,
     FFTResult,
     IntegrationCache,
+    IntegrationCacheQuery,
     IntegrationHeader,
     IntegrationResult,
     IntegrationSample,
     IntegratorReadout,
     RegisterBBox,
     STFTCache,
+    STFTCacheQuery,
     STFTSample,
     STFTReadout,
 )
@@ -63,11 +65,16 @@ class IntegratorHandler:
             bboxes={bid: _bbox_to_model(raw) for bid, raw in self.integrator.bboxes.items()}
         )
 
-    async def cache(self, req: BBoxId) -> IntegrationCache:
+    async def cache(self, req: IntegrationCacheQuery) -> IntegrationCache:
         cached = self.integrator.get_integration_cache(req.bbox_id)
         if cached is None:
             # A bbox that was never registered is a client error, not a server one.
             raise KeyError(f"bbox {req.bbox_id} is not registered")
+        cached = list(cached)  # the integrator thread appends while this reads
+        if req.since is not None:
+            cached = [(r, h) for r, h in cached if float((h or {}).get("time", 0.0)) > req.since]
+        if req.max_points is not None:
+            cached = cached[-req.max_points:]
         # The cache and the stream carry *different* shapes: the per-bbox cache holds a
         # single IntegrationResult per entry, while the stream yields every registered
         # box for one frame ({bbox_id: result}). Same producer, two payloads -- which is
@@ -151,10 +158,13 @@ class STFTHandler:
             }
         )
 
-    async def cache(self, req: BBoxId) -> STFTCache:
+    async def cache(self, req: STFTCacheQuery) -> STFTCache:
         cached = self.calculator.get_cache(req.bbox_id)
         if cached is None:
             raise KeyError(f"bbox {req.bbox_id} has no STFT cache")
+        cached = list(cached)
+        if req.max_points is not None:
+            cached = cached[-req.max_points:]
         return STFTCache(
             bbox_id=req.bbox_id,
             samples=[STFTSample(bbox_id=req.bbox_id, result=FFTResult(**dict(r))) for r in cached],

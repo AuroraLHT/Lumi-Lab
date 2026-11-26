@@ -5,7 +5,7 @@
 .DESCRIPTION
     Starts the two instrument nodes:
 
-        pascal   the PLD chamber -- growth log, PLDconfig.ini, the chamber driver, chamber webcam
+        pascal   the PLD chamber -- growth log, the chamber driver (pld-service), chamber webcam
         rheed    RHEED camera acquisition (Basler/Pylon)
 
     The server-side half (monitor, storage, detection, api) runs on the other
@@ -322,20 +322,24 @@ if ($WithPascal) {
             }
         }
 
-        # PLDconfig.ini gives the carousel geometry, so `Select Target C` resolves to
-        # an angle. Its default lives in cfg/settings.toml.
-        $resolvedPld = $PldConfig
-        if (-not $resolvedPld) {
-            $probe = Invoke-Py @('-c', 'from lumi.config import settings; print(settings.pascal.config_reader.config_path)')
-            $resolvedPld = if ($probe.Code -eq 0) { $probe.Out } else { '' }
-        }
-        if (-not $resolvedPld) {
-            Fail "could not resolve the PLDconfig.ini path"
-        } elseif (-not (Test-Path $resolvedPld -PathType Leaf)) {
-            Fail "PLDconfig.ini not readable: $resolvedPld"
-            Write-Host "        Pass -PldConfig <file>, or fix [pascal.config_reader] in cfg/settings.toml."
+        # PLD Controller's PLDconfig.ini is legacy MI mode's (chamber.config). pld-service
+        # keeps its own settings, the target names among them, so the pld driver needs none.
+        if ($UseLegacyMiMode) {
+            $resolvedPld = $PldConfig
+            if (-not $resolvedPld) {
+                $probe = Invoke-Py @('-c', 'from lumi.config import settings; print(settings.pascal.config_reader.config_path)')
+                $resolvedPld = if ($probe.Code -eq 0) { $probe.Out } else { '' }
+            }
+            if (-not $resolvedPld) {
+                Fail "could not resolve the PLDconfig.ini path"
+            } elseif (-not (Test-Path $resolvedPld -PathType Leaf)) {
+                Fail "PLDconfig.ini not readable: $resolvedPld"
+                Write-Host "        Pass -PldConfig <file>, or fix [pascal.config_reader] in cfg/settings.toml."
+            } else {
+                Ok "PLDconfig.ini $resolvedPld"
+            }
         } else {
-            Ok "PLDconfig.ini $resolvedPld"
+            Ok "PLDconfig.ini not needed: pld-service keeps the target names (chamber.pld.get_settings)"
         }
     } else {
         Warn "-Src ${Src}: this is NOT the real chamber (use -Src path on the instrument)"

@@ -104,8 +104,8 @@ class ChamberBackend(Protocol):
 
     async def set_mfc_flow(self, mfc: int, sccm: float) -> None: ...
     async def set_mfc_control(self, enabled: bool) -> None: ...
-    async def set_pressure(self, torr: float) -> None: ...
-    async def set_pressure_control(self, on: bool) -> None: ...
+    async def set_pressure(self, torr: float) -> str: ...
+    async def set_pressure_control(self, on: bool) -> str: ...
 
     async def start_logging(self, file_name: str, interval_s: int) -> None: ...
     async def stop_logging(self) -> None: ...
@@ -331,11 +331,12 @@ class PldChamber:
         if not enabled:
             await self._call("set_mfc_flow", PldFlowRequest(mfc=1, sccm=0.0))
 
-    async def set_pressure(self, torr: float) -> None:
-        await self._call("set_pressure", PldPressureRequest(torr=float(torr)))
+    async def set_pressure(self, torr: float) -> str:
+        """pld-service's reply: what the setpoint started (a regime switch's plan)."""
+        return (await self._call("set_pressure", PldPressureRequest(torr=float(torr)))).message
 
-    async def set_pressure_control(self, on: bool) -> None:
-        await self._call("set_pressure_control", PldSwitchRequest(on=bool(on)))
+    async def set_pressure_control(self, on: bool) -> str:
+        return (await self._call("set_pressure_control", PldSwitchRequest(on=bool(on)))).message
 
     # --- the growth log -----------------------------------------------------------
 
@@ -505,11 +506,13 @@ class MiChamber:
     async def set_mfc_control(self, enabled: bool) -> None:
         await self._run(pcmd.SetMFCControl(enable=enabled))
 
-    async def set_pressure(self, torr: float) -> None:
+    async def set_pressure(self, torr: float) -> str:
         await self._run(pcmd.SetPressure(torr))
+        return f"Set Pressure={torr:g} sent to PASCAL"
 
-    async def set_pressure_control(self, on: bool) -> None:
+    async def set_pressure_control(self, on: bool) -> str:
         await self._run(pcmd.PressureControl(state=pcmd.PascalState(on)))
+        return f"Pressure Control {'ON' if on else 'OFF'} sent to PASCAL"
 
     # --- the chamber log ----------------------------------------------------------
 

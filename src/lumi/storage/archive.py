@@ -317,6 +317,10 @@ class RecordingArchive:
                 continue
             rows.append({"time": t, "time_iso": iso(t), "kind": kind, "message": message,
                          "detail": detail})
+        # Stored as they arrive, and an event can arrive after a later one: storage's
+        # shutter event is written once pld-service's activity says when it opened,
+        # after the laser start it preceded. Listed by time; equal times keep their order.
+        rows.sort(key=lambda r: r["time"])
         return {"name": name, "total": len(rows), "events": rows[-limit:] if limit else rows}
 
     def detections(self, name: str, since, until, max_points: int) -> dict:

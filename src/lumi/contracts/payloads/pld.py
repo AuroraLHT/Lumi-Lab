@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from .common import ServerStateBase
 
@@ -83,6 +83,9 @@ class PldMotion(BaseModel):
     homing_needed: list[str] = Field(default_factory=list, description="Axes left without a home "
                                      "reference (the ones moving when the motors were stopped): "
                                      "home_axis before relying on their position")
+    sample_too_low: bool = Field(False, description="The sample is below its height threshold (Z "
+                                 "sensor; set by hand): the PLC will not move Mask1, and pld-service "
+                                 "refuses Mask1 moves and homing until a person raises it")
 
 
 class PldLaser(BaseModel):
@@ -141,10 +144,15 @@ class PldGas(BaseModel):
     mfc1_setpoint: float | None = None
     mfc1_flow: float | None = None
     pumping: str = Field("", description="full, throttled, closed (from MV10 / MV11)")
-    pressure_control: bool = False
-    pressure_setpoint: float | None = Field(None, description="Torr; None when not set")
+    pressure_control: bool = Field(False, description="regulating (not while armed or switching)")
+    pressure_setpoint: float | None = Field(None, description="Torr; None when not set (off or armed)")
     pressure_gauge: str = Field("", description="IG1, CDG10 or CDG11")
-    pressure_mode: str = Field("", description="low (table), high (PID), auto-tune, switching to low|high")
+    pressure_mode: str = Field("", description="off, armed, switching to low|high, then low (table), "
+                                                "high (PID) or auto-tune")
+    #: off, armed, switching or regulating: Lumi's reading of the three fields above.
+    #: Never take it from pressure_mode alone: an older pld-service names the setpoint's
+    #: regime there ("high (PID)") with control off.
+    pressure_control_state: str = Field("off", description="off, armed, switching or regulating")
     flow_min: float | None = None
     flow_max: float | None = None
     pressure_kp: float | None = None
@@ -152,6 +160,25 @@ class PldGas(BaseModel):
     pressure_kd: float | None = None
     pressure_table: list[PldFlowPoint] = Field(default_factory=list)
     pressure_switch_step: str = ""
+
+    @model_validator(mode="after")
+    def _control_state(self) -> "PldGas":
+        self.pressure_control_state = pressure_control_state(
+            self.pressure_control, self.pressure_mode)
+        return self
+
+
+def pressure_control_state(control: bool, mode: str) -> str:
+    """Pressure control's state from pld-service's gas fields: enabled first ("armed",
+    nothing moved), then a setpoint switches the valves and IG1 to its regime
+    ("switching") and control regulates to it."""
+    if control:
+        return "regulating"
+    if mode.startswith("switching"):
+        return "switching"
+    if mode == "armed":
+        return "armed"
+    return "off"
 
 
 class PldPump(BaseModel):
@@ -384,6 +411,35 @@ class PldEventList(BaseModel):
     events: list[PldEvent] = Field(default_factory=list)
 
 
+#: Slots that hold a target, in pld-service's `[target_names]`.
+TARGET_SLOTS = ("A", "B", "C", "D", "E", "F")
+
+
+class PldSetting(BaseModel):
+    """One of pld-service's settings (its .ini), as the service has it in effect."""
+
+    section: str
+    key: str
+    value: str = ""
+    unit: str = ""
+    help: str = ""
+    #: Takes effect at once when set; otherwise at the next service start.
+    live: bool = False
+    #: A value set that waits for the next start, if any.
+    pending: str = ""
+
+
+class PldSettings(BaseModel):
+    settings: list[PldSetting] = Field(default_factory=list)
+    #: The settings file the service reads and writes.
+    file: str = ""
+
+    def target_names(self) -> dict[str, str]:
+        """The material in each slot A-F (`[target_names]`); "" for an empty slot."""
+        names = {s.key: s.value for s in self.settings if s.section == "target_names"}
+        return {slot: names.get(slot, "") for slot in TARGET_SLOTS}
+
+
 class PldReadout(BaseModel):
     """What the chamber node knows about its driver connection."""
 
@@ -472,7 +528,7 @@ class PldTemperatureRequest(BaseModel):
     celsius: float
     ramp_c_per_min: float = Field(0.0, description="0 = jump")
     wait: bool = Field(False, description="Return once within `tolerance`")
-    tolerance: float = Field(0.0, description="C; 0 = the service default, 5 C")
+    tolerance: float = Field(0.0, description="C; 0 = the service default, 0.5 C")
 
 
 class PldShutterRequest(BaseModel):

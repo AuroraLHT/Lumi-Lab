@@ -479,7 +479,7 @@ class Heater(_message.Message):
     def __init__(self, temperature: _Optional[float] = ..., emissivity: _Optional[float] = ..., current_set: _Optional[float] = ..., current_monitor: _Optional[float] = ..., power_on: _Optional[bool] = ..., ready: _Optional[bool] = ..., started: _Optional[bool] = ..., temperature_setpoint: _Optional[float] = ..., pid_on: _Optional[bool] = ..., key_on: _Optional[bool] = ..., start_on: _Optional[bool] = ..., threshold_on: _Optional[bool] = ..., current_min: _Optional[float] = ..., current_max: _Optional[float] = ..., temperature_goal: _Optional[float] = ..., ramp_c_per_min: _Optional[float] = ..., auto_tune: _Optional[bool] = ..., kp: _Optional[float] = ..., ki: _Optional[float] = ..., kd: _Optional[float] = ..., writes_failing: _Optional[bool] = ..., tune_cycles_done: _Optional[int] = ..., tune_cycles: _Optional[int] = ..., warming_up: _Optional[bool] = ...) -> None: ...
 
 class Motion(_message.Message):
-    __slots__ = ("target_angle", "target", "sample_angle", "mask_position", "rheed_gun_x", "axes", "target_spinning", "target_twisting", "motor_free", "auto_spin", "auto_twist", "motors_stopped", "homing_needed")
+    __slots__ = ("target_angle", "target", "sample_angle", "mask_position", "rheed_gun_x", "axes", "target_spinning", "target_twisting", "motor_free", "auto_spin", "auto_twist", "motors_stopped", "homing_needed", "sample_too_low")
     class AxesEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -500,6 +500,7 @@ class Motion(_message.Message):
     AUTO_TWIST_FIELD_NUMBER: _ClassVar[int]
     MOTORS_STOPPED_FIELD_NUMBER: _ClassVar[int]
     HOMING_NEEDED_FIELD_NUMBER: _ClassVar[int]
+    SAMPLE_TOO_LOW_FIELD_NUMBER: _ClassVar[int]
     target_angle: float
     target: str
     sample_angle: float
@@ -513,7 +514,8 @@ class Motion(_message.Message):
     auto_twist: bool
     motors_stopped: bool
     homing_needed: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, target_angle: _Optional[float] = ..., target: _Optional[str] = ..., sample_angle: _Optional[float] = ..., mask_position: _Optional[float] = ..., rheed_gun_x: _Optional[float] = ..., axes: _Optional[_Mapping[str, AxisStatus]] = ..., target_spinning: _Optional[bool] = ..., target_twisting: _Optional[bool] = ..., motor_free: _Optional[bool] = ..., auto_spin: _Optional[bool] = ..., auto_twist: _Optional[bool] = ..., motors_stopped: _Optional[bool] = ..., homing_needed: _Optional[_Iterable[str]] = ...) -> None: ...
+    sample_too_low: bool
+    def __init__(self, target_angle: _Optional[float] = ..., target: _Optional[str] = ..., sample_angle: _Optional[float] = ..., mask_position: _Optional[float] = ..., rheed_gun_x: _Optional[float] = ..., axes: _Optional[_Mapping[str, AxisStatus]] = ..., target_spinning: _Optional[bool] = ..., target_twisting: _Optional[bool] = ..., motor_free: _Optional[bool] = ..., auto_spin: _Optional[bool] = ..., auto_twist: _Optional[bool] = ..., motors_stopped: _Optional[bool] = ..., homing_needed: _Optional[_Iterable[str]] = ..., sample_too_low: _Optional[bool] = ...) -> None: ...
 
 class Pump(_message.Message):
     __slots__ = ("running", "at_speed", "state")

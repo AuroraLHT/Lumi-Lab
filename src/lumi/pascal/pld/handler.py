@@ -30,6 +30,8 @@ from google.protobuf import json_format
 from lumi.contracts.payloads.common import Empty
 from lumi.contracts.payloads.pld import (
     PldChamberState,
+    PldSetting,
+    PldSettings,
     PldControlReply,
     PldControlRequest,
     PldActivityList,
@@ -108,6 +110,10 @@ class PldHandler:
     async def recent_activity(self, req: PldActivityQuery) -> PldActivityList:
         return PldActivityList(entries=self.journal.recent(req.limit, req.since_seq),
                                latest_seq=self.journal.latest_seq)
+
+    async def get_settings(self, req: Empty) -> PldSettings:
+        reply = await asyncio.to_thread(self.client.settings)
+        return PldSettings(file=reply.file, settings=[PldSetting(**convert.to_dict(s)) for s in reply.settings])
 
     async def recent_events(self, req: PldEventQuery) -> PldEventList:
         events = list(self.event_monitor.events)[-req.limit:]

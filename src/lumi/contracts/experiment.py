@@ -22,6 +22,12 @@ from __future__ import annotations
 
 from .payloads.common import Ack, Empty
 from .payloads.experiment import (
+    AddRheedBox,
+    FinishRheedOn,
+    RemoveRheedBox,
+    RheedBoxResult,
+    RheedGunResult,
+    RheedOn,
     ConfirmLaserTest,
     LaserTest,
     LaserTestList,
@@ -91,6 +97,7 @@ from .payloads.experiment import (
     PixelCheckStatus,
     PixelIndex,
     PixelMoveResult,
+    PressureControlResult,
     PressureReading,
     ProjectId,
     ProjectInfo,
@@ -121,8 +128,8 @@ from .payloads.experiment import (
     SetLaserHv,
     SetMfcControl,
     SetMfcFlow,
-    SetPressure,
     SetPressureControl,
+    SetPressureSetpoint,
     SetRheedGain,
     SetTarget,
     SnapshotId,
@@ -370,6 +377,56 @@ DRIVER = Capability(
                "pld-service's default). Refused while the motor holding lock is released.",
            journal=True, timeout_s=MOTION_TIMEOUT_S),
         Op("move_rheed_to_position", MoveTo, Ack, journal=True, timeout_s=MOTION_TIMEOUT_S),
+        Op("rheed_on", RheedOn, RheedGunResult,
+           doc="Switch the RHEED gun on at the lab's operating values (pld driver only): "
+               "filament on at 1800 mA, HV on (25 kV), then the emission search, the "
+               "filament up in 50 mA steps (2100 mA at most) until the beam saturates. "
+               "By default (judge agent) rheed_on returns after filament and HV with the "
+               "search open (searching true) and no confirmation: you judge. Call "
+               "rheed_emission_step_up per step; each step reads the emission current and "
+               "the RHEED image's mean intensity, and both level off at saturation. Stop "
+               "with finish_rheed_on at the last step that still raised them. The hint "
+               "(saturation) sets the two side by side; it is not the decision. judge "
+               "person puts the same steps behind a `rheed_emission` pending confirmation "
+               "for a person to say up or stop; judge rule lets the emission's first two "
+               "digits decide by themselves (that last step is taken back). The message "
+               "ends with the filament / emission / RHEED-mean table. Each value can be "
+               "overridden for this call; focus and deflection depend on the alignment. "
+               "Waits for every readback, about 1-2 minutes from off to the open search. "
+               "Fails with what was and was not reached, leaving the gun as it got. Beam "
+               "position screws, incidence angle and camera gain stay with a person: keep "
+               "the camera gain fixed during the search.",
+           journal=True, timeout_s=600.0),
+        Op("rheed_emission_step_up", Empty, RheedGunResult,
+           doc="During rheed_on's open emission search: the filament up one step (50 mA), "
+               "then the emission current and RHEED intensity read after it settles. "
+               "Returns the table so far and what the step did to each. With judge "
+               "person, only when the person says up.",
+           journal=True, timeout_s=300.0),
+        Op("finish_rheed_on", FinishRheedOn, RheedGunResult,
+           doc="End rheed_on's open emission search: the filament stays at filament_ma "
+               "(one of the tried steps; left out, where it is), then focus and "
+               "deflection. With judge person, at the step the person named.",
+           journal=True, timeout_s=300.0),
+        Op("rheed_off", Empty, RheedGunResult,
+           doc="Switch the RHEED gun's HV and filament off, ramped (pld-service's "
+               "rheed_all_off_gentle; pld driver only): about two minutes from full. "
+               "The normal way off at the end of a substrate.",
+           journal=True, timeout_s=360.0),
+        Op("add_rheed_box", AddRheedBox, RheedBoxResult,
+           doc="Draw an integration box on the RHEED image, as the operator does in the "
+               "Deck: rheed.integrator then records its intensity every frame (the growth "
+               "oscillations), and with stft its short-time FT. Pick it from "
+               "rheed.camera.image (and the simulated spot positions): a box a little "
+               "larger than the spot, e.g. around the specular spot, a first-order rod, and "
+               "a dark background patch. The box gets a new id of its own (from 1000), so "
+               "the operator's boxes are never overwritten; it must lie inside the frame. "
+               "Draw boxes before start_storage, so the whole growth is recorded.",
+           journal=True),
+        Op("remove_rheed_box", RemoveRheedBox, RheedBoxResult,
+           doc="Remove an agent box (id from add_rheed_box). The operator's boxes are "
+               "theirs to remove. Refused while recording: it would cut its trace.",
+           journal=True),
         Op("rotate_sample_to", SampleAngle, Ack,
            doc="Rotate the sample stage to an absolute angle in degrees. Blocks until the move completes. Refused "
                "while the motor holding lock is released (see is_motor_free).",
@@ -399,19 +456,29 @@ DRIVER = Capability(
                "which drives the control MFC itself. pld-service has no gate: closing "
                "it sets MFC1 to zero, opening it does nothing (set_mfc_flow flows at "
                "once).", journal=True),
-        Op("set_pressure", SetPressure, Ack,
-           doc="Set the chamber pressure in Torr. Under pld-service (the default) it "
-               "sets the service's pressure-control setpoint, which picks its regime "
-               "(<= 2e-4 low, >= 3e-3 high; between is refused) and takes effect once "
-               "set_pressure_control(on=True) is on. Under --use-legacy-mi-mode on the "
-               "real chamber a person sets it by hand: this raises a `pressure` pending "
-               "confirmation for them, resolved with confirm once they have; in the "
-               "simulator it sets the setpoint directly. Read it back with "
-               "get_current_pressure.", journal=True),
-        Op("set_pressure_control", SetPressureControl, Ack,
-           doc="Turn closed-loop pressure control on or off. On: the controller owns "
-               "the control MFC and holds set_pressure's setpoint. Off: flow reverts "
-               "to whatever set_mfc_flow last set, gated by set_mfc_control.", journal=True),
+        Op("set_pressure_control", SetPressureControl, PressureControlResult,
+           doc="Pressure control on or off, under pld-service. Control first, then the "
+               "setpoint: on arms control and moves nothing (state `armed`); "
+               "set_pressure_setpoint then starts it. Off stops it and clears the "
+               "setpoint (MFC1 left as it is, a running regime switch cancelled with "
+               "valves and IG1 as they are), as every interlock stop does: the next "
+               "control needs a setpoint again. The result is control's state after it "
+               "(off, armed, switching, regulating) and pld-service's reply.", journal=True),
+        Op("set_pressure_setpoint", SetPressureSetpoint, PressureControlResult,
+           doc="The chamber pressure in Torr. Under pld-service it is refused while "
+               "pressure control is off: set_pressure_control(on=True) first. The "
+               "setpoint picks the regime (<= 2e-4 low, 3e-3..1 high; between is "
+               "refused). In the regime control is in, it retargets at once. Otherwise "
+               "pld-service switches to the regime first, skipping any step already "
+               "done: MV11 open; to high: MFC1 0, IG1 off, 10 s, MV10 closed; to low: "
+               "MFC1 0, CDG10 below 3e-3, MV10 open, 10 s, IG1 on (if safe); a closed "
+               "CV301 is opened first. Control then regulates (state `switching`, then "
+               "`regulating`). wait=true returns once regulating within `tolerance` of "
+               "it, and fails if control stops or the setpoint changes meanwhile. "
+               "Under --use-legacy-mi-mode on the real chamber a person sets it by "
+               "hand: a `pressure` pending confirmation, resolved with confirm. Read "
+               "it back with get_current_pressure before heating or growing.",
+           journal=True, timeout_s=600.0),
         Op("initiate_heating_laser", Empty, Ack, journal=True),
         Op("turn_off_heating_laser", TurnOffHeatingLaser, Ack,
            doc="Turn the heating laser off. Refused while the substrate reads above "

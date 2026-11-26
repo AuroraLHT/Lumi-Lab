@@ -102,12 +102,16 @@ async def _wait_for_task(exp: ExperimentSession, task_id: str, poll_interval: fl
     value) until the given task is no longer current -- avoids a race between the
     RPC reply carrying task_id and the update-channel push that sets current_task.
 
-    Returns the task's outcome (`{"ok": ...}`) when the session saw one. Note that the
+    Returns the task's outcome (`{"ok": ...}`): the state's `last_task` when it is this
+    task, else what the session saw on the update channel. Note that the
     functions below do not act on it: a failed ramp does not stop the sequence, which
     is a known gap -- see docs/TODO.md."""
     while True:
         state = await exp.driver.get_state()
         if state.current_task is None or state.current_task.id != task_id:
+            last = state.last_task
+            if last is not None and last.task.id == task_id:
+                return last.result
             return exp.last_task_result
         await asyncio.sleep(poll_interval)
 
@@ -231,7 +235,7 @@ async def perform_single_deposition(
     preablation_frequency: float = 10.0,
     before_experiment_waittime: float = 2.0,
     after_experiment_waittime: float = 2.0,
-    ramp_rate: float = 20.0,
+    ramp_rate: float | None = None,
     is_dryrun: bool = False,
     finish_substrate: bool = True,
     input_provider: InputProvider = default_input_provider,
@@ -328,7 +332,7 @@ async def perform_pixel_deposition(
     preablation_frequency: float = 10.0,
     before_experiment_waittime: float = 2.0,
     after_experiment_waittime: float = 2.0,
-    ramp_rate: float = 20.0,
+    ramp_rate: float | None = None,
     is_dryrun: bool = False,
     is_experiment_finished: bool = True,
     input_provider: InputProvider = default_input_provider,

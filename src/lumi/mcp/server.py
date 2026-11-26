@@ -85,9 +85,10 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
     # the growth record, which a bare start_recording would not.
     (STORAGE_NODE, {"archive": None}),
     (SIMULATION, {"rheed_sim": None}),
-    # The boxes the operator drew and their live intensity -- the oscillations a
-    # deposition is watched by. Read-only: registering and removing boxes is the
-    # operator's layout, and an agent rearranging it mid-growth helps nobody.
+    # The boxes and their live intensity -- the oscillations a deposition is watched
+    # by. Read-only here: an agent draws its own boxes with experiment.driver's
+    # add_rheed_box / remove_rheed_box, which give them ids of their own (never the
+    # operator's) and refuse a removal mid-recording.
     (RHEED, {"camera": None, "integrator": frozenset({"bboxes", "cache"})}),
     # The driver's operations are whole actions the service vets itself (interlocks,
     # limits, read-only hardware), unlike an MI script. Not control ownership -- an
@@ -97,7 +98,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
     # the load lock or the pumps (auto_vent, auto_vac, cancel_load_lock, set_pump):
     # venting and pumping down are a person's, with the hatch and GV1 in front of them.
     (CHAMBER, {"log": None, "camera": None, "pld": frozenset({
-        "chamber_state", "recent_events", "recent_activity", "set_valve", "select_target",
+        "chamber_state", "get_settings", "recent_events", "recent_activity", "set_valve", "select_target",
         "set_mask_position", "set_sample_position", "set_rheed_gun_x", "home_axis",
         "set_target_spin", "set_target_twist", "set_target_auto_motion",
         # The master motor stop, as stop_fire: anyone may stop. Not reset_motors: a stop
@@ -109,7 +110,7 @@ EXPOSED: tuple[tuple[EquipmentContract, dict[str, frozenset[str] | None] | None]
         "set_heater_key", "set_heater_start", "set_heater_threshold",
         "set_heating_current", "set_heater_current_limits", "set_temperature",
         "set_temperature_control", "set_sample_shutter", "fire_laser", "stop_fire", "set_mfc_flow",
-        "set_pressure", "set_pressure_control", "set_pressure_flow_limits",
+        "set_pressure_setpoint", "set_pressure_control", "set_pressure_flow_limits",
         "tune_pressure", "set_ion_gauge", "tune_heater", "take_laser_control", "laser_on",
         "laser_standby", "laser_off", "set_laser_mode", "set_laser_hv", "set_laser_energy",
         "release_laser",
@@ -473,8 +474,10 @@ Temperatures are the back pyrometer's, and only comparable at the same emissivit
 each growth records it (pyrometer_emissivity; 0.65 before experiment 23, 0.262 since, when
 the old scale read far low -- 650 then was about 794 now). Say so when comparing across it.
 rheed.camera.image and chamber.camera.image show the live pictures;
-rheed.integrator.cache is the live intensity of each box the operator drew (the growth
-oscillations); chamber.log.log the latest chamber readings. chamber.pld.* is the chamber
+rheed.integrator.cache is the live intensity of each box (the growth oscillations; max_points
+or since for less than its 1000 frames): the
+operator's, drawn in the Deck, and yours, drawn with experiment.driver.add_rheed_box (ids
+from 1000; draw them before start_storage); chamber.log.log the latest chamber readings. chamber.pld.* is the chamber
 driver itself (pld-service): chamber_state for everything it reads (read_only=true means
 the service was started on hardware without operations allowed, and every operation will
 be refused), and one tool per operation -- valves, motion, heater, gas, the excimer laser.

@@ -33,16 +33,19 @@ from lumi.contracts.payloads.experiment import (
     SetLaserEnergy,
     SetLaserHv,
     SetMfcControl,
-    SetPressure,
+    SetPressureControl,
+    SetPressureSetpoint,
     SetTarget,
     StartMiLogging,
     CancelTask,
+    CoolDown,
     StopDeposition,
     ToTemperature,
 )
 from lumi.contracts.payloads.pld import (
     PldChamberState,
     PldExcimer,
+    PldGas,
     PldHeater,
     PldLaser,
     PldMotion,
@@ -82,6 +85,14 @@ class FakePldClient:
         #: Ops that block, as a real fire or carousel move does, until `release` is set.
         self.blocking: set[str] = set()
         self.release = asyncio.Event()
+        #: pld-service's [target_names], slot -> material.
+        self.target_names = {"A": "SRO"}
+
+    async def get_settings(self):
+        from lumi.contracts.payloads.pld import PldSetting, PldSettings
+
+        return PldSettings(settings=[PldSetting(section="target_names", key=k, value=v)
+                                     for k, v in self.target_names.items()])
 
     async def call(self, op, req=None, *, actor=None):
         self.actors.append(actor)
@@ -106,6 +117,9 @@ async def wait_task(handler) -> dict:
     for _ in range(2000):
         event = await handler.next_update()
         if event is not None and event.task_result is not None:
+            # Every outcome is also the readout's last_task, for a client that polls.
+            last = handler.readout().last_task
+            assert last.task.id == event.finished_task.id and last.result == event.task_result
             return event.task_result
         await asyncio.sleep(0.01)
     pytest.fail("task never reported completion")
@@ -156,11 +170,11 @@ async def fake(tmp_path):
 
 async def test_to_temperature_engages_pid_then_ramps_from_where_it_is(fake):
     handler, client = fake
-    await handler.to_temperature(ToTemperature(temperature=650, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=650, ramp_rate=10))
     assert (await wait_task(handler))["ok"] is True
     assert client.calls == [
         ("set_temperature_control", {"on": True}),
-        ("set_temperature", {"celsius": 650.0, "ramp_c_per_min": 20.0, "wait": True, "tolerance": 0.0}),
+        ("set_temperature", {"celsius": 650.0, "ramp_c_per_min": 10.0, "wait": True, "tolerance": 0.0}),
     ]
 
 
@@ -204,7 +218,7 @@ async def test_a_failed_warm_up_sets_the_current_back_and_says_so(fake):
         return await _call(op, req, actor=actor)
 
     client.call = refuse_third
-    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=10))
     result = await wait_task(handler)
     assert result["ok"] is False
     assert "manual warm-up failed" in result["error"] and "set back to 6.00 A" in result["error"]
@@ -218,7 +232,7 @@ async def test_a_warm_up_already_at_its_current_still_waits_for_the_threshold(fa
     handler, client = fake
     client.state.heater.temperature = 177.0
     client.state.heater.current_set = 7.81
-    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=10))
     result = await wait_task(handler)
     assert result["ok"] is False and "stalled at 177" in result["error"], result
     assert "set_temperature_control" not in [op for op, c in client.calls if c.get("on")]
@@ -229,7 +243,7 @@ async def test_a_warm_up_already_at_its_current_still_waits_for_the_threshold(fa
     client.state.heater.temperature = 177.0
     client.state.heater.current_set = 7.81
     asyncio.get_running_loop().call_later(0.3, setattr, client.state.heater, "temperature", 230.0)
-    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=10))
     result = await wait_task(handler)
     assert result["ok"] is True, result
     assert "set_heating_current" not in ops(client)
@@ -297,6 +311,29 @@ async def test_laser_power_needs_a_laser_test_today(fake):
     assert client.calls == []
 
 
+async def fire_test_train(handler, client, energies, *, setpoint=215.5, pulses=100) -> dict:
+    """fire_laser_test with the excimer reporting `energies` in turn while the train
+    fires, and `pulses` fired by the end."""
+    client.state.excimer = PldExcimer(control=True, mode="HV PGR", hv=21.0, energy_set=setpoint)
+    client.blocking.add("fire_laser")
+    client.release.clear()
+    await handler.fire_laser_test(Empty())
+    client.state.laser = PldLaser(status="firing", pulses_requested=100, pulses_fired=1)
+    for energy in energies:
+        client.state.excimer.energy = energy
+        await asyncio.sleep(0.015)  # read once or twice, at LASER_TEST_POLL_S = 0.01
+    client.state.laser = PldLaser(status="done", pulses_requested=100, pulses_fired=pulses)
+    client.release.set()
+    return await wait_task(handler)
+
+
+@pytest.fixture(autouse=True)
+def fast_laser_test(monkeypatch):
+    import lumi.experiment.manager as manager
+
+    monkeypatch.setattr(manager, "LASER_TEST_POLL_S", 0.01)
+
+
 async def test_laser_test_then_energy_mode_at_the_meter_energy_over_the_ratio(fake):
     handler, client = fake
     client.state.excimer = PldExcimer(control=True, energy=200.0)
@@ -305,10 +342,11 @@ async def test_laser_test_then_energy_mode_at_the_meter_energy_over_the_ratio(fa
     assert handler._pending.kind == "laser_test"
 
     client.calls.clear()
-    await handler.fire_laser_test(Empty())
-    result = await wait_task(handler)
-    assert result["ok"] and result["source_mj"] == 200.0
+    result = await fire_test_train(handler, client, [199.0, 201.0, 200.0])
+    assert result["ok"] and result["source_mj"] == pytest.approx(200.0)
+    assert (result["pulses_fired"], "source_note" in result) == (100, False)
     assert client.calls == [("fire_laser", {"pulses": 100, "rate_hz": 1.0, "wait": True})]
+    client.state.laser = PldLaser()
 
     test = await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0))
     assert (test.source_mj, test.meter_mj, test.ratio, test.fired_by, test.today) == (200.0, 150.0, 0.75, "lumi", True)
@@ -343,6 +381,97 @@ async def test_laser_test_fired_by_hand_takes_the_lasers_reading(fake):
     assert (test.ratio, test.fired_by, test.pulses) == (0.5, "person", None)
     listed = (await handler.list_laser_tests(ListLaserTests())).tests
     assert [(t.test_id, t.today) for t in listed] == [(test.test_id, True)]
+
+
+async def test_laser_test_refuses_the_setpoint_as_the_source_energy(fake):
+    # REA's twin answers EGY? with the setpoint in HV mode too: not a measurement.
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    result = await fire_test_train(handler, client, [215.5, 215.5, 215.5, 215.5])
+    assert result["ok"] and result["source_mj"] is None
+    assert "its energy setpoint" in result["source_note"]
+    with pytest.raises(ValueError, match="not a measurement: pass source_mj"):
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0))
+    test = await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0, source_mj=200.0))
+    assert (test.source_mj, test.ratio, test.fired_by) == (200.0, 0.75, "lumi")
+
+
+async def test_laser_test_refuses_too_few_or_flat_readings(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    result = await fire_test_train(handler, client, [190.0])
+    assert result["source_mj"] is None and "fewer than 3" in result["source_note"]
+    result = await fire_test_train(handler, client, [190.0, 190.0, 190.0], setpoint=None)
+    assert result["source_mj"] is None and "stayed at 190.00 mJ" in result["source_note"]
+    assert "setpoint" not in result["source_note"]
+
+
+async def test_laser_test_refuses_a_train_cut_short(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    result = await fire_test_train(handler, client, [199.0, 201.0, 200.0], pulses=60)
+    assert not result["ok"] and "fired 60 of 100" in result["error"]
+    with pytest.raises(RuntimeError, match="only 60 of 100"):
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0, source_mj=200.0))
+    result = await fire_test_train(handler, client, [199.0, 201.0, 200.0])
+    assert result["ok"]
+    await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0))
+
+
+async def test_laser_test_refuses_an_excimer_moved_off_the_test_hv(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    client.state.excimer = PldExcimer(control=True, mode="EGY PGR", hv=21.0)
+    await handler.fire_laser_test(Empty())
+    result = await wait_task(handler)
+    assert not result["ok"] and "not at 21 kV in HV mode (mode EGY PGR" in result["error"]
+    assert "fire_laser" not in ops(client)
+
+
+async def test_laser_test_confirm_waits_for_the_train(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    client.state.excimer = PldExcimer(control=True, mode="HV PGR", hv=21.0)
+    client.blocking.add("fire_laser")
+    await handler.fire_laser_test(Empty())
+    with pytest.raises(RuntimeError, match="still firing"):
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=150.0, source_mj=200.0))
+    with pytest.raises(RuntimeError, match="fire_laser_test .* is still running"):
+        await handler.fire_laser_test(Empty())
+    await handler.cancel_task(CancelTask())  # before its runner took a step
+    assert (handler._current_task, handler._motion) == (None, None)
+
+
+async def test_laser_test_refuses_a_meter_above_the_source(fake):
+    handler, client = fake
+    await handler.begin_laser_test(Empty())
+    with pytest.raises(ValueError, match="1.50 times the source"):
+        await handler.confirm_laser_test(ConfirmLaserTest(meter_mj=300.0, source_mj=200.0))
+    assert handler._pending.kind == "laser_test"  # still open, to confirm again
+
+
+async def test_a_second_task_is_refused_until_the_first_is_cancelled(fake):
+    handler, client = fake
+    client.blocking.add("set_temperature")
+    first = await handler.cool_down(CoolDown(ramp_rate=10.0))
+    with pytest.raises(RuntimeError, match=r"cool_down \(task \w+\) is still running.*cancel_task"):
+        await handler.cool_down(CoolDown(ramp_rate=5.0))
+    assert handler._current_task.id == first.task_id
+    # Cancelled before its runner took a step: still cleared, and still reported.
+    await handler.cancel_task(CancelTask(reason="wrong rate"))
+    assert handler._current_task is None
+    # The outcome is already in the readout, before the update reaches the channel.
+    stopped = {"ok": False, "aborted": True, "error": "stopped by request: wrong rate"}
+    assert handler.readout().last_task.task.id == first.task_id
+    assert handler.readout().last_task.result == stopped
+    result = await wait_task(handler)
+    assert result == stopped
+    client.blocking.clear()
+    client.release.set()
+    second = await handler.cool_down(CoolDown(ramp_rate=5.0))
+    assert handler._current_task.id == second.task_id
+    # A new task starting leaves the last one's outcome until it finishes itself.
+    assert handler.readout().last_task.task.id == first.task_id
 
 
 async def test_fire_laser_test_needs_the_test_open(fake):
@@ -639,9 +768,115 @@ async def test_the_excimer_is_refused_under_legacy_mi(fake):
 async def test_pressure_goes_to_the_service_even_when_set_by_hand_under_mi(fake):
     handler, client = fake
     assert handler.pressure_by_hand  # the setting is for legacy MI mode only
-    await handler.set_pressure(SetPressure(pressure=0.01))
+    client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.01, pressure_gauge="CDG10",
+                              pressure_mode="high (PID)")
+    client.answers["set_pressure"] = "pressure setpoint 1.000e-2 Torr on CDG10, high regime (control on)"
+    result = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.01))
     assert handler.readout().pending_confirmation is None
     assert client.calls == [("set_pressure", {"torr": 0.01, "gauge": "", "wait": False, "tolerance": 0.0})]
+    assert (result.state, result.setpoint, result.gauge) == ("regulating", 0.01, "CDG10")
+    assert result.message.endswith("(control on)")
+
+
+async def test_pressure_control_first_then_the_setpoint(fake):
+    # DRY-STO-11: a setpoint with control off returned ok and regulated nothing. Now
+    # pld-service refuses it, and every reply says where control is.
+    handler, client = fake
+    client.state.gas = PldGas(pressure_mode="off")
+    client.refuse["set_pressure"] = ("pressure setpoint refused: pressure control is off "
+                                     "(SetPressureControl on first, then SetPressure)")
+    with pytest.raises(PldRefused, match="SetPressureControl on first"):
+        await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
+
+    client.state.gas = PldGas(pressure_mode="armed", pressure_setpoint=float("nan"))
+    armed = await handler.set_pressure_control(SetPressureControl(on=True))
+    assert (armed.state, armed.setpoint) == ("armed", None)  # NaN from the service is none
+
+    del client.refuse["set_pressure"]
+    client.state.gas = PldGas(pressure_setpoint=0.1, pressure_gauge="CDG10",
+                              pressure_mode="switching to high", pressure_switch_step="IG1 off")
+    switching = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
+    assert (switching.state, switching.mode) == ("switching", "switching to high")
+
+    client.state.gas = PldGas(pressure_mode="off")
+    off = await handler.set_pressure_control(SetPressureControl(on=False))
+    assert (off.state, off.setpoint) == ("off", None)
+    assert ops(client) == ["set_pressure", "set_pressure_control", "set_pressure", "set_pressure_control"]
+
+
+async def test_an_older_service_naming_the_regime_with_control_off_reads_off(fake):
+    handler, client = fake
+    client.state.gas = PldGas(pressure_setpoint=0.1, pressure_mode="high (PID)")  # control off
+    result = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1))
+    assert result.state == "off"
+
+
+async def test_the_setpoint_waits_until_control_regulates_there(fake, monkeypatch):
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "PRESSURE_POLL_S", 0.01)
+    handler, client = fake
+    client.state.gas = PldGas(pressure_setpoint=0.1, pressure_gauge="CDG10", pressure_mode="switching to high")
+    client.state.pressures = PldPressures(cdg10=0.0015)
+
+    async def chamber():
+        await asyncio.sleep(0.05)  # the switch ends, control starts and the pressure rises
+        client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.1,
+                                  pressure_gauge="CDG10", pressure_mode="high (PID)")
+        for torr in (0.04, 0.085, 0.097):
+            await asyncio.sleep(0.03)
+            client.state.pressures = PldPressures(cdg10=torr)
+
+    rise = asyncio.create_task(chamber())
+    result = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1, wait=True))
+    await rise
+    assert (result.state, result.reading) == ("regulating", 0.097)
+
+
+async def test_a_setpoint_needing_no_switch_waits_out_a_stale_armed_state(fake, monkeypatch):
+    # DRY-FULL-02: armed with the valves already in the high regime, pld-service starts
+    # control at once but publishes it at its next poll cycle; the wait read "armed" and
+    # failed though control was regulating seconds later.
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "PRESSURE_POLL_S", 0.01)
+    handler, client = fake
+    client.state.gas = PldGas(pressure_mode="armed", pressure_setpoint=float("nan"))
+    client.state.pressures = PldPressures(cdg10=0.1024)
+    client.answers["set_pressure"] = ("pressure setpoint 1.000e-1 Torr on CDG10, high regime: "
+                                      "pressure control on, high regime (now 1.024e-1)")
+
+    async def next_cycle():
+        await asyncio.sleep(0.05)
+        client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.1,
+                                  pressure_gauge="CDG10", pressure_mode="high (PID)")
+
+    cycle = asyncio.create_task(next_cycle())
+    result = await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1, wait=True))
+    await cycle
+    assert (result.state, result.reading) == ("regulating", 0.1024)
+
+
+async def test_the_wait_fails_when_control_stops(fake, monkeypatch):
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "PRESSURE_POLL_S", 0.01)
+    handler, client = fake
+    client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.1,
+                              pressure_gauge="CDG10", pressure_mode="high (PID)")
+    client.state.pressures = PldPressures(cdg10=0.002)
+
+    async def interlock():
+        await asyncio.sleep(0.05)
+        client.state.gas = PldGas(pressure_mode="off")  # an interlock: off, setpoint cleared
+
+    trip = asyncio.create_task(interlock())
+    with pytest.raises(RuntimeError, match=r"pressure control stopped \(off\)"):
+        await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1, wait=True))
+    await trip
+
+    client.state.gas = PldGas(pressure_control=True, pressure_setpoint=0.1,
+                              pressure_gauge="CDG10", pressure_mode="high (PID)")
+    with pytest.raises(RuntimeError, match="not within 10% of 0.1 Torr after 0.05 s"):
+        await handler.set_pressure_setpoint(SetPressureSetpoint(pressure=0.1, wait=True,
+                                                                wait_timeout_s=0.05))
 
 
 async def test_mfc_gate_and_logging(fake):
@@ -720,9 +955,7 @@ async def test_the_current_target_counts_from_zero_like_the_log(fake, target, nu
     # The twin dry run: TG No. was one-based under pld-service, so A read as B.
     handler, client = fake
     handler.manager.target_mapper = {"A": "TG1name", "C": "TG3name", "Clear": "TG7name"}
-    async def material(slot):
-        return {"A": "SRO", "C": "LSMO", "Clear": None}[slot]
-    handler.manager.get_target_name_by_id = material
+    client.target_names = {"A": "SRO", "C": "LSMO"}
     client.state.motion.target = target
     got_number, got_slot, _ = await handler.manager.get_current_target()
     assert (got_number, got_slot) == (number, slot)
@@ -742,6 +975,9 @@ class HandlerBus:
 
     async def chamber_state(self):
         return await self.pld.chamber_state(Empty())
+
+    async def get_settings(self):
+        return await self.pld.get_settings(Empty())
 
 
 @pytest_asyncio.fixture
@@ -763,7 +999,9 @@ async def sim(tmp_path):
     await db.close()
 
 
-async def test_a_growth_runs_end_to_end_on_the_sim(sim):
+async def test_a_growth_runs_end_to_end_on_the_sim(sim, monkeypatch):
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "RAMP_LIMITS", ((0.0, 120.0),))  # the sim's clock, not a substrate
     handler, model, service = sim
     assert (await handler.check_mi_mode(CheckMiMode(timeout_s=1))).status == "on"
     await handler.manager.initiate_heating_laser(timeout=5)
@@ -844,3 +1082,19 @@ async def test_cancel_task_holds_the_ld_current_on_the_sim(sim):
     await asyncio.sleep(0.5)
     heater = (await handler.manager.chamber.state()).heater
     assert not heater.pid_on and heater.current_set == held.current_set
+
+
+async def test_target_names_come_from_pld_service_not_pldconfig(fake):
+    # REA-Chamber, 2026-11-23: a dry run named E SmFeO3 from the leftover PLDconfig.ini;
+    # E holds SrRuO3. Under the pld driver the names are pld-service's target_names.
+    handler, client = fake
+    handler.manager.target_mapper = {"A": "TG1name", "B": "TG2name", "E": "TG5name", "Clear": "TG7name"}
+    client.target_names = {"A": "SpotSizeCrys", "B": "TbFeO3", "E": "SrRuO3"}
+    assert await handler.manager.show_available_targets() == {
+        "A": "SpotSizeCrys", "B": "TbFeO3", "E": "SrRuO3", "Clear": "Clear"}
+    assert await handler.manager.get_target_id_by_name("srruo3") == "E"
+    with pytest.raises(ValueError, match="no target 'SmFeO3' in the chamber; loaded: .*'E': 'SrRuO3'"):
+        await handler.manager.get_target_id_by_name("SmFeO3")
+    client.target_names["B"] = ""
+    with pytest.raises(ValueError, match="slot B holds no target"):
+        await handler.manager.get_target_name_by_id("B")

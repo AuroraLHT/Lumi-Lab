@@ -79,6 +79,7 @@ from lumi.contracts.payloads.experiment import (
     CoolDown,
     CurrentSubstrateResponse,
     CurrentTask,
+    FinishedTask,
     EndStorage,
     ExperimentId,
     ExperimentInfo,
@@ -112,6 +113,14 @@ from lumi.contracts.payloads.experiment import (
     MotorFree,
     MoveMask,
     MoveTo,
+    AddRheedBox,
+    FinishRheedOn,
+    RemoveRheedBox,
+    RheedBoxInfo,
+    RheedBoxResult,
+    RheedGunResult,
+    RheedSearch,
+    RheedOn,
     PageInfo,
     PendingConfirmation,
     PendingStatus,
@@ -120,6 +129,7 @@ from lumi.contracts.payloads.experiment import (
     PixelCheckStatus,
     PixelIndex,
     PixelMoveResult,
+    PressureControlResult,
     PixelPosition,
     PressureReading,
     ProjectId,
@@ -151,8 +161,8 @@ from lumi.contracts.payloads.experiment import (
     SetLaserHv,
     SetMfcControl,
     SetMfcFlow,
-    SetPressure,
     SetPressureControl,
+    SetPressureSetpoint,
     SetRheedGain,
     SetTarget,
     SnapshotId,
@@ -188,6 +198,12 @@ from lumi.contracts.payloads.experiment import (
     ValveStatus,
 )
 from lumi.experiment.chamber import MiChamber, PldStopped
+from lumi.experiment.rheed_gun import RheedGunSettings, emission_table
+from lumi.contracts.payloads.rheed import BBox, BBoxId, RegisterBBox
+
+#: Boxes an agent draws (add_rheed_box) take ids from here up; the Deck numbers the
+#: operator's from 0, so neither overwrites the other's.
+AGENT_BOX_ID_BASE = 1000
 from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso
 from lumi.experiment.files import MeasurementFileStore, guess_media_type
 from lumi.experiment.journal import StepJournal
@@ -277,10 +293,13 @@ class ExperimentHandler:
         file_store: MeasurementFileStore | None = None,
         snapshot_store: MeasurementFileStore | None = None,
         pressure_by_hand: bool = True,
+        rheed_gun: RheedGunSettings | None = None,
     ) -> None:
         self.sources = sources
+        #: The RHEED gun's operating values (`[experiment.rheed]`).
+        self.rheed_gun = rheed_gun
         #: Under legacy MI mode the real chamber's pressure is set by a person at the
-        #: gauge: set_pressure asks them (a `pressure` pending confirmation) instead of
+        #: gauge: set_pressure_setpoint asks them (a `pressure` pending confirmation) instead of
         #: commanding the controller; the simulator sets it directly. pld-service runs
         #: the pressure control itself, so under it this is ignored.
         self.pressure_by_hand = pressure_by_hand
@@ -311,11 +330,15 @@ class ExperimentHandler:
 
         self._deps: dict[str, bool] = {name: False for name in DEPENDENCY_EQUIPMENT}
         self._pending: PendingConfirmation | None = None
+        #: The RHEED boxes agents drew (add_rheed_box), by bbox id.
+        self._agent_boxes: dict[int, RheedBoxInfo] = {}
         self._current_task: CurrentTask | None = None
+        self._last_task: FinishedTask | None = None
         # The asyncio task running `_current_task`, so stop_deposition can end it, and
         # why it was stopped once it has been.
         self._task_handle: asyncio.Task | None = None
         self._stop_reason: str | None = None
+        self._finishing: set[asyncio.Task] = set()
         self._sequence_run: SequenceRun | None = None
         self._updates: asyncio.Queue[TaskEvent] = asyncio.Queue()
         # The op currently moving a motor, if any. Requests are not serialised (the
@@ -374,6 +397,7 @@ class ExperimentHandler:
             bounds=self.bounds,
             target_mapper=self.target_mapper,
             chamber_fiducial=self.sources.get("chamber_fiducial"),
+            rheed_gun=self.rheed_gun,
         )
 
     # --- state / updates -----------------------------------------------------
@@ -395,11 +419,14 @@ class ExperimentHandler:
             recording_name=m.recording_name if m else None,
             pending_confirmation=self._pending,
             current_task=self._current_task,
+            last_task=self._last_task,
             deps_available=dict(self._deps),
             laser_power_set=m._laser_power_set if m else None,
             laser_power_real=m._laser_power_real if m else None,
             center_mask_pos=self.pld_config.center_mask_pos,
             sequence=self._sequence_run,
+            rheed_search=self._rheed_search(),
+            rheed_boxes=dict(self._agent_boxes),
         )
 
     async def next_update(self) -> TaskEvent | None:
@@ -414,7 +441,13 @@ class ExperimentHandler:
         await self._updates.put(TaskEvent(
             pending_confirmation=self._pending, current_task=self._current_task,
             task_result=task_result, finished_task=finished_task,
+            rheed_search=self._rheed_search(),
+            rheed_boxes=dict(self._agent_boxes),
         ))
+
+    def _rheed_search(self) -> RheedSearch | None:
+        view = self.manager.rheed_gun.search_view() if self.manager is not None else None
+        return RheedSearch(**_jsonable(view)) if view is not None else None
 
     # --- dependency liveness ---------------------------------------------------
 
@@ -461,12 +494,17 @@ class ExperimentHandler:
         """`_start_task` for a task that moves a motor: holds the motion claim until
         the task ends, so nothing else moves under a deposition or an alignment."""
         try:
+            self._refuse_if_running(kind)
             self._claim_motion(kind)
         except RuntimeError:
             coro.close()
             raise
 
+        entered = False
+
         async def moving():
+            nonlocal entered
+            entered = True
             try:
                 return await coro
             finally:
@@ -474,16 +512,41 @@ class ExperimentHandler:
 
         wrapped = moving()
         try:
-            return await self._start_task(kind, wrapped, detail)
+            ack = await self._start_task(kind, wrapped, detail)
         except BaseException:
             wrapped.close()
             coro.close()
             self._release_motion()
             raise
 
+        def cancelled_before_start(_) -> None:
+            # `moving` never ran, so neither did its finally: the claim is released here.
+            if not entered:
+                coro.close()
+                self._release_motion()
+
+        self._task_handle.add_done_callback(cancelled_before_start)
+        return ack
+
     # --- long-running ops: fire-and-return, tracked via current_task -------------
 
+    def _refuse_if_running(self, kind: str) -> None:
+        running = self._current_task
+        if running is not None:
+            raise RuntimeError(
+                f"{running.kind} (task {running.id}) is still running: wait for it to finish (state.last_task), "
+                f"or end it with cancel_task, before starting {kind}")
+
     async def _start_task(self, kind: str, coro, detail: dict | None = None) -> TaskAck:
+        """Run `coro` as the one current task. One at a time: a second start is
+        refused, not run alongside, since the first would go on with nothing tracking
+        it (stop_deposition and cancel_task end only `_current_task`). Replacing a
+        task takes an explicit cancel_task first."""
+        try:
+            self._refuse_if_running(kind)
+        except RuntimeError:
+            coro.close()
+            raise
         task_id = uuid.uuid4().hex
         started_at = time.time()
         task = CurrentTask(id=task_id, kind=kind, started_at=started_at, detail=detail or {})
@@ -505,25 +568,10 @@ class ExperimentHandler:
                 source=current_source.get() or "experiment.driver",
             )
 
-        async def runner() -> None:
-            cancelled = None
-            try:
-                result = await coro
-                task_result = {"ok": True, **_jsonable(result)}
-            except asyncio.CancelledError as exc:
-                # stop_deposition's, an abort like any other; anything else (the node
-                # shutting down) is recorded and then let through.
-                if self._stop_reason is None:
-                    cancelled = exc
-                reason = self._stop_reason or "the experiment node is shutting down"
-                task_result = {"ok": False, "aborted": True, "error": f"stopped by request: {reason}"}
-            except Exception as exc:
-                log.exception("experiment task %s (%s) failed", kind, task_id)
-                task_result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
-                if isinstance(exc, PldStopped):  # StopFire from the REA GUI or any client
-                    task_result["aborted"] = True
-                    if self._stop_reason is not None:  # ours: stop_deposition's StopFire
-                        task_result["error"] = f"stopped by request: {self._stop_reason}"
+        started = False
+
+        async def finish(task_result: dict) -> None:
+            self._last_task = FinishedTask(task=task, result=task_result, finished_at=time.time())
             self._current_task = None
             self._task_handle = None
             self._stop_reason = None
@@ -538,10 +586,51 @@ class ExperimentHandler:
                     "task_finished", f"{kind}: {'ok' if task_result.get('ok') else task_result.get('error', 'failed')}",
                     {"task_id": task_id, "kind": kind, "result": task_result,
                      "duration_s": time.time() - started_at})
+
+        def stopped() -> dict:
+            reason = self._stop_reason or "the experiment node is shutting down"
+            return {"ok": False, "aborted": True, "error": f"stopped by request: {reason}"}
+
+        async def runner() -> None:
+            nonlocal started
+            started = True
+            cancelled = None
+            try:
+                result = await coro
+                task_result = {"ok": True, **_jsonable(result)}
+            except asyncio.CancelledError as exc:
+                # stop_deposition's, an abort like any other; anything else (the node
+                # shutting down) is recorded and then let through.
+                if self._stop_reason is None:
+                    cancelled = exc
+                task_result = stopped()
+            except Exception as exc:
+                log.exception("experiment task %s (%s) failed", kind, task_id)
+                task_result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                if isinstance(exc, PldStopped):  # StopFire from the REA GUI or any client
+                    task_result["aborted"] = True
+                    if self._stop_reason is not None:  # ours: stop_deposition's StopFire
+                        task_result["error"] = f"stopped by request: {self._stop_reason}"
+            await finish(task_result)
             if cancelled is not None:
                 raise cancelled
 
+        def cancelled_before_start(_) -> None:
+            # Cancelled before its first step, runner never ran: nothing would clear
+            # the task, and it would refuse every task after it. Cleared here, before
+            # the canceller's wait returns; the journal and the update follow.
+            if not started:
+                coro.close()
+                result = stopped()
+                # last_task with it: no poll sees the task gone and its result not yet in.
+                self._last_task = FinishedTask(task=task, result=result, finished_at=time.time())
+                self._current_task = self._task_handle = self._stop_reason = None
+                done = asyncio.get_running_loop().create_task(finish(result))
+                self._finishing.add(done)  # held until it ends: the loop keeps only weak refs
+                done.add_done_callback(self._finishing.discard)
+
         self._task_handle = asyncio.create_task(runner(), name=f"experiment-task-{kind}")
+        self._task_handle.add_done_callback(cancelled_before_start)
         return TaskAck(task_id=task_id)
 
     #: The tasks that fire the laser, which stop_deposition ends.
@@ -632,14 +721,17 @@ class ExperimentHandler:
             )
 
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
+        self._refuse_if_running("to_temperature")  # first: a busy node is the reason to give
         await self._require_heating_laser(req.temperature)
+        ramp_rate = self.manager.ramp_rate_for(req.ramp_rate)  # refused here, not as a failed task
         return await self._start_task(
-            "to_temperature", self.manager.to_temperature(req.temperature, req.ramp_rate, req.wait),
-            {"temperature": req.temperature, "ramp_rate": req.ramp_rate, "wait": req.wait},
+            "to_temperature", self.manager.to_temperature(req.temperature, ramp_rate, req.wait),
+            {"temperature": req.temperature, "ramp_rate": ramp_rate, "wait": req.wait},
         )
 
     async def cool_down(self, req: CoolDown) -> TaskAck:
-        return await self._start_task("cool_down", self.manager.cool_down(req.ramp_rate), {"ramp_rate": req.ramp_rate})
+        ramp_rate = self.manager.ramp_rate_for(req.ramp_rate)
+        return await self._start_task("cool_down", self.manager.cool_down(ramp_rate), {"ramp_rate": ramp_rate})
 
     async def _chamber_conditions(self) -> dict:
         """The chamber state a deposition is actually running at.
@@ -746,7 +838,7 @@ class ExperimentHandler:
 
     async def anneal(self, req: Anneal) -> TaskAck:
         await self._require_heating_laser()  # every step is a to_temperature
-        steps = [(s.temperature, s.ramp_rate, s.wait_time) for s in req.steps]
+        steps = [(s.temperature, self.manager.ramp_rate_for(s.ramp_rate), s.wait_time) for s in req.steps]
         return await self._start_task("anneal", self.manager.anneal(steps), {"n_steps": len(steps)})
 
     # --- pending-confirmation gates -----------------------------------------------
@@ -926,6 +1018,119 @@ class ExperimentHandler:
             await self.manager.move_mask_to_position(req.position, req.speed_mm_s, req.accel_mm_s_per_ms)
         return Ack()
 
+    async def rheed_on(self, req: RheedOn) -> RheedGunResult:
+        judge = req.judge or self.manager.rheed_gun.settings.filament_judge
+        if self._pending is not None and judge == "person":
+            raise RuntimeError(f"a {self._pending.kind!r} confirmation is open: resolve it first")
+        return await self._rheed_op(self.manager.rheed_on(**req.model_dump()))
+
+    async def rheed_emission_step_up(self, req: Empty) -> RheedGunResult:
+        return await self._rheed_op(self.manager.rheed_step_up())
+
+    async def finish_rheed_on(self, req: FinishRheedOn) -> RheedGunResult:
+        return await self._rheed_op(self.manager.rheed_finish(req.filament_ma))
+
+    async def rheed_off(self, req: Empty) -> RheedGunResult:
+        return await self._rheed_op(self.manager.rheed_off())
+
+    async def _rheed_op(self, op) -> RheedGunResult:
+        """Run a gun op, then publish where the emission search stands (`rheed_search`,
+        also on a failure): only a person's search is a pending confirmation."""
+        try:
+            result = RheedGunResult(**_jsonable(await op))
+        finally:
+            search = self.manager.rheed_gun.search_view()
+            if search is not None and search["judge"] == "person":
+                table = emission_table(search["steps"])
+                self._pending = PendingConfirmation(
+                    id=self._pending.id if self._pending is not None
+                    and self._pending.kind == "rheed_emission" else uuid.uuid4().hex,
+                    kind="rheed_emission", requested_at=time.time(),
+                    message=("RHEED emission search: say up for the next 50 mA filament step, or "
+                             f"stop (at this step or an earlier one). {search['saturation']}\n{table}"))
+            elif self._pending is not None and self._pending.kind == "rheed_emission":
+                self._pending = None
+            await self._push()
+        return result
+
+    # --- RHEED integration boxes an agent draws ------------------------------------
+
+    async def _rheed_boxes(self, message: str, bbox_id: int | None = None) -> RheedBoxResult:
+        listing = await self.sources["rheed_integrator"].bboxes()
+        await self._push()  # rheed_boxes in the update channel
+        return RheedBoxResult(
+            message=message, bbox_id=bbox_id,
+            bboxes={i: b.model_dump() for i, b in listing.bboxes.items()},
+            labels={i: box.label for i, box in self._agent_boxes.items()})
+
+    async def _register_box(self, bbox_id: int, box: RheedBoxInfo) -> None:
+        bbox = BBox(x=box.x, y=box.y, width=box.width, height=box.height)
+        await self.sources["rheed_integrator"].register(RegisterBBox(bbox_id=bbox_id, bbox=bbox))
+        if box.stft:
+            await self.sources["rheed_stft"].register(RegisterBBox(bbox_id=bbox_id, bbox=bbox))
+
+    async def add_rheed_box(self, req: AddRheedBox) -> RheedBoxResult:
+        integrator = self.sources.get("rheed_integrator")
+        if integrator is None:
+            raise RuntimeError("no RHEED integrator client: the experiment node runs without the rheed node")
+        _, frame = await self.sources["rheed_camera"].image()
+        height, width = frame.shape[:2]
+        if req.x + req.width > width or req.y + req.height > height:
+            raise ValueError(f"the box ({req.x}, {req.y}, {req.width} x {req.height}) runs past the "
+                             f"RHEED frame, {width} x {height} px")
+        existing = (await integrator.bboxes()).bboxes
+        bbox_id = max([AGENT_BOX_ID_BASE - 1, *existing, *self._agent_boxes]) + 1
+        box = RheedBoxInfo(label=req.label, stft=req.stft, x=req.x, y=req.y,
+                           width=req.width, height=req.height)
+        await self._register_box(bbox_id, box)
+        self._agent_boxes[bbox_id] = box
+        what = (f"RHEED box {bbox_id}{f' ({req.label})' if req.label else ''} at x {req.x}, y {req.y}, "
+                f"{req.width} x {req.height} px{', with STFT' if req.stft else ''}")
+        if self.manager is not None:
+            await self.manager.add_recording_event(
+                "rheed_box_added", what, {"bbox_id": bbox_id, **box.model_dump()})
+        return await self._rheed_boxes(what, bbox_id)
+
+    async def remove_rheed_box(self, req: RemoveRheedBox) -> RheedBoxResult:
+        if req.bbox_id < AGENT_BOX_ID_BASE:
+            raise ValueError(f"box {req.bbox_id} is the operator's (agent boxes are {AGENT_BOX_ID_BASE} "
+                             "and up): ask them to remove it in the Deck")
+        if self.manager is not None and self.manager.recording_name:
+            raise RuntimeError(f"recording {self.manager.recording_name!r}: removing box "
+                               f"{req.bbox_id} now would cut its trace; remove it after end_storage")
+        integrator = self.sources["rheed_integrator"]
+        on_integrator = req.bbox_id in (await integrator.bboxes()).bboxes
+        if not on_integrator and req.bbox_id not in self._agent_boxes:
+            raise KeyError(f"box {req.bbox_id} is not on the integrator")
+        if on_integrator:
+            if self.sources.get("rheed_stft") is not None:
+                await self.sources["rheed_stft"].remove(BBoxId(bbox_id=req.bbox_id))
+            await integrator.remove(BBoxId(bbox_id=req.bbox_id))
+        self._agent_boxes.pop(req.bbox_id, None)
+        return await self._rheed_boxes(f"RHEED box {req.bbox_id} removed", req.bbox_id)
+
+    async def sync_rheed_boxes(self) -> list[int]:
+        """Re-register the agent boxes the integrator no longer has (a rheed node
+        restart drops every box): driven by the node's deps loop. Returns the ids put
+        back; a box whose id now holds other geometry is left to whoever drew it."""
+        integrator = self.sources.get("rheed_integrator")
+        if integrator is None or not self._agent_boxes:
+            return []
+        try:
+            existing = (await integrator.bboxes()).bboxes
+        except Exception:
+            return []  # the rheed node is down: try again next time
+        restored = [i for i in self._agent_boxes if i not in existing]
+        for bbox_id in restored:
+            box = self._agent_boxes[bbox_id]
+            await self._register_box(bbox_id, box)
+            log.warning("RHEED box %d (%s) was gone from the integrator: registered again", bbox_id, box.label)
+            if self.manager is not None:
+                await self.manager.add_recording_event(
+                    "rheed_box_restored", f"RHEED box {bbox_id} registered again (the rheed node "
+                    "had dropped it): its trace has a gap", {"bbox_id": bbox_id, **box.model_dump()})
+        return restored
+
     async def move_rheed_to_position(self, req: MoveTo) -> Ack:
         async with self._moving("move_rheed_to_position"):
             await self.manager.move_rheed_to_position(req.position)
@@ -968,19 +1173,16 @@ class ExperimentHandler:
         await self.manager.set_mfc_control(req.enabled)
         return Ack()
 
-    async def set_pressure(self, req: SetPressure) -> Ack:
+    async def set_pressure_setpoint(self, req: SetPressureSetpoint) -> PressureControlResult:
         if self.pressure_by_hand and self.manager.chamber.driver == "legacy-mi":
-            await self._set_pending(
-                "pressure",
-                f"Set the chamber pressure to {req.pressure:.3g} Torr by hand, then confirm",
-            )
-            return Ack()
-        await self.manager.set_pressure(req.pressure)
-        return Ack()
+            message = f"Set the chamber pressure to {req.pressure:.3g} Torr by hand, then confirm"
+            await self._set_pending("pressure", message)
+            return PressureControlResult(state="unknown", setpoint=req.pressure, message=message)
+        return PressureControlResult(**await self.manager.set_pressure_setpoint(
+            req.pressure, wait=req.wait, tolerance=req.tolerance, wait_timeout_s=req.wait_timeout_s))
 
-    async def set_pressure_control(self, req: SetPressureControl) -> Ack:
-        await self.manager.set_pressure_control(req.on)
-        return Ack()
+    async def set_pressure_control(self, req: SetPressureControl) -> PressureControlResult:
+        return PressureControlResult(**await self.manager.set_pressure_control(req.on))
 
     async def initiate_heating_laser(self, req: Empty) -> Ack:
         await self.manager.initiate_heating_laser()
@@ -1480,7 +1682,9 @@ class ExperimentHandler:
             "laser_test",
             f"Daily laser test: the excimer is at {LASER_TEST_KV:g} kV (HV mode) on Clear, shutter "
             f"closed. Say yes and Lumi fires {LASER_TEST_PULSES} pulses at {LASER_TEST_RATE_HZ:g} Hz, "
-            "or fire the laser yourself; then enter the energy meter's average")
+            "or fire the laser yourself; then enter the energy meter's average. Read the laser's "
+            "own energy display while it fires too: it is asked for if the laser does not report "
+            "a measured energy")
         return Ack()
 
     async def fire_laser_test(self, req: Empty) -> TaskAck:
@@ -1489,6 +1693,9 @@ class ExperimentHandler:
 
     async def confirm_laser_test(self, req: ConfirmLaserTest) -> LaserTest:
         self._require_pending("laser_test")
+        if self._current_task is not None and self._current_task.kind == "fire_laser_test":
+            raise RuntimeError("the test train is still firing: confirm once fire_laser_test has finished "
+                               "(state.last_task), with the meter's average over the whole train")
         row = await self.manager.confirm_laser_test(req.meter_mj, req.source_mj, actor=current_actor.get())
         await self._clear_pending()
         return LaserTest(**row, today=True)
@@ -1571,6 +1778,9 @@ class ExperimentHandler:
             raise PermissionError(
                 f"{req.name!r} version {req.version} is not approved: a person reviews it once "
                 "(approve_sequence, in the Deck) before it runs")
+        if seqlib.expected_materials(json.loads(row["steps_json"])):
+            seqlib.check_materials(json.loads(row["steps_json"]), await m.target_names())
+        seqlib.check_ramps(json.loads(row["steps_json"]), *m.ramp_limit())
         if seqlib.METER_ENERGY in row["steps_json"] and await m.todays_laser_test() is None:
             raise RuntimeError("no laser test today: run the daily test (begin_laser_test) first; "
                                "this sequence sets the energy at the meter")
@@ -1578,8 +1788,14 @@ class ExperimentHandler:
         if not req.no_sample and (substrate is None or substrate.db_id is None):
             raise RuntimeError("no substrate loaded: register_substrate or resume_substrate first, so "
                                "the layers it grows have a sample (no_sample=true for a rehearsal)")
+        if not req.no_sample and req.record is not None:
+            # Its recording names the project, and starting it would make that the
+            # project anyway (start_storage): the growth records need it from step 1.
+            if m.project_name != req.record.project_name or m.project_id is None:
+                await m.register_project(req.record.project_name)
         if not req.no_sample and m.project_id is None:
-            raise RuntimeError("no project: register_project first, so the run's growth records have one "
+            raise RuntimeError("no project: register_project first, or run it with record (its "
+                               "project_name), so the run's growth records have one "
                                "(no_sample=true for a rehearsal)")
         run = SequenceRun(
             run_id=uuid.uuid4().hex, name=row["name"], version=row["version"],
@@ -1898,5 +2114,9 @@ class ExperimentHandler:
     async def confirm(self, req: ConfirmProceed) -> Ack:
         if self._pending is None or self._pending.id != req.confirmation_id:
             raise ValueError("no matching pending confirmation")
+        if self._pending.kind == "rheed_emission":
+            # Dismissing would leave the gun on with the search open: it ends by a choice.
+            raise ValueError("the rheed_emission search ends with finish_rheed_on (stop at a step) "
+                             "or rheed_off (abort), not confirm")
         await self._clear_pending()
         return Ack()

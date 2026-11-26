@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import time
 import uuid
 from dataclasses import dataclass
@@ -46,6 +47,7 @@ from lumi.experiment.db import GrowthDB, column as _column, to_epoch, to_iso, ut
 from lumi.experiment.mask_align import locate_slit
 from lumi.experiment import sequence as seqlib
 from lumi.experiment.chamber import ChamberBackend
+from lumi.experiment.rheed_gun import BRIGHT_FRACTION, RheedGun, RheedGunSettings, frame_intensity
 from lumi.generated.clients.chamber import ChamberConfigClient, ChamberFiducialClient, ChamberLogClient
 from lumi.generated.clients.rheed import RheedCameraClient
 from lumi.generated.clients.storage import StorageStorageClient
@@ -71,6 +73,48 @@ class SequenceLost(RuntimeError):
 LASER_TEST_KV = 21.0
 LASER_TEST_PULSES = 100
 LASER_TEST_RATE_HZ = 1.0
+#: How often fire_laser_test reads the excimer's energy while the train runs, s.
+LASER_TEST_POLL_S = 1.0
+#: How often set_pressure_setpoint's wait reads the pressure.
+PRESSURE_POLL_S = 1.0
+# An accepted setpoint that needs no regime switch starts control at once, but the state
+# may still read "armed" until pld-service's next poll cycle publishes it.
+PRESSURE_SETTLE_S = 5.0
+# A camera frame can show the mask where it was before a move: the twin's sim camera
+# draws it from pld-service's state stream (2 Hz, behind pld-service's own poll), and a
+# real webcam buffers frames. Without a wait, the first point of each refining pass,
+# after the long move back to its start, read the bump it had just left (DRY-FULL-02).
+MASK_SETTLE_S = 1.0
+# The fastest a substrate may be heated or cooled, °C/min, by its area in mm² (the
+# skill's hard rule, now the driver's): (smallest area, limit), largest area first.
+RAMP_LIMITS = ((75.0, 10.0), (50.0, 20.0), (0.0, 30.0))
+#: Fewer readings than this, or readings that never move by more than
+#: LASER_TEST_FLAT_MJ, are not taken as the source energy (see `source_from_readings`).
+LASER_TEST_MIN_READINGS = 3
+LASER_TEST_FLAT_MJ = 0.05
+#: A meter reading this far above the source is a mistyped or swapped number: the
+#: beam only loses energy between the laser and the meter.
+LASER_TEST_MAX_RATIO = 1.1
+
+
+def source_from_readings(readings: list[tuple[float, float | None]]) -> tuple[float | None, str]:
+    """The source energy from the excimer's (energy, energy setpoint) readings during
+    the test train, and why, if it is None.
+
+    A real excimer's energy moves from pulse to pulse. Readings that do not move at all
+    are not a measurement: a laser (or a twin) answering with its setpoint, or a stale
+    value. Then the person reads the laser's display and passes source_mj."""
+    if len(readings) < LASER_TEST_MIN_READINGS:
+        return None, (f"the excimer reported its energy {len(readings)} time(s) while firing, "
+                      f"fewer than {LASER_TEST_MIN_READINGS}")
+    energies = [e for e, _ in readings]
+    if max(energies) - min(energies) < LASER_TEST_FLAT_MJ:
+        setpoints = {s for _, s in readings}
+        echo = (len(setpoints) == 1 and None not in setpoints
+                and abs(energies[0] - setpoints.pop()) < LASER_TEST_FLAT_MJ)
+        return None, (f"the excimer's energy stayed at {energies[0]:.2f} mJ for all {len(readings)} "
+                      f"readings{', its energy setpoint' if echo else ''}: that is not a measurement")
+    return sum(energies) / len(energies), ""
 
 
 def _projection(base_xs, base_ys, target_ys, source_x=0.0, source_y=0.0):
@@ -274,9 +318,13 @@ class BaseExperimentManager:
         bounds: ExperimentBounds,
         target_mapper: dict[str, str],
         chamber_fiducial: ChamberFiducialClient | None = None,
+        rheed_gun: RheedGunSettings | None = None,
     ) -> None:
         #: The driver: `PldChamber` (pld-service, the default) or `MiChamber` (legacy MI mode).
         self.chamber = chamber
+        #: The RHEED gun at the lab's operating values; pld-service only.
+        self.rheed_gun = RheedGun(chamber, rheed_gun or RheedGunSettings(),
+                                  intensity=self._rheed_intensity)
         # Only mask-centre auto-alignment reads it; None leaves everything else working.
         self.chamber_fiducial = chamber_fiducial
         self.chamber_log = chamber_log
@@ -676,41 +724,51 @@ class BaseExperimentManager:
             log.info("unloaded substrate %s", dropped.db_id)
         return self.current_substrate
 
-    async def get_target_name_by_id(self, target_id: str) -> str:
-        field = self.target_mapper.get(target_id)
-        if field is None:
-            raise ValueError(f"target {target_id!r} not in target_mapper: {sorted(self.target_mapper)}")
+    async def target_names(self) -> dict[str, str]:
+        """The material in each carousel slot (A..F, Clear, Monitor), "" for an empty
+        slot. Under the pld driver it is pld-service's own `[target_names]`
+        (GetSettings), the live list the PLD GUI edits; only legacy MI mode still reads
+        PLD Controller's PLDconfig.ini (TGsettings) through chamber.config."""
+        if self.chamber.driver == "pld":
+            names = (await self.chamber.client.get_settings()).target_names()
+            names.update({"Clear": "Clear", "Monitor": "Monitor"})
+            return {slot: names.get(slot, "") for slot in self.target_mapper}
         section = await self.chamber_config.get_configs_by_section(SectionQuery(section="TGsettings"))
-        return section.values[field]
+        return {slot: section.values.get(field) or "" for slot, field in self.target_mapper.items()}
+
+    async def get_target_name_by_id(self, target_id: str) -> str:
+        if target_id not in self.target_mapper:
+            raise ValueError(f"target {target_id!r} not in target_mapper: {sorted(self.target_mapper)}")
+        name = (await self.target_names()).get(target_id, "")
+        if not name:
+            raise ValueError(f"slot {target_id} holds no target (pld-service's target_names)")
+        return name
 
     async def get_target_id_by_name(self, target_name: str) -> str:
-        section = await self.chamber_config.get_configs_by_section(SectionQuery(section="TGsettings"))
-        rev = {v: k for k, v in self.target_mapper.items()}
-        for field in self.target_mapper.values():
-            if section.values.get(field) == target_name:
-                return rev[field]
-        valid = [section.values.get(f) for f in self.target_mapper.values()]
-        raise ValueError(f"target {target_name!r} not found; valid targets: {valid}")
+        names = await self.target_names()
+        for slot, name in names.items():
+            if name and name.strip().casefold() == target_name.strip().casefold():
+                return slot
+        loaded = {slot: name for slot, name in names.items() if name and slot not in ("Clear", "Monitor")}
+        raise ValueError(f"no target {target_name!r} in the chamber; loaded: {loaded}")
 
     async def get_current_target(self) -> tuple[int, str | None, str | None]:
         """The carousel position the chamber log reports, as (TG No., slot, name).
 
         `TG No.` counts from 0 in slot order: 0 is A (TG1name), 6 is Clear (TG7name),
         7 is Monitor (TG8name). The slot is None for a number no `target_mapper`
-        entry maps to; the name is the material PLDconfig.ini gives that slot."""
+        entry maps to; the name is the material in that slot (`target_names`)."""
         number = int(float((await self._log_values())["TG No."]))
         slot = next(
             (s for s, field in self.target_mapper.items()
              if str(field).removeprefix("TG").removesuffix("name") == str(number + 1)),
             None,
         )
-        name = await self.get_target_name_by_id(slot) if slot is not None else None
+        name = (await self.target_names()).get(slot) or None if slot is not None else None
         return number, slot, name
 
     async def show_available_targets(self) -> dict[str, str]:
-        section = await self.chamber_config.get_configs_by_section(SectionQuery(section="TGsettings"))
-        rev = {v: k for k, v in self.target_mapper.items()}
-        return {rev[f]: section.values.get(f) for f in self.target_mapper.values()}
+        return await self.target_names()
 
     # --- chamber reads ---------------------------------------------------------
 
@@ -818,11 +876,60 @@ class BaseExperimentManager:
         is one switch for the whole gas line."""
         await self.chamber.set_mfc_control(enabled)
 
-    async def set_pressure(self, pressure: float) -> None:
-        await self.chamber.set_pressure(pressure)
+    async def set_pressure_setpoint(self, pressure: float, wait: bool = False,
+                                    tolerance: float = 0.1, wait_timeout_s: float = 480.0) -> dict:
+        """The setpoint, then (`wait`) until control regulates within `tolerance` of it.
+        pld-service refuses it while control is off: control first, then the setpoint."""
+        message = await self.chamber.set_pressure(pressure)
+        result = await self._pressure_result(message)
+        deadline = time.monotonic() + PRESSURE_SETTLE_S
+        while result["state"] == "armed" and time.monotonic() < deadline:
+            await asyncio.sleep(PRESSURE_POLL_S)
+            result = await self._pressure_result(message)
+        await self.add_recording_event("pressure_setpoint", f"{pressure:.3g} Torr: {message}", result)
+        if wait and self.chamber.driver == "pld":
+            result = await self._wait_for_pressure(pressure, tolerance, wait_timeout_s, message)
+        return result
 
-    async def set_pressure_control(self, on: bool) -> None:
-        await self.chamber.set_pressure_control(on)
+    async def set_pressure_control(self, on: bool) -> dict:
+        message = await self.chamber.set_pressure_control(on)
+        result = await self._pressure_result(message)
+        await self.add_recording_event("pressure_control", message, result)
+        return result
+
+    async def _pressure_result(self, message: str) -> dict:
+        """Pressure control as pld-service's state has it now (it publishes the state
+        before it replies). Under legacy MI mode there is no such state: "unknown"."""
+        if self.chamber.driver != "pld":
+            return {"state": "unknown", "message": message}
+        state = await self.chamber.state()
+        gas, p = state.gas, state.pressures
+        reading = {"IG1": p.ig1, "CDG11": p.cdg11}.get(gas.pressure_gauge, p.cdg10)
+        setpoint = gas.pressure_setpoint
+        if setpoint is not None and not math.isfinite(setpoint):
+            setpoint = None
+        return {"state": gas.pressure_control_state, "setpoint": setpoint,
+                "gauge": gas.pressure_gauge, "mode": gas.pressure_mode,
+                "reading": reading, "message": message}
+
+    async def _wait_for_pressure(self, torr: float, tolerance: float, timeout_s: float,
+                                 message: str) -> dict:
+        deadline = time.monotonic() + timeout_s
+        while True:
+            result = await self._pressure_result(message)
+            state, setpoint, reading = result["state"], result["setpoint"], result["reading"]
+            if state in ("off", "armed"):
+                raise RuntimeError(f"pressure control stopped ({state}) before reaching "
+                                   f"{torr:.3g} Torr: the reading is {reading}")
+            if setpoint is None or not math.isclose(setpoint, torr, rel_tol=1e-6):
+                raise RuntimeError(f"the setpoint changed to {setpoint} while waiting for {torr:.3g} Torr")
+            if state == "regulating" and reading and abs(reading / torr - 1) <= tolerance:
+                return result
+            if time.monotonic() > deadline:
+                raise RuntimeError(
+                    f"pressure not within {tolerance:.0%} of {torr:.3g} Torr after {timeout_s:g} s "
+                    f"({state}, {result['mode']}, reading {reading}); control is left as it is")
+            await asyncio.sleep(PRESSURE_POLL_S)
 
     async def start_mi_logging(self, interval_s: int = 1, file_name: str | None = None) -> tuple[str, int]:
         """Start PASCAL's data logging at a fixed row interval (default every 1s).
@@ -953,6 +1060,49 @@ class BaseExperimentManager:
         await self._await_motor_ready()
         await self.chamber.move_rheed_gun(position)
 
+    async def rheed_on(self, judge: str | None = None, **overrides) -> dict:
+        """The RHEED gun on at the lab's operating values (`lumi.experiment.rheed_gun`).
+        `judge` (None = the setting): "agent" or "person" stop after filament and HV with
+        the emission search open, to step (`rheed_step_up`) and end (`rheed_finish`);
+        "rule" searches by the emission's digits by itself."""
+        if self.chamber.driver != "pld":
+            raise RuntimeError("rheed_on needs pld-service: under --use-legacy-mi-mode the gun "
+                               "is switched on its own controller, by hand")
+        result = await self.rheed_gun.on(judge=judge or self.rheed_gun.settings.filament_judge,
+                                         **overrides)
+        await self.add_recording_event("rheed_on", result["message"], result)
+        return result
+
+    async def _rheed_intensity(self, frames: int, bright_fraction: float = BRIGHT_FRACTION) -> dict | None:
+        """The RHEED image's pixel statistics over `frames` frames, for the emission search."""
+        images, full_scale = [], None
+        for i in range(max(1, frames)):
+            if i:
+                await asyncio.sleep(0.2)
+            meta, frame = await self.rheed_camera.image()
+            images.append(frame)
+            full_scale = getattr(meta, "full_scale", None) or full_scale
+        return frame_intensity(images, full_scale, bright_fraction)
+
+    async def rheed_step_up(self) -> dict:
+        result = await self.rheed_gun.step_up()
+        await self.add_recording_event("rheed_emission_step", result["message"], result)
+        return result
+
+    async def rheed_finish(self, filament_ma: float | None = None) -> dict:
+        result = await self.rheed_gun.finish(filament_ma)
+        await self.add_recording_event("rheed_on", result["message"], result)
+        return result
+
+    async def rheed_off(self) -> dict:
+        """The RHEED gun's filament and HV off, ramped (rheed_all_off_gentle)."""
+        if self.chamber.driver != "pld":
+            raise RuntimeError("rheed_off needs pld-service: under --use-legacy-mi-mode the gun "
+                               "is switched on its own controller, by hand")
+        result = await self.rheed_gun.off()
+        await self.add_recording_event("rheed_off", result["message"], result)
+        return result
+
     async def set_target(self, target_id: str) -> None:
         # SelectTarget revolves the carousel and the mode commands spin the target;
         # the holding lock frees the target motor too, so gate this like a mask move.
@@ -1065,9 +1215,35 @@ class BaseExperimentManager:
         values = await self._log_values()
         return _truthy(values["ON/OFF monitor in PS"])
 
-    async def to_temperature(self, temperature: float, ramp_rate: float = 20.0, wait: bool = True) -> float:
+    def ramp_limit(self) -> tuple[float, str]:
+        """The current substrate's ramp limit, °C/min, and what it is from. With no
+        substrate registered, the strictest: what is in the chamber is not known."""
+        s = self.current_substrate
+        if s is None:
+            return RAMP_LIMITS[0][1], "no substrate registered, so the strictest limit"
+        if not (s.width or 0) > 0:
+            return RAMP_LIMITS[0][1], f"substrate {s.db_id} has no width registered, so the strictest limit"
+        height = s.height if s.height else s.width  # registered without one (0): square
+        area = s.width * height
+        limit = next(rate for min_area, rate in RAMP_LIMITS if area >= min_area)
+        return limit, f"substrate {s.db_id}, {s.width:g} x {height:g} mm = {area:g} mm²"
+
+    def ramp_rate_for(self, ramp_rate: float | None) -> float:
+        """`ramp_rate`, checked against the substrate's limit; None is the limit itself."""
+        limit, why = self.ramp_limit()
+        if ramp_rate is None:
+            return limit
+        if not ramp_rate > 0:
+            raise ValueError(f"ramp rate must be above 0 °C/min, got {ramp_rate:g}")
+        if ramp_rate > limit:
+            raise ValueError(f"ramp rate {ramp_rate:g} °C/min is over the {limit:g} °C/min limit "
+                             f"({why}); leave ramp_rate out to use the limit")
+        return ramp_rate
+
+    async def to_temperature(self, temperature: float, ramp_rate: float | None = None, wait: bool = True) -> float:
         """Ramp to `temperature`. With `wait` the call returns once the substrate
-        arrives; without it, once the ramp is set going.
+        arrives; without it, once the ramp is set going. `ramp_rate` (°C/min) may not
+        exceed the substrate's limit (`ramp_limit`), and defaults to it.
 
         Under legacy MI mode PASCAL runs one command at a time and the arrival wait is
         a command, so `wait` holds every other chamber command until the ramp ends.
@@ -1075,6 +1251,7 @@ class BaseExperimentManager:
         each other, so a waited fire or move does not delay the heater. A failed warm-up
         puts the current back (_warm_up_to_pid_limit)."""
         b = self.bounds
+        ramp_rate = self.ramp_rate_for(ramp_rate)
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
 
         # A setpoint below the PID-engage threshold has no ramp to run: nothing below
@@ -1116,7 +1293,8 @@ class BaseExperimentManager:
         await self.chamber.ramp_to(temperature, ramp_rate, wait)
         return temperature
 
-    async def cool_down(self, ramp_rate: float = 20.0) -> None:
+    async def cool_down(self, ramp_rate: float | None = None) -> None:
+        ramp_rate = self.ramp_rate_for(ramp_rate)
         await self.chamber.coast_to(self.bounds.temperature_min, ramp_rate, wait=True)
 
     async def perform_deposition(self, num_pulse: int, laser_repetition_rate: float, target_id: str, is_dryrun: bool = False) -> None:
@@ -1125,7 +1303,7 @@ class BaseExperimentManager:
         if not is_dryrun:
             await self.chamber.fire(num_pulse, laser_repetition_rate)
 
-    async def anneal(self, steps: list[tuple[float, float, float]]) -> None:
+    async def anneal(self, steps: list[tuple[float, float | None, float]]) -> None:
         for temperature, ramp_rate, wait_time in steps:
             await self.to_temperature(temperature, ramp_rate=ramp_rate)
             if wait_time > 0:
@@ -1171,7 +1349,14 @@ class BaseExperimentManager:
         slug = f"{sample_name}_{project_name}" if sample_name else project_name
         storage_name = f"{slug}_{record_uuid}"
         if is_dryrun:
-            return {"ok": True, "record_uuid": record_uuid, "storage_name": storage_name, "path": None, "message": ""}
+            # Nothing is written, so there is no recording to name: a growth record
+            # given this name would point at a file that does not exist.
+            return {"ok": True, "record_uuid": record_uuid, "storage_name": None, "path": None,
+                    "message": f"dry run: nothing recorded (it would have been {storage_name!r})"}
+        # The recording names its project, so that is the project now: its context
+        # and the growth records after it (run_sequence wants one) carry its id.
+        if self.project_id is None or self.project_name != project_name:
+            await self.register_project(project_name)
 
         status = await self.storage.start_recording(StorageRequest(
             project_name=storage_name, save_frame=save_frame, save_ai=save_ai, save_log=save_log,
@@ -1189,7 +1374,7 @@ class BaseExperimentManager:
 
     async def end_storage(self, is_dryrun: bool = False) -> dict:
         if is_dryrun:
-            return {"ok": True, "message": ""}
+            return {"ok": True, "message": "dry run: no recording to end"}
         status = await self.storage.stop_recording()
         if status.ok or "not recording" in (status.message or ""):
             self.recording_name = None
@@ -1260,6 +1445,8 @@ class BaseExperimentManager:
             laser_source_energy=self._laser_source_energy, laser_meter_ratio=self._laser_meter_ratio,
             **self.take_preablation(target_material),
         )
+        # A single deposition writes no pixel_location but grows on position 0.
+        await self.growth_db.mark_sample_active(substrate_id, 0 if pixel_index is None else pixel_index)
         if storage_name is not None:
             await self.growth_db.add_recording(
                 experiment_id=experiment_id, record_name=storage_name, record_uuid=record_uuid or "",
@@ -1355,6 +1542,7 @@ class BaseExperimentManager:
             **(_preablation_fields(layer["preablation"]) if layer.get("preablation")
                else self.take_preablation(layer.get("target_material"))),
         )
+        await self.growth_db.mark_sample_active(substrate.db_id, substrate.current_position_id)
         if storage_name is not None:
             await self.growth_db.add_recording(
                 experiment_id=experiment_id, record_name=storage_name, record_uuid=record_uuid or "")
@@ -1478,44 +1666,83 @@ class BaseExperimentManager:
         await self._await_motor_ready()  # SelectTarget revolves the carousel
         await self.chamber.select_target(pcmd.Targets.Clear)
         await self.set_laser_hv(LASER_TEST_KV)
-        self._laser_test = {"fired_by": "person", "readings": []}
+        self._laser_test = {"fired_by": "person"}
 
     async def fire_laser_test(self) -> dict:
         """Fire the test train into the meter, reading the excimer's energy while it
-        runs. Returns its average as source_mj (None if the laser reported none)."""
+        runs. Returns its average as source_mj, or None with `source_note` saying why
+        the readings were not taken (see `source_from_readings`).
+
+        Refused unless the excimer is still at LASER_TEST_KV in HV mode, as
+        begin_laser_test left it; fails if the train did not fire all its pulses."""
         if self._laser_test is None:
             raise RuntimeError("no laser test is open: call begin_laser_test first")
-        readings: list[float] = []
+        excimer = (await self.chamber.state()).excimer
+        if not excimer.mode.upper().startswith("HV") or excimer.hv is None \
+                or abs(excimer.hv - LASER_TEST_KV) > 0.05:
+            raise RuntimeError(
+                f"the excimer is not at {LASER_TEST_KV:g} kV in HV mode (mode {excimer.mode or '?'}, "
+                f"HV {excimer.hv if excimer.hv is not None else '?'} kV): call begin_laser_test again")
+        readings: list[tuple[float, float | None]] = []  # (energy, energy setpoint)
         fire = asyncio.create_task(self.chamber.fire(LASER_TEST_PULSES, LASER_TEST_RATE_HZ))
         while not fire.done():
-            await asyncio.wait({fire}, timeout=1.0)
+            await asyncio.wait({fire}, timeout=LASER_TEST_POLL_S)
             try:
-                energy = (await self.chamber.state()).excimer.energy
+                state = await self.chamber.state()
             except Exception as exc:
                 log.warning("laser test: could not read the excimer energy: %s", exc)
                 continue
-            if energy and energy > 0:
-                readings.append(float(energy))
+            # Only while this train is firing: before its first pulse the reading is
+            # the last train's, or nothing.
+            energy = state.excimer.energy
+            if state.laser.status == "firing" and state.laser.pulses_fired > 0 and energy and energy > 0:
+                readings.append((float(energy), state.excimer.energy_set))
         await fire
-        self._laser_test = {"fired_by": "lumi", "readings": readings}
-        return {"source_mj": sum(readings) / len(readings) if readings else None,
-                "readings": len(readings)}
+        fired = (await self.chamber.state()).laser.pulses_fired
+        if fired < LASER_TEST_PULSES:
+            self._laser_test = {"fired_by": "lumi", "cut_short": fired}
+            raise RuntimeError(f"the test train fired {fired} of {LASER_TEST_PULSES} pulses: the meter's "
+                               "average is not over the test; fire_laser_test again")
+        source, note = source_from_readings(readings)
+        self._laser_test = {"fired_by": "lumi", "source_mj": source, "source_note": note}
+        result = {"source_mj": source, "readings": len(readings), "pulses_fired": fired}
+        if note:
+            result["source_note"] = f"{note}; pass source_mj, read off the laser's display, to confirm_laser_test"
+        return result
 
     async def confirm_laser_test(self, meter_mj: float, source_mj: float | None = None,
                                  actor: str | None = None) -> dict:
         """Record the test: the meter's average from the person, the source energy
         from what the excimer reported while firing (or `source_mj`, read off the
-        laser by the person)."""
+        laser by the person). Refused for a test train cut short, a source energy that
+        is not a measurement, or a meter reading above the source."""
         test = self._laser_test
         if test is None:
             raise RuntimeError("no laser test is open: call begin_laser_test first")
-        if source_mj is None and test["readings"]:
-            source_mj = sum(test["readings"]) / len(test["readings"])
+        if "cut_short" in test:
+            raise RuntimeError(f"the last test train fired only {test['cut_short']} of {LASER_TEST_PULSES} "
+                               "pulses: fire_laser_test again (or begin_laser_test again to fire it by hand)")
+        note = ""
+        if source_mj is None and test["fired_by"] == "lumi":
+            source_mj, note = test["source_mj"], test["source_note"]
+        elif source_mj is None:
+            # The person fired it: one reading, after the train, so only the setpoint
+            # echo can be told from a measurement.
+            excimer = (await self.chamber.state()).excimer
+            energy, setpoint = excimer.energy, excimer.energy_set
+            if not energy or energy <= 0:
+                note = "the excimer reported no energy"
+            elif setpoint is not None and abs(energy - setpoint) < LASER_TEST_FLAT_MJ:
+                note = f"the excimer shows {energy:.2f} mJ, its energy setpoint: that is not a measurement"
+            else:
+                source_mj = float(energy)
         if source_mj is None:
-            energy = (await self.chamber.state()).excimer.energy  # the person fired it
-            source_mj = float(energy) if energy and energy > 0 else None
-        if source_mj is None:
-            raise ValueError("the excimer reported no energy: pass source_mj, the energy the laser showed")
+            raise ValueError(f"{note}: pass source_mj, the energy the laser's display showed")
+        if meter_mj / source_mj > LASER_TEST_MAX_RATIO:
+            raise ValueError(
+                f"the meter ({meter_mj:.1f} mJ) reads {meter_mj / source_mj:.2f} times the source "
+                f"({source_mj:.1f} mJ): the beam only loses energy on its way to the meter, so one "
+                "number is wrong (swapped, or a typo); check both and confirm again")
         lumi_fired = test["fired_by"] == "lumi"
         row = await self.growth_db.add_laser_test(
             tested_at=time.time(), hv_kv=LASER_TEST_KV,
@@ -1618,6 +1845,7 @@ class BaseExperimentManager:
             readings = []
             for position in points:
                 await self.move_mask_to_position(position)
+                await asyncio.sleep(MASK_SETTLE_S)
                 readings.append(await self._fresh_marker_reading(marker_id, frames_per_point))
                 samples.append(MaskSweepPoint(pass_index=pass_index, position=position, reading=readings[-1]))
                 log.info("mask scan %d: %.3f mm -> %.1f", pass_index, position, readings[-1])

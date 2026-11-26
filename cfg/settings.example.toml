@@ -150,6 +150,28 @@ feature_bbox = [100, 100, 620, 300]
 feature_oscillation_frequency = 0.03
 feature_oscillation_amplitude = 200
 max_intensity = 4095
+# With `nodes/rheed.py --follow-gun` (a twin): the image's brightness is the gun's
+# emission over gun_reference_ua. The lab's gun saturates at about 8.67 uA; with
+# the emission at or below it the brightest pixels stay under max_intensity, so the
+# specular can still show a dip (above it, they clip and hold still).
+gun_reference_ua = 8.7
+# With `nodes/rheed.py --follow-growth` (a twin): RHEED oscillations from the
+# deposition instead of the clock-driven ones above. Each pulse fired with the
+# sample shutter open grows 1/pulses_per_monolayer of a monolayer; the image's spots
+# and streaks (a soft mask of the frame's bright features) dip by oscillation_depth
+# once per monolayer, damped over oscillation_decay_ml monolayers. When the laser
+# stops, oscillation_recovery of the dip relaxes away over ~oscillation_recovery_s.
+pulses_per_monolayer = 40
+oscillation_depth = 0.4
+oscillation_decay_ml = 10
+oscillation_recovery = 0.6
+oscillation_recovery_s = 20
+# Camera noise on every simulated frame: read noise (rms counts), shot noise
+# (variance = noise_shot x signal) and a beam flicker (relative rms of the frame).
+# 0 everywhere = bit-identical frames.
+noise_read = 3
+noise_shot = 1
+noise_flicker = 0.005
 
 [rheed.video_compressor]
 fps = 60
@@ -468,6 +490,9 @@ name = "JPEG Encoder"
 # node restart; that file is machine-local (git-ignored).
 [pascal.fiducials]
 store_path = "cfg/chamber_fiducials.json"
+# The simulated camera's markers (a twin's or the sim's): kept apart, so a production
+# start on the webcam never reads a marker drawn on the simulated image.
+sim_store_path = "cfg/chamber_fiducials.sim.json"
 # Samples of intensity trace kept per marker, for `marker_history`. 5000 is a little
 # over three minutes at 25 fps. The `stats` stream carries every sample regardless.
 history = 5000
@@ -684,6 +709,44 @@ motor_ready_timeout = 60.0
 # turn_off_heating_laser refuses while the substrate reads hotter than this (degC):
 # cutting the laser hot cools the sample all at once. 160 is the pyrometer's floor.
 heating_laser_off_max_temperature = 165.0
+
+# The RHEED gun's operating values, for rheed_on (pld-service only). The lab's own, not
+# the gun's remembered set points: those are whatever the last person or test left.
+# The filament starts at filament_start_ma and goes up in filament_step_ma steps while
+# the emission current still rises, to filament_max_ma at most, until it saturates.
+# filament_judge says who decides that, and how:
+#   "agent"  (the default) rheed_on stops after filament and HV with the search open, and
+#            the agent steps the filament up and stops it, judging the emission current
+#            and the RHEED image together. Both level off exponentially (each step adds
+#            a fixed share of what the step before added); Lumi fits that to the steps
+#            so far and says how near each is to its plateau. Saturated when both are
+#            within plateau_fraction of it (0.1 = 90%: the last 10% of brightness is not
+#            worth the filament). Before a plateau can be fitted (3 steps, levelling off),
+#            or when a step adds nothing, a step under emission_flat_fraction /
+#            intensity_flat_fraction (or twice the image's frame-to-frame noise) is flat.
+#            The image is the signal of its brightest bright_fraction of pixels (0.1 =
+#            10%) above the median, over intensity_frames frames, for any pattern; a clipped image is not
+#            judged and the emission decides. No confirmation is asked.
+#   "person" the same steps behind a rheed_emission confirmation: a person says up or stop.
+#   "rule"   the emission alone, by the lab's digit rule: a step that leaves its first
+#            emission_digits digits unchanged is saturated, and is taken back.
+# Focus and deflection depend on the alignment: rheed_on takes per-call overrides.
+[experiment.rheed]
+hv_kv = 25.0
+filament_start_ma = 1800.0
+filament_max_ma = 2100.0
+filament_step_ma = 50.0
+emission_digits = 2
+filament_judge = "agent"
+plateau_fraction = 0.1
+emission_flat_fraction = 0.01
+intensity_flat_fraction = 0.03
+intensity_frames = 5
+bright_fraction = 0.1
+emission_settle_s = 3.0
+focus_ma = 476.0
+deflection_x_ma = -61.0
+deflection_y_ma = 223.0
 
 # PASCAL target-carousel slot -> chamber-log field name. Chamber-specific; was a
 # hardcoded dict (_target_id_mapper) inside BaseExperimentManager.__init__.

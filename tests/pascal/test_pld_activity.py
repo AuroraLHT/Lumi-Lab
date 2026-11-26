@@ -69,7 +69,7 @@ async def test_a_line_cut_short_by_a_crash_is_skipped(tmp_path):
 
 async def test_every_mutating_op_is_journaled_and_no_reading_is():
     ops = {op.name: op for op in CHAMBER.capability("pld").ops}
-    reads = {"chamber_state", "recent_events", "recent_activity"}
+    reads = {"chamber_state", "get_settings", "recent_events", "recent_activity"}
     assert {n for n, op in ops.items() if not op.journal} == reads
 
 

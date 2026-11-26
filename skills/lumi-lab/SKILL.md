@@ -17,12 +17,18 @@ usual choice; deviate if you say why).
 ## 1. Limits
 
 The driver enforces some of these itself (`cfg/settings.toml`, `[experiment.bounds]`):
-a setpoint outside 160–1000 °C is refused, and PID engages above 220 °C. Everything
-else here is only as strong as you following it.
+a setpoint outside 160–1000 °C is refused, PID engages above 220 °C, and a ramp over
+the substrate's limit is refused. Everything else here is only as strong as you
+following it.
 
 - **[hard]** Ramp rate, by substrate area (width × height from `get_substrate`):
   10 °C/min for ≥ 75 mm², 20 °C/min for ≥ 50 mm², 30 °C/min for < 50 mm².
-  The same for cooling.
+  The same for cooling. `to_temperature`, `cool_down` and `anneal` refuse a faster
+  `ramp_rate`; leave `ramp_rate` out and they use the current substrate's limit.
+  `run_sequence` refuses a version with a temperature step over it (a ramp of 0 is a
+  jump, and is refused too).
+  With no substrate registered the limit is 10, so register the substrate before
+  heating. Slower is always allowed.
   From a cold chamber (below 220 °C) the ramp rate does not apply at first. PID only
   works properly above 220 °C, so `to_temperature` first heats on a fixed current
   (7.8 A, about 265 °C) and only then hands over to PID, which ramps from the
@@ -58,10 +64,11 @@ being asked, wait, and pass their answer on.
 | --- | --- | --- |
 | `laser_power` | sets the excimer and reads the meter at the view port | `confirm_laser_power` (their measured value) |
 | `mask_center_alignment` / `mask_center_check` | looks at the mask on the camera | `confirm_center_mask` / `confirm_mask_center` |
-| `rheed_gain` | judges the RHEED image | `set_rheed_gain`, `confirm_rheed_gain` |
+| `rheed_gain` (you raise it with `begin_adjust_rheed_gain`, e.g. when `rheed_on`'s search says pixels are at full scale; the gain is theirs, never set it yourself) | judges the RHEED image | `set_rheed_gain`, `confirm_rheed_gain` |
+| `rheed_emission` | (only with `rheed_on` `judge: "person"`) says when the RHEED beam has saturated, from the filament / emission / intensity table | `rheed_emission_step_up` (one 50 mA step, only when they say up), `finish_rheed_on` (at the step they name) |
 | `pixel_check` | checks each position on the camera | `resolve_pixel_check` |
 | `fiducial_role` | tags the mask-center marker in the UI | (continues by itself) |
-| `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure` on the real chamber, legacy MI mode only) | `confirm`, then read it back with `get_current_pressure` |
+| `pressure` | sets the chamber pressure at the gauge (raised by `set_pressure_setpoint` on the real chamber, legacy MI mode only) | `confirm`, then read it back with `get_current_pressure` |
 | `proceed` | a plain go/no-go | `confirm` |
 
 The excimer can be switched (`chamber.pld.laser_on` / `laser_standby` / `laser_off`, mode,
@@ -79,12 +86,50 @@ laser and a running sequence) for a move going wrong; it latches, and only the p
 it (`reset_motors`) and re-homes the axes in `motion.homing_needed`. Under `--use-legacy-mi-mode` neither works: ask
 the person to press STOP on PASCAL.
 
-Also by hand, with no tool: RHEED gun and sample-stage adjustment,
-and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released.
-The pressure is set by pld-service itself under the default driver. Only under
-`--use-legacy-mi-mode` on the real chamber does `set_pressure` not command the
-controller: it raises a `pressure` confirmation asking the person to set it. Either way,
-read it back with `get_current_pressure` before going on.
+The RHEED gun is switched by `experiment.driver.rheed_on` / `rheed_off` (pld driver
+only): on at the lab's operating values (25 kV, the filament raised from 1800 mA in 50 mA
+steps to 2100 mA at most, focus and deflection), off ramped down. By default you judge
+when the beam has saturated, and no confirmation is asked: `rheed_on` returns after
+filament and HV with the search open (`searching`). Call `rheed_emission_step_up` once per
+step. Each step reads the emission current and the RHEED image's signal (its brightest
+10% of pixels above background, `bright_fraction`), and both level off exponentially as the beam saturates. From
+3 steps on, the `saturation` hint fits that and says how near each is to its plateau.
+Saturated is both within 10% of it (`plateau_fraction`): the last 10% of brightness is
+not worth the filament. Call `finish_rheed_on` at the step the hint names, the first
+that had both there, so the filament runs no hotter than it needs to. Before a plateau
+can be fitted, or when a step adds nothing, a step under about 1% (emission) or 3%
+(image) is flat. If the two disagree, take one more step; at 2100 mA there is none, so
+choose between the steps it offers. A clipped image (any pixel at full scale in any of
+the frames, `rheed_clipped_px`) is not judged (the emission decides). If the readings look wrong (the emission falling, the image dark), stop and
+show the person the table. The hint sets the two side by side; it is not the decision. Keep the camera gain fixed during the search, or the intensities don't
+compare. Show the person the final table either way. If they want to decide themselves,
+pass `judge: "person"`: that raises a `rheed_emission` confirmation, so step up only when
+they say so and finish at the step they name. Under `--use-legacy-mi-mode` the person
+switches the gun. Focus and deflection depend on the alignment: pass the person's values
+when they give them. A `rheed_on` that fails says what was reached and leaves the gun as
+it got: tell the person, and do not retry blindly.
+
+Also by hand, with no tool: the RHEED beam position screws, incidence angle and
+sample-stage adjustment, and pressing MOTOR ENABLE when `is_motor_free` says the holding lock is released. A
+Mask1 move or homing refused with `chamber_state.motion.sample_too_low` set means the sample
+sits below its height threshold: ask the person to raise it (by hand), do not retry.
+The pressure is set by pld-service itself under the default driver, control first, then
+the setpoint:
+1. `set_pressure_control(on: true)` arms control and moves nothing (state `armed`).
+2. `set_pressure_setpoint` with `wait: true`. In another regime pld-service first
+   switches the valves and gauges (MV10/MV11 opened or closed, IG1 switched, MFC1 to 0,
+   CV301 opened if closed; minutes for the high regime), then regulates. It returns
+   once the reading is within `tolerance` (10%), and fails if control stops meanwhile.
+   A setpoint while control is off is refused: do step 1, never retry it as it is.
+3. Read it back with `get_current_pressure` before going on.
+
+The result of both is control's state: `off`, `armed`, `switching` or `regulating`
+(also `chamber_state.gas.pressure_control_state`). Only `regulating` means the pressure
+is being held; never judge it from `pressure_mode`. `set_pressure_control(on: false)`,
+and any interlock, stops control and clears the setpoint, so the next control needs both
+steps again. Only under `--use-legacy-mi-mode` on the real chamber does
+`set_pressure_setpoint` not command the controller: it raises a `pressure` confirmation
+asking the person to set it (state `unknown`).
 
 ## 3. Growing
 
@@ -106,17 +151,25 @@ What applies to both:
   GUI holds control, or another MI script is running); check again once they finish.
 - **[hard]** Long-running ops (`to_temperature`, `cool_down`, `perform_preablation`,
   `perform_deposition`, `anneal`, `auto_align_center_mask`) return at once with a
-  `task_id`. Poll until `current_task` clears, then check the step **succeeded**: read the
-  temperature or pressure back. The recipes do not stop on a failed step, so you must.
+  `task_id`. Poll until `current_task` clears, then read `last_task`: check its
+  `task.id` is your `task_id`, and that `result.ok` is true (if not, `result.error` says
+  why, and `result.aborted` that it was stopped). Then check the step **succeeded** in
+  the chamber too: read the temperature or pressure back. The recipes do not stop on a failed step, so you must.
+  One task at a time: starting another while one runs is refused. To replace a task,
+  `cancel_task` it first, on purpose; never cancel just to get your next step in.
+  Cancelling leaves the chamber as it is, not as it was: a cancelled `to_temperature`,
+  `cool_down` or `anneal` switches PID off and holds the LD at its present current (the
+  substrate stays near where it got to); a cancelled deposition stops the laser and
+  leaves shutter, mask and target as they are.
 - **[thumb]** Heating takes a long time, and while `to_temperature` waits for the
   substrate PASCAL runs no other command. Pass `wait: false` so its task ends once the
-  ramp is under way, do other set-up meanwhile (registering the substrate, setting the
-  pressure), and poll `get_current_temperature` until it is within 10 °C of the
+  ramp is under way, do other set-up meanwhile (setting the pressure, the laser
+  energy), and poll `get_current_temperature` until it is within 10 °C of the
   setpoint before any step that needs it there. The laser-off rule in §1 still holds.
   From cold the task first raises the heating current by hand, open-loop, until PID can
   take over (about 220 °C); a fire or move meanwhile does not hold it up. If the
   warm-up fails, the task ends `ok: false` with the current set back to where it
-  started; read `current_task`'s result.
+  started; read `last_task.result`.
 - Targets: the carousel slots are A–F plus Clear and Monitor. The chamber log's `TG No.`
   counts from 0: 0 = A, 1 = B, 2 = C, 3 = D, 4 = E, 5 = F, 6 = Clear, 7 = Monitor.
   `get_current_target` does the conversion and names what is loaded there.
@@ -135,7 +188,9 @@ What applies to both:
 - **[hard]** Sequences (`procedures/sequences.md`): a person reviews and approves each
   version once, in the Deck; you never approve one, and you run only the version and hash
   they approved. Run it with `record` (a recording around the whole run); it needs the
-  substrate and project loaded, and records its own layers and growth records.
+  substrate loaded, and records its own layers and growth records. The project is the
+  recording's `project_name` (`start_storage` and `record` register it, so
+  `register_project` is needed only to name one without recording).
 - **[thumb]** Anneal and cool down in O2 for oxides.
 
 ### Snapshots

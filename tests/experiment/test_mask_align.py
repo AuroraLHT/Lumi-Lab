@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import time
 import uuid
 
 import numpy as np
@@ -104,6 +105,45 @@ class FakeFiducial:
         )
 
 
+@pytest.fixture(autouse=True)
+def no_settle(monkeypatch):
+    """The fake camera answers for the mask's latest position at once."""
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "MASK_SETTLE_S", 0.0)
+
+
+class TimedCalls(list):
+    """The fake MI runner's call list, with when each call arrived."""
+
+    def __init__(self, calls) -> None:
+        super().__init__(calls)
+        self.times = [time.monotonic()] * len(calls)
+
+    def append(self, call) -> None:
+        super().append(call)
+        self.times.append(time.monotonic())
+
+
+class LaggingFiducial(FakeFiducial):
+    """A camera whose frames show the mask `lag_s` behind its moves, as the twin's sim
+    camera does (it draws the mask from pld-service's state stream)."""
+
+    def __init__(self, mi, true_center: float, lag_s: float) -> None:
+        super().__init__(mi, true_center)
+        self.lag_s = lag_s
+        mi.calls = TimedCalls(mi.calls)
+
+    def _mask_position(self) -> float:
+        """Where the mask is, until `lag_s` after a move: where it was before it."""
+        moves = [(at, float(m.group(1))) for call, at in zip(self.mi.calls, self.mi.calls.times)
+                 if (m := re.search(r"Set Mask Position M1=([\d.]+)", call))]
+        if not moves:
+            return 0.0
+        if time.monotonic() - moves[-1][0] >= self.lag_s or len(moves) == 1:
+            return moves[-1][1]
+        return moves[-2][1]
+
+
 async def run_task(handler, req: AutoAlignMaskCenter) -> dict:  # noqa: F811
     ack = await handler.auto_align_center_mask(req)
     assert handler.readout().current_task.id == ack.task_id
@@ -146,6 +186,25 @@ async def test_auto_align_finds_the_slit_and_applies_it(handler):  # noqa: F811
     assert "Select Target Clear" in "".join(mi.calls)
     assert "Sample Shutter ON" in "".join(mi.calls)
     assert mi.calls[-1].strip() == f"Set Mask Position M1={result['center']:.2f}"
+
+
+async def test_a_camera_behind_the_mask_is_waited_for(handler, monkeypatch):  # noqa: F811
+    # DRY-FULL-02: each refining pass's first point read the bump it had just left,
+    # so the bump ran off the pass's left edge and the fit gave up.
+    import lumi.experiment.manager as manager_module
+    mi = handler.sources["chamber_mi"]
+    req = AutoAlignMaskCenter(half_window_mm=4.0, step_mm=0.5, max_passes=2, points_per_pass=9)
+
+    with_fiducial(handler, LaggingFiducial(mi, true_center=101.3, lag_s=0.05))
+    monkeypatch.setattr(manager_module, "MASK_SETTLE_S", 0.0)
+    lagged = await run_task(handler, req)  # every point read where the last one was
+    assert lagged["ok"] is False or abs(lagged["center"] - 101.3) > 0.15, lagged
+
+    with_fiducial(handler, LaggingFiducial(mi, true_center=101.3, lag_s=0.05))
+    monkeypatch.setattr(manager_module, "MASK_SETTLE_S", 0.08)
+    result = await run_task(handler, req)
+    assert result["ok"] is True, result
+    assert result["center"] == pytest.approx(101.3, abs=0.1)
 
 
 def mask_moves(mi) -> list[float]:

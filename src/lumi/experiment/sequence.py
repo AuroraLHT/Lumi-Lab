@@ -5,6 +5,12 @@ A step is a pld.proto `SequenceStep` in proto JSON names -- `{"mask": {"position
 -- with an optional "label". pld-service checks every step again when it runs, with the
 same rules as calling the operation directly; what is checked here is what Lumi adds:
 
+- **`expect_material`** beside a `select_target` (`{"select_target": {"target": "E"},
+  "expect_material": "SrRuO3"}`): the material the step means to grow from. A run is
+  refused while that slot holds anything else (pld-service's `target_names`), so a
+  script written for one carousel never fires on another's target. Lumi's own key: it
+  is not sent to pld-service.
+
 - **`meter_energy`** (`{"mj": 120}`) is Lumi's own step: the pulse energy wanted at the
   meter. At run time it becomes pld-service's `laser_energy` at mj / today's laser-test
   ratio, as `begin_set_laser_power` sets it. A raw `laser_energy` (a source energy) is
@@ -38,11 +44,38 @@ _OPS = {f.name for f in pb.SequenceStep.DESCRIPTOR.oneofs_by_name["op"].fields}
 _LUMI_OPS = {METER_ENERGY}
 
 
+#: Keys beside the operation: pld-service's label, and Lumi's expected material.
+EXPECT = "expect_material"
+_EXTRA = {"label", EXPECT}
+
+
 def _op(step: dict) -> str:
-    ops = [k for k in step if k != "label"]
+    ops = [k for k in step if k not in _EXTRA]
     if len(ops) != 1:
         raise ValueError(f"a step is one operation (and an optional label), got {sorted(step)}")
     return ops[0]
+
+
+def _for_service(step: dict) -> dict:
+    return {k: v for k, v in step.items() if k != EXPECT}
+
+
+def expected_materials(steps: list[dict]) -> list[tuple[int, str, str]]:
+    """(step number, slot, material) for each select_target that names its material."""
+    return [(i, str(s["select_target"].get("target", "")), str(s[EXPECT]))
+            for i, s in enumerate(steps, 1) if EXPECT in s and "select_target" in s]
+
+
+def check_materials(steps: list[dict], names: dict[str, str]) -> None:
+    """Refuse a run whose select_target steps expect a material their slot does not
+    hold now. `names` is slot -> material, as `target_names` has it."""
+    wrong = [f"step {i}: slot {slot} holds {names.get(slot) or 'nothing'!r}, not {material!r}"
+             for i, slot, material in expected_materials(steps)
+             if (names.get(slot) or "").strip().casefold() != material.strip().casefold()]
+    if wrong:
+        loaded = {k: v for k, v in names.items() if v and k not in ("Clear", "Monitor")}
+        raise ValueError("the carousel does not hold what this sequence expects: " + "; ".join(wrong)
+                         + f". Loaded now: {loaded}")
 
 
 def check(steps: list[dict]) -> dict:
@@ -64,6 +97,9 @@ def check(steps: list[dict]) -> dict:
                 f"step {i}: laser_energy sets the excimer's own energy; use "
                 "{\"meter_energy\": {\"mj\": ...}}, the energy at the meter, which Lumi sets from "
                 "today's laser test")
+        if EXPECT in step and (op != "select_target" or not isinstance(step[EXPECT], str)
+                               or not step[EXPECT].strip()):
+            raise ValueError(f"step {i}: expect_material is a material name, beside a select_target")
         if op not in _OPS | _LUMI_OPS:
             raise ValueError(f"step {i}: unknown operation {op!r} (one of {sorted(_OPS - {'laser_energy'} | _LUMI_OPS)})")
         if op == FIRE and isinstance(step[op], dict) and isinstance(step[op].get("rate_hz"), (int, float)) \
@@ -77,7 +113,7 @@ def check(steps: list[dict]) -> dict:
             step = {**step, METER_ENERGY: {"mj": float(mj)}}
             proto_steps.append({"label": step.get("label", ""), "laser_energy": {"mj": 1.0}})
         else:
-            proto_steps.append(step)
+            proto_steps.append(_for_service(step))
         steps[i - 1] = step
     try:
         request = json_format.ParseDict({"steps": proto_steps}, pb.SequenceRequest())
@@ -123,6 +159,19 @@ def _count(steps) -> int:
     return total
 
 
+def check_ramps(steps: list[dict], limit: float, why: str) -> None:
+    """Refuse a temperature step ramping faster than the substrate's `limit` (°C/min,
+    `ExperimentManager.ramp_limit`): a sequence ramps the substrate as to_temperature
+    does. A ramp of 0 is pld-service's jump, the fastest of all."""
+    for i, step in enumerate(steps, 1):
+        if "temperature" in step:
+            ramp = float((step["temperature"] or {}).get("ramp_c_per_min") or 0.0)
+            if ramp <= 0 or ramp > limit:
+                what = f"{ramp:g} °C/min" if ramp > 0 else "0 (a jump)"
+                raise ValueError(f"step {i}: temperature ramp {what} is over the {limit:g} °C/min "
+                                 f"limit ({why}): save a version within it")
+
+
 def resolve(steps: list[dict], ratio: float | None) -> list[dict]:
     """The steps pld-service runs: each meter_energy becomes laser_energy at mj / ratio."""
     out = []
@@ -134,7 +183,7 @@ def resolve(steps: list[dict], ratio: float | None) -> list[dict]:
             out.append({"label": step.get("label") or f"{step[METER_ENERGY]['mj']:g} mJ at the meter",
                         "laser_energy": {"mj": source}})
         else:
-            out.append(step)
+            out.append(_for_service(step))
     return out
 
 
@@ -171,7 +220,7 @@ class RunTracker:
         """One step ended. Returns what it did (for the journal) and the layer it
         closed, if a fire on another material started a new one."""
         spec = self.steps[step - 1] if 1 <= step <= len(self.steps) else {}
-        op = detail.get("op") or next((k for k in spec if k != "label"), "")
+        op = detail.get("op") or next((k for k in spec if k not in _EXTRA), "")
         if ok and op == "select_target":
             self.target = spec[op].get("target", self.target)
         if ok and op == "sample_shutter":

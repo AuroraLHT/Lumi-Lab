@@ -188,6 +188,54 @@ async def test_an_unapproved_version_does_not_run(seq):
     assert "run_sequence" not in [op for op, _ in client.calls]
 
 
+async def test_a_run_expecting_a_material_the_slot_does_not_hold_is_refused(seq):
+    # REA-Chamber, 2026-11-23: a combi script for TbFeO3 on B and SmFeO3 on E; E holds
+    # SrRuO3 now. The step says what it expects, and the run is refused before anything moves.
+    handler, client = seq
+    client.target_names = {"B": "TbFeO3", "E": "SrRuO3"}
+    handler.manager.target_mapper.update({"B": "TG2name", "E": "TG5name"})
+    steps = [{"select_target": {"target": "B", "wait": True}, "expect_material": "TbFeO3"},
+             {"fire_laser": {"pulses": 10, "rate_hz": 5, "wait": True}},
+             {"select_target": {"target": "E", "wait": True}, "expect_material": "SmFeO3"},
+             {"fire_laser": {"pulses": 10, "rate_hz": 5, "wait": True}}]
+    await save(handler, steps, name="combi")
+    await handler.approve_sequence(SequenceRef(name="combi", version=1))
+    with pytest.raises(ValueError, match=r"step 3: slot E holds 'SrRuO3', not 'SmFeO3'"):
+        await handler.run_sequence(RunSequence(name="combi", version=1, no_sample=True))
+    assert "run_sequence" not in [op for op, _ in client.calls]
+
+    steps[2]["expect_material"] = "srruo3"
+    await save(handler, steps, name="combi")
+    await handler.approve_sequence(SequenceRef(name="combi", version=2))
+    client.script = [(finished("combi v2", 4, 4), [])]
+    await handler.run_sequence(RunSequence(name="combi", version=2, no_sample=True))
+    assert (await wait_task(handler))["ok"]
+    sent = next(req for op, req in client.calls if op == "run_sequence")
+    assert all("expect_material" not in step for step in sent["steps"])  # Lumi's key, not the service's
+
+
+@pytest.mark.parametrize("ramp, refused", [(10.0, None), (20.0, "20 °C/min"), (0.0, r"0 \(a jump\)")])
+async def test_a_temperature_step_faster_than_the_substrates_limit_is_refused(seq, ramp, refused):
+    # The driver's ramp limit holds inside a sequence too; with no substrate, 10 °C/min.
+    handler, client = seq
+    await save(handler, [{"temperature": {"celsius": 500, "ramp_c_per_min": ramp, "wait": True}}], name="heat")
+    await handler.approve_sequence(SequenceRef(name="heat", version=1))
+    run = handler.run_sequence(RunSequence(name="heat", version=1, no_sample=True))
+    if refused is None:
+        client.script = [(finished("heat v1", 1, 1), [])]
+        await run
+        assert (await wait_task(handler))["ok"]
+        return
+    with pytest.raises(ValueError, match=f"step 1: temperature ramp {refused} is over the 10 °C/min limit"):
+        await run
+    assert "run_sequence" not in [op for op, _ in client.calls]
+
+
+def test_expect_material_belongs_beside_a_select_target():
+    with pytest.raises(ValueError, match="expect_material is a material name, beside a select_target"):
+        seqlib.check([{"wait_s": 1, "expect_material": "SrRuO3"}])
+
+
 async def test_a_run_is_followed_to_the_end_and_journaled(seq):
     handler, client = seq
     info = await save(handler)
@@ -334,7 +382,7 @@ async def test_pause_and_resume_go_to_pld_service(seq):
 async def loaded(seq):
     """A project and a single-position substrate loaded; slots A = SRO, B = STO."""
     handler, client = seq
-    handler.sources["chamber_config"].tg_values.update({"TG1name": "SRO", "TG2name": "STO"})
+    client.target_names = {"A": "SRO", "B": "STO"}  # pld-service's target_names
     handler.manager.target_mapper["B"] = "TG2name"
     await handler.register_project(RegisterProject(project_name="superlattice"))
     await handler.register_substrate(RegisterSubstrate(
@@ -435,6 +483,19 @@ async def test_a_run_needs_a_substrate_and_project_unless_rehearsed(seq):
         await handler.run_sequence(RunSequence(name="wedge", version=1))
 
 
+async def test_a_recorded_run_takes_its_project_from_the_recording(seq):
+    handler, client = seq
+    await save(handler)
+    await handler.approve_sequence(SequenceRef(name="wedge", version=1))
+    await handler.register_substrate(RegisterSubstrate(materials="SrTiO3", orientation="(001)", width=5,
+                                                       positions=[0.0], substrate_name="S1"))
+    client.script = [(finished("wedge v1", 1, 1), [])]
+    await handler.run_sequence(RunSequence(name="wedge", version=1,
+                                           record=SequenceRecording(project_name="wedges")))
+    assert (await wait_task(handler))["ok"]
+    assert handler.manager.project_name == "wedges" and handler.manager.project_id is not None
+
+
 async def test_a_move_during_a_pause_is_journaled(loaded):
     handler, client = loaded
     journaled = []
@@ -519,7 +580,7 @@ async def test_a_second_run_is_refused_and_leaves_the_first_ones_status(seq):
     client.hold = True
     await handler.run_sequence(RunSequence(name="wedge", version=1, no_sample=True))
     first = handler.readout().sequence.run_id
-    with pytest.raises(RuntimeError, match="still moving"):
+    with pytest.raises(RuntimeError, match="run_sequence .* is still running"):
         await handler.run_sequence(RunSequence(name="wedge", version=1, no_sample=True))
     assert handler.readout().sequence.run_id == first
     await handler.stop_deposition(StopDeposition(reason="test"))

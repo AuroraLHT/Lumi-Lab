@@ -70,6 +70,12 @@ class PldClient:
         except grpc.RpcError as e:
             raise PldUnavailable(f"pld-service at {self.address}: {_describe(e)}") from None
 
+    def settings(self, timeout: float = 5.0) -> pb.SettingsReply:
+        try:
+            return self._stub.GetSettings(pb.Empty(), timeout=timeout)
+        except grpc.RpcError as e:
+            raise PldUnavailable(f"pld-service at {self.address}: {_describe(e)}") from None
+
     def watch(self, rate_hz: float = 1.0):
         """`ChamberState` snapshots; the stream is an iterator, `.cancel()` ends it."""
         return self._stub.WatchState(pb.WatchRequest(rate_hz=rate_hz))
