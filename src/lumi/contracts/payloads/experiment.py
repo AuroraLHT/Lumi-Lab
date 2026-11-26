@@ -770,7 +770,7 @@ class ExperimentRecordId(BaseModel):
 
 class ToTemperature(BaseModel):
     temperature: float
-    ramp_rate: float = 20.0
+    ramp_rate: float | None = Field(None, gt=0, description="°C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm², 20 for >= 50 mm², 30 below; 10 with no substrate registered); left out, the limit itself")
     #: True: the task ends when the substrate arrives, and PASCAL takes no other
     #: command until then. False: the task ends once the ramp is set going, leaving
     #: the chamber free for other commands; read the temperature back to know when it
@@ -785,7 +785,7 @@ class TurnOffHeatingLaser(BaseModel):
 
 
 class CoolDown(BaseModel):
-    ramp_rate: float = 20.0
+    ramp_rate: float | None = Field(None, gt=0, description="°C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm², 20 for >= 50 mm², 30 below; 10 with no substrate registered); left out, the limit itself")
 
 
 class PerformPreablation(BaseModel):
@@ -842,7 +842,7 @@ class CancelTaskResult(BaseModel):
 
 class AnnealStep(BaseModel):
     temperature: float
-    ramp_rate: float = 20.0
+    ramp_rate: float | None = Field(None, gt=0, description="°C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm², 20 for >= 50 mm², 30 below; 10 with no substrate registered); left out, the limit itself")
     wait_time: float = 0.0
 
 

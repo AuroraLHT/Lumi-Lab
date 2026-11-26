@@ -19229,9 +19229,18 @@
             "request": {
               "properties": {
                 "ramp_rate": {
-                  "default": 20.0,
-                  "title": "Ramp Rate",
-                  "type": "number"
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "\u00b0C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm\u00b2, 20 for >= 50 mm\u00b2, 30 below; 10 with no substrate registered); left out, the limit itself",
+                  "title": "Ramp Rate"
                 },
                 "temperature": {
                   "title": "Temperature",
@@ -19276,9 +19285,18 @@
             "request": {
               "properties": {
                 "ramp_rate": {
-                  "default": 20.0,
-                  "title": "Ramp Rate",
-                  "type": "number"
+                  "anyOf": [
+                    {
+                      "exclusiveMinimum": 0,
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "description": "\u00b0C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm\u00b2, 20 for >= 50 mm\u00b2, 30 below; 10 with no substrate registered); left out, the limit itself",
+                  "title": "Ramp Rate"
                 }
               },
               "title": "CoolDown",
@@ -19443,9 +19461,18 @@
                 "AnnealStep": {
                   "properties": {
                     "ramp_rate": {
-                      "default": 20.0,
-                      "title": "Ramp Rate",
-                      "type": "number"
+                      "anyOf": [
+                        {
+                          "exclusiveMinimum": 0,
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ],
+                      "default": null,
+                      "description": "\u00b0C/min, heating or cooling. At most the current substrate's limit by area (10 for >= 75 mm\u00b2, 20 for >= 50 mm\u00b2, 30 below; 10 with no substrate registered); left out, the limit itself",
+                      "title": "Ramp Rate"
                     },
                     "temperature": {
                       "title": "Temperature",

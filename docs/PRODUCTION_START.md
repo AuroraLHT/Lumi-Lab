@@ -17,7 +17,7 @@ publishes into.
 1. **The same code on both machines.** The RHEED gun, agent boxes and pld target
    names are on `rheed-ops` (PR #38, on top of #36 and #37), not yet on `main`.
    Merge them, or check out the same commit on both machines. Both launchers
-   print the contract hash; the two must match (now `30cea694a4240715`).
+   print the contract hash; the two must match (now `18fe15180d135bf5`).
 2. **The Deck built for the same contract.** The browser client is generated
    from the contract. A mismatch gives wrong or refused ops at runtime, not a
    startup error.

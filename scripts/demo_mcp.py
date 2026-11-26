@@ -271,7 +271,7 @@ async def heater(mcp: Mcp, checks: Checks, args: argparse.Namespace) -> None:
     # to cut the laser above 165 degC. Harmless on the simulator, never on the chamber.
     await mcp.expect("experiment.driver.turn_off_heating_laser", force=True)
     await asyncio.sleep(2.0)  # let the log catch up with the heater going off
-    ok, payload = await mcp.call("experiment.driver.to_temperature", temperature=300.0, ramp_rate=20.0)
+    ok, payload = await mcp.call("experiment.driver.to_temperature", temperature=300.0)
     checks.ok(not ok, "to_temperature is refused while the heating laser is off",
               f"returned success: {payload}")
     checks.ok(not ok and "initiate_heating_laser" in str(payload),

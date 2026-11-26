@@ -85,6 +85,9 @@ PRESSURE_SETTLE_S = 5.0
 # real webcam buffers frames. Without a wait, the first point of each refining pass,
 # after the long move back to its start, read the bump it had just left (DRY-FULL-02).
 MASK_SETTLE_S = 1.0
+# The fastest a substrate may be heated or cooled, °C/min, by its area in mm² (the
+# skill's hard rule, now the driver's): (smallest area, limit), largest area first.
+RAMP_LIMITS = ((75.0, 10.0), (50.0, 20.0), (0.0, 30.0))
 #: Fewer readings than this, or readings that never move by more than
 #: LASER_TEST_FLAT_MJ, are not taken as the source energy (see `source_from_readings`).
 LASER_TEST_MIN_READINGS = 3
@@ -1212,9 +1215,35 @@ class BaseExperimentManager:
         values = await self._log_values()
         return _truthy(values["ON/OFF monitor in PS"])
 
-    async def to_temperature(self, temperature: float, ramp_rate: float = 20.0, wait: bool = True) -> float:
+    def ramp_limit(self) -> tuple[float, str]:
+        """The current substrate's ramp limit, °C/min, and what it is from. With no
+        substrate registered, the strictest: what is in the chamber is not known."""
+        s = self.current_substrate
+        if s is None:
+            return RAMP_LIMITS[0][1], "no substrate registered, so the strictest limit"
+        if not (s.width or 0) > 0:
+            return RAMP_LIMITS[0][1], f"substrate {s.db_id} has no width registered, so the strictest limit"
+        height = s.height if s.height else s.width  # registered without one (0): square
+        area = s.width * height
+        limit = next(rate for min_area, rate in RAMP_LIMITS if area >= min_area)
+        return limit, f"substrate {s.db_id}, {s.width:g} x {height:g} mm = {area:g} mm²"
+
+    def ramp_rate_for(self, ramp_rate: float | None) -> float:
+        """`ramp_rate`, checked against the substrate's limit; None is the limit itself."""
+        limit, why = self.ramp_limit()
+        if ramp_rate is None:
+            return limit
+        if not ramp_rate > 0:
+            raise ValueError(f"ramp rate must be above 0 °C/min, got {ramp_rate:g}")
+        if ramp_rate > limit:
+            raise ValueError(f"ramp rate {ramp_rate:g} °C/min is over the {limit:g} °C/min limit "
+                             f"({why}); leave ramp_rate out to use the limit")
+        return ramp_rate
+
+    async def to_temperature(self, temperature: float, ramp_rate: float | None = None, wait: bool = True) -> float:
         """Ramp to `temperature`. With `wait` the call returns once the substrate
-        arrives; without it, once the ramp is set going.
+        arrives; without it, once the ramp is set going. `ramp_rate` (°C/min) may not
+        exceed the substrate's limit (`ramp_limit`), and defaults to it.
 
         Under legacy MI mode PASCAL runs one command at a time and the arrival wait is
         a command, so `wait` holds every other chamber command until the ramp ends.
@@ -1222,6 +1251,7 @@ class BaseExperimentManager:
         each other, so a waited fire or move does not delay the heater. A failed warm-up
         puts the current back (_warm_up_to_pid_limit)."""
         b = self.bounds
+        ramp_rate = self.ramp_rate_for(ramp_rate)
         temperature = max(b.temperature_min, min(b.temperature_max, temperature))
 
         # A setpoint below the PID-engage threshold has no ramp to run: nothing below
@@ -1263,7 +1293,8 @@ class BaseExperimentManager:
         await self.chamber.ramp_to(temperature, ramp_rate, wait)
         return temperature
 
-    async def cool_down(self, ramp_rate: float = 20.0) -> None:
+    async def cool_down(self, ramp_rate: float | None = None) -> None:
+        ramp_rate = self.ramp_rate_for(ramp_rate)
         await self.chamber.coast_to(self.bounds.temperature_min, ramp_rate, wait=True)
 
     async def perform_deposition(self, num_pulse: int, laser_repetition_rate: float, target_id: str, is_dryrun: bool = False) -> None:
@@ -1272,7 +1303,7 @@ class BaseExperimentManager:
         if not is_dryrun:
             await self.chamber.fire(num_pulse, laser_repetition_rate)
 
-    async def anneal(self, steps: list[tuple[float, float, float]]) -> None:
+    async def anneal(self, steps: list[tuple[float, float | None, float]]) -> None:
         for temperature, ramp_rate, wait_time in steps:
             await self.to_temperature(temperature, ramp_rate=ramp_rate)
             if wait_time > 0:

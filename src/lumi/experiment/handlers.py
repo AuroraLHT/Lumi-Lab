@@ -723,13 +723,15 @@ class ExperimentHandler:
     async def to_temperature(self, req: ToTemperature) -> TaskAck:
         self._refuse_if_running("to_temperature")  # first: a busy node is the reason to give
         await self._require_heating_laser(req.temperature)
+        ramp_rate = self.manager.ramp_rate_for(req.ramp_rate)  # refused here, not as a failed task
         return await self._start_task(
-            "to_temperature", self.manager.to_temperature(req.temperature, req.ramp_rate, req.wait),
-            {"temperature": req.temperature, "ramp_rate": req.ramp_rate, "wait": req.wait},
+            "to_temperature", self.manager.to_temperature(req.temperature, ramp_rate, req.wait),
+            {"temperature": req.temperature, "ramp_rate": ramp_rate, "wait": req.wait},
         )
 
     async def cool_down(self, req: CoolDown) -> TaskAck:
-        return await self._start_task("cool_down", self.manager.cool_down(req.ramp_rate), {"ramp_rate": req.ramp_rate})
+        ramp_rate = self.manager.ramp_rate_for(req.ramp_rate)
+        return await self._start_task("cool_down", self.manager.cool_down(ramp_rate), {"ramp_rate": ramp_rate})
 
     async def _chamber_conditions(self) -> dict:
         """The chamber state a deposition is actually running at.
@@ -836,7 +838,7 @@ class ExperimentHandler:
 
     async def anneal(self, req: Anneal) -> TaskAck:
         await self._require_heating_laser()  # every step is a to_temperature
-        steps = [(s.temperature, s.ramp_rate, s.wait_time) for s in req.steps]
+        steps = [(s.temperature, self.manager.ramp_rate_for(s.ramp_rate), s.wait_time) for s in req.steps]
         return await self._start_task("anneal", self.manager.anneal(steps), {"n_steps": len(steps)})
 
     # --- pending-confirmation gates -----------------------------------------------

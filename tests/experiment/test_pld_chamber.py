@@ -170,11 +170,11 @@ async def fake(tmp_path):
 
 async def test_to_temperature_engages_pid_then_ramps_from_where_it_is(fake):
     handler, client = fake
-    await handler.to_temperature(ToTemperature(temperature=650, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=650, ramp_rate=10))
     assert (await wait_task(handler))["ok"] is True
     assert client.calls == [
         ("set_temperature_control", {"on": True}),
-        ("set_temperature", {"celsius": 650.0, "ramp_c_per_min": 20.0, "wait": True, "tolerance": 0.0}),
+        ("set_temperature", {"celsius": 650.0, "ramp_c_per_min": 10.0, "wait": True, "tolerance": 0.0}),
     ]
 
 
@@ -218,7 +218,7 @@ async def test_a_failed_warm_up_sets_the_current_back_and_says_so(fake):
         return await _call(op, req, actor=actor)
 
     client.call = refuse_third
-    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=10))
     result = await wait_task(handler)
     assert result["ok"] is False
     assert "manual warm-up failed" in result["error"] and "set back to 6.00 A" in result["error"]
@@ -232,7 +232,7 @@ async def test_a_warm_up_already_at_its_current_still_waits_for_the_threshold(fa
     handler, client = fake
     client.state.heater.temperature = 177.0
     client.state.heater.current_set = 7.81
-    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=10))
     result = await wait_task(handler)
     assert result["ok"] is False and "stalled at 177" in result["error"], result
     assert "set_temperature_control" not in [op for op, c in client.calls if c.get("on")]
@@ -243,7 +243,7 @@ async def test_a_warm_up_already_at_its_current_still_waits_for_the_threshold(fa
     client.state.heater.temperature = 177.0
     client.state.heater.current_set = 7.81
     asyncio.get_running_loop().call_later(0.3, setattr, client.state.heater, "temperature", 230.0)
-    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=400, ramp_rate=10))
     result = await wait_task(handler)
     assert result["ok"] is True, result
     assert "set_heating_current" not in ops(client)
@@ -455,7 +455,7 @@ async def test_a_second_task_is_refused_until_the_first_is_cancelled(fake):
     client.blocking.add("set_temperature")
     first = await handler.cool_down(CoolDown(ramp_rate=10.0))
     with pytest.raises(RuntimeError, match=r"cool_down \(task \w+\) is still running.*cancel_task"):
-        await handler.cool_down(CoolDown(ramp_rate=20.0))
+        await handler.cool_down(CoolDown(ramp_rate=5.0))
     assert handler._current_task.id == first.task_id
     # Cancelled before its runner took a step: still cleared, and still reported.
     await handler.cancel_task(CancelTask(reason="wrong rate"))
@@ -468,7 +468,7 @@ async def test_a_second_task_is_refused_until_the_first_is_cancelled(fake):
     assert result == stopped
     client.blocking.clear()
     client.release.set()
-    second = await handler.cool_down(CoolDown(ramp_rate=20.0))
+    second = await handler.cool_down(CoolDown(ramp_rate=5.0))
     assert handler._current_task.id == second.task_id
     # A new task starting leaves the last one's outcome until it finishes itself.
     assert handler.readout().last_task.task.id == first.task_id
@@ -999,7 +999,9 @@ async def sim(tmp_path):
     await db.close()
 
 
-async def test_a_growth_runs_end_to_end_on_the_sim(sim):
+async def test_a_growth_runs_end_to_end_on_the_sim(sim, monkeypatch):
+    import lumi.experiment.manager as manager_module
+    monkeypatch.setattr(manager_module, "RAMP_LIMITS", ((0.0, 120.0),))  # the sim's clock, not a substrate
     handler, model, service = sim
     assert (await handler.check_mi_mode(CheckMiMode(timeout_s=1))).status == "on"
     await handler.manager.initiate_heating_laser(timeout=5)

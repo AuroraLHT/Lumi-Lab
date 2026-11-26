@@ -22,6 +22,7 @@ from lumi.contracts.payloads.experiment import (
     Anneal,
     AnnealStep,
     BeginSetLaserPower,
+    CoolDown,
     ConfirmLaserPower,
     ConfirmProceed,
     MoveMask,
@@ -424,11 +425,55 @@ async def test_laser_power_gate_short_circuits_once_already_set(handler):
     assert handler.readout().pending_confirmation is None
 
 
+# --- the substrate's ramp limit --------------------------------------------------
+
+
+@pytest.mark.parametrize("width, height, limit", [
+    (10.0, 10.0, 10.0), (10.0, 0.0, 10.0), (5.0, 10.0, 20.0), (5.0, 5.0, 30.0), (0.0, 0.0, 10.0),
+])
+async def test_the_ramp_limit_is_the_substrates_by_area(handler, width, height, limit):
+    # DRY-FULL-02: cool_down at 20 on a 10 x 10 mm substrate, whose limit is 10. A
+    # height left out is a square; no size at all is the strictest limit.
+    await handler.register_substrate(RegisterSubstrate(materials="STO", width=width, height=height))
+    assert handler.manager.ramp_limit()[0] == limit
+    with pytest.raises(ValueError, match=f"over the {limit:g} °C/min limit"):
+        await handler.cool_down(CoolDown(ramp_rate=limit + 1))
+    assert handler.readout().current_task is None  # refused, no task started
+
+
+async def test_without_a_rate_the_ramp_is_the_limit_and_slower_is_allowed(handler):
+    await handler.register_substrate(RegisterSubstrate(materials="STO", width=5.0, height=10.0))
+    mi = handler.sources["chamber_mi"]
+    await handler.cool_down(CoolDown())
+    assert handler.readout().current_task.detail["ramp_rate"] == 20.0
+    for _ in range(200):
+        if handler.readout().current_task is None:
+            break
+        await asyncio.sleep(0.01)
+    assert "Temperature Ramp 20.0\n" in mi.calls
+    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=2.5))
+    assert handler.readout().current_task.detail["ramp_rate"] == 2.5
+
+
+async def test_an_anneal_with_one_step_too_fast_is_refused_before_it_starts(handler):
+    await handler.register_substrate(RegisterSubstrate(materials="STO", width=5.0, height=10.0))
+    with pytest.raises(ValueError, match="over the 20 °C/min limit"):
+        await handler.anneal(Anneal(steps=[AnnealStep(temperature=700, ramp_rate=10),
+                                           AnnealStep(temperature=600, ramp_rate=25)]))
+    assert handler.readout().current_task is None
+
+
+async def test_with_no_substrate_the_ramp_limit_is_the_strictest(handler):
+    assert handler.manager.ramp_limit() == (10.0, "no substrate registered, so the strictest limit")
+    with pytest.raises(ValueError, match="over the 10 °C/min limit"):
+        await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+
+
 # --- long-running task tracking --------------------------------------------------
 
 
 async def test_long_running_task_tracked_and_cleared(handler):
-    ack = await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+    ack = await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=10))
     assert handler.readout().current_task is not None
     assert handler.readout().current_task.id == ack.task_id
 
@@ -454,7 +499,7 @@ async def test_to_temperature_refuses_with_the_heating_laser_off(handler):
     # nowait=False, so the MI command blocks until it times out rather than erroring.
     handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
     with pytest.raises(RuntimeError, match="initiate_heating_laser"):
-        await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20))
+        await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=10))
 
     # Raised by the op, not reported on the update channel: a caller that only has ops
     # (the MCP server) cannot read current_task, so a refusal buried in the task would
@@ -467,7 +512,7 @@ async def test_to_temperature_refuses_with_the_heating_laser_off(handler):
 async def test_anneal_refuses_with_the_heating_laser_off(handler):
     handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
     with pytest.raises(RuntimeError, match="initiate_heating_laser"):
-        await handler.anneal(Anneal(steps=[AnnealStep(temperature=700, ramp_rate=20, wait_time=0)]))
+        await handler.anneal(Anneal(steps=[AnnealStep(temperature=700, ramp_rate=10, wait_time=0)]))
     assert handler.readout().current_task is None
 
 
@@ -476,7 +521,7 @@ async def test_to_temperature_below_the_pid_threshold_skips_the_heating_laser_ch
     # temperature_pid_engage_threshold has no ramp to perform, so it must not refuse --
     # and it must not leave a setpoint on the controller either.
     handler.sources["chamber_log"].values["ON/OFF monitor in PS"] = "FALSE"
-    ack = await handler.to_temperature(ToTemperature(temperature=25, ramp_rate=20))
+    ack = await handler.to_temperature(ToTemperature(temperature=25, ramp_rate=10))
 
     for _ in range(200):
         event = await handler.next_update()
@@ -497,7 +542,7 @@ async def test_to_temperature_below_the_pid_threshold_cools_down_when_still_hot(
     # asked for. From 700C, asking for the pyrometer floor means "come down" -- it has
     # to go out as a real setpoint, not return a success that leaves the chamber hot.
     handler.sources["chamber_log"].values["HT Temp moni"] = "700.0"
-    ack = await handler.to_temperature(ToTemperature(temperature=160, ramp_rate=20))
+    ack = await handler.to_temperature(ToTemperature(temperature=160, ramp_rate=10))
 
     for _ in range(200):
         event = await handler.next_update()
@@ -511,7 +556,7 @@ async def test_to_temperature_below_the_pid_threshold_cools_down_when_still_hot(
     # Ramp + setpoint, the way cool_down does it. No `Temperature Control PID`: the
     # controller cannot hold a sub-threshold setpoint, the substrate coasts to it.
     assert handler.sources["chamber_mi"].calls == [
-        "Temperature Ramp 20.0\n",
+        "Temperature Ramp 10.0\n",
         "Temperature Set 160.0\n",
     ]
     assert ack.task_id
@@ -663,7 +708,7 @@ async def test_a_recording_carries_the_experiment_and_hears_about_its_tasks(hand
     assert req.context["pixel_index"] == 0 and "laser_pulse_energy_set_mj" in req.context
     assert handler.readout().is_recording and handler.readout().recording_name == result.storage_name
 
-    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=10))
     for _ in range(200):
         if any(e.kind == "task_finished" for e in storage.events):
             break
@@ -674,7 +719,7 @@ async def test_a_recording_carries_the_experiment_and_hears_about_its_tasks(hand
 
     await handler.end_storage(EndStorage())
     assert not handler.readout().is_recording
-    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=200, ramp_rate=10))
     await asyncio.sleep(0.05)
     assert len(storage.events) == 2  # nothing recording: nothing sent
 
@@ -1197,11 +1242,11 @@ async def test_to_temperature_without_wait_leaves_pascal_free(handler):
     # wait=false drops the trailing blocking `Temperature Set`, the command that holds
     # PASCAL's queue until the substrate arrives.
     handler.sources["chamber_log"].values["HT Temp moni"] = "300.0"
-    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20, wait=False))
+    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=10, wait=False))
     assert (await _task_result(handler))["ok"] is True
     assert handler.sources["chamber_mi"].calls == [
         "Temperature Set 700.0 (Nowait)\n",
-        "Temperature Ramp 20.0\n",
+        "Temperature Ramp 10.0\n",
         "Temperature Control PID\n",
     ]
 
@@ -1283,7 +1328,7 @@ async def test_to_temperature_sets_the_target_before_engaging_pid(handler):
     # Target, ramp rate, then PID on: engaged first, PID would chase whatever setpoint
     # the controller still holds (after the warm-up, the cold 160).
     handler.sources["chamber_log"].values["HT Temp moni"] = "300.0"
-    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=20))
+    await handler.to_temperature(ToTemperature(temperature=700, ramp_rate=10))
 
     for _ in range(200):
         event = await handler.next_update()
@@ -1296,7 +1341,7 @@ async def test_to_temperature_sets_the_target_before_engaging_pid(handler):
 
     assert handler.sources["chamber_mi"].calls == [
         "Temperature Set 700.0 (Nowait)\n",
-        "Temperature Ramp 20.0\n",
+        "Temperature Ramp 10.0\n",
         "Temperature Control PID\n",
         "Temperature Set 700.0\n",
     ]

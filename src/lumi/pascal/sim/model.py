@@ -82,7 +82,7 @@ class ChamberSimConfig:
     heater_tau: float = 8.0
     current_tau: float = 1.0
     temperature_noise: float = 0.4
-    default_ramp_rate: float = 20.0  # degC/min, matching manager.to_temperature
+    default_ramp_rate: float = 20.0  # degC/min, when a command gives none
 
     # --- gas and pressure ---------------------------------------------------
     base_pressure: float = 5.0e-9

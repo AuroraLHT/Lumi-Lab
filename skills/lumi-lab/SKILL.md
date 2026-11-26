@@ -17,12 +17,16 @@ usual choice; deviate if you say why).
 ## 1. Limits
 
 The driver enforces some of these itself (`cfg/settings.toml`, `[experiment.bounds]`):
-a setpoint outside 160–1000 °C is refused, and PID engages above 220 °C. Everything
-else here is only as strong as you following it.
+a setpoint outside 160–1000 °C is refused, PID engages above 220 °C, and a ramp over
+the substrate's limit is refused. Everything else here is only as strong as you
+following it.
 
 - **[hard]** Ramp rate, by substrate area (width × height from `get_substrate`):
   10 °C/min for ≥ 75 mm², 20 °C/min for ≥ 50 mm², 30 °C/min for < 50 mm².
-  The same for cooling.
+  The same for cooling. `to_temperature`, `cool_down` and `anneal` refuse a faster
+  `ramp_rate`; leave `ramp_rate` out and they use the current substrate's limit.
+  With no substrate registered the limit is 10, so register the substrate before
+  heating. Slower is always allowed.
   From a cold chamber (below 220 °C) the ramp rate does not apply at first. PID only
   works properly above 220 °C, so `to_temperature` first heats on a fixed current
   (7.8 A, about 265 °C) and only then hands over to PID, which ramps from the
@@ -157,8 +161,8 @@ What applies to both:
   leaves shutter, mask and target as they are.
 - **[thumb]** Heating takes a long time, and while `to_temperature` waits for the
   substrate PASCAL runs no other command. Pass `wait: false` so its task ends once the
-  ramp is under way, do other set-up meanwhile (registering the substrate, setting the
-  pressure), and poll `get_current_temperature` until it is within 10 °C of the
+  ramp is under way, do other set-up meanwhile (setting the pressure, the laser
+  energy), and poll `get_current_temperature` until it is within 10 °C of the
   setpoint before any step that needs it there. The laser-off rule in §1 still holds.
   From cold the task first raises the heating current by hand, open-loop, until PID can
   take over (about 220 °C); a fire or move meanwhile does not hold it up. If the
